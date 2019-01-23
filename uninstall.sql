@@ -1,0 +1,2 @@
+DROP DATABASE IF EXISTS tracedb;
+DROP ROLE IF EXISTS tracedb;

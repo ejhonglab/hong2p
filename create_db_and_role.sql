@@ -1,0 +1,2 @@
+CREATE ROLE tracedb WITH LOGIN PASSWORD 'tracedb';
+CREATE DATABASE tracedb OWNER tracedb;
