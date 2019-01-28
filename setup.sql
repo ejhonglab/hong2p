@@ -21,6 +21,14 @@ CREATE TABLE IF NOT EXISTS odors (
 );
 
 CREATE TABLE IF NOT EXISTS mixtures (
+    /* TODO or just use name + conc? */
+    odor1 integer REFERENCES odors (odor) NOT NULL,
+    odor2 integer REFERENCES odors (odor) NOT NULL,
+    PRIMARY KEY(odor1, odor2)
+);
+
+/************
+CREATE TABLE IF NOT EXISTS mixtures (
     mixture SERIAL PRIMARY KEY,
 
     /* TODO TODO pandas sql interface work w/ arrays? r + matlab? */
@@ -32,12 +40,16 @@ CREATE TABLE IF NOT EXISTS mixtures (
 
     /* TODO any way to let multiple odors be in one mixture without arrays? */
 
+/************
     pulse_length real NOT NULL,
     carrier_flow_slpm real NOT NULL,
     odor_flow_slpm real NOT NULL,
+    /* TODO maybe move to odors to be more clear? */
+/************
     volume_ml real NOT NULL
     /* TODO also pin / position? */
     /* TODO date / who made? / recipie? */
+/************
 );
 
 CREATE TABLE IF NOT EXISTS odors_in_mixtures (
@@ -45,6 +57,7 @@ CREATE TABLE IF NOT EXISTS odors_in_mixtures (
     odor integer REFERENCES odors (odor),
     PRIMARY KEY(mixture, odor)
 );
+***********/
 
 /* TODO table for stimulus info? */
 /* TODO maybe stimulus code or version somewhere if nothing else? */
@@ -66,16 +79,20 @@ CREATE TABLE IF NOT EXISTS recordings (
 
 CREATE TABLE IF NOT EXISTS analysis_runs (
     analysis_description text NOT NULL,
-    /* TODO precision? */
+    /* TODO precision? i think at least seconds? otherwise whatever is
+     * convenient to work from time.time() in python... */
     analyzed_at timestamptz(0) NOT NULL,
     /* TODO actually any simpler making some kind of artificial key like this
      * for fk purposes? i didn't want to have to refer to two extra columns in
      * responses keys... */
     analysis_run SERIAL UNIQUE NOT NULL,
     /* TODO git version + unsaved changes? */
+    /* TODO git remotes? */
     PRIMARY KEY(analysis_description, analyzed_at)
 );
 
+/* TODO TODO create table "presentations" or something indexed by all but
+ * from_onset, and include odor into there? then ref that here? */
 CREATE TABLE IF NOT EXISTS responses (
     analysis integer REFERENCES analysis_runs (analysis_run) NOT NULL,
 
