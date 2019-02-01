@@ -32,3 +32,8 @@ echo "tracedb:tracedb" | sudo chpasswd
 
 sudo -u postgres psql -f create_db_and_role.sql
 sudo -u tracedb psql -f setup.sql
+
+# TODO automate configuration for LAN (VPN) subnet
+#sudo -u postgres psql -t -P format=unaligned -c 'show hba_file';
+#sudo vi /etc/postgresql/9.5/main/pg_hba.conf
+#sudo service postgresql restart

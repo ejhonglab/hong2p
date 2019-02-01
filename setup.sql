@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 
     /* TODO git version + unsaved changes? */
     /* TODO git remotes? */
-    PRIMARY KEY(analysis_description, analyzed_at)
+    PRIMARY KEY(analysis_description)
 );
 
 CREATE TABLE IF NOT EXISTS recordings (
@@ -71,6 +71,33 @@ CREATE TABLE IF NOT EXISTS recordings (
     thorimage_path text,
     /* TODO maybe require this if it's just going to be the pin/odor info? */
     stimulus_data_path text
+
+    /* TODO store framerate here? so analysis on movies can do stuff for fixed
+     * amount of seconds w/o having to load xml? */
+);
+
+/* TODO table for frame indices used to define responses? store alongside
+ * responses, particularly if from_onset and df_over_f can be make into array
+ * types? make a separate presentations / blocks table again? */
+
+CREATE TABLE IF NOT EXISTS presentations (
+    prep_date timestamp NOT NULL,
+    fly_num smallint NOT NULL,
+
+    recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
+
+    odor1 integer NOT NULL,
+    odor2 integer NOT NULL,
+
+    repeat_num integer NOT NULL,
+    
+    /* TODO make include other key frames too? or relegate to block info? */
+    odor_onset_frame integer NOT NULL,
+    odor_offset_frame integer NOT NULL,
+
+    FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
+    FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
+    PRIMARY KEY(prep_date, fly_num, recording_from, odor1, odor2, repeat_num)
 );
 
 CREATE TABLE IF NOT EXISTS responses (
@@ -79,6 +106,8 @@ CREATE TABLE IF NOT EXISTS responses (
     /*
     presentation_id integer REFERENCES presentations (presentation_id),
     */
+    /* TODO TODO move prep_date + fly_num to recording? and just merge w/
+     * recording_from? */
     analysis integer REFERENCES analysis_runs (analysis_run) NOT NULL,
 
     prep_date timestamp,
