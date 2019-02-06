@@ -268,7 +268,6 @@ stimfile_root = '/mnt/nas/mb_team/stimulus_data_files'
 
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', inplace=True)
-"""
 
 # TODO TODO loop over more stuff than just natural_odors / used_for_analysis
 # to load all PID stuff in (will need pin info for prep checking, etc, exps)
@@ -317,11 +316,15 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     except ValueError:
         continue
 
-    #print(date)
-    #print(fly_num)
+    print(date)
+    print(fly_num)
 
     used = df.loc[df.used_for_analysis &
         (df.date == date) & (df.fly_num == fly_num)]
+
+    # TODO better format for no used dirs case
+    print('Used ThorImage dirs:')
+    print(used.thorimage_dir)
 
     # TODO maybe do this in analysis actually? (to not just make a bunch of
     # empty dirs...)
@@ -335,7 +338,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     if convert_h5:
         ####print('Converting ThorSync HDF5 files to .mat...')
         for syncdir in glob.glob(join(full_fly_dir, 'SyncData*')):
-            print(syncdir)
+            #print(syncdir)
             '''
             if evil is None:
                 evil = future.result()
@@ -430,6 +433,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     # TODO exclude stuff that indicates it's either already avg or motion
     # corrected? (or just always keep them separately?)
     if motion_correct:
+        # TODO maybe also look w/o underscore, if that's remy's convention
         for input_tif_path in glob.glob(
             join(full_fly_dir, 'tif_stacks', '_*.tif')):
 
@@ -444,15 +448,15 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             # TODO only register one way by default? nonrigid? args to
             # configure?
             evil.normcorre_tiff(input_tif_path, analysis_fly_dir, nargout=0)
+            #import ipdb; ipdb.set_trace()
 
     # TODO and if remy wants, copy thorimage xmls
 
     print('')
 
-    # TODO maybe delete empty folders under analysis?
+    # TODO maybe delete empty folders under analysis? (do in atexit handler)
 
-import sys; sys.exit()
-"""
+#import sys; sys.exit()
 
 def git_hash(repo_file):
     repo = git.Repo(repo_file, search_parent_directories=True)
@@ -518,45 +522,9 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         thorimage_id = '_' + prefix[1]
 
-        # TODO TODO need to infer missing thor dirs first, if doing it this
-        # way...
-        recordings = df.loc[(df.date == date) &
+        recordings = df.loc[(df.date == date) & (df.fly_num == fly_num) &
                             (df.thorimage_dir == thorimage_id)]
-
-        if prefix[0] == '':
-            # TODO check there is only one fly w/ used_in_analysis checked for
-            # this date, then associate that fly num w/ this thorimage id?
-            if len(recordings) == 1:
-                recording = recordings.iloc[0]
-                fly_num = int(recording['fly_num'])
-
-            else:
-                # TODO flag to err instead?
-                # TODO TODO TODO figure out why this is still getting triggered
-                # / whether it makes sense / delete (we are using fly dirs, not
-                # prefix)
-                warnings.warn(('{} has no fly_num prefix and the spreadsheet ' +
-                    'indicates multiple flies with this date ({}) and ' +
-                    'ThorImage directory name ({}). Append proper fly_num' +
-                    ' prefix to analysis output.').format(mat, date,
-                    thorimage_id))
-                continue
-
-        else:
-            fly_num = int(prefix[0])
-            recordings = recordings.loc[recordings.fly_num == fly_num]
-            if len(recordings) > 1:
-                # TODO TODO fix case where this can happen if same fly_num
-                # has data saved to two different project directories
-                # (maybe by just getting rid of project dirs...)
-                raise ValueError(('multiple repeats of fly_num {} for ' +
-                    '({}, {})').format(fly_num, date, thorimage_id))
-
-            elif len(recordings) == 0:
-                raise ValueError(('missing expected fly_num {} for ' +
-                    '({}, {})').format(fly_num, date, thorimage_id))
-
-            recording = recordings.iat[0]
+        recording = recordings.iloc[0]
 
         if recording.project != 'natural_odors':
             warnings.warn('project type {} not supported. skipping.')
@@ -632,7 +600,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         odor_pair_list = \
             data['odor_pair_list'][first_presentation:last_presentation]
 
-        assert len(data['odor_pair_list']) % len(odor_pair_list) == 0
+        assert len(odor_pair_list) % (presentations_per_repeat * n_repeats) == 0
 
         # TODO invert to check
         # TODO is this sql table worth anything if both keys actually need to be
@@ -814,9 +782,16 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # len(odor_pair_list)
 
         odor_id_pairs = [(o1,o2) for o1,o2 in zip(odor1_ids, odor2_ids)]
-        repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
+
+        comparison_num = -1
 
         for i in range(len(start_frames)):
+            if i % (presentations_per_repeat * n_repeats) == 0:
+                comparison_num += 1
+                repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
+
+            # TODO TODO also save to csv/flat binary/hdf5 per (date, fly,
+            # thorimage)
             print('Processing presentation {}'.format(i))
 
             start_frame = start_frames[i]
@@ -854,6 +829,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'prep_date': [date],
                 'fly_num': fly_num,
                 'recording_from': started_at,
+                'comparison': comparison_num,
                 'odor1': odor1,
                 'odor2': odor2,
                 'repeat_num': repeat_num,
@@ -880,6 +856,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'prep_date': date,
                 'fly_num': fly_num,
                 'recording_from': started_at,
+                'comparison': comparison_num,
                 'odor1': odor1,
                 'odor2': odor2,
                 'repeat_num': repeat_num

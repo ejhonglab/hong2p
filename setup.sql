@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS presentations (
 
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
 
+    /* TODO maybe reference an odor pair here? */
+    comparison integer NOT NULL,
+
     odor1 integer NOT NULL,
     odor2 integer NOT NULL,
 
@@ -97,7 +100,8 @@ CREATE TABLE IF NOT EXISTS presentations (
 
     FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
-    PRIMARY KEY(prep_date, fly_num, recording_from, odor1, odor2, repeat_num)
+    PRIMARY KEY(prep_date, fly_num, recording_from,
+                comparison, odor1, odor2, repeat_num)
 );
 
 CREATE TABLE IF NOT EXISTS responses (
@@ -116,6 +120,8 @@ CREATE TABLE IF NOT EXISTS responses (
     /*fly integer REFERENCES flies (fly) NOT NULL, */
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
 
+    comparison integer NOT NULL,
+
     /*
     mixture integer REFERENCES mixtures (mixture) NOT NULL,
     */
@@ -133,8 +139,8 @@ CREATE TABLE IF NOT EXISTS responses (
 
     FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
-    PRIMARY KEY(analysis, prep_date, fly_num, recording_from, cell,
-        odor1, odor2, repeat_num, from_onset)
+    PRIMARY KEY(analysis, prep_date, fly_num, recording_from,
+        comparison, odor1, odor2, repeat_num, cell, from_onset)
     /*
     PRIMARY KEY(analysis, fly, recording_from, cell, mixture, repeat_num,
         from_onset)
