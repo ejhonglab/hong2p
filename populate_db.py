@@ -15,7 +15,9 @@ import time
 import xml.etree.ElementTree as etree
 import pprint
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy.sql import sqltypes
+from sqlalchemy.dialects import postgresql
 import h5py
 import numpy as np
 import pandas as pd
@@ -29,6 +31,8 @@ convert_h5 = True
 calc_timing_info = False
 motion_correct = True
 only_motion_correct_for_analysis = True
+
+store_multiple_analysis = False
 
 
 analysis_started_at = time.time()
@@ -71,10 +75,95 @@ def to_sql_with_duplicates(new_df, table_name, index=False):
         cols += list(new_df.index.names)
     table_cols = ', '.join(cols)
 
+    md = MetaData()
+    table = Table(table_name, md, autoload_with=conn)
+    dtypes = {c.name: c.type for c in table.c}
+    '''
+    print('SQL column types:')
+    pprint.pprint(dtypes)
+    '''
+   
+    df_types = new_df.dtypes.to_dict()
+    if index:
+        df_types.update({n: new_df.index.get_level_values(n).dtype
+            for n in new_df.index.names})
+
+    '''
+    print('\nOld dataframe column types:')
+    pprint.pprint(df_types)
+    '''
+
+    # TODO TODO convert each df_type to sqlalchemy type
+    # TODO problems w/ using types as keys? (is vs == check?)
+    '''
+    sqltypes.INTEGER: np.dtype('int32'),
+    sqltypes.SMALLINT: np.dtype('int16'),
+    sqltypes.REAL: np.dtype('float32'),
+    postgresql.base.DOUBLE_PRECISION: np.dtype('float64'),
+    postgresql.base.TIMESTAMP: np.dtype('<M8[ns]')
+    '''
+    sqlalchemy2pd_type = {
+        'INTEGER()': np.dtype('int32'),
+        'SMALLINT()': np.dtype('int16'),
+        'REAL()': np.dtype('float32'),
+        'DOUBLE_PRECISION(precision=53)': np.dtype('float64'),
+        # TODO but maybe this was the type causing the problem?
+        'DATE()': np.dtype('<M8[ns]')
+    }
+    #pprint.pprint(sqlalchemy2pd_type)
+
+    new_df_types = {n: sqlalchemy2pd_type[repr(t)] for n, t in dtypes.items()
+        if repr(t) in sqlalchemy2pd_type}
+
+    '''
+    print('\nNew dataframe column types:')
+    pprint.pprint(new_df_types)
+    '''
+
+    # TODO how to get around converting things to int if they have NaN.
+    # possible to not convert?
+    new_column_types = dict()
+    new_index_types = dict()
+    for k, t in new_df_types.items():
+        if k in new_df.columns and not new_df[k].isnull().any():
+            new_column_types[k] = t
+
+        # TODO or is it always true that index level can't be NaN anyway?
+        elif (k in new_df.index.names and
+            not new_df.index.get_level_values(k).isnull().any()):
+
+            new_index_types[k] = t
+
+        # TODO print types being skipped b/c nan?
+
+    '''
+    print('')
+    print(sorted(new_df.columns))
+    print(sorted(new_df.index.names))
+    print(sorted(new_column_types.keys()))
+    print(sorted(new_index_types.keys()))
+    '''
+    new_df = new_df.astype(new_column_types, copy=False)
+    if index:
+        # TODO need to handle case where conversion dict is empty
+        # (seems to fail?)
+        #pprint.pprint(new_index_types)
+
+        #new_df.index = new_df.index.astype(new_index_types, copy=False)
+
+        # MultiIndex astype method seems to not work the same way?
+        new_df.index = pd.MultiIndex.from_frame(
+            new_df.index.to_frame().astype(new_index_types, copy=False))
+
+    # TODO print the type of any sql types not convertible?
+    # TODO assert all dtypes can be converted w/ this dict
+
     if index:
         print('writing to temporary table temp_{}...'.format(table_name))
+
     # TODO figure out how to profile
-    new_df.to_sql('temp_' + table_name, conn, if_exists='replace', index=index)
+    new_df.to_sql('temp_' + table_name, conn, if_exists='replace', index=index,
+        dtype=dtypes)
 
     # TODO change to just get column names?
     query = '''
@@ -154,8 +243,15 @@ else:
 # TODO maybe make df some merge of the three sheets?
 df = sheets['recordings']
 
+df.raw_data_discarded = df.raw_data_discarded.fillna(False)
 # TODO say when this happens?
 df.drop(df[df.raw_data_discarded].index, inplace=True)
+
+# TODO TODO warn / fail if 'used_for_analysis' and either discard / lost is
+# checked
+
+# Not sure where there were any NaN here anyway...
+df.raw_data_lost = df.raw_data_lost.fillna(False)
 df.drop(df[df.raw_data_lost].index, inplace=True)
 
 keys = ['date', 'fly_num']
@@ -163,6 +259,10 @@ df['recording_num'] = df.groupby(keys).cumcount() + 1
 # Since otherwise cumcount seems to be zero for stuff without a group...
 # (i.e. w/ one of the keys null)
 df.loc[pd.isnull(df[keys]).any(axis=1), 'recording_num'] = np.nan
+
+# TODO delete hack after dealing w/ remy's conventions (some of which were
+# breaking the code assuming my conventions)
+df.drop(df[df.project != 'natural_odors'].index, inplace=True)
 
 if show_inferred_paths:
     missing_thorimage = pd.isnull(df.thorimage_dir)
@@ -241,6 +341,7 @@ except AssertionError:
     print(df[duped_thorsync])
     raise
 
+sheets['fly_preps'].dropna(subset=['date','fly_num'], inplace=True)
 to_sql_with_duplicates(sheets['fly_preps'].rename(
     columns={'date': 'prep_date'}), 'flies')
 
@@ -475,6 +576,9 @@ current_hash = git_hash(this_repo_file)
 matlab_hash = git_hash(matlab_code_path)
 
 # TODO just store all data separately?
+# TODO TODO maybe just use matlab code repo + description in analysis
+# description that gets checked? (because that's what actually generates cnmf,
+# which is used for responses)
 analysis_description = '{}@{}\n{}@{}'.format(this_repo_path, current_hash,
     matlab_code_path, matlab_hash)
 
@@ -484,6 +588,8 @@ analysis_runs = pd.DataFrame({
     'analysis_description': [analysis_description],
     'analyzed_at': [analyzed_at]
 })
+# TODO don't insert into this if dependent stuff won't be written? same for some
+# of the other metadata tables?
 to_sql_with_duplicates(analysis_runs, 'analysis_runs')
 
 # Need to do this as long as the part of the key indicating the
@@ -530,6 +636,59 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             warnings.warn('project type {} not supported. skipping.')
             continue
 
+
+        raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
+        thorsync_dir = join(raw_fly_dir, recording['thorsync_dir'])
+        thorimage_dir = join(raw_fly_dir, recording['thorimage_dir'])
+        stimulus_data_path = join(stimfile_root,
+                                  recording['stimulus_data_file'])
+
+        # TODO for recordings.started_at, load time from one of the thorlabs
+        # files
+        # TODO check that ThorImageExperiment/Date/uTime parses to date field,
+        # w/ appropriate timezone settings (or insert raw and check database has
+        # something like date)?
+        thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
+        xml_root = etree.parse(thorimage_xml_path).getroot()
+        started_at = \
+            datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
+
+
+        # TODO TODO test this actually avoids insertion in case where analysis
+        # is up to date
+        entered = pd.read_sql_query('SELECT DISTINCT analysis, prep_date, ' +
+            'fly_num, recording_from FROM responses', conn)
+
+        # TODO more elegant way to check for row w/ certain values?
+        curr_entered = (
+            (entered.prep_date == date) &
+            (entered.fly_num == fly_num) &
+            (entered.recording_from == started_at)
+        )
+
+        # TODO TODO option to replace older analysis
+        if store_multiple_analysis:
+            curr_entered = curr_entered & (entered.analysis == analysis_run)
+
+        curr_entered = curr_entered.any()
+
+        # TODO maybe replace analysis w/ same description but earlier version?
+        # (where description is just combination of repo names, not w/ version
+        # as now
+        if curr_entered:
+            print('{}, {}, {} already entered with current analysis'.format(
+                date, fly_num, thorimage_id))
+            continue
+
+        recordings = pd.DataFrame({
+            'started_at': [started_at],
+            'thorsync_path': [thorsync_dir],
+            'thorimage_path': [thorimage_dir],
+            'stimulus_data_path': [stimulus_data_path]
+        })
+        to_sql_with_duplicates(recordings, 'recordings')
+
+
         stimfile = recording['stimulus_data_file']
         stimfile_path = join(stimfile_root, stimfile)
         # TODO also err if not readable
@@ -550,8 +709,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         n_blocks = int(len(data['odor_pair_list']) / presentations_per_block)
 
-            # TODO TODO subset odor order information by start/end block cols
-            # (for natural_odors stuff)
+        # TODO TODO subset odor order information by start/end block cols
+        # (for natural_odors stuff)
         if pd.isnull(recording['first_block']):
             first_block = 0
         else:
@@ -584,9 +743,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         to_sql_with_duplicates(odors, 'odors')
 
-        # TODO TODO TODO insert and then get ids -> then use that to merge other
-        # tables? or what? make unique id before insertion? some way that
-        # wouldn't require the IDs, but would create similar tables?
+        # TODO make unique id before insertion? some way that wouldn't require
+        # the IDs, but would create similar tables?
 
         db_odors = pd.read_sql('odors', conn)
         # TODO TODO in general, the name alone won't be unique, so use another
@@ -620,102 +778,12 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         to_sql_with_duplicates(mixtures, 'mixtures')
         # TODO merge w/ odors to check
 
-        raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
-        thorsync_dir = join(raw_fly_dir, recording['thorsync_dir'])
-        thorimage_dir = join(raw_fly_dir, recording['thorimage_dir'])
-        stimulus_data_path = join(stimfile_root,
-                                  recording['stimulus_data_file'])
-
-        # TODO for recordings.started_at, load time from one of the thorlabs
-        # files
-        # TODO check that ThorImageExperiment/Date/uTime parses to date field,
-        # w/ appropriate timezone settings (or insert raw and check database has
-        # something like date)?
-        thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
-        xml_root = etree.parse(thorimage_xml_path).getroot()
-        started_at = \
-            datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
-
-        recordings = pd.DataFrame({
-            'started_at': [started_at],
-            'thorsync_path': [thorsync_dir],
-            'thorimage_path': [thorimage_dir],
-            'stimulus_data_path': [stimulus_data_path]
-        })
-        to_sql_with_duplicates(recordings, 'recordings')
-
-        # TODO TODO TODO don't load (or run?) cnmf or populate database if fly
-        # already has analysis w/ this description done
-        # TODO maybe replace analysis w/ same description but earlier version?
-        # (where description is just combination of repo names, not w/ version
-        # as now
-        
-        #import ipdb; ipdb.set_trace()
-
-
         # TODO maybe use Remy's thorsync timing info to get num pulses for prep
         # checking trials and then assume it's ethyl acetate (for PID purposes,
         # at least)?
-        '''
-        print(mat)
-        print(os.path.exists(mat))
-        try:
-            with h5py.File(mat, 'r') as data:
-                # TODO delete?
-                if 'sCNM' not in data.keys():
-                    warnings.warn('no sCNM object in {}'.format(mat))
-                    continue
-
-                ti = data['ti']
-                # TODO dtype appropriate?
-                frame_times = np.array(ti['frame_times']).flatten()
-
-                # Frame indices for CNMF output.
-                # Of length equal to number of blocks. Each element is the frame
-                # index (from 1) in CNMF output that starts the block, where
-                # block is defined as a period of continuous acquisition.
-                block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
-                    ).flatten() - 1
-
-                # stim_on is a number as above, but for the frame of the odor
-                # onset.
-                # TODO how does rounding work here? closest frame? first after?
-                odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
-                    ).flatten() - 1
-
-                # TODO how to get odor pid
-                # A has footprints
-                # dims=dimensions of image (256x256)
-                # T is # of timestamps
-                #print(data['sCNM'])
-                #print('')
-
-                # DFF - traces
-                # sDFF - filtered traces (filtered how?)
-                # F0 - background fluorescence (dims?)
-                # TODO so what was in sCNM? I guess I don't need it (though
-                # maybe h5 couldn't be loaded at all without it?)?
-                traces = np.array(data['S']['sDFF'])
-
-        except OSError:
-            # TODO delete? just try regenerating?
-            new_name = mat + '.corrupted'
-            os.rename(mat, new_name)
-            print('Renaming apparently corrupted MAT file {} to {}.'.format(
-                mat, new_name))
-            print('Skipping rest of analysis on this file')
-            continue
-        '''
         # TODO would need to make sure all types are compat to load this way
         #data = evil.load(mat)
         evil.evalc("data = load('{}');".format(mat))
-        '''
-        # TODO how to check if sCNM is even in matlab workspace?
-        sCNM = eng.eval('data.sCNM')
-        if 'sCNM' not in data.keys():
-            warnings.warn('no sCNM object in {}'.format(mat))
-            continue
-        '''
         # sDFF - filtered traces (filtered how?)
         # F0 - background fluorescence (dims?)
         # TODO so what was in sCNM? I guess I don't need it (though
@@ -725,9 +793,21 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         except matlab.engine.MatlabExecutionError:
             print('CNMF still needs to be run on this data')
             continue
+        # TODO rename to indicate this is not just a filtered version of C?
+        # (and how exactly is it different again?)
         # Loading w/ h5py lead to transposed indices wrt loading w/ MATLAB
         # engine.
-        traces = np.array(S['sDFF']).T
+        #filtered_df_over_f = np.array(S['sDFF']).T
+        df_over_f = np.array(S['DFF']).T
+
+        # TODO quantitatively compare sDFF / DFF. (s=smoothed)
+        # maybe just upload non-smoothed and let people smooth downstream if
+        # they want?
+
+        # TODO is this even dF/F'ed? rename in database to indicate?
+        # enter as more raw dF/F?
+        # TODO TODO TODO actually enter into db!
+        raw_f = np.array(evil.eval('data.sCNM.C')).T
 
         ti = evil.eval('data.ti')
         # TODO dtype appropriate?
@@ -759,7 +839,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # supposed to be more similar... (w/ np.diff(odor_onset_frames))
         first_onset_frame_offset = odor_onset_frames[0] - block_first_frames[0]
 
-        n_frames, n_cells = traces.shape
+        n_frames, n_cells = df_over_f.shape
         start_frames = np.append(0,
             odor_onset_frames[1:] - first_onset_frame_offset)
         stop_frames = np.append(
@@ -796,7 +876,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
             start_frame = start_frames[i]
             stop_frame = stop_frames[i]
-            presentation_traces = traces[start_frame:stop_frame, :]
+            presentation_dff = df_over_f[start_frame:stop_frame, :]
+            presentation_raw_f = raw_f[start_frame:stop_frame, :]
 
             # TODO off by one?? check
             # TODO check against frames calculated directly from odor offset...
@@ -843,13 +924,37 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             #  index?)
             # TODO get remy to save it w/ less than 64 bits of precision?
             # TODO will this automatically make right float index?
-            trace_df = pd.DataFrame(presentation_traces,
-                                    index=presentation_frametimes)
-            trace_df.index.name = 'from_onset'
-            trace_df.columns.name = 'cell'
+            df_over_f_frame = pd.DataFrame(presentation_dff,
+                index=presentation_frametimes)
 
-            trace_df = pd.melt(trace_df.reset_index(), id_vars='from_onset',
+            df_over_f_frame.index.name = 'from_onset'
+            df_over_f_frame.columns.name = 'cell'
+
+
+            raw_f_frame = pd.DataFrame(presentation_raw_f,
+                index=presentation_frametimes)
+
+            raw_f_frame.index.name = 'from_onset'
+            raw_f_frame.columns.name = 'cell'
+
+              
+            presentation_df = pd.melt(
+                df_over_f_frame.reset_index(), id_vars='from_onset',
                 value_name='df_over_f')
+
+            presentation_df.set_index(['cell','from_onset'],
+                inplace=True)
+
+            # TODO TODO merge these two dataframes and insert together, so
+            # neither NOT NULL constraint would be violated
+            raw_f_frame = pd.melt(
+                raw_f_frame.reset_index(), id_vars='from_onset',
+                value_name='raw_f')
+
+            raw_f_frame.set_index(['cell','from_onset'],
+                inplace=True)
+
+            presentation_df['raw_f'] = raw_f_frame['raw_f']
 
             metadata = {
                 'analysis': analysis_run,
@@ -862,13 +967,14 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'repeat_num': repeat_num
             }
             for k, v in metadata.items():
-                trace_df[k] = v
+                presentation_df[k] = v
 
             # pick particular order here?
-            trace_df.set_index(list(metadata.keys()), inplace=True)
-            trace_df.set_index(['cell','from_onset'], append=True, inplace=True)
+            presentation_df.set_index(list(metadata.keys()),
+                append=True, inplace=True)
 
-            to_sql_with_duplicates(trace_df, 'responses', index=True)
+            to_sql_with_duplicates(presentation_df, 'responses',
+                index=True)
 
             print('Done processing presentation {}'.format(i))
 

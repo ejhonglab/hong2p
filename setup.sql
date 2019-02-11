@@ -1,7 +1,7 @@
 
 CREATE TABLE IF NOT EXISTS flies (
     /* TODO serial? work w/ pandas insert if just not specified? */
-    /*fly SERIAL UNIQUE NOT NULL, */
+    /*fly smallserial UNIQUE NOT NULL, */
 
     prep_date date NOT NULL,
     /* The fly's order within the day. */
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS odors (
     name text NOT NULL,
     log10_conc_vv real NOT NULL,
 
-    odor SERIAL UNIQUE NOT NULL,
+    odor smallserial UNIQUE NOT NULL,
 
     PRIMARY KEY(name, log10_conc_vv)
 );
@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS odors (
 /* TODO or just make fk based pk w/ all fields of each odor duplicated? */
 CREATE TABLE IF NOT EXISTS mixtures (
     /* TODO or just use name + conc? */
-    odor1 integer REFERENCES odors (odor) NOT NULL,
-    odor2 integer REFERENCES odors (odor) NOT NULL,
+    odor1 smallint REFERENCES odors (odor) NOT NULL,
+    odor2 smallint REFERENCES odors (odor) NOT NULL,
     PRIMARY KEY(odor1, odor2)
 );
 
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     /* TODO actually any simpler making some kind of artificial key like this
      * for fk purposes? i didn't want to have to refer to two extra columns in
      * responses keys... */
-    analysis_run SERIAL UNIQUE NOT NULL,
+    analysis_run smallserial UNIQUE NOT NULL,
 
     /* TODO git version + unsaved changes? */
     /* TODO git remotes? */
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 );
 
 CREATE TABLE IF NOT EXISTS recordings (
-    /*recording_num SERIAL PRIMARY KEY,*/
+    /*recording_num smallserial PRIMARY KEY,*/
     /* TODO appropriate precision? */
     started_at timestamp PRIMARY KEY,
     /* TODO check thorsync and thorimage are unique (w/in day at least?)
@@ -87,12 +87,12 @@ CREATE TABLE IF NOT EXISTS presentations (
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
 
     /* TODO maybe reference an odor pair here? */
-    comparison integer NOT NULL,
+    comparison smallint NOT NULL,
 
-    odor1 integer NOT NULL,
-    odor2 integer NOT NULL,
+    odor1 smallint NOT NULL,
+    odor2 smallint NOT NULL,
 
-    repeat_num integer NOT NULL,
+    repeat_num smallint NOT NULL,
     
     /* TODO make include other key frames too? or relegate to block info? */
     odor_onset_frame integer NOT NULL,
@@ -112,7 +112,9 @@ CREATE TABLE IF NOT EXISTS responses (
     */
     /* TODO TODO move prep_date + fly_num to recording? and just merge w/
      * recording_from? */
-    analysis integer REFERENCES analysis_runs (analysis_run) NOT NULL,
+
+    /* TODO maybe still store this, just don't use as part of primary key? */
+    analysis smallint REFERENCES analysis_runs (analysis_run) NOT NULL,
 
     prep_date timestamp,
     fly_num smallint,
@@ -120,22 +122,24 @@ CREATE TABLE IF NOT EXISTS responses (
     /*fly integer REFERENCES flies (fly) NOT NULL, */
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
 
-    comparison integer NOT NULL,
+    comparison smallint NOT NULL,
 
     /*
     mixture integer REFERENCES mixtures (mixture) NOT NULL,
     */
-    odor1 integer,
-    odor2 integer,
+    odor1 smallint,
+    odor2 smallint,
 
     /* TODO positive / nonneg constraint. alt repr? */
-    repeat_num integer NOT NULL,
+    repeat_num smallint NOT NULL,
 
     /* rename? roi/footprint/component? */
-    cell integer NOT NULL,
+    cell smallint NOT NULL,
 
     from_onset double precision NOT NULL,
+
     df_over_f real NOT NULL,
+    raw_f real NOT NULL,
 
     FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
@@ -150,14 +154,14 @@ CREATE TABLE IF NOT EXISTS responses (
 
 CREATE TABLE IF NOT EXISTS pid (
     /*
-    mixture integer REFERENCES mixtures (mixture) NOT NULL,
+    mixture smallint REFERENCES mixtures (mixture) NOT NULL,
     */
-    odor1 integer,
-    odor2 integer,
+    odor1 smallint,
+    odor2 smallint,
 
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
     /* TODO positive / nonneg constraint. alt repr? */
-    repeat_num integer NOT NULL,
+    repeat_num smallint NOT NULL,
 
     from_onset double precision NOT NULL,
     pid_out real NOT NULL,
@@ -178,6 +182,3 @@ CREATE TABLE IF NOT EXISTS pid (
  */
 
 /* TODO store footprints? how to represent? */
-
-/* TODO maybe store info about the analysis that generated the given responses
-   as well as the source data */
