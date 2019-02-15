@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS mixtures (
 /* TODO table for stimulus info? */
 /* TODO maybe stimulus code or version somewhere if nothing else? */
 
+/* TODO maybe get rid of this table? if only going to be used 1-1 w/ responses?
+   oh, but footprints too? that enough reason?
+ * */
 CREATE TABLE IF NOT EXISTS analysis_runs (
     analysis_description text NOT NULL,
     /* TODO precision? i think at least seconds? otherwise whatever is
@@ -80,10 +83,15 @@ CREATE TABLE IF NOT EXISTS recordings (
  * responses, particularly if from_onset and df_over_f can be make into array
  * types? make a separate presentations / blocks table again? */
 
+/* TODO TODO just combine this w/ responses table (maybe frame #s are slightly
+ * inconsistent w/ bounds on timeseries in responses?) */
 CREATE TABLE IF NOT EXISTS presentations (
+    /* TODO maybe remove these parts of primary key? */
     prep_date timestamp NOT NULL,
     fly_num smallint NOT NULL,
 
+    /* TODO TODO maybe some kind of alternate index w/ thorimage_id as opposed
+     * to recording from, derived in postgres? */
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
 
     /* TODO maybe reference an odor pair here? */
@@ -98,59 +106,61 @@ CREATE TABLE IF NOT EXISTS presentations (
     odor_onset_frame integer NOT NULL,
     odor_offset_frame integer NOT NULL,
 
+    /* Timing information of same dimensions as corresponding cell entries in
+     * responses table. */
+    from_onset double precision[] NOT NULL,
+
+    /* TODO want this nullable or not? */
+    analysis smallint REFERENCES analysis_runs (analysis_run),
+
+    presentation_id SERIAL UNIQUE NOT NULL,
+
     FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
     PRIMARY KEY(prep_date, fly_num, recording_from,
                 comparison, odor1, odor2, repeat_num)
 );
 
+/* rename? roi/footprint/component? */
+CREATE TABLE IF NOT EXISTS cells (
+    /* TODO make pk more consistent w/ presentations? get rid of fly / prep_date
+     * there? add it here? */
+    recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
+    cell smallint NOT NULL,
+
+    /* TODO constraint to check these are all same length? just define a new
+     * type? (though that might be harder to insert into...) */
+
+    x_coords smallint[] NOT NULL,
+    y_coords smallint[] NOT NULL,
+    /* TODO appropriate precision here? */
+    weights real[] NOT NULL,
+
+    /* TODO want this nullable or not? */
+    analysis smallint REFERENCES analysis_runs (analysis_run),
+
+    PRIMARY KEY(recording_from, cell)
+);
+
 CREATE TABLE IF NOT EXISTS responses (
     /* TODO matter whether fk is an ID vs all columns of composite pk in other
      * table, as far as space / speed performance? */
-    /*
     presentation_id integer REFERENCES presentations (presentation_id),
-    */
-    /* TODO TODO move prep_date + fly_num to recording? and just merge w/
-     * recording_from? */
 
-    /* TODO maybe still store this, just don't use as part of primary key? */
-    analysis smallint REFERENCES analysis_runs (analysis_run) NOT NULL,
-
-    prep_date timestamp,
-    fly_num smallint,
-
-    /*fly integer REFERENCES flies (fly) NOT NULL, */
-    recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
-
-    comparison smallint NOT NULL,
-
-    /*
-    mixture integer REFERENCES mixtures (mixture) NOT NULL,
-    */
-    odor1 smallint,
-    odor2 smallint,
-
-    /* TODO positive / nonneg constraint. alt repr? */
-    repeat_num smallint NOT NULL,
-
-    /* rename? roi/footprint/component? */
+    /* TODO just reference cells table here! */
     cell smallint NOT NULL,
 
-    from_onset double precision NOT NULL,
+    df_over_f real[] NOT NULL,
+    raw_f real[] NOT NULL,
 
-    df_over_f real NOT NULL,
-    raw_f real NOT NULL,
-
-    FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
-    FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
-    PRIMARY KEY(analysis, prep_date, fly_num, recording_from,
-        comparison, odor1, odor2, repeat_num, cell, from_onset)
-    /*
-    PRIMARY KEY(analysis, fly, recording_from, cell, mixture, repeat_num,
-        from_onset)
-    */
-    /*PRIMARY KEY(presentation_id, from_onset)*/
+    /* TODO can i second part of primary key from presentations.recording_from
+     * through presentation id? */
+    /*FOREIGN KEY(cell, ) REFERENCES mixtures(odor1, odor2), */
+    PRIMARY KEY(presentation_id, cell)
 );
+/* Would probably speed up inserts, but might be too risky. If db crashes, table
+ * contents will probably be deleted. */
+/* ALTER TABLE responses SET UNLOGGED; */
 
 CREATE TABLE IF NOT EXISTS pid (
     /*
@@ -163,14 +173,11 @@ CREATE TABLE IF NOT EXISTS pid (
     /* TODO positive / nonneg constraint. alt repr? */
     repeat_num smallint NOT NULL,
 
-    from_onset double precision NOT NULL,
-    pid_out real NOT NULL,
+    from_onset double precision[] NOT NULL,
+    pid_out real[] NOT NULL,
 
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
-    PRIMARY KEY(odor1, odor2, recording_from, repeat_num, from_onset)
-    /*
-    PRIMARY KEY(mixture, recording_from, repeat_num, from_onset)
-    */
+    PRIMARY KEY(odor1, odor2, recording_from, repeat_num)
 );
 /* TODO link to table w/ PID / flow settings or just include for each row here?
  * */
