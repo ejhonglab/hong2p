@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     PRIMARY KEY(analysis_description)
 );
 
+/* TODO TODO TODO new table for each algorithm we want to tune parameters for,
+ * with a column for each relevant parameter */
+/* TODO TODO TODO and a new table for each function to optimize, storing
+ * references to the other tables (how to implement 1->many tables?) and
+ * performance on the function */
+
 CREATE TABLE IF NOT EXISTS recordings (
     /*recording_num smallserial PRIMARY KEY,*/
     /* TODO appropriate precision? */
@@ -115,13 +121,24 @@ CREATE TABLE IF NOT EXISTS presentations (
 
     presentation_id SERIAL UNIQUE NOT NULL,
 
+    /* TODO TODO label as to whether comparison had good quality data,
+    perhaps separately judged on 1) motion and 2) consistency (correlation) w/in
+    any repeats */
+
     FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
     PRIMARY KEY(prep_date, fly_num, recording_from,
                 comparison, odor1, odor2, repeat_num)
 );
+ALTER TABLE presentations
+    ADD CONSTRAINT from_onset_len
+    CHECK (cardinality(from_onset) > 1);
 
-/* rename? roi/footprint/component? */
+/* TODO worth having a separate representation of cells that is indep. calls on
+ * a frame / block basis? (which can be associated together to get this)? */
+/* TODO or store in this table too somehow? */
+/* TODO TODO store ground truth contour / mask here? elsewhere? (including
+ * manually created cells?) */
 CREATE TABLE IF NOT EXISTS cells (
     /* TODO make pk more consistent w/ presentations? get rid of fly / prep_date
      * there? add it here? */
@@ -136,28 +153,67 @@ CREATE TABLE IF NOT EXISTS cells (
     /* TODO appropriate precision here? */
     weights real[] NOT NULL,
 
+    /* For manually labelling two important types of segmentation errors. */
+    only_one_cell boolean,
+    all_of_cell boolean,
+    /* TODO maybe allow drawing moving contour / mask for richer ground truth
+     * here? */
+    /* TODO TODO TODO make at least this flag (or all?) assignable for each
+    (cell, comparison) not just each cell across all comparisons in recording */
+    /* TODO or maybe each trial? arbitrary intervals? */
+    stable boolean,
+    /* TODO don't use boolean so you can label something as explicitly unsure?
+       (diff from default NULL, which would just be "unlabeled") */
+
     /* TODO want this nullable or not? */
     analysis smallint REFERENCES analysis_runs (analysis_run),
+
+    /* TODO maybe one wrt average and one wrt activity over time? */
+    /* TODO per presentation? */
+    /*good bool*/
 
     PRIMARY KEY(recording_from, cell)
 );
 
+/* TODO TODO store automated response calls in this table as well? */
+/* TODO if so, how to store algorithm / version / parameters? multiple diff
+ * calls? */
 CREATE TABLE IF NOT EXISTS responses (
     /* TODO matter whether fk is an ID vs all columns of composite pk in other
      * table, as far as space / speed performance? */
-    presentation_id integer REFERENCES presentations (presentation_id),
+    presentation_id integer REFERENCES presentations (presentation_id) NOT NULL,
 
-    /* TODO just reference cells table here! */
-    cell smallint NOT NULL,
+    /* Redundant w/ information in presentation_id, but seems unavoidable in
+     * order to include FK on cell... */
+    recording_from timestamp,
+
+    /* TODO could reference a per trial repr of cell boundaries here, if i'm
+     * going to store such a representation... */
+    cell smallint,
 
     df_over_f real[] NOT NULL,
     raw_f real[] NOT NULL,
 
-    /* TODO can i second part of primary key from presentations.recording_from
-     * through presentation id? */
-    /*FOREIGN KEY(cell, ) REFERENCES mixtures(odor1, odor2), */
-    PRIMARY KEY(presentation_id, cell)
+    /* TODO TODO some nullable label of whether response should be considered a
+     * response looking just at trace. */
+    response boolean,
+
+    /*
+       TODO and maybe something else saying whether response came from only
+       this footprint or not?
+    */
+
+    FOREIGN KEY(recording_from, cell) REFERENCES cells (recording_from, cell),
+    PRIMARY KEY(presentation_id, recording_from, cell)
 );
+ALTER TABLE responses
+    ADD CONSTRAINT raw_f_len
+    CHECK (cardinality(raw_f) > 1);
+
+ALTER TABLE responses
+    ADD CONSTRAINT df_over_f_len
+    CHECK (cardinality(df_over_f) > 1);
+
 /* Would probably speed up inserts, but might be too risky. If db crashes, table
  * contents will probably be deleted. */
 /* ALTER TABLE responses SET UNLOGGED; */
@@ -179,6 +235,14 @@ CREATE TABLE IF NOT EXISTS pid (
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
     PRIMARY KEY(odor1, odor2, recording_from, repeat_num)
 );
+ALTER TABLE pid
+    ADD CONSTRAINT from_onset_len
+    CHECK (cardinality(from_onset) > 1);
+
+ALTER TABLE pid
+    ADD CONSTRAINT pid_out_len
+    CHECK (cardinality(pid_out) > 1);
+
 /* TODO link to table w/ PID / flow settings or just include for each row here?
  * */
 

@@ -31,14 +31,18 @@ verbose = False
 
 use_cached_gsheet = True
 show_inferred_paths = True
-convert_h5 = True
+
+# TODO TODO make sure both of these only run if necessary
+convert_h5 = False
 calc_timing_info = False
+
 motion_correct = True
 only_motion_correct_for_analysis = True
 
 # TODO make sure that incomplete entries are not preventing full
 # analysis from being inserted, despite setting of this flag
-overwrite_older_analysis = True
+#overwrite_older_analysis = True
+overwrite_older_analysis = False
 
 
 analysis_started_at = time.time()
@@ -193,6 +197,183 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
     # TODO drop staging table
 
 
+def get_thorimage_dims(xmlroot):
+    """
+    """
+    lsm_attribs = xmlroot.find('LSM').attrib
+    x = int(lsm_attribs['pixelX'])
+    y = int(lsm_attribs['pixelY'])
+    xy = (x,y)
+
+    # TODO make this None unless z-stepping seems to be enabled
+    # + check this variable actually indicates output steps
+    #int(xml.find('ZStage').attrib['steps'])
+    z = None
+    c = None
+
+    return xy, z, c
+
+
+def get_thorimage_fps(xmlroot):
+    """
+    """
+    lsm_attribs = xmlroot.find('LSM').attrib
+    raw_fps = float(lsm_attribs['frameRate'])
+    # TODO what does averageMode = 1 mean? always like that?
+    # 
+    n_averaged_frames = int(lsm_attribs['averageNum'])
+    saved_fps = raw_fps / n_averaged_frames
+    return saved_fps
+
+
+def load_thorimage_metadata(directory):
+    """
+    """
+    xml_path = join(directory, 'Experiment.xml')
+    xml = xml_root(xml_path)
+
+    fps = get_thorimage_fps(xml)
+    xy, z, c = get_thorimage_dims(xml)
+    imaging_file = join(directory, 'Image_0001_0001.raw')
+
+    return fps, xy, z, c, imaging_file
+
+
+def read_movie(thorimage_dir):
+    """Returns (t,x,y) indexed timeseries.
+    """
+    fps, xy, z, c, imaging_file = load_thorimage_metadata(thorimage_dir)
+    x, y = xy
+
+    # From ThorImage manual: "unsigned, 16-bit, with little-endian byte-order"
+    dtype = np.dtype('<u2')
+
+    with open(imaging_file, 'rb') as f:
+        # TODO maybe check we actually get enough bytes for n_frames?
+        data = np.fromfile(f, dtype=dtype)
+
+    data = np.reshape(data, (n_frames, x, y))
+    return data
+
+
+"""
+def motion_correct_to_tiffs(thorimage_dir, output_dir):
+    # TODO only read this if at least one motion correction would be run
+    movie = read_movie(thorimage_dir)
+
+    # TODO do i really want to basically just copy the matlab version?
+    # opportunity for some refactoring?
+
+    output_subdir = 'tif_stacks'
+
+    _, thorimage_id = split(thorimage_dir)
+
+    rig_tif = join(output_dir, output_subdir, thorimage_id + '_rig.tif')
+    avg_rig_tif = join(output_dir, output_subdir, 'AVG', 'rigid',
+        'AVG{}_rig.tif'.format(thorimage_id))
+
+    nr_tif = join(output_dir, output_subdir, thorimage_id + '_nr.tif')
+    avg_nr_tif = join(output_dir, output_subdir, 'AVG', 'nonrigid',
+        'AVG{}_nr.tif'.format(thorimage_id))
+
+    need_rig_tif = not exist(rig_tif)
+    need_avg_rig_tif = not exist(avg_rig_tif)
+    need_nr_tif = not exist(nr_tif)
+    need_avg_nr_tif = not exist(avg_nr_tif)
+
+    if not (need_rig_tif or need_avg_rig_tif or need_nr_tif or need_avg_nr_tif):
+        print('All registration already done.')
+        return
+
+    # Remy: this seems like it might just be reading in the first frame?
+    ###Y = input_tif_path
+    # TODO maybe can just directly use filename for python version though? raw
+    # even?
+
+    # rigid moco (normcorre)
+    # TODO just pass filename instead of Y, and compute dimensions or whatever
+    # separately, so that normcorre can (hopefully?) take up less memory
+    if need_rig_tif:
+        MC_rigid = MotionCorrection(Y)
+
+        options_rigid = NoRMCorreSetParms('d1',MC_rigid.dims(1),
+            'd2',MC_rigid.dims(2),
+            'bin_width',50,
+            'max_shift',15,
+            'phase_flag', 1,
+            'us_fac', 50,
+            'init_batch', 100,
+            'plot_flag', false,
+            'iter', 2) 
+
+        # TODO so is nothing actually happening in parallel?
+        ## rigid moco
+        MC_rigid.motionCorrectSerial(options_rigid)  # can also try parallel
+        # TODO which (if any) of these do i still want?
+        MC_rigid.computeMean()
+        MC_rigid.correlationMean()
+        #####MC_rigid.crispness()
+        print('normcorre done')
+
+        ## plot shifts
+        #plt.plot(MC_rigid.shifts_x)
+        #plt.plot(MC_rigid.shifts_y)
+
+        # save .tif
+        M = MC_rigid.M
+        M = uint16(M)  
+        tiffoptions.overwrite = true
+
+        print(['saving tiff to ' rig_tif])
+        saveastiff(M, rig_tif, tiffoptions)
+
+    if need_avg_rig_tif:
+        ##
+        # save average image
+        #AVG = single(mean(MC_rigid.M,3))
+        AVG = single(MC_rigid.template)
+        tiffoptions.overwrite = true
+
+        print(['saving tiff to ' avg_rig_tif])
+        saveastiff(AVG, avg_rig_tif, tiffoptions)
+
+    if need_nr_tif:
+        MC_nonrigid = MotionCorrection(Y)
+        options_nonrigid = NoRMCorreSetParms('d1',MC_nonrigid.dims(1),
+            'd2',MC_nonrigid.dims(2),
+            'grid_size',[64,64],
+            'mot_uf',4,
+            'bin_width',50,
+            'max_shift',[15 15],
+            'max_dev',3,
+            'us_fac',50,
+            'init_batch',200,
+            'iter', 2)
+
+        MC_nonrigid.motionCorrectParallel(options_nonrigid)
+        MC_nonrigid.computeMean()
+        MC_nonrigid.correlationMean()
+        MC_nonrigid.crispness()
+        print('non-rigid normcorre done')
+
+        # save .tif
+        M = uint16(MC_nonrigid.M)
+        tiffoptions.overwrite  = true
+        print(['saving tiff to ' nr_tif])
+        saveastiff(M, nr_tif, tiffoptions)
+
+    if need_avg_nr_tif:
+        # TODO flag to disable saving this average
+        #AVG = single(mean(MC_nonrigid.M,3))
+        AVG = single(MC_nonrigid.template)
+        tiffoptions.overwrite = true
+        print(['saving tiff to ' avg_nr_tif])
+        saveastiff(AVG, avg_nr_tif, tiffoptions)
+
+    raise NotImplementedError
+"""
+
+
 gsheet_cache_file = '.gsheet_cache.p'
 if use_cached_gsheet and os.path.exists(gsheet_cache_file):
     print('Loading Google sheet data from cache at {}'.format(
@@ -213,7 +394,6 @@ else:
         'daily_settings': '229338960'
     }
 
-    # TODO flag to cache these to just be nice to google?
     sheets = dict()
     for df_name, gid in sheet_gids.items():
         df = pd.read_csv(gsheet_link + gid)
@@ -239,6 +419,8 @@ else:
 
 # TODO maybe make df some merge of the three sheets?
 df = sheets['recordings']
+
+df[['date','fly_num']] = df[['date','fly_num']].fillna(method='ffill')
 
 df.raw_data_discarded = df.raw_data_discarded.fillna(False)
 # TODO say when this happens?
@@ -434,6 +616,11 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
         # Will also make any necessary parent (date) directories.
         os.makedirs(analysis_fly_dir)
 
+    # TODO delete
+    if date_dir != '2019-02-27':
+        continue
+    #
+
     # TODO maybe use regexp to check syncdata / util fn to check for name +
     # stuff in it?
     if convert_h5:
@@ -459,10 +646,15 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             # TODO make it so one ctrl-c closes whole program, rather than just
             # cancelling matlab function and continuing
 
+            print('before calling matlab h5->mat conversion...')
+            print('syncdir={}'.format(syncdir))
+
             # Will immediately return if output already exists.
             evil.thorsync_h5_to_mat(syncdir, full_fly_dir, nargout=0)
             # TODO (check whether she is loosing information... file size really
             # shouldn't be that different. both hdf5...)
+
+            print('after calling matlab h5-> mat conversion')
 
             # TODO do i want flags to disable *each* step separately for
             # unanalyzed stuff? just one flag? always ignore that stuff?
@@ -492,7 +684,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             print('')
 
             print(('getting stimulus timing information for {}, {}, {}...'
-                ).format( date_dir, fly_num, row['thorimage_dir']), end='')
+                ).format(date_dir, fly_num, row['thorimage_dir']), end='')
 
             '''
             # TODO delete
@@ -511,10 +703,16 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             #
             '''
 
-            # throwing everything into _<>_cnmf.mat, as we are, would need to
-            # inspect it to check whether we already have the stiminfo...
-            evil.get_stiminfo(thorimage_dir, row['thorsync_dir'],
-                analysis_fly_dir, date_dir, fly_num, nargout=0)
+            # TODO TODO only do this for those that havent been calculated
+
+            try:
+                # throwing everything into _<>_cnmf.mat, as we are, would need
+                # to inspect it to check whether we already have the stiminfo...
+                evil.get_stiminfo(thorimage_dir, row['thorsync_dir'],
+                    analysis_fly_dir, date_dir, fly_num, nargout=0)
+            except matlab.engine.MatlabExecutionError:
+                print('error calculating timing information!')
+                continue
 
             print(' done.')
 
@@ -637,17 +835,15 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         prefix = split(mat)[-1].split('_')[:-1]
 
         thorimage_id = '_' + prefix[1]
-        '''
         # TODO TODO delete
-        # it doesn't even seem there was a _002 here? which was causing some
-        # problem?
+        '''
         if not (date_dir == '2019-01-18' and fly_num == 2 and
-                thorimage_id == '_002'):
+                thorimage_id == '_003'):
             print('skipping')
             continue
         print('not skipping this one')
-        #
         '''
+        #
 
         recordings = df.loc[(df.date == date) & (df.fly_num == fly_num) &
                             (df.thorimage_dir == thorimage_id)]
@@ -675,7 +871,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
 
 
-        # TODO check this whole section acter analysis refactoring...
+        # TODO check this whole section after analysis refactoring...
         entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
             'fly_num, recording_from, analysis FROM presentations', conn)
         # TODO TODO check that the right number of rows are in there, otherwise
@@ -857,10 +1053,16 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # stim_on is a number as above, but for the frame of the odor
         # onset.
         # TODO how does rounding work here? closest frame? first after?
+        # TODO TODO did Remy change these variables? (i mean, it worked w/ some
+        # videos?)
         odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
             ).flatten() - 1
         odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
             ).flatten() - 1
+        # TODO TODO TODO if these are 1d, should be sorted... is Remy doing
+        # something else weird?
+        # (address after candidacy)
+        
 
         # TODO how to get odor pid
 
@@ -982,9 +1184,18 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
             # TODO TODO why was i not using direct_onset_frame for this before?
             onset_time = frame_times[direct_onset_frame]
+            assert start_frame < stop_frame
             # TODO check these don't jump around b/c discontinuities
             presentation_frametimes = \
                 frame_times[start_frame:stop_frame] - onset_time
+            # TODO delete try/except after fixing
+            try:
+                assert len(presentation_frametimes) > 1
+            except AssertionError:
+                print(frame_times)
+                print(start_frame)
+                print(stop_frame)
+                import ipdb; ipdb.set_trace()
 
             odor_pair = odor_id_pairs[i]
             odor1, odor2 = odor_pair
@@ -1006,8 +1217,6 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'repeat_num': repeat_num,
                 'odor_onset_frame': direct_onset_frame,
                 'odor_offset_frame': offset_frame,
-                # TODO TODO handle type conversion of array as necessary
-                # + check it works
                 'from_onset': [[float(x) for x in presentation_frametimes]],
                 'analysis': analysis_run
             })
@@ -1047,6 +1256,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
                 cell_dfs.append(pd.DataFrame({
                     'presentation_id': [presentation_id],
+                    'recording_from': [started_at],
                     'cell': [cell_num],
                     'df_over_f': [[float(x) for x in cell_dff]],
                     'raw_f': [[float(x) for x in cell_raw_f]]
@@ -1054,6 +1264,14 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             response_df = pd.concat(cell_dfs, ignore_index=True)
 
             to_sql_with_duplicates(response_df, 'responses')
+
+            # TODO put behind flag
+            db_presentations = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
+                'fly_num, recording_from, comparison FROM presentations', conn)
+            print(db_presentations)
+            print(len(db_presentations))
+            #
+
 
             print('Done processing presentation {}'.format(i))
 
