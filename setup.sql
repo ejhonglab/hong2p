@@ -154,6 +154,11 @@ CREATE TABLE IF NOT EXISTS cells (
     weights real[] NOT NULL,
 
     /* For manually labelling two important types of segmentation errors. */
+    /* TODO maybe change to a one character code describing ROI characteristics?
+     */
+    /* TODO TODO TODO move to comparison level!! (maybe put in presentations and
+     * then just label each w/in a comparison the same? otherwise need new
+     * table?) */
     only_one_cell boolean,
     all_of_cell boolean,
     /* TODO maybe allow drawing moving contour / mask for richer ground truth
