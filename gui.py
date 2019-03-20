@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 """
-GUI to load movies, cell boundaries, and to store ratings on the quality of the
-boundaries in a database.
+GUI to do make ROIs for trace extraction and validate those ROIs.
 """
 
 # TODO factor away need for this
@@ -10,8 +9,8 @@ import socket
 from os.path import split, join, exists
 import xml.etree.ElementTree as etree
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
-     QVBoxLayout, QListWidget, QPushButton)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, 
+    QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QPushButton)
 import pyqtgraph as pg
 import tifffile
 import numpy as np
@@ -149,56 +148,74 @@ def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
     return tif
 
 
-class MainWindow(QMainWindow):
+db_hostname = 'atlas'
+our_hostname = socket.gethostname()
+if our_hostname == db_hostname:
+    url = 'postgresql+psycopg2://tracedb:tracedb@localhost:5432/tracedb'
+else:
+    url = ('postgresql+psycopg2://tracedb:tracedb@{}' +
+        ':5432/tracedb').format(db_hostname)
+
+conn = create_engine(url)
+
+# TODO [refactor to (?)] make it possible to refresh these?
+print('reading odors from postgres...', end='')
+odors = pd.read_sql('odors', conn)
+print(' done')
+
+print('reading presentations from postgres...', end='')
+presentations = pd.read_sql('presentations', conn)
+print(' done')
+
+presentations['from_onset'] = presentations.from_onset.apply(
+    lambda x: np.array(x))
+
+presentations = merge_odors(presentations, odors)
+
+# TODO change sql for recordings table to use thorimage dir + date + fly
+# as index?
+recordings = pd.read_sql('recordings', conn)
+
+presentations = merge_recordings(presentations, recordings)
+
+rec_meta_cols = [
+    'recording_from',
+    'prep_date',
+    'fly_num',
+    'thorimage_id',
+    'thorimage_path',
+    'thorsync_path',
+    'stimulus_data_path'
+]
+recordings_meta = presentations[rec_meta_cols].drop_duplicates()
+
+footprints = pd.read_sql('cells', conn)
+footprints = footprints.merge(recordings_meta, on='recording_from')
+footprints.set_index(recording_cols, inplace=True)
+
+comp_cols = recording_cols + ['comparison']
+
+
+class MotionCorrection(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('Motion Correction')
+
+
+class Segmentation(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('Segmentation / Trace Extraction')
+
+
+class ROIAnnotation(QWidget):
     def __init__(self):
         super().__init__()
 
-        #######################################################################
-        db_hostname = 'atlas'
-        our_hostname = socket.gethostname()
-        if our_hostname == db_hostname:
-            url = 'postgresql+psycopg2://tracedb:tracedb@localhost:5432/tracedb'
-        else:
-            url = ('postgresql+psycopg2://tracedb:tracedb@{}' +
-                ':5432/tracedb').format(db_hostname)
+        self.setWindowTitle('ROI Validation')
+        # TODO manage current user somehow? / work into database where
+        # appropriate
 
-        conn = create_engine(url)
-
-        print('reading odors from postgres...', end='')
-        odors = pd.read_sql('odors', conn)
-        print(' done')
-
-        print('reading presentations from postgres...', end='')
-        presentations = pd.read_sql('presentations', conn)
-        print(' done')
-
-        presentations['from_onset'] = presentations.from_onset.apply(
-            lambda x: np.array(x))
-
-        presentations = merge_odors(presentations, odors)
-
-        # TODO change sql for recordings table to use thorimage dir + date + fly
-        # as index?
-        recordings = pd.read_sql('recordings', conn)
-
-        presentations = merge_recordings(presentations, recordings)
-
-        rec_meta_cols = [
-            'recording_from',
-            'prep_date',
-            'fly_num',
-            'thorimage_id',
-            'thorimage_path',
-            'thorsync_path',
-            'stimulus_data_path'
-        ]
-        recordings_meta = presentations[rec_meta_cols].drop_duplicates()
-
-        footprints = pd.read_sql('cells', conn)
-        footprints = footprints.merge(recordings_meta, on='recording_from')
-        footprints.set_index(recording_cols, inplace=True)
-
-        comp_cols = recording_cols + ['comparison']
         self.presentations = presentations.set_index(comp_cols)
         self.footprints = footprints
 
@@ -207,10 +224,12 @@ class MainWindow(QMainWindow):
         self.fly_comps = \
             presentations[comp_cols].drop_duplicates().sort_values(comp_cols)
 
-        # TODO TODO and how to map back to the right index when clicked?
         items = ['/'.join(r.split()[1:])
             for r in str(self.fly_comps).split('\n')[1:]]
 
+        # TODO TODO should i share much of data selection code between other
+        # widgets? make it a separate widget (and only one of them / one per
+        # window? per window, probably?)?
         self.list = QListWidget(self)
         self.list.addItems(items)
         self.list.itemDoubleClicked.connect(self.open_comparison)
@@ -219,14 +238,15 @@ class MainWindow(QMainWindow):
         # TODO TODO could use QTableView
         # (see mfitzp/15-minute-apps currency example)
 
-        # TODO where clicking an element starts evaluation process in that data
-
         # TODO maybe rename comparison according to mixture
-
-        #######################################################################
 
         # TODO TODO maybe just make this the average image and overlay clickable
         # rois / make cells clickable?
+        # TODO TODO TODO make a list widget part of this, but add stuff below to
+        # use all cells / pick fraction and sample subset (seeded / not?) / 
+        # maybe give letter labels + randomize order of real cell_ids, to the
+        # extent that the way CNMF works causing some property of cells to vary
+        # systematically along cell_id axis?
         self.cell_list = QListWidget(self)
         self.cell_list.itemDoubleClicked.connect(self.annotate_cell_comp)
 
@@ -234,44 +254,9 @@ class MainWindow(QMainWindow):
         # pick a single cell to focus on? w/ diff display for / restriction to
         # those that have not yet been annotated?
 
-        # TODO TODO TODO for now, maybe forgo play of whole video / roi
-        # selection in there, and just go through random order of cells
-        # showing trial dffs and (downsampled) movie
+        self.layout = QHBoxLayout(self)
+        self.setLayout(self.layout)
 
-        # TODO worth storing a reference to it like that? examples seem to do
-        # this, but maybe they actually wanted to call methods on the thing?
-        self.imv = pg.ImageView()
-
-        # TODO TODO TODO how to actually use play fn / other fns that let you
-        # change frame number w/o having to explicitly find that frame and
-        # setData? how does that work? setData seems to only take single frames?
-
-        # TODO does setImage need to happen after show? show generally just
-        # called on mainwindow / top widget, and recurse down?
-        self.imv.setImage(np.zeros((256, 256)))
-        '''
-        self.movie = np.random.rand(50, 256, 256)
-        self.imv.setImage(self.movie)
-        fps = 12
-        # TODO how to make it loop?
-        self.imv.play(fps)
-        '''
-
-        # TODO make image take up full space and have scroll go through
-        # timesteps? or at least have scroll over time bar do that?
-        # TODO empty display area until something selected?
-        # or only display list until something is selected?
-
-        # TODO should this have some explicit parent?
-        self.central_widget = QWidget()
-        # TODO can't just use mainwindow thing? (seemed to not work...)
-        # just subclass qwidget then?
-        self.setCentralWidget(self.central_widget)
-
-        # TODO TODO labels above things in hboxlayout
-        # TODO want to use addStretch?
-        self.layout = QHBoxLayout(self.central_widget)
-        self.central_widget.setLayout(self.layout)
         # this worked, but does above?
         #self.setLayout(self.layout)
 
@@ -293,7 +278,7 @@ class MainWindow(QMainWindow):
         self.annotation_layout = QVBoxLayout(self.annotation_widget)
         self.annotation_widget.setLayout(self.annotation_layout)
 
-        # TODO need to specify figsize?
+        # TODO any benefit to specifying figsize? what's default?
         self.fig = Figure() #figsize=(6,2))
         self.mpl_canvas = FigureCanvas(self.fig)
 
@@ -310,9 +295,31 @@ class MainWindow(QMainWindow):
         self.mpl_canvas.setFixedHeight(300)
         self.annotation_layout.addWidget(self.mpl_canvas)
 
+        self.imv = pg.ImageView()
+
+        # This approach will probably not work in future releases of pyqtgraph,
+        # because the ROI handling in the Git master is different.
+        # Works in 0.10.0
+        # TODO TODO undo consequences of roi creation in ImageView construction
+        # and then monkey patch in the ROI i want (others besides the below?)
+        self.imv.getView().removeItem(self.imv.roi)
+        # (getView().removeItem(...) for appropriate items[, etc?])
+        # TODO use that roi to understand coord system?
+        # TODO then call approp fns to get ROI to display
+        # TODO not clear whether i also want to delete self.imv.normRoi...
+        #import ipdb; ipdb.set_trace()
+
+        self.imv.setImage(np.zeros((256, 256)))
+        # TODO make image take up full space and have scroll go through
+        # timesteps? or at least have scroll over time bar do that?
+
         # TODO should i have a separate view / horz concatenated movies to show
         # each trial side-by-side, or should i have one big movie?
+        # TODO TODO maybe put average F for cell to the left of this?
         self.annotation_layout.addWidget(self.imv)
+        # TODO make some marks to indicate when odors come on? (or something
+        # like clickable links on the video navigation bar?)
+        # TODO allow arbitrary movie playback speed, indep of downsampling
 
         self.label_button_widget = QWidget()
         self.label_button_widget.setFixedHeight(100)
@@ -336,7 +343,8 @@ class MainWindow(QMainWindow):
         self.fly_comp = comp
 
         # TODO rewrite to avoid performancewarning (indexing past lexsort depth)
-        cells = self.footprints.cell.loc[comp[:-1]]
+        footprint_rows = self.footprints.loc[comp[:-1]]
+        cells = footprint_rows.cell
         self.cell_list.clear()
         self.cell_list.addItems([str(c) for c in sorted(cells.to_list())])
         # TODO color list items to indicate already labelled
@@ -374,6 +382,8 @@ class MainWindow(QMainWindow):
         # somewhere?
 
         # TODO maybe make response_calling_s a parameter modifiable in the GUI
+        # TODO TODO put to left of where video is? left of annotation buttons?
+        # under data selection part?
         response_calling_s = 3.0
         # TODO TODO TODO get fps from thor (check this works...)
         fps = fps_from_thor(self.metadata)
@@ -382,6 +392,23 @@ class MainWindow(QMainWindow):
         self.background_frames = int(np.floor(fps * np.abs(
             self.metadata.from_onset.apply(lambda x: x.min()).min())))
 
+        self.full_footprints = dict()
+        for cell, data in footprint_rows[['cell','x_coords','y_coords','weights'
+            ]].set_index('cell').iterrows():
+            x_coords, y_coords, weights = data
+
+            # TODO TODO TODO get this shape from thor metadata
+            footprint = np.array(coo_matrix((weights, (x_coords, y_coords)),
+                shape=(256, 256)).todense())
+
+            self.full_footprints[cell] = footprint
+
+        # TODO maybe put in some spatial structure to make range searches easier
+        # first? i.e. bounding box overlap as at least a necessary condition for
+        # roi overlap?
+        # (could also save space on empty parts of matrices... how serious is
+        # space consumption?)
+
 
     def annotate_cell_comp(self):
         # TODO do something else if not just in-order only
@@ -389,7 +416,6 @@ class MainWindow(QMainWindow):
         cell_id = self.sender().currentRow()
 
         (prep_date, fly_num, thorimage_id, comparison_num) = self.fly_comp
-        #######################################################################
         # TODO probably worth also just showing the average F (as was used,
         # exclusively, before)?
         '''
@@ -397,27 +423,37 @@ class MainWindow(QMainWindow):
             norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1)
         better_constrast = cv2.equalizeHist(avg)
         '''
-        cell_row = (prep_date, fly_num, thorimage_id, cell_id)
-
-        # TODO just store the same data w/ two diff indexes to save time?
-        footprints = self.footprints.reset_index().set_index(
-            recording_cols + ['cell'])
-        footprint_row = footprints.loc[cell_row]
-
-        # TODO TODO TODO *find* nearby footprints->contours of another color
-
-        weights, x_coords, y_coords = \
-            footprint_row[['weights','x_coords','y_coords']]
-
-        # TODO TODO get this shape from thor metadata
-        footprint = np.array(coo_matrix((weights,
-            (x_coords, y_coords)), shape=(256, 256)).todense())
+        footprint = self.full_footprints[cell_id]
 
         # TODO maybe some percentile / fixed size about maximum
         # density?
+        # TODO TODO take the margin as a parameter in the GUI
         cropped_footprint, ((x_min, x_max), (y_min, y_max)) = \
             crop_to_nonzero(footprint, margin=6)
+
+        near_footprints = dict()
+        # TODO TODO TODO *find* nearby footprints->contours of another color
+        # TODO TODO make sense to convert all footprints to full matrices in
+        # open_comparison, to make searching easier?
+        for c, f in self.full_footprints.items():
+            if c == cell_id:
+                continue
+
+            # TODO maybe it should overlap by at least a certain number of
+            # pixels? (i.e. pull back bounding box a little)
+            in_display_region = f[x_min:x_max+1, y_min:y_max+1]
+            if (in_display_region > 0).any():
+                near_footprints[c] = in_display_region
+
+        # TODO TODO how to draw only partial contours? ok to just draw out of
+        # bounds?
+
+        # TODO should probably compute over nearby footprints too...
+        # (or just once somewhere / use known value of what min could be?
+        # just all nonzero?)
         contour_level = cropped_footprint[cropped_footprint > 0].min()
+
+        #######################################################################
 
         # TODO TODO TODO clear the figure/all axes as necessary
         mpl_contour = None
@@ -451,6 +487,16 @@ class MainWindow(QMainWindow):
             ax.imshow(trial_dff, cmap='gray')
 
             if mpl_contour is None:
+                near_footprint_contours = dict()
+                for c, f in near_footprints.items():
+                    mpl_near_contour = ax.contour(f, [contour_level],
+                        colors='blue')
+                    assert len(mpl_near_contour.collections) == 1
+                    paths = mpl_near_contour.collections[0].get_paths()
+                    assert len(paths) == 1
+                    near_footprint_contours[c] = paths[0].vertices
+
+                # TODO factor into fn
                 mpl_contour = ax.contour(cropped_footprint, [contour_level],
                     colors='red')
                 assert len(mpl_contour.collections) == 1
@@ -458,6 +504,9 @@ class MainWindow(QMainWindow):
                 assert len(paths) == 1
                 contour = paths[0].vertices
             else:
+                for c, cont in near_footprint_contours.items():
+                    ax.plot(cont[:,0], cont[:,1], 'b-')
+
                 ax.plot(contour[:,0], contour[:,1], 'r-')
 
             # TODO label trials above w/ odor (grouping options like kc_analysis
@@ -486,16 +535,8 @@ class MainWindow(QMainWindow):
 
         view_box = self.imv.getView()
 
-        # TODO does clearing this get rid of other default things i want?
-        # (yes, it seems so...)
-        # TODO need to keep track of ROI items?
-        # TODO TODO is just deleting the polylinerois sufficient to return the
+        # TODO is just deleting the polylinerois sufficient to return the
         # viewbox close enough to its original state...? not clear
-
-        print(view_box.allChildren())
-        print(view_box.allChildItems())
-        print(len(view_box.allChildren()))
-        print(len(view_box.allChildItems()))
 
         to_remove = []
         for c in view_box.allChildren():
@@ -504,17 +545,24 @@ class MainWindow(QMainWindow):
         for r in to_remove:
             view_box.removeItem(r)
 
-        print(view_box.allChildren())
-        print(view_box.allChildItems())
-        print(len(view_box.allChildren()))
-        print(len(view_box.allChildItems()))
+        for c, cont in near_footprint_contours.items():
+            # TODO maybe allow clicking these to navigate to those cells?
+            pg_roi = pg.PolyLineROI(cont, closed=True, pen='b', movable=False)
+            # TODO make unmovable
+            pg_roi.setZValue(20)
+            view_box.addItem(pg_roi)
 
-        #import ipdb; ipdb.set_trace()
+        # TODO since this works and polylineroi does not, maybe this is a bug in
+        # imageview handling of ROIs s.t. it doesn't work w/ polylinerois?
+        #pg_roi = pg.RectROI(pos=[0,0], size=10)
 
         # TODO isn't there some util fn to convert from numpy? use that?
         # TODO need to specify closed? doing what i expect?
-        # TODO show red
-        pg_roi = pg.PolyLineROI(contour, closed=True)
+        pg_roi = pg.PolyLineROI(contour, closed=True, pen='r', movable=False)
+
+        # Just to copy what the 0.10.0 pyqtgraph does for it's default ROI.
+        pg_roi.setZValue(20)
+
         # TODO TODO need to call view_box.invertY(True) as in RectROI
         # programcreek example ("upper left origin")? X?
         # so far, seems though inversion is not necessary
@@ -522,16 +570,36 @@ class MainWindow(QMainWindow):
         # TODO TODO but movie may be... (seemingly along both axes?)
 
         # TODO TODO are bounds right? (some rois are getting clipped now)
-        # TODO TODO what about this is making the video not display anymore?!?
-        self.imv.getView().addItem(pg_roi)
+        view_box.addItem(pg_roi)
+        self.imv.roi = pg_roi
+
+        # TODO TODO TODO are these necessary? (ROIs seem to display w/o...
+        # but will trace data be wrong otherwise?)
+        # TODO should i explicitly disconnect previous roi before deleting, or
+        # does it not matter / is that not a thing?
+        # TODO maybe just do this once at beginning w/ some kind of empty roi?
+        pg_roi.sigRegionChanged.connect(self.imv.roiChanged)
+        # TODO TODO compare intermediate results (stepping into pg code)
+        # w/ PolyLineROI vs RectROI
+
+        # TODO TODO TODO fix! options:
+        # - change ImageView.roiChanged to not call w/ returnMappedCoords=True
+        # - fix PolyLineROI s.t. it works w/ returnMappedCoords=True
+        #   (currently, no classes besides parent ROI seem to...)
+
+        ##import ipdb; ipdb.set_trace()
+        self.imv.roiChanged()
+
+        # TODO simulate roiClicked w/ button checked? set button to checked in
+        # init and maybe call roiClicked here?
 
         # TODO TODO how to make it loop?
         self.imv.play(self.fps)
-        # TODO TODO TODO how to overlay contour??
 
-        # TODO TODO convert contour to pg.PolyLineROI?
-        # or does that not really make drawing the ROI any easier?
-        
+        # TODO what is "A" icon that appears in bottom left of imv if you hover
+        # there? (it changes axis, and i don't think want people to be able to
+        # do that, particularly w/o some kind of reset button)
+        # TODO something to allow user to collapse histogram
 
         # TODO TODO make pause / play button more prominent
         # TODO prevent time bar on bottom from having the range change (too
@@ -547,6 +615,16 @@ class MainWindow(QMainWindow):
                 'all_of_cell': True,
                 'stable': True
             }
+        # TODO TODO maybe some way besides this to indicate multiple ROIs have
+        # been assigned to one cell.
+        # TODO allow changes (deletion / changing boundaries / creation) and
+        # save them (might not be as useful for summary statistics on types of
+        # errors? and may also not be that easy to act on to improve
+        # algorithms? maybe it would be actionable...)
+        # TODO maybe at least a separate 'duplicate' tag, for neighboring cells,
+        # and one can be given not_full_cell label?
+        # might be easier if you could also click neighboring rois in that case
+        # , rather than scrolling through cell ids
         elif label == 'not_full_cell':
             values = {
                 'only_one_cell': True,
@@ -565,6 +643,7 @@ class MainWindow(QMainWindow):
                 'all_of_cell': True,
                 'stable': True
             }
+        # TODO some way to indicate missing cells
 
         # TODO combine w/ current cell/comparison info and...
         # TODO TODO insert values into database
@@ -580,8 +659,34 @@ class MainWindow(QMainWindow):
     # TODO TODO if doing cnmf in this gui, save output directly to database
 
 
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+
+        # TODO maybe an earlier tab for motion correction or something at some
+        # point?
+        self.mc_tab = MotionCorrection()
+        self.seg_tab = Segmentation()
+        self.validation_tab = ROIAnnotation()
+
+        # TODO factor add + windowTitle bit to fn?
+        self.tabs.addTab(self.mc_tab, self.mc_tab.windowTitle())
+        self.tabs.addTab(self.seg_tab, self.seg_tab.windowTitle())
+
+        val_index = self.tabs.addTab(self.validation_tab,
+            self.validation_tab.windowTitle())
+
+        self.tabs.setCurrentIndex(val_index)
+
+
 def main():
-    app = QApplication(['Segmentation Validation GUI'])
+    # TODO convention re: this vs setWindowTitle? latter not available if making
+    # a window out of a widget?
+    # TODO maybe setWindowTitle based on the tab? or add to end?
+    app = QApplication(['2p analysis GUI'])
     win = MainWindow()
     win.showMaximized()
     app.exit(app.exec_())
