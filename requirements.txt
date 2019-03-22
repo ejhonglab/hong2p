@@ -4,3 +4,4 @@ h5py
 pandas
 numpy
 gitpython
+# TODO could specify my patched version of pyqtgraph w/ github link?

@@ -4,13 +4,22 @@
 GUI to do make ROIs for trace extraction and validate those ROIs.
 """
 
-# TODO factor away need for this
 import socket
+import sys
 from os.path import split, join, exists
 import xml.etree.ElementTree as etree
+import warnings
+from collections import defaultdict
+import traceback
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, 
-    QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QPushButton)
+# TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
+# differences?
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
+    QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
+    QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
+    QDoubleSpinBox)
+
 import pyqtgraph as pg
 import tifffile
 import numpy as np
@@ -20,9 +29,13 @@ from sqlalchemy import create_engine
 # TODO factor all of these out as much as possible
 from scipy.sparse import coo_matrix
 import cv2
-###import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.figure import Figure
+
+# TODO TODO allow things to fail gracefully if we don't have cnmf.
+# either don't display tabs that involve it or display a message indicating it
+# was not found.
+from caiman.source_extraction.cnmf import params
 
 
 def matlabels(df, rowlabel_fn):
@@ -196,16 +209,407 @@ footprints.set_index(recording_cols, inplace=True)
 comp_cols = recording_cols + ['comparison']
 
 
+# TODO why exactly do we need this wrapper again?
+class WorkerSignals(QObject):
+    '''
+    Defines the signals available from a running worker thread.
+
+    Supported signals are:
+
+    finished
+        No data
+
+    error
+        `tuple` (exctype, value, traceback.format_exc() )
+
+    result
+        `object` data returned from processing, anything
+
+    progress
+        `int` indicating % progress
+
+    '''
+    finished = pyqtSignal()
+    error = pyqtSignal(tuple)
+    result = pyqtSignal(object)
+    progress = pyqtSignal(int)
+
+
+class Worker(QRunnable):
+    '''
+    Worker thread
+
+    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+
+    :param callback: The function callback to run on this worker thread.
+        Supplied args and kwargs will be passed through to the runner.
+    :type callback: function
+    :param args: Arguments to pass to the callback function
+    :param kwargs: Keywords to pass to the callback function
+
+    '''
+
+    def __init__(self, fn, *args, **kwargs):
+        super(Worker, self).__init__()
+
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = WorkerSignals()
+
+        # TODO TODO why is this passed as a kwarg? the fn actually used below
+        # has progress_callback as the second positional arg...?
+        # Add the callback to our kwargs
+        #self.kwargs['progress_callback'] = self.signals.progress
+
+    @pyqtSlot()
+    def run(self):
+        '''
+        Initialise the runner function with passed args, kwargs.
+        '''
+
+        # Retrieve args/kwargs here; and fire processing using them
+        try:
+            result = self.fn(*self.args, **self.kwargs)
+        except:
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
+        else:
+            # Return the result of the processing
+            self.signals.result.emit(result)
+        finally:
+            self.signals.finished.emit()  # Done
+
+
 class MotionCorrection(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Motion Correction')
 
 
+# TODO either make a superclass for everything that should share a data browser,
+# or just have one data browser that interacts with other widgets (tabwidget may
+# have to not contain data browser in that case?)
+# one argument for trying to have each tab contain a data browser is that then
+# each widget (which is currently a tab) definition could more readily by run on
+# it's own, without having to combine with a data browser
 class Segmentation(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Segmentation / Trace Extraction')
+
+        self.presentations = presentations.set_index(comp_cols)
+        self.footprints = footprints
+        self.recordings = presentations[recording_cols].drop_duplicates(
+            ).sort_values(recording_cols)
+
+        items = ['/'.join(r.split()[1:])
+            for r in str(self.recordings).split('\n')[1:]]
+        self.list = QListWidget(self)
+        self.list.addItems(items)
+        self.list.itemDoubleClicked.connect(self.open_recording)
+        self.layout = QHBoxLayout(self)
+        self.setLayout(self.layout)
+        self.layout.addWidget(self.list)
+        self.list.setFixedWidth(160)
+
+        # Other groups are: motion, online, preprocess_params
+        # TODO worth including patch_params? preprocess_params?
+        cnmf_groups = (
+            'data',
+            'patch_params',
+            'init_params',
+            'spatial_params',
+            'temporal_params',
+            'merging',
+            'quality'
+        )
+        dont_show_by_group = defaultdict(set)
+        dont_show_by_group.update({
+            'merging': {'gSig_range'},
+        })
+            
+        cnmf_ctrl_widget = QWidget()
+        self.layout.addWidget(cnmf_ctrl_widget)
+
+        cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
+        cnmf_ctrl_widget.setLayout(cnmf_ctrl_layout)
+
+        param_tabs = QTabWidget()
+        cnmf_ctrl_layout.addWidget(param_tabs)
+
+        # TODO TODO eliminate vertical space between these rows of buttons
+        shared_btns = QWidget()
+        cnmf_ctrl_layout.addWidget(shared_btns)
+        shared_btns.setFixedHeight(80)
+        shared_btn_layout = QVBoxLayout(shared_btns)
+        shared_btns.setLayout(shared_btn_layout)
+
+        param_btns = QWidget()
+        shared_btn_layout.addWidget(param_btns)
+        param_btns_layout = QHBoxLayout(param_btns)
+        param_btns.setLayout(param_btns_layout)
+
+        other_btns = QWidget()
+        shared_btn_layout.addWidget(other_btns)
+        other_btns_layout = QHBoxLayout(other_btns)
+        other_btns.setLayout(other_btns_layout)
+
+        reset_cnmf_params_btn = QPushButton('Reset All Parameters')
+        reset_cnmf_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(reset_cnmf_params_btn)
+
+        mk_default_params_btn = QPushButton('Make Parameters Default')
+        mk_default_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(mk_default_params_btn)
+
+        # TODO support this?
+        # TODO TODO at least make not-yet-implemented stuff unclickable
+        # TODO would need a format for these params... json?
+        load_params_params_btn = QPushButton('Load Parameters From File')
+        load_params_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(load_params_params_btn)
+
+        save_params_btn = QPushButton('Save Parameters To File')
+        save_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(save_params_btn)
+
+        self.run_cnmf_btn = QPushButton('Run CNMF')
+        other_btns_layout.addWidget(self.run_cnmf_btn)
+        save_cnmf_output_btn = QPushButton('Save CNMF Output')
+        other_btns_layout.addWidget(save_cnmf_output_btn)
+        save_cnmf_output_btn.setEnabled(False)
+
+        # TODO TODO make sure this prevents multiple attempts to run the cnmf!
+        # (while one is running)
+        self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
+
+        # TODO should save cnmf output be a button here or to the right?
+        # maybe run should also be to the right?
+        # TODO maybe a checkbox to save by default or something?
+
+        # TODO maybe include a progress bar here? to the side? below?
+
+        # TODO why is data/decay_time not in temporal parameters?
+        self.params = params.CNMFParams()
+        param_dict = self.params.to_dict()
+
+        n = int(np.ceil(np.sqrt(len(cnmf_groups))))
+        for i, g in enumerate(cnmf_groups):
+            y = i % n
+            x = i // n
+
+            group_name = g.split('_')[0].title()
+            if group_name == 'Init':
+                group_name = 'Initialization'
+
+            # TODO maybe there is no point in having groupbox actually?
+            ##group = QGroupBox(group_name)
+            ##param_layout.addWidget(group, x, y)
+
+            tab = QWidget()
+            param_tabs.addTab(tab, group_name)
+            tab_layout = QVBoxLayout(tab)
+            tab.setLayout(tab_layout)
+
+            group = QWidget()
+            group_layout = QFormLayout(group)
+            group.setLayout(group_layout)
+            tab_layout.addWidget(group)
+
+            reset_tab = QPushButton('Reset {} Parameters'.format(group_name))
+            reset_tab.setEnabled(False)
+            tab_layout.addWidget(reset_tab)
+            # TODO allow setting defaults (in gui) that will override builtin
+            # cnmf defaults, and persist across sessions
+            # TODO do that w/ another button here?
+
+            # TODO TODO TODO provide a "reset to defaults" option
+            # maybe both within a tab and across all?
+            # TODO maybe also a save all option? (if implementing that way...)
+
+            # TODO TODO should patch / other params have a checkbox to disable
+            # all params (there's a mode where everything is computed w/o
+            # patches, right?)
+
+            # TODO TODO blacklist approp parts of data / other things that can
+            # (and should only) be filled in from thorimage metadata
+
+            print(g)
+            for k, v in param_dict[g].items():
+                # TODO maybe do this some other way / don't?
+                # TODO make tooltip for each from docstring?
+                # TODO TODO also get next line(s) for tooltip?
+
+                doc_line = None
+                for line in params.CNMFParams.__init__.__doc__.split('\n'):
+                    if k + ':' in line:
+                        doc_line = line.strip()
+                        break
+
+                print_stuff = False
+
+                if doc_line is None:
+                    warnings.warn(('parameter {} not defined in docstring'
+                        ).format(k))
+                    print_stuff = True
+                # TODO also warn about params in docstring but not here
+                # maybe parse params in docstring once first?
+
+                # TODO how to handle stuff w/ None as value?
+                # TODO how to handle stuff whose default is int but can be
+                # float? just change default to float in cnmf?
+
+                # TODO is underscore not displaying correctly? just getting cut
+                # off? fix that? translate explicitely to a qlabel to maybe set
+                # other properties about display?
+
+                # TODO TODO why are some checkboxes tristate?
+                # is this a matter of the setCheckState w/ either true or false?
+
+                # TODO TODO TODO connect back to changing parameters
+
+                if type(v) is bool:
+                    # TODO tristate in some cases?
+                    w = QCheckBox()
+                    w.setCheckState(v)
+
+                elif type(v) is int:
+                    # TODO set step relative to magnitude?
+                    # TODO range?
+                    w = QSpinBox()
+                    w.setValue(v)
+                    print_stuff = True
+
+                elif type(v) is float:
+                    # TODO set step and decimal relative to default size?
+                    # (1/10%?)
+                    # TODO range?
+                    # TODO maybe assume stuff in [0,1] should stay there?
+                    w = QDoubleSpinBox()
+                    w.setValue(v)
+
+                # TODO TODO if type is list (tuple?) try recursively looking up
+                # types? (or just handle numbers?) -> place in
+                # qwidget->qhboxlayout?
+
+                elif type(v) is str:
+                    w = QComboBox()
+                    w.addItem(v)
+                    # TODO TODO find other values
+                    # TODO search docstring w/ regex or something for the full
+                    # set of options (for this dropdown / radio)?
+                    # TODO make sure default value is default in combobox
+                    print_stuff = True
+
+                else:
+                    print_stuff = True
+                    w = QLineEdit()
+
+                if print_stuff:
+                    print(k, v, type(v))
+                    print(doc_line)
+                    print('')
+
+                group_layout.addRow(k, w)
+            print('')
+
+        # TODO set tab index to most likely to change? spatial?
+
+        # TODO TODO is there really any point to displaying anything here?
+        # almost seems like button->dialog or something would be more
+        # appropriate if not...
+        # does the division make sense b/c some validation takes longer than
+        # others (and that is what can be in the separate validation tab)?
+
+        # TODO TODO TODO provide the opportunity to compare outputs of sets of
+        # parameters, either w/ same displays side by side, or overlayed?
+
+        # TODO TODO maybe some button to automatically pick best set of
+        # parameters from database? (just max / some kind of average?)
+
+        # TODO maybe share this across all widget classes?
+        self.threadpool = QThreadPool()
+
+
+    def start_cnmf_worker(self):
+        self.run_cnmf_btn.setEnabled(False)
+        # TODO re-enable button after cnmf done
+        # TODO separate button to cancel? change run-button to cancel?
+
+        # TODO what kind of (if any) limitations are there on the extent to
+        # which data can be shared across threads? can the worker modify
+        # properties under self, and have those changes reflected here?
+
+        # Pass the function to execute
+        # Any other args, kwargs are passed to the run function
+        # TODO TODO pass cnmf params as appropriate
+        worker = Worker(self.run_cnmf)
+        # TODO so how does it know to pass one arg in this case?
+        # (as opposed to cnmf_done case)
+        worker.signals.result.connect(self.get_cnmf_output)
+        worker.signals.finished.connect(self.cnmf_done)
+        # TODO TODO implement. may require allowing callbacks to be passed into
+        # cnmf code to report progress?
+        ####worker.signals.progress.connect(self.progress_fn)
+
+        # Execute
+        self.threadpool.start(worker)
+
+
+    def run_cnmf(self):
+        '''
+        # TODO TODO use cm.cluster.setup_cluster or not? required now?
+        # TODO what is the dview that returns as second arg?
+        # TODO i feel like this should be written to not require n_processes...
+        n_processes = 1
+        # TODO need to copy params first?
+        cnm = cnmf.CNMF(n_processes, params=self.params)
+        # images : mapped np.ndarray of shape (t,x,y[,z])
+        # TODO does it really need to be mapped? how can you even check if a
+        # numpy array is mapped?
+        # TODO maybe use fit_file for certain ways of getting here in the gui?
+        # TODO TODO TODO check dims / C/F order
+        cnm.fit(self.movie)
+        '''
+        print('starting job')
+        import time; time.sleep(5)
+        print('done with job')
+
+
+    def cnmf_done(self):
+        self.run_cnmf_btn.setEnabled(True)
+
+
+    def get_cnmf_output(self):
+        #self.
+        pass
+
+
+    # TODO maybe support save / loading cnmf state w/ their save/load fns w/
+    # buttons in the gui? (maybe to some invisible cache?)
+
+
+    def open_recording(self):
+        # TODO TODO avoid circularity problem (right now, only stuff w/ CNMF
+        # output is put in database), so either:
+        # - put non-cnmf data in db w/o cnmf stuff, asap, and also load that
+        #   stuff here
+        # - or detect stuff not in db, put in browser / load for cnmf here, and
+        #   then put in db when done
+        idx = self.sender().currentRow()
+        rec_row = tuple(self.recordings.iloc[idx])
+
+        # TODO do i need this?
+        self.metadata = self.presentations.loc[rec_row]
+
+        tiff = motion_corrected_tiff_filename(*rec_row)
+        print('loading tiff {}...'.format(tiff), end='')
+        self.movie = tifffile.imread(tiff)
+        print(' done.')
+        #fps = fps_from_thor(self.metadata)
 
 
 class ROIAnnotation(QWidget):
@@ -337,6 +741,10 @@ class ROIAnnotation(QWidget):
             button.clicked.connect(self.label_footprint)
 
     
+    # TODO TODO modify to work on either recordings or comparisons, and factor
+    # s.t. all widgets can use it (or at least this and segmentation one)
+    # TODO when refactoring, should i aim to share any loaded data across
+    # widgets?
     def open_comparison(self):
         idx = self.sender().currentRow()
         comp = tuple(self.fly_comps.iloc[idx])
@@ -573,22 +981,14 @@ class ROIAnnotation(QWidget):
         view_box.addItem(pg_roi)
         self.imv.roi = pg_roi
 
-        # TODO TODO TODO are these necessary? (ROIs seem to display w/o...
-        # but will trace data be wrong otherwise?)
         # TODO should i explicitly disconnect previous roi before deleting, or
         # does it not matter / is that not a thing?
-        # TODO maybe just do this once at beginning w/ some kind of empty roi?
         pg_roi.sigRegionChanged.connect(self.imv.roiChanged)
-        # TODO TODO compare intermediate results (stepping into pg code)
-        # w/ PolyLineROI vs RectROI
 
-        # TODO TODO TODO fix! options:
-        # - change ImageView.roiChanged to not call w/ returnMappedCoords=True
-        # - fix PolyLineROI s.t. it works w/ returnMappedCoords=True
-        #   (currently, no classes besides parent ROI seem to...)
-
-        ##import ipdb; ipdb.set_trace()
         self.imv.roiChanged()
+
+        # TODO TODO make it so ROI button only hides roiPlot, but not the roi
+        # too
 
         # TODO simulate roiClicked w/ button checked? set button to checked in
         # init and maybe call roiClicked here?
@@ -674,12 +1074,13 @@ class MainWindow(QMainWindow):
 
         # TODO factor add + windowTitle bit to fn?
         self.tabs.addTab(self.mc_tab, self.mc_tab.windowTitle())
-        self.tabs.addTab(self.seg_tab, self.seg_tab.windowTitle())
+        seg_index = self.tabs.addTab(self.seg_tab, self.seg_tab.windowTitle())
 
         val_index = self.tabs.addTab(self.validation_tab,
             self.validation_tab.windowTitle())
 
-        self.tabs.setCurrentIndex(val_index)
+        #self.tabs.setCurrentIndex(val_index)
+        self.tabs.setCurrentIndex(seg_index)
 
 
 def main():
