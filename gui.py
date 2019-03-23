@@ -80,6 +80,54 @@ def crop_to_nonzero(matrix, margin=0):
     cropped = matrix[x_min:x_max+1, y_min:y_max+1]
     return cropped, ((x_min, x_max), (y_min, y_max))
 
+'''
+def close_path_on_edge(vertex_array, max_bounds):
+    """Takes a Nx2 list of points, and adds points along boundary to close.
+    """
+    # TODO maybe move bounds check in here?
+'''
+
+def mpl_contour2segments(mpl_contour, max_bounds, err_on_multiple_comps=False):
+    """Takes the output of mpl.contour and returns a list of Nx2 numpy arrays of
+    segments, which represent a closed version of the contour.
+    """
+    # TODO handle case where there are multiple connected components, not b/c
+    # overlap w/ border? raise error?
+    assert len(mpl_contour.collections) == 1
+    paths = mpl_contour.collections[0].get_paths()
+    vertex_arrays = [p.vertices for p in paths]
+    # Assuming this is always caused by contour interesting w/ boundary,
+    # this should make sense.
+    if len(vertex_arrays) > 1:
+        # TODO may need to find arbitrary (contiguous?) sequences of these
+        # arrays to join? right now handle cases where all arrays are part of a
+        # broken contour, or there are two arrays, one of which is an isolated
+        # component, and one of which is a contour broken by an edge...
+        # TODO even possible? may be no unique way to join them... prob fail in
+        # that case? need to just modify contour finding algorithm / change my
+        # approach here?
+        # TODO maybe remove each closed component and re-evaluate?
+        first = vertex_arrays[0][0]
+        last = vertex_arrays[-1][-1]
+        # Checking our assumption that border caused
+        # TODO max_bounds seems transposed wrt segments, but why...?
+        # does that make sense?
+        max_bounds = [b - 1 for b in max_bounds]
+        if (((first[0] == 0 and last[0] == 0) or
+            (first[1] == 0 and last[1] == 0)) or
+           ((first[0] == max_bounds[1] and last[0] == max_bounds[1]) or
+           (first[1] == max_bounds[0] and last[1] == max_bounds[0]))):
+
+            if err_on_multiple_comps:
+                raise ValueError('multiple components in contour')
+            else:
+                # TODO recursion? see other todos above
+                raise NotImplementedError
+
+        vertex_arrays.append([first])
+    return np.concatenate(vertex_arrays)
+
+
 # TODO worth allowing selection of a folder?
 # TODO worth saving labels to some kind of file (CSV?) in case database not
 # reachable? fn to load these to database?
@@ -343,19 +391,23 @@ class Segmentation(QWidget):
         # TODO TODO eliminate vertical space between these rows of buttons
         shared_btns = QWidget()
         cnmf_ctrl_layout.addWidget(shared_btns)
-        shared_btns.setFixedHeight(80)
         shared_btn_layout = QVBoxLayout(shared_btns)
         shared_btns.setLayout(shared_btn_layout)
+        shared_btn_layout.setSpacing(0)
+        shared_btn_layout.setContentsMargins(0, 0, 0, 0)
+        shared_btns.setFixedHeight(80)
 
         param_btns = QWidget()
         shared_btn_layout.addWidget(param_btns)
         param_btns_layout = QHBoxLayout(param_btns)
         param_btns.setLayout(param_btns_layout)
+        param_btns_layout.setContentsMargins(0, 0, 0, 0)
 
         other_btns = QWidget()
         shared_btn_layout.addWidget(other_btns)
         other_btns_layout = QHBoxLayout(other_btns)
         other_btns.setLayout(other_btns_layout)
+        other_btns_layout.setContentsMargins(0, 0, 0, 0)
 
         reset_cnmf_params_btn = QPushButton('Reset All Parameters')
         reset_cnmf_params_btn.setEnabled(False)
@@ -398,6 +450,8 @@ class Segmentation(QWidget):
 
         n = int(np.ceil(np.sqrt(len(cnmf_groups))))
         for i, g in enumerate(cnmf_groups):
+            dont_show = dont_show_by_group[g]
+
             y = i % n
             x = i // n
 
@@ -439,6 +493,10 @@ class Segmentation(QWidget):
 
             print(g)
             for k, v in param_dict[g].items():
+                if k in dont_show:
+                    # maybe still print or something?
+                    continue
+
                 # TODO maybe do this some other way / don't?
                 # TODO make tooltip for each from docstring?
                 # TODO TODO also get next line(s) for tooltip?
@@ -474,7 +532,8 @@ class Segmentation(QWidget):
                 if type(v) is bool:
                     # TODO tristate in some cases?
                     w = QCheckBox()
-                    w.setCheckState(v)
+                    w.setChecked(v)
+                    assert not w.isTristate()
 
                 elif type(v) is int:
                     # TODO set step relative to magnitude?
@@ -498,10 +557,21 @@ class Segmentation(QWidget):
                 elif type(v) is str:
                     w = QComboBox()
                     w.addItem(v)
-                    # TODO TODO find other values
-                    # TODO search docstring w/ regex or something for the full
-                    # set of options (for this dropdown / radio)?
-                    # TODO make sure default value is default in combobox
+
+                    # TODO maybe should use regex?
+                    v_opts = ([x.strip(" '") for x in doc_line.split(',')[0
+                        ].split(':')[1].split('|')])
+                    print('key:', k)
+                    print('parsed options:', v_opts)
+                    assert v in v_opts
+
+                    for vi in v_opts:
+                        if vi == v:
+                            continue
+                        w.addItem(vi)
+
+                    # TODO need to add v first or last?
+                    # TODO use radio instead?
                     print_stuff = True
 
                 else:
@@ -806,8 +876,10 @@ class ROIAnnotation(QWidget):
             x_coords, y_coords, weights = data
 
             # TODO TODO TODO get this shape from thor metadata
+            # TODO allow x and y diff?
+            max_bound = 256
             footprint = np.array(coo_matrix((weights, (x_coords, y_coords)),
-                shape=(256, 256)).todense())
+                shape=(max_bound, max_bound)).todense())
 
             self.full_footprints[cell] = footprint
 
@@ -853,17 +925,6 @@ class ROIAnnotation(QWidget):
             if (in_display_region > 0).any():
                 near_footprints[c] = in_display_region
 
-        # TODO TODO how to draw only partial contours? ok to just draw out of
-        # bounds?
-
-        # TODO should probably compute over nearby footprints too...
-        # (or just once somewhere / use known value of what min could be?
-        # just all nonzero?)
-        contour_level = cropped_footprint[cropped_footprint > 0].min()
-
-        #######################################################################
-
-        # TODO TODO TODO clear the figure/all axes as necessary
         mpl_contour = None
         for ax, row in zip(self.axes.flat,
             self.metadata.sort_values('odor_onset_frame').itertuples()):
@@ -894,18 +955,43 @@ class ROIAnnotation(QWidget):
 
             ax.imshow(trial_dff, cmap='gray')
 
+            # TODO automatically loop through all cell ids and check for no
+            # assertionerrors as a test / screening for test cases / bugs
             if mpl_contour is None:
                 near_footprint_contours = dict()
                 for c, f in near_footprints.items():
-                    mpl_near_contour = ax.contour(f, [contour_level],
+                    mpl_near_contour = ax.contour(f > 0, [0.5],
                         colors='blue')
-                    assert len(mpl_near_contour.collections) == 1
-                    paths = mpl_near_contour.collections[0].get_paths()
-                    assert len(paths) == 1
-                    near_footprint_contours[c] = paths[0].vertices
+                    try:
+                        near_footprint_contours[c] = \
+                            mpl_contour2segments(mpl_near_contour, f.shape)
+                    except AssertionError as err:
+                        # TODO current err-ing cell_ids:
+                        # 95 (this footprint is 2 connected components. not sure
+                        # how to handle... as plot would suggest they are two
+                        # rois w/o some color code / label / other indication)
+                        print(cell_id)
+                        print(c)
+                        print(f)
+                        print('np.' + repr(f))
+                        print(err)
+                        '''
+                        import pickle
+                        with open('pathsbug.p','wb') as fh:
+                            dump = {
+                                'c': c,
+                                'f': f,
+                                'mpl_near_contour': mpl_near_contour,
+                                'paths': paths
+                            }
+                            pickle.dump(dump, fh)
+
+                        '''
+                        import ipdb; ipdb.set_trace()
+                        return
 
                 # TODO factor into fn
-                mpl_contour = ax.contour(cropped_footprint, [contour_level],
+                mpl_contour = ax.contour(cropped_footprint > 0, [0.5],
                     colors='red')
                 assert len(mpl_contour.collections) == 1
                 paths = mpl_contour.collections[0].get_paths()
