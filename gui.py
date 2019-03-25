@@ -80,52 +80,25 @@ def crop_to_nonzero(matrix, margin=0):
     cropped = matrix[x_min:x_max+1, y_min:y_max+1]
     return cropped, ((x_min, x_max), (y_min, y_max))
 
-'''
-def close_path_on_edge(vertex_array, max_bounds):
-    """Takes a Nx2 list of points, and adds points along boundary to close.
-    """
-    # TODO maybe move bounds check in here?
-'''
 
-def mpl_contour2segments(mpl_contour, max_bounds, err_on_multiple_comps=False):
-    """Takes the output of mpl.contour and returns a list of Nx2 numpy arrays of
-    segments, which represent a closed version of the contour.
+def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
     """
-    # TODO handle case where there are multiple connected components, not b/c
-    # overlap w/ border? raise error?
+    """
+    # TODO put zero border of one pixel around everything
+    dims = footprint.shape
+    padded_footprint = np.zeros(tuple(d + 2 for d in dims))
+    padded_footprint[tuple(slice(1,-1) for _ in dims)] = footprint
+    
+    mpl_contour = ax.contour(padded_footprint > 0, [0.5], **kwargs)
+    # TODO which of these is actually > 1 in multiple comps case?
+    # handle that one approp w/ err_on_multiple_comps!
     assert len(mpl_contour.collections) == 1
     paths = mpl_contour.collections[0].get_paths()
-    vertex_arrays = [p.vertices for p in paths]
-    # Assuming this is always caused by contour interesting w/ boundary,
-    # this should make sense.
-    if len(vertex_arrays) > 1:
-        # TODO may need to find arbitrary (contiguous?) sequences of these
-        # arrays to join? right now handle cases where all arrays are part of a
-        # broken contour, or there are two arrays, one of which is an isolated
-        # component, and one of which is a contour broken by an edge...
-        # TODO even possible? may be no unique way to join them... prob fail in
-        # that case? need to just modify contour finding algorithm / change my
-        # approach here?
-        # TODO maybe remove each closed component and re-evaluate?
-        first = vertex_arrays[0][0]
-        last = vertex_arrays[-1][-1]
-        # Checking our assumption that border caused
-        # TODO max_bounds seems transposed wrt segments, but why...?
-        # does that make sense?
-        max_bounds = [b - 1 for b in max_bounds]
-        if (((first[0] == 0 and last[0] == 0) or
-            (first[1] == 0 and last[1] == 0)) or
-           ((first[0] == max_bounds[1] and last[0] == max_bounds[1]) or
-           (first[1] == max_bounds[0] and last[1] == max_bounds[0]))):
+    assert len(paths) == 1
+    contour = paths[0].vertices
 
-            if err_on_multiple_comps:
-                raise ValueError('multiple components in contour')
-            else:
-                # TODO recursion? see other todos above
-                raise NotImplementedError
-
-        vertex_arrays.append([first])
-    return np.concatenate(vertex_arrays)
+    # Correct index change caused by padding.
+    return contour - 1
 
 
 # TODO worth allowing selection of a folder?
@@ -180,6 +153,8 @@ def merge_recordings(df, recordings):
     return df
 
 
+# TODO also move these two variable defs? (to globals below?) for sake of
+# consistency?
 recording_cols = [
     'prep_date',
     'fly_num',
@@ -207,54 +182,6 @@ def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
         raise IOError('No motion corrected TIFs found in {}'.format(tif_dir))
 
     return tif
-
-
-db_hostname = 'atlas'
-our_hostname = socket.gethostname()
-if our_hostname == db_hostname:
-    url = 'postgresql+psycopg2://tracedb:tracedb@localhost:5432/tracedb'
-else:
-    url = ('postgresql+psycopg2://tracedb:tracedb@{}' +
-        ':5432/tracedb').format(db_hostname)
-
-conn = create_engine(url)
-
-# TODO [refactor to (?)] make it possible to refresh these?
-print('reading odors from postgres...', end='')
-odors = pd.read_sql('odors', conn)
-print(' done')
-
-print('reading presentations from postgres...', end='')
-presentations = pd.read_sql('presentations', conn)
-print(' done')
-
-presentations['from_onset'] = presentations.from_onset.apply(
-    lambda x: np.array(x))
-
-presentations = merge_odors(presentations, odors)
-
-# TODO change sql for recordings table to use thorimage dir + date + fly
-# as index?
-recordings = pd.read_sql('recordings', conn)
-
-presentations = merge_recordings(presentations, recordings)
-
-rec_meta_cols = [
-    'recording_from',
-    'prep_date',
-    'fly_num',
-    'thorimage_id',
-    'thorimage_path',
-    'thorsync_path',
-    'stimulus_data_path'
-]
-recordings_meta = presentations[rec_meta_cols].drop_duplicates()
-
-footprints = pd.read_sql('cells', conn)
-footprints = footprints.merge(recordings_meta, on='recording_from')
-footprints.set_index(recording_cols, inplace=True)
-
-comp_cols = recording_cols + ['comparison']
 
 
 # TODO why exactly do we need this wrapper again?
@@ -849,9 +776,7 @@ class ROIAnnotation(QWidget):
         self.last_frame = self.metadata.odor_offset_frame.max()
         # TODO assert no other onset / offset frames are in this range?
 
-        #self.comp_movie = self.movie[self.first_frame:self.last_frame, :, :]
         print('movie.shape:', self.movie.shape)
-        #print('comp_movie.shape:', self.comp_movie.shape)
 
         # TODO TODO could allow just comparison to be played... might be useful
         # (until a cell is clicked)
@@ -905,16 +830,11 @@ class ROIAnnotation(QWidget):
         '''
         footprint = self.full_footprints[cell_id]
 
-        # TODO maybe some percentile / fixed size about maximum
-        # density?
         # TODO TODO take the margin as a parameter in the GUI
         cropped_footprint, ((x_min, x_max), (y_min, y_max)) = \
             crop_to_nonzero(footprint, margin=6)
 
         near_footprints = dict()
-        # TODO TODO TODO *find* nearby footprints->contours of another color
-        # TODO TODO make sense to convert all footprints to full matrices in
-        # open_comparison, to make searching easier?
         for c, f in self.full_footprints.items():
             if c == cell_id:
                 continue
@@ -934,8 +854,6 @@ class ROIAnnotation(QWidget):
             curr_start_frame = odor_onset_frame - self.background_frames
             curr_stop_frame = odor_onset_frame + self.response_frames
 
-            # TODO TODO delete comp_movie (not useful because frame #s
-            # change...)
             # TODO off by one?
             trial_background = self.movie[
                 curr_start_frame:odor_onset_frame, x_min:x_max + 1,
@@ -960,43 +878,13 @@ class ROIAnnotation(QWidget):
             if mpl_contour is None:
                 near_footprint_contours = dict()
                 for c, f in near_footprints.items():
-                    mpl_near_contour = ax.contour(f > 0, [0.5],
-                        colors='blue')
-                    try:
-                        near_footprint_contours[c] = \
-                            mpl_contour2segments(mpl_near_contour, f.shape)
-                    except AssertionError as err:
-                        # TODO current err-ing cell_ids:
-                        # 95 (this footprint is 2 connected components. not sure
-                        # how to handle... as plot would suggest they are two
-                        # rois w/o some color code / label / other indication)
-                        print(cell_id)
-                        print(c)
-                        print(f)
-                        print('np.' + repr(f))
-                        print(err)
-                        '''
-                        import pickle
-                        with open('pathsbug.p','wb') as fh:
-                            dump = {
-                                'c': c,
-                                'f': f,
-                                'mpl_near_contour': mpl_near_contour,
-                                'paths': paths
-                            }
-                            pickle.dump(dump, fh)
+                    # TODO maybe indicate somehow visually if contour is cutoff
+                    # (not?)hatched? don't draw as closed? diff color?
+                    near_footprint_contours[c] = \
+                        closed_mpl_contours(f, ax, colors='blue')
 
-                        '''
-                        import ipdb; ipdb.set_trace()
-                        return
-
-                # TODO factor into fn
-                mpl_contour = ax.contour(cropped_footprint > 0, [0.5],
-                    colors='red')
-                assert len(mpl_contour.collections) == 1
-                paths = mpl_contour.collections[0].get_paths()
-                assert len(paths) == 1
-                contour = paths[0].vertices
+                contour = \
+                    closed_mpl_contours(cropped_footprint, ax, colors='red')
             else:
                 for c, cont in near_footprint_contours.items():
                     ax.plot(cont[:,0], cont[:,1], 'b-')
@@ -1170,6 +1058,62 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    global conn
+    global odors
+    global recordings
+    global presentations
+    global rec_meta_cols
+    global recordings_meta
+    global footprints
+    global comp_cols
+
+    db_hostname = 'atlas'
+    our_hostname = socket.gethostname()
+    if our_hostname == db_hostname:
+        url = 'postgresql+psycopg2://tracedb:tracedb@localhost:5432/tracedb'
+    else:
+        url = ('postgresql+psycopg2://tracedb:tracedb@{}' +
+            ':5432/tracedb').format(db_hostname)
+
+    conn = create_engine(url)
+
+    print('reading odors from postgres...', end='')
+    odors = pd.read_sql('odors', conn)
+    print(' done')
+
+    print('reading presentations from postgres...', end='')
+    presentations = pd.read_sql('presentations', conn)
+    print(' done')
+
+    presentations['from_onset'] = presentations.from_onset.apply(
+        lambda x: np.array(x))
+
+    presentations = merge_odors(presentations, odors)
+
+    # TODO change sql for recordings table to use thorimage dir + date + fly
+    # as index?
+    recordings = pd.read_sql('recordings', conn)
+
+    presentations = merge_recordings(presentations, recordings)
+
+    rec_meta_cols = [
+        'recording_from',
+        'prep_date',
+        'fly_num',
+        'thorimage_id',
+        'thorimage_path',
+        'thorsync_path',
+        'stimulus_data_path'
+    ]
+    recordings_meta = presentations[rec_meta_cols].drop_duplicates()
+
+    footprints = pd.read_sql('cells', conn)
+    footprints = footprints.merge(recordings_meta, on='recording_from')
+    footprints.set_index(recording_cols, inplace=True)
+
+    comp_cols = recording_cols + ['comparison']
+
+
     # TODO convention re: this vs setWindowTitle? latter not available if making
     # a window out of a widget?
     # TODO maybe setWindowTitle based on the tab? or add to end?
