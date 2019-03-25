@@ -6,6 +6,7 @@ Traverses analysis output and loads traces and odor information into database.
 
 import os
 from os.path import join, split
+import sys
 import glob
 from datetime import datetime
 import pickle
@@ -39,6 +40,7 @@ calc_timing_info = False
 motion_correct = True
 only_motion_correct_for_analysis = True
 
+load_traces = False
 # TODO make sure that incomplete entries are not preventing full
 # analysis from being inserted, despite setting of this flag
 #overwrite_older_analysis = True
@@ -755,7 +757,8 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
     # TODO maybe delete empty folders under analysis? (do in atexit handler)
 
-#import sys; sys.exit()
+if not load_traces:
+    sys.exit()
 
 def git_hash(repo_file):
     repo = git.Repo(repo_file, search_parent_directories=True)

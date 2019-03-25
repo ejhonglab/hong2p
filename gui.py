@@ -11,6 +11,7 @@ import xml.etree.ElementTree as etree
 import warnings
 from collections import defaultdict
 import traceback
+from functools import partial
 
 # TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
 # differences?
@@ -35,7 +36,7 @@ from matplotlib.figure import Figure
 # TODO TODO allow things to fail gracefully if we don't have cnmf.
 # either don't display tabs that involve it or display a message indicating it
 # was not found.
-from caiman.source_extraction.cnmf import params
+from caiman.source_extraction.cnmf import params, cnmf
 
 
 def matlabels(df, rowlabel_fn):
@@ -302,7 +303,10 @@ class Segmentation(QWidget):
             'quality'
         )
         dont_show_by_group = defaultdict(set)
+        # TODO TODO get rid of most of this (maybe whole data tab if decay_time
+        # moved to temporal) after loading from thorlabs metadata
         dont_show_by_group.update({
+            'data': {'fnames','dims'}, #'fr','dxy'},
             'merging': {'gSig_range'},
         })
             
@@ -424,6 +428,11 @@ class Segmentation(QWidget):
                     # maybe still print or something?
                     continue
 
+                # CNMF has slightly different key names in the dict and object
+                # representations of a set of params...
+                # TODO maybe fix in CNMF in the future
+                group_key = g.split('_')[0]
+
                 # TODO maybe do this some other way / don't?
                 # TODO make tooltip for each from docstring?
                 # TODO TODO also get next line(s) for tooltip?
@@ -462,26 +471,38 @@ class Segmentation(QWidget):
                     w.setChecked(v)
                     assert not w.isTristate()
 
+                    w.stateChanged.connect(
+                        partial(self.set_boolean, group_key, k))
+
                 elif type(v) is int:
                     # TODO set step relative to magnitude?
                     # TODO range?
+                    # TODO TODO could not set block_size_spat > 99. check value
+                    # is right + any default ranges are not a problem?
                     w = QSpinBox()
                     w.setValue(v)
                     print_stuff = True
+                    w.valueChanged.connect(
+                        partial(self.set_from_spinbox, group_key, k))
 
                 elif type(v) is float:
                     # TODO set step and decimal relative to default size?
                     # (1/10%?)
                     # TODO range?
                     # TODO maybe assume stuff in [0,1] should stay there?
+                    # TODO TODO is there some default range limitation???
+                    # why could i not set alpha_snmf / whatever to > 99.99? fix!
                     w = QDoubleSpinBox()
                     w.setValue(v)
+                    w.valueChanged.connect(
+                        partial(self.set_from_spinbox, group_key, k))
 
                 # TODO TODO if type is list (tuple?) try recursively looking up
                 # types? (or just handle numbers?) -> place in
                 # qwidget->qhboxlayout?
 
                 elif type(v) is str:
+                    # TODO use radio instead?
                     w = QComboBox()
                     w.addItem(v)
 
@@ -497,13 +518,27 @@ class Segmentation(QWidget):
                             continue
                         w.addItem(vi)
 
-                    # TODO need to add v first or last?
-                    # TODO use radio instead?
                     print_stuff = True
+
+                    w.currentIndexChanged[str].connect(
+                        partial(self.set_from_list, group_key, k))
 
                 else:
                     print_stuff = True
                     w = QLineEdit()
+                    w.setText(repr(v))
+                    # TODO set value to str()/repr of defalt value
+                    # TODO eval input in this case (to parse numpy arrays,
+                    # lists, etc)?
+                    # TODO TODO if using eval, use setValidator to set some
+                    # validator that eval call works?
+
+                    # TODO is this the idiomatic signal to use here? there are
+                    # some other options
+                    #w.textChanged.connect(
+                    # TODO TODO how to get text from editingFinished?
+                    w.editingFinished.connect(
+                        partial(self.set_from_text, group_key, k, w))
 
                 if print_stuff:
                     print(k, v, type(v))
@@ -521,6 +556,18 @@ class Segmentation(QWidget):
         # does the division make sense b/c some validation takes longer than
         # others (and that is what can be in the separate validation tab)?
 
+        self.display_widget = QWidget()
+        self.layout.addWidget(self.display_widget)
+        self.display_layout = QVBoxLayout(self.display_widget)
+        self.display_widget.setLayout(self.display_layout)
+
+        self.fig = Figure()
+        self.mpl_canvas = FigureCanvas(self.fig)
+        self.display_layout.addWidget(self.mpl_canvas)
+
+        self.contour_ax = self.fig.subplots(1, 1)
+        self.contour_ax.axis('off')
+
         # TODO TODO TODO provide the opportunity to compare outputs of sets of
         # parameters, either w/ same displays side by side, or overlayed?
 
@@ -531,10 +578,60 @@ class Segmentation(QWidget):
         self.threadpool = QThreadPool()
 
 
+    # TODO after implementing per-type, see if can be condensed to one function
+    # for all types
+    def set_boolean(self, group, key, qt_value):
+        if qt_value == 0:
+            new_value = False
+        elif qt_value == 2:
+            new_value = True
+        else:
+            raise ValueError('unexpected checkbox signal output')
+        #print('Group:', group, 'Key:', key)
+        #print('Old value:', self.params.get(group, key))
+        self.params.set(group, {key: new_value})
+        #print('New value:', self.params.get(group, key))
+
+
+    # TODO so looks like this can be collapsed w/ list no problem? new name?
+    # TODO wrap all these callbacks to enable/disable verbose stuff in one
+    # place?
+    def set_from_spinbox(self, group, key, new_value):
+        #print('Group:', group, 'Key:', key)
+        #print('Old value:', self.params.get(group, key))
+        self.params.set(group, {key: new_value})
+        #print('New value:', self.params.get(group, key))
+
+
+    def set_from_list(self, group, key, new_value):
+        #print('Group:', group, 'Key:', key)
+        #print('Old value:', self.params.get(group, key))
+        self.params.set(group, {key: new_value})
+        #print('New value:', self.params.get(group, key))
+
+
+    def set_from_text(self, group, key, qt_line_edit):
+        if qt_line_edit.isModified():
+            new_text = qt_line_edit.text()
+            #print('new_text:', new_text)
+            # TODO equivalent of ast.literal_eval that also works w/ things like
+            # numpy arrays?
+            new_value = eval(new_text)
+            '''
+            print('new_value:', new_value)
+            print('repr(new_value):', repr(new_value))
+            print('type(new_value):', type(new_value))
+            '''
+            self.params.set(group, {key: new_value})
+            qt_line_edit.setModified(False)
+
+
     def start_cnmf_worker(self):
         self.run_cnmf_btn.setEnabled(False)
-        # TODO re-enable button after cnmf done
         # TODO separate button to cancel? change run-button to cancel?
+
+        self.contour_ax.clear()
+        self.contour_ax.axis('off')
 
         # TODO what kind of (if any) limitations are there on the extent to
         # which data can be shared across threads? can the worker modify
@@ -542,7 +639,6 @@ class Segmentation(QWidget):
 
         # Pass the function to execute
         # Any other args, kwargs are passed to the run function
-        # TODO TODO pass cnmf params as appropriate
         worker = Worker(self.run_cnmf)
         # TODO so how does it know to pass one arg in this case?
         # (as opposed to cnmf_done case)
@@ -557,32 +653,37 @@ class Segmentation(QWidget):
 
 
     def run_cnmf(self):
-        '''
+        # TODO time cnmf run + report how long it took
+        print('running cnmf')
         # TODO TODO use cm.cluster.setup_cluster or not? required now?
         # TODO what is the dview that returns as second arg?
         # TODO i feel like this should be written to not require n_processes...
         n_processes = 1
         # TODO need to copy params first?
-        cnm = cnmf.CNMF(n_processes, params=self.params)
+        # TODO TODO maybe make CNMF obj w/ params immediately, as it seems to
+        # change some of the parameters? then modify params from there?
+        self.cnm = cnmf.CNMF(n_processes, params=self.params)
         # images : mapped np.ndarray of shape (t,x,y[,z])
         # TODO does it really need to be mapped? how can you even check if a
         # numpy array is mapped?
         # TODO maybe use fit_file for certain ways of getting here in the gui?
         # TODO TODO TODO check dims / C/F order
-        cnm.fit(self.movie)
-        '''
-        print('starting job')
-        import time; time.sleep(5)
-        print('done with job')
+        self.cnm.fit(self.movie)
+
+        # TODO maybe have a widget that shows the text output from cnmf?
 
 
     def cnmf_done(self):
         self.run_cnmf_btn.setEnabled(True)
+        print('done with cnmf')
 
 
     def get_cnmf_output(self):
-        #self.
-        pass
+        # TODO fix. still seems to make new figure / ax
+        # TODO TODO is calling cnm stuff changing my backend???
+        self.cnm.estimates.plot_contours(img=self.avg, ax=self.contour_ax)
+        self.mpl_canvas.draw()
+        ######import ipdb; ipdb.set_trace()
 
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
@@ -604,7 +705,20 @@ class Segmentation(QWidget):
 
         tiff = motion_corrected_tiff_filename(*rec_row)
         print('loading tiff {}...'.format(tiff), end='')
-        self.movie = tifffile.imread(tiff)
+        # TODO is cnmf expecting float to be in range [0,1], like skimage?
+        self.movie = tifffile.imread(tiff).astype('float32')
+
+        self.avg = np.mean(self.movie, axis=0)
+
+        '''
+        # TODO just try to modify cnmf to work w/ uint16 as input?
+        # might make it a bit faster...
+        from_type = np.iinfo(self.movie.dtype)
+        to_type = np.iinfo(np.dtype('float32'))
+
+        to_type.max * (self.movie / from_type.max)
+        '''
+
         print(' done.')
         #fps = fps_from_thor(self.metadata)
 
