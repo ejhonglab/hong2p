@@ -6,12 +6,13 @@ GUI to do make ROIs for trace extraction and validate those ROIs.
 
 import socket
 import sys
-from os.path import split, join, exists
+from os.path import split, join, exists, sep
 import xml.etree.ElementTree as etree
 import warnings
 from collections import defaultdict
 import traceback
 from functools import partial
+import glob
 
 # TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
 # differences?
@@ -19,7 +20,7 @@ from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
-    QDoubleSpinBox)
+    QDoubleSpinBox, QLabel)
 
 import pyqtgraph as pg
 import tifffile
@@ -32,11 +33,26 @@ from scipy.sparse import coo_matrix
 import cv2
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.figure import Figure
+# TODO TODO find uncommitted changes + git version immediately upon run
+# allow reloading caiman code w/o closing gui?
+import git
 
 # TODO TODO allow things to fail gracefully if we don't have cnmf.
 # either don't display tabs that involve it or display a message indicating it
 # was not found.
 from caiman.source_extraction.cnmf import params, cnmf
+
+
+# TODO also move these two variable defs? (to globals below?) for sake of
+# consistency?
+recording_cols = [
+    'prep_date',
+    'fly_num',
+    'thorimage_id'
+]
+# TODO use env var like kc_analysis currently does for prefix after refactoring
+raw_data_root = '/mnt/nas/mb_team/raw_data'
+analysis_output_root = '/mnt/nas/mb_team/analysis_output'
 
 
 def matlabels(df, rowlabel_fn):
@@ -54,6 +70,29 @@ def odors_label(row):
 def odors_and_repeat_label(row):
     odors = odors_label(row)
     return '{}\n{}'.format(odors, row['repeat_num'])
+
+def thor_xml_root(filename):
+    """Returns etree root of ThorImage XML settings from TIFF filename.
+    """
+    if filename.startswith(analysis_output_root):
+        filename = filename.replace(analysis_output_root, raw_data_root)
+
+    parts = filename.split(sep)
+    thorimage_id = '_'.join(parts[-1].split('_')[:-1])
+
+    xml_fname = sep.join(parts[:-2] + [thorimage_id, 'Experiment.xml'])
+    return etree.parse(xml_fname).getroot()
+
+def cnmf_metadata_from_thor(filename):
+    xml_root = thor_xml_root(filename)
+    lsm = xml_root.find('LSM').attrib
+    fps = float(lsm['frameRate']) / float(lsm['averageNum'])
+    # "spatial resolution of FOV in pixels per um" "(float, float)"
+    # TODO do they really mean pixel/um, not um/pixel?
+    pixels_per_um = 1 / float(lsm['pixelSizeUM'])
+    dxy = (pixels_per_um, pixels_per_um)
+    # TODO maybe load dims anyway?
+    return {'fr': fps, 'dxy': dxy}
 
 def fps_from_thor(df, nas_prefix='/mnt/nas'):
     # TODO assert unique first?
@@ -85,7 +124,6 @@ def crop_to_nonzero(matrix, margin=0):
 def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
     """
     """
-    # TODO put zero border of one pixel around everything
     dims = footprint.shape
     padded_footprint = np.zeros(tuple(d + 2 for d in dims))
     padded_footprint[tuple(slice(1,-1) for _ in dims)] = footprint
@@ -154,17 +192,6 @@ def merge_recordings(df, recordings):
     return df
 
 
-# TODO also move these two variable defs? (to globals below?) for sake of
-# consistency?
-recording_cols = [
-    'prep_date',
-    'fly_num',
-    'thorimage_id'
-]
-# TODO use env var like kc_analysis currently does for prefix after refactoring
-analysis_output_root = '/mnt/nas/mb_team/analysis_output'
-
-
 def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
     date_dir = date.strftime('%Y-%m-%d')
     fly_num = str(fly_num)
@@ -184,6 +211,26 @@ def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
 
     return tif
 
+
+def list_motion_corrected_tifs():
+    """
+    """
+    motion_corrected_tifs = []
+    for date_dir in glob.glob(join(analysis_output_root, '**')):
+        for fly_dir in glob.glob(join(date_dir, '**')):
+            try:
+                fly_num = int(split(fly_dir)[-1])
+
+                tif_dir = join(fly_dir, 'tif_stacks')
+                if exists(tif_dir):
+                    # TODO explicitly filter for *_nr.tif / *_rig.tif?
+                    motion_corrected_tifs += glob.glob(join(tif_dir, '*.tif'))
+
+            except ValueError:
+                continue
+
+    return motion_corrected_tifs
+        
 
 # TODO why exactly do we need this wrapper again?
 class WorkerSignals(QObject):
@@ -276,26 +323,51 @@ class Segmentation(QWidget):
         super().__init__()
         self.setWindowTitle('Segmentation / Trace Extraction')
 
+        # TODO move initialization of this thing to another class
+        # (DataSelector or something) that is shared?
+        # TODO TODO TODO use glob or something to find all motion corrected tifs
+        # in NAS dir (just show nr?). still display same shorthand for each exp?
+        # still use pandas?
+        '''
         self.presentations = presentations.set_index(comp_cols)
-        self.footprints = footprints
+        # Needs to be indexed same as items, for open_recording to work.
         self.recordings = presentations[recording_cols].drop_duplicates(
             ).sort_values(recording_cols)
 
         items = ['/'.join(r.split()[1:])
             for r in str(self.recordings).split('\n')[1:]]
-        self.list = QListWidget(self)
-        self.list.addItems(items)
-        self.list.itemDoubleClicked.connect(self.open_recording)
+        '''
+        self.motion_corrected_tifs = list_motion_corrected_tifs()
+        for d in self.motion_corrected_tifs:
+            print(d)
+
+        items = []
+        for d in self.motion_corrected_tifs:
+            x = d.split(sep)
+            fname_parts = x[-1].split('_')
+            cor_type = 'rigid' if fname_parts[-1][:-4] == 'rig' else 'non-rigid'
+            item_parts = [x[-4], x[-3], '_'.join(fname_parts[:-1]), cor_type]
+            items.append('/'.join(item_parts))
+            # TODO make make tooltip the full path? or show full path somewhere
+            # else?
+
+        # TODO maybe make slider between data viewer and everything else?
+        # sliders for everything in this layout?
         self.layout = QHBoxLayout(self)
         self.setLayout(self.layout)
+
+        self.list = QListWidget(self)
         self.layout.addWidget(self.list)
-        self.list.setFixedWidth(160)
+        self.list.setFixedWidth(210)
+        self.list.addItems(items)
+        self.list.itemDoubleClicked.connect(self.open_recording)
 
         # Other groups are: motion, online, preprocess_params
         # TODO worth including patch_params? preprocess_params?
         cnmf_groups = (
             'data',
             'patch_params',
+            'preprocess_params',
             'init_params',
             'spatial_params',
             'temporal_params',
@@ -310,17 +382,18 @@ class Segmentation(QWidget):
             'merging': {'gSig_range'},
         })
             
-        cnmf_ctrl_widget = QWidget()
+        # TODO or should this get a layout as input?
+        cnmf_ctrl_widget = QWidget(self)
         self.layout.addWidget(cnmf_ctrl_widget)
 
         cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
         cnmf_ctrl_widget.setLayout(cnmf_ctrl_layout)
 
-        param_tabs = QTabWidget()
+        param_tabs = QTabWidget(cnmf_ctrl_widget)
         cnmf_ctrl_layout.addWidget(param_tabs)
 
         # TODO TODO eliminate vertical space between these rows of buttons
-        shared_btns = QWidget()
+        shared_btns = QWidget(cnmf_ctrl_widget)
         cnmf_ctrl_layout.addWidget(shared_btns)
         shared_btn_layout = QVBoxLayout(shared_btns)
         shared_btns.setLayout(shared_btn_layout)
@@ -328,25 +401,27 @@ class Segmentation(QWidget):
         shared_btn_layout.setContentsMargins(0, 0, 0, 0)
         shared_btns.setFixedHeight(80)
 
-        param_btns = QWidget()
+        param_btns = QWidget(shared_btns)
         shared_btn_layout.addWidget(param_btns)
         param_btns_layout = QHBoxLayout(param_btns)
         param_btns.setLayout(param_btns_layout)
         param_btns_layout.setContentsMargins(0, 0, 0, 0)
 
-        other_btns = QWidget()
+        other_btns = QWidget(shared_btns)
         shared_btn_layout.addWidget(other_btns)
         other_btns_layout = QHBoxLayout(other_btns)
         other_btns.setLayout(other_btns_layout)
         other_btns_layout.setContentsMargins(0, 0, 0, 0)
 
+        # TODO also give parent?
         reset_cnmf_params_btn = QPushButton('Reset All Parameters')
         reset_cnmf_params_btn.setEnabled(False)
         param_btns_layout.addWidget(reset_cnmf_params_btn)
 
         mk_default_params_btn = QPushButton('Make Parameters Default')
-        mk_default_params_btn.setEnabled(False)
+        #mk_default_params_btn.setEnabled(False)
         param_btns_layout.addWidget(mk_default_params_btn)
+        mk_default_params_btn.clicked.connect(self.save_default_params)
 
         # TODO support this?
         # TODO TODO at least make not-yet-implemented stuff unclickable
@@ -365,8 +440,6 @@ class Segmentation(QWidget):
         other_btns_layout.addWidget(save_cnmf_output_btn)
         save_cnmf_output_btn.setEnabled(False)
 
-        # TODO TODO make sure this prevents multiple attempts to run the cnmf!
-        # (while one is running)
         self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
 
         # TODO should save cnmf output be a button here or to the right?
@@ -376,10 +449,20 @@ class Segmentation(QWidget):
         # TODO maybe include a progress bar here? to the side? below?
 
         # TODO why is data/decay_time not in temporal parameters?
-        self.params = params.CNMFParams()
+        self.default_json_params = '.default_cnmf_params.json'
+        # TODO maybe search indep of cwd?
+        if exists(self.default_json_params):
+            print('Loading default parameters from {}'.format(
+                self.default_json_params))
+
+            self.params = params.CNMFParams.from_json(self.default_json_params)
+        else:
+            self.params = params.CNMFParams()
+
         param_dict = self.params.to_dict()
 
         n = int(np.ceil(np.sqrt(len(cnmf_groups))))
+        seen_types = set()
         for i, g in enumerate(cnmf_groups):
             dont_show = dont_show_by_group[g]
 
@@ -394,15 +477,18 @@ class Segmentation(QWidget):
             ##group = QGroupBox(group_name)
             ##param_layout.addWidget(group, x, y)
 
-            tab = QWidget()
+            tab = QWidget(param_tabs)
             param_tabs.addTab(tab, group_name)
             tab_layout = QVBoxLayout(tab)
             tab.setLayout(tab_layout)
 
-            group = QWidget()
+            group = QWidget(tab)
             group_layout = QFormLayout(group)
             group.setLayout(group_layout)
             tab_layout.addWidget(group)
+
+            if g == 'data':
+                self.data_group_layout = group_layout
 
             reset_tab = QPushButton('Reset {} Parameters'.format(group_name))
             reset_tab.setEnabled(False)
@@ -460,14 +546,11 @@ class Segmentation(QWidget):
                 # off? fix that? translate explicitely to a qlabel to maybe set
                 # other properties about display?
 
-                # TODO TODO why are some checkboxes tristate?
-                # is this a matter of the setCheckState w/ either true or false?
-
-                # TODO TODO TODO connect back to changing parameters
+                seen_types.add(str(type(v)))
 
                 if type(v) is bool:
                     # TODO tristate in some cases?
-                    w = QCheckBox()
+                    w = QCheckBox(group)
                     w.setChecked(v)
                     assert not w.isTristate()
 
@@ -477,10 +560,14 @@ class Segmentation(QWidget):
                 elif type(v) is int:
                     # TODO set step relative to magnitude?
                     # TODO range?
-                    # TODO TODO could not set block_size_spat > 99. check value
-                    # is right + any default ranges are not a problem?
-                    w = QSpinBox()
+                    w = QSpinBox(group)
+
+                    int_min = -1
+                    int_max = 10000
+                    w.setRange(int_min, int_max)
+                    assert v >= int_min and v <= int_max
                     w.setValue(v)
+
                     print_stuff = True
                     w.valueChanged.connect(
                         partial(self.set_from_spinbox, group_key, k))
@@ -490,10 +577,14 @@ class Segmentation(QWidget):
                     # (1/10%?)
                     # TODO range?
                     # TODO maybe assume stuff in [0,1] should stay there?
-                    # TODO TODO is there some default range limitation???
-                    # why could i not set alpha_snmf / whatever to > 99.99? fix!
-                    w = QDoubleSpinBox()
+                    w = QDoubleSpinBox(group)
+
+                    float_min = -1.
+                    float_max = 10000.
+                    w.setRange(float_min, float_max)
+                    assert v >= float_min and v <= float_max
                     w.setValue(v)
+
                     w.valueChanged.connect(
                         partial(self.set_from_spinbox, group_key, k))
 
@@ -503,7 +594,7 @@ class Segmentation(QWidget):
 
                 elif type(v) is str:
                     # TODO use radio instead?
-                    w = QComboBox()
+                    w = QComboBox(group)
                     w.addItem(v)
 
                     # TODO maybe should use regex?
@@ -525,18 +616,10 @@ class Segmentation(QWidget):
 
                 else:
                     print_stuff = True
-                    w = QLineEdit()
+                    w = QLineEdit(group)
                     w.setText(repr(v))
-                    # TODO set value to str()/repr of defalt value
-                    # TODO eval input in this case (to parse numpy arrays,
-                    # lists, etc)?
                     # TODO TODO if using eval, use setValidator to set some
                     # validator that eval call works?
-
-                    # TODO is this the idiomatic signal to use here? there are
-                    # some other options
-                    #w.textChanged.connect(
-                    # TODO TODO how to get text from editingFinished?
                     w.editingFinished.connect(
                         partial(self.set_from_text, group_key, k, w))
 
@@ -547,6 +630,8 @@ class Segmentation(QWidget):
 
                 group_layout.addRow(k, w)
             print('')
+
+        print('Seen types:', seen_types)
 
         # TODO set tab index to most likely to change? spatial?
 
@@ -560,10 +645,20 @@ class Segmentation(QWidget):
         self.layout.addWidget(self.display_widget)
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
+        # TODO TODO add toolbar / make image navigable
 
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
         self.display_layout.addWidget(self.mpl_canvas)
+        # TODO TODO accept / reject dialog beneath this
+        # (maybe move save button out of ctrl widget? move reject in there?)
+        # TODO TODO rejection should mark set of params in database
+        # TODO warn if would run analysis on same data w/ same params as had
+        # previously led to a rejection
+        # TODO TODO accept should save file to nas and load to database
+        # TODO and refresh stuff in validation window s.t. this experiment now
+        # shows up
+        # TODO maybe also allow more direct passing of this data to other tab
 
         self.contour_ax = self.fig.subplots(1, 1)
         self.contour_ax.axis('off')
@@ -616,6 +711,9 @@ class Segmentation(QWidget):
             #print('new_text:', new_text)
             # TODO equivalent of ast.literal_eval that also works w/ things like
             # numpy arrays?
+            # TODO TODO handle arrays. since their repr doesn't include prefix,
+            # need to either import array here explicitly or detect and add
+            # prefix
             new_value = eval(new_text)
             '''
             print('new_value:', new_value)
@@ -679,12 +777,19 @@ class Segmentation(QWidget):
 
 
     def get_cnmf_output(self):
-        # TODO fix. still seems to make new figure / ax
-        # TODO TODO is calling cnm stuff changing my backend???
-        self.cnm.estimates.plot_contours(img=self.avg, ax=self.contour_ax)
+        # TODO TODO allow toggling between type of backgrouond image shown
+        # (radio / combobox for avg, snr, etc? "local correlations"?)
+        self.cnm.estimates.plot_contours(img=self.avg, ax=self.contour_ax,
+            display_numbers=False, colors='r', linewidth=1.0)
         self.mpl_canvas.draw()
         ######import ipdb; ipdb.set_trace()
 
+
+    def save_default_params(self):
+        print('Writing new default parameters to {}'.format(
+            self.default_json_params))
+        self.params.to_json(self.default_json_params)
+        # TODO maybe use pickle for this?
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
     # buttons in the gui? (maybe to some invisible cache?)
@@ -698,18 +803,64 @@ class Segmentation(QWidget):
         # - or detect stuff not in db, put in browser / load for cnmf here, and
         #   then put in db when done
         idx = self.sender().currentRow()
+        '''
         rec_row = tuple(self.recordings.iloc[idx])
 
         # TODO do i need this?
         self.metadata = self.presentations.loc[rec_row]
 
         tiff = motion_corrected_tiff_filename(*rec_row)
+        '''
+        tiff = self.motion_corrected_tifs[idx]
+
+        data_params = cnmf_metadata_from_thor(tiff)
+        # TODO set param as appropriate / maybe display in non-editable boxes in
+        # data parameters
+        # TODO how to refer to boxes by name, so the right ones can
+        # automatically be set non-editable here?
+        # TODO TODO should params just be set by programmatically changing box
+        # and having that trigger callbacks??? or will that not trigger
+        # callbacks?
+        # TODO TODO rowCount vs count? itemAt seems to work off count
+        # actually...
+        for i in range(self.data_group_layout.count()):
+            # TODO TODO does it always alternate qlabel / widget for that label?
+            # would that ever break? otherwise, how to get a row, with the label
+            # and the other widget for that row?
+            item = self.data_group_layout.itemAt(i).widget()
+            if type(item) == QLabel:
+                continue
+
+            label = self.data_group_layout.labelForField(item).text()
+            if label not in data_params:
+                continue
+
+            v = data_params[label]
+
+            # TODO maybe re-enable under some circumstances?
+            item.setEnabled(False)
+
+            # TODO maybe add support for the other types in case they change
+            # data params
+            if type(item) == QSpinBox or type(item) == QDoubleSpinBox:
+                item.setValue(v)
+            elif type(item) == QLineEdit:
+                # TODO maybe make fn to change lineedit text, so repr/str could
+                # be swapped in one spot
+                # TODO maybe limit display of floating point numbers to a
+                # certain number of decimal places?
+                item.setText(repr(v))
+                self.params.set('data', {label: v})
+
+        # TODO worth setting any other parameters from thor metadata?
+
+        # TODO why does this not seem to print until load finishes...? end?
         print('loading tiff {}...'.format(tiff), end='')
         # TODO is cnmf expecting float to be in range [0,1], like skimage?
         self.movie = tifffile.imread(tiff).astype('float32')
+        print(' done.')
 
         self.avg = np.mean(self.movie, axis=0)
-
         '''
         # TODO just try to modify cnmf to work w/ uint16 as input?
         # might make it a bit faster...
@@ -718,9 +869,7 @@ class Segmentation(QWidget):
 
         to_type.max * (self.movie / from_type.max)
         '''
-
-        print(' done.')
-        #fps = fps_from_thor(self.metadata)
+        # TODO maybe allow playing movie somewhere in display widget?
 
 
 class ROIAnnotation(QWidget):
