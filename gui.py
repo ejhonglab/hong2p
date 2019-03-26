@@ -6,13 +6,16 @@ GUI to do make ROIs for trace extraction and validate those ROIs.
 
 import socket
 import sys
-from os.path import split, join, exists, sep
+from os.path import split, join, exists, sep, getmtime
 import xml.etree.ElementTree as etree
 import warnings
 from collections import defaultdict
 import traceback
 from functools import partial
 import glob
+import hashlib
+import time
+import datetime
 
 # TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
 # differences?
@@ -33,13 +36,13 @@ from scipy.sparse import coo_matrix
 import cv2
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.figure import Figure
-# TODO TODO find uncommitted changes + git version immediately upon run
-# allow reloading caiman code w/o closing gui?
 import git
+import pkg_resources
 
 # TODO TODO allow things to fail gracefully if we don't have cnmf.
 # either don't display tabs that involve it or display a message indicating it
 # was not found.
+import caiman
 from caiman.source_extraction.cnmf import params, cnmf
 
 
@@ -54,6 +57,41 @@ recording_cols = [
 raw_data_root = '/mnt/nas/mb_team/raw_data'
 analysis_output_root = '/mnt/nas/mb_team/analysis_output'
 
+
+def get_caiman_version_info():
+    try:
+        pkg_path = caiman.__file__
+        repo = git.Repo(pkg_path, search_parent_directories=True)
+        remote_urls = list(repo.remotes.origin.urls)
+        assert len(remote_urls) == 1
+        remote_url = remote_urls[0]
+
+        current_hash = repo.head.object.hexsha
+
+        index = repo.index
+        diff = index.diff(None, create_patch=True)
+        changes = ''
+        for d in diff:
+            changes += str(d)
+
+        return {
+            'git_remote': remote_url,
+            'git_hash': current_hash,
+            'git_uncommitted_changes': changes
+        }
+
+    except git.exc.InvalidGitRepositoryError:
+        # TODO this the right name? try in conda? how does this error?
+        version = pkg_resources.get_distribution('caiman').version
+
+        return {'version': version}
+
+def md5(fname):
+    hash_md5 = hashlib.md5()
+    with open(fname, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b''):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest() 
 
 def matlabels(df, rowlabel_fn):
     return df.index.to_frame().apply(rowlabel_fn, axis=1)
@@ -362,8 +400,8 @@ class Segmentation(QWidget):
         self.list.addItems(items)
         self.list.itemDoubleClicked.connect(self.open_recording)
 
-        # Other groups are: motion, online, preprocess_params
-        # TODO worth including patch_params? preprocess_params?
+        # Other groups are: motion, online
+        # TODO worth including patch_params?
         cnmf_groups = (
             'data',
             'patch_params',
@@ -375,7 +413,7 @@ class Segmentation(QWidget):
             'quality'
         )
         dont_show_by_group = defaultdict(set)
-        # TODO TODO get rid of most of this (maybe whole data tab if decay_time
+        # TODO get rid of most of this (maybe whole data tab if decay_time
         # moved to temporal) after loading from thorlabs metadata
         dont_show_by_group.update({
             'data': {'fnames','dims'}, #'fr','dxy'},
@@ -641,7 +679,7 @@ class Segmentation(QWidget):
         # does the division make sense b/c some validation takes longer than
         # others (and that is what can be in the separate validation tab)?
 
-        self.display_widget = QWidget()
+        self.display_widget = QWidget(self)
         self.layout.addWidget(self.display_widget)
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
@@ -650,16 +688,25 @@ class Segmentation(QWidget):
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
         self.display_layout.addWidget(self.mpl_canvas)
+
         # TODO TODO accept / reject dialog beneath this
         # (maybe move save button out of ctrl widget? move reject in there?)
-        # TODO TODO rejection should mark set of params in database
-        # TODO warn if would run analysis on same data w/ same params as had
-        # previously led to a rejection
-        # TODO TODO accept should save file to nas and load to database
-        # TODO and refresh stuff in validation window s.t. this experiment now
-        # shows up
-        # TODO maybe also allow more direct passing of this data to other tab
+        display_btns = QWidget(self.display_widget)
+        self.display_layout.addWidget(display_btns)
+        display_btns.setFixedHeight(100)
+        display_btns_layout = QHBoxLayout(display_btns)
+        display_btns.setLayout(display_btns_layout)
 
+        self.accept_cnmf_btn = QPushButton('Accept', display_btns)
+        display_btns_layout.addWidget(self.accept_cnmf_btn)
+        self.accept_cnmf_btn.clicked.connect(self.accept_cnmf)
+
+        self.reject_cnmf_btn = QPushButton('Reject', display_btns)
+        display_btns_layout.addWidget(self.reject_cnmf_btn)
+        self.reject_cnmf_btn.clicked.connect(self.reject_cnmf)
+
+        # TODO TODO warn if would run analysis on same data w/ same params as
+        # had previously led to a rejection
         self.contour_ax = self.fig.subplots(1, 1)
         self.contour_ax.axis('off')
 
@@ -726,6 +773,8 @@ class Segmentation(QWidget):
 
     def start_cnmf_worker(self):
         self.run_cnmf_btn.setEnabled(False)
+        self.accept_cnmf_btn.setEnabled(False)
+        self.reject_cnmf_btn.setEnabled(False)
         # TODO separate button to cancel? change run-button to cancel?
 
         self.contour_ax.clear()
@@ -746,6 +795,8 @@ class Segmentation(QWidget):
         # cnmf code to report progress?
         ####worker.signals.progress.connect(self.progress_fn)
 
+        self.parameter_json = self.params.to_json()
+        self.cnmf_start = time.time()
         # Execute
         self.threadpool.start(worker)
 
@@ -773,7 +824,10 @@ class Segmentation(QWidget):
 
     def cnmf_done(self):
         self.run_cnmf_btn.setEnabled(True)
+        self.accept_cnmf_btn.setEnabled(True)
+        self.reject_cnmf_btn.setEnabled(True)
         print('done with cnmf')
+        print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
 
 
     def get_cnmf_output(self):
@@ -791,9 +845,64 @@ class Segmentation(QWidget):
         self.params.to_json(self.default_json_params)
         # TODO maybe use pickle for this?
 
+
+    def common_run_info(self):
+        global caiman_version_info
+        run_info = {
+            'run_at': [datetime.datetime.fromtimestamp(self.cnmf_start)],
+            'input_filename': self.tiff_fname,
+            'input_md5': self.tiff_md5,
+            'input_mtime': self.tiff_mtime,
+            'start_frame': self.start_frame,
+            'stop_frame': self.stop_frame,
+            'parameters': self.parameter_json
+        }
+        run_info.update(caiman_version_info)
+        return run_info
+
+
+    def accept_cnmf(self):
+        # TODO TODO support changing label
+        # (right now, there is a key error because the pk already exists in the
+        # table...)
+        # TODO maybe visually indicate which has been selected already?
+        run_info = self.common_run_info()
+        run_info['accepted'] = True
+        run = pd.DataFrame(run_info)
+        run.to_sql('cnmf_runs', conn, if_exists='append', index=False)
+
+        # TODO TODO TODO merge w/ metadata so i can load into db as in
+        # populate_db
+        # TODO just calculate metadata outright here?
+            
+        # TODO TODO TODO load to database
+        # TODO TODO save file to nas (particularly so that it can still be there
+        # if database gets wiped out...) (should thus include parameters
+        # [+version?] info)
+
+        # TODO and refresh stuff in validation window s.t. this experiment now
+        # shows up
+
+        # TODO maybe also allow more direct passing of this data to other tab
+        #df = pd.read_sql('cnmf_runs', conn)
+        #print(df)
+
+
+    def reject_cnmf(self):
+        # TODO TODO support changing label
+        # (right now, there is a key error because the pk already exists in the
+        # table...)
+        run_info = self.common_run_info()
+        run_info['accepted'] = False
+        run = pd.DataFrame(run_info)
+        run.to_sql('cnmf_runs', conn, if_exists='append', index=False)
+
+        #df = pd.read_sql('cnmf_runs', conn)
+        #print(df)
+
+
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
     # buttons in the gui? (maybe to some invisible cache?)
-
 
     def open_recording(self):
         # TODO TODO avoid circularity problem (right now, only stuff w/ CNMF
@@ -855,10 +964,13 @@ class Segmentation(QWidget):
         # TODO worth setting any other parameters from thor metadata?
 
         # TODO why does this not seem to print until load finishes...? end?
-        print('loading tiff {}...'.format(tiff), end='')
+        #print('Loading tiff {}...'.format(tiff), end='')
+        start = time.time()
         # TODO is cnmf expecting float to be in range [0,1], like skimage?
         self.movie = tifffile.imread(tiff).astype('float32')
-        print(' done.')
+        end = time.time()
+        #print(' done.')
+        print('Loading TIFF took {:.3f} seconds'.format(end - start))
 
         self.avg = np.mean(self.movie, axis=0)
         '''
@@ -870,6 +982,20 @@ class Segmentation(QWidget):
         to_type.max * (self.movie / from_type.max)
         '''
         # TODO maybe allow playing movie somewhere in display widget?
+
+        self.tiff_fname = tiff
+
+        start = time.time()
+        # TODO maybe md5 array in memory, to not have to load twice?
+        # (though for most formats it probably won't be the same... maybe none)
+        self.tiff_md5 = md5(tiff)
+        end = time.time()
+        print('Hashing TIFF took {:.3f} seconds'.format(end - start))
+
+        self.tiff_mtime = datetime.datetime.fromtimestamp(getmtime(tiff))
+
+        self.start_frame = None
+        self.stop_frame = None
 
 
 class ROIAnnotation(QWidget):
@@ -1329,6 +1455,10 @@ def main():
     global recordings_meta
     global footprints
     global comp_cols
+    global caiman_version_info
+
+    # Calling this first to minimize chances of code diverging.
+    caiman_version_info = get_caiman_version_info()
 
     db_hostname = 'atlas'
     our_hostname = socket.gethostname()

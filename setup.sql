@@ -58,6 +58,44 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     PRIMARY KEY(analysis_description)
 );
 
+/* TODO delete analysis_runs? */
+CREATE TABLE IF NOT EXISTS cnmf_runs (
+    run_at timestamp PRIMARY KEY,
+
+    /* TODO TODO check that either these or pkg version are supplied */
+    git_remote text,
+    git_hash text,
+    git_uncommitted_changes text,
+
+    version text,
+
+    input_filename text NOT NULL,
+    input_md5 text NOT NULL,
+    /* TODO correct dtype? mtime what i want? */
+    input_mtime timestamp NOT NULL,
+
+    /* Use NULL to indicate from start / to end */
+    start_frame integer,
+    stop_frame integer,
+
+    /* TODO TODO also store references to date/fly/recording stuff?
+       required or optional? */
+
+    /* Could use json/jsonb type, but same values, like Infinity, would have to
+     * be handled differently. */
+    parameters text NOT NULL,
+
+    accepted boolean NOT NULL,
+
+    /* TODO TODO what to use as pk? just run_at? serial? */
+    /* TODO probably want to ensure all git stuff + input + parameters
+     * uniqueness... but maybe not w/ pk? */
+
+    CONSTRAINT all_git_info CHECK (git_hash is null or
+        (git_remote is not null and git_uncommitted_changes is not null)),
+    CONSTRAINT have_version CHECK (git_hash is not null or version is not null)
+);
+
 /* TODO TODO TODO new table for each algorithm we want to tune parameters for,
  * with a column for each relevant parameter */
 /* TODO TODO TODO and a new table for each function to optimize, storing
