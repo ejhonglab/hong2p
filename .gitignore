@@ -2,3 +2,5 @@ test_data/
 google_sheet_link.txt
 .gsheet_cache.p
 *.backup
+.cnmf_gui_user.p
+.default_cnmf_params.json
