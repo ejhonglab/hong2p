@@ -1,4 +1,21 @@
 
+CREATE TABLE IF NOT EXISTS people (
+    nickname text PRIMARY KEY,
+    /* TODO full name too? */
+    /* maybe normalize these somewhere if going to use this field for automated
+     * emails, texts, etc */
+    email text,
+    mobile_phone text,
+    alt_phone text
+    /*
+    default_num_seed_males smallint CHECK (default_num_seed_males > 0),
+    default_num_seed_females smallint CHECK (default_num_seed_females > 0),
+    default_add_yeast boolean
+    */
+    /* TODO provide defaults for other values we will want input on. maybe
+     * protocols? make their handling generic? */
+);
+
 CREATE TABLE IF NOT EXISTS flies (
     /* TODO serial? work w/ pandas insert if just not specified? */
     /*fly smallserial UNIQUE NOT NULL, */
@@ -85,11 +102,18 @@ CREATE TABLE IF NOT EXISTS cnmf_runs (
      * be handled differently. */
     parameters text NOT NULL,
 
+    who text REFERENCES people (nickname),
+    /* Partially to figure out who ran it if they forgot to select their name.
+    */
+    /* TODO also check these are at least non-empty */
+    host text NOT NULL,
+    host_user text NOT NULL,
+
     accepted boolean NOT NULL,
 
-    /* TODO TODO what to use as pk? just run_at? serial? */
-    /* TODO probably want to ensure all git stuff + input + parameters
-     * uniqueness... but maybe not w/ pk? */
+    /* probably want to ensure all git stuff + input + parameters + user
+     * uniqueness... but maybe not w/ pk?
+       TODO TODO TODO add constraint to this effect */
 
     CONSTRAINT all_git_info CHECK (git_hash is null or
         (git_remote is not null and git_uncommitted_changes is not null)),

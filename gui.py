@@ -16,10 +16,13 @@ import glob
 import hashlib
 import time
 import datetime
+import getpass
+import pickle
 
 # TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
 # differences?
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable
+from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
+    Qt)
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
@@ -345,8 +348,11 @@ class Worker(QRunnable):
 
 
 class MotionCorrection(QWidget):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args):
+        super().__init__(*args)
+        if len(args) == 1:
+            self.main_window = args[0]
+
         self.setWindowTitle('Motion Correction')
 
 
@@ -357,8 +363,11 @@ class MotionCorrection(QWidget):
 # each widget (which is currently a tab) definition could more readily by run on
 # it's own, without having to combine with a data browser
 class Segmentation(QWidget):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args):
+        super().__init__(*args)
+        if len(args) == 1:
+            self.main_window = args[0]
+
         self.setWindowTitle('Segmentation / Trace Extraction')
 
         # TODO move initialization of this thing to another class
@@ -833,9 +842,14 @@ class Segmentation(QWidget):
     def get_cnmf_output(self):
         # TODO TODO allow toggling between type of backgrouond image shown
         # (radio / combobox for avg, snr, etc? "local correlations"?)
+        # TODO TODO use histogram equalized avg image as one
         self.cnm.estimates.plot_contours(img=self.avg, ax=self.contour_ax,
             display_numbers=False, colors='r', linewidth=1.0)
         self.mpl_canvas.draw()
+        # TODO maybe allow toggling same pane between avg and movie?
+        # or separate pane for movie?
+        # TODO use some non-movie version of pyqtgraph ImageView for avg,
+        # to get intensity sliders? or other widget for that?
         ######import ipdb; ipdb.set_trace()
 
 
@@ -855,7 +869,11 @@ class Segmentation(QWidget):
             'input_mtime': self.tiff_mtime,
             'start_frame': self.start_frame,
             'stop_frame': self.stop_frame,
-            'parameters': self.parameter_json
+            'parameters': self.parameter_json,
+            # TODO maybe share data / data browser similarly?
+            'who': self.main_window.user,
+            'host': socket.gethostname(),
+            'host_user': getpass.getuser()
         }
         run_info.update(caiman_version_info)
         return run_info
@@ -999,8 +1017,12 @@ class Segmentation(QWidget):
 
 
 class ROIAnnotation(QWidget):
-    def __init__(self):
-        super().__init__()
+    # TODO though, if i'm going to require main_window to get some shared state,
+    # and i don't have a fallback, might as well make it an explicit argument...
+    def __init__(self, *args):
+        super().__init__(*args)
+        if len(args) == 1:
+            self.main_window = args[0]
 
         self.setWindowTitle('ROI Validation')
         # TODO manage current user somehow? / work into database where
@@ -1414,11 +1436,6 @@ class ROIAnnotation(QWidget):
 
     # TODO TODO TODO hotkeys / buttons for labelling
 
-    # TODO TODO some kind of tab system for switching between loading recordings
-    # / doing cnmf on that vs. loading comparisons to evaluate w/ more
-    # granularity? or keep granularity the same and change the evaluation or
-    # CNMF?
-
     # TODO TODO if doing cnmf in this gui, save output directly to database
 
 
@@ -1426,14 +1443,57 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
+        central_layout = QVBoxLayout(central_widget)
+        central_widget.setLayout(central_layout)
+
+        self.user_widget = QWidget(self)
+        central_layout.addWidget(self.user_widget)
+
+        self.user_widget.setFixedHeight(40)
+        self.user_widget.setFixedWidth(170)
+
+        user_layout = QHBoxLayout(self.user_widget)
+        self.user_widget.setLayout(user_layout)
+        user_label = QLabel('User', self.user_widget)
+        # TODO maybe attribute on people as to whether to show here or not?
+        user_select = QComboBox(self.user_widget)
+
+        # TODO something like a <select user> default?
+        # TODO TODO make user persist across restarts of the program
+        # (w/o needing any special actions, i think)
+        # TODO some kind of atexit pickling?
+        # TODO (just add default selection first)
+        self.user_cache_file = '.cnmf_gui_user.p'
+        self.user = self.load_default_user()
+
+        self.nicknames = set(pd.read_sql('people', conn)['nickname'])
+        if self.user is not None:
+            user_select.addItem(self.user)
+
+        for nickname in self.nicknames:
+            if nickname != self.user:
+                user_select.addItem(nickname)
+
+        user_select.setEditable(True)
+        # TODO maybe turn off blinking cursor thing when this box isn't focused?
+        # general display practices when using an editable combobox?
+        user_select.currentIndexChanged[str].connect(self.change_user)
+        # TODO maybe make this a cache w/ more generic name if i have need to
+        # save other settings
+
+        user_layout.addWidget(user_label)
+        user_layout.addWidget(user_select)
+
+        self.tabs = QTabWidget(central_widget)
+        central_layout.addWidget(self.tabs)
 
         # TODO maybe an earlier tab for motion correction or something at some
         # point?
-        self.mc_tab = MotionCorrection()
-        self.seg_tab = Segmentation()
-        self.validation_tab = ROIAnnotation()
+        self.mc_tab = MotionCorrection(self)
+        self.seg_tab = Segmentation(self)
+        self.validation_tab = ROIAnnotation(self)
 
         # TODO factor add + windowTitle bit to fn?
         self.tabs.addTab(self.mc_tab, self.mc_tab.windowTitle())
@@ -1444,6 +1504,39 @@ class MainWindow(QMainWindow):
 
         #self.tabs.setCurrentIndex(val_index)
         self.tabs.setCurrentIndex(seg_index)
+
+        # i can't seem to get the space between combobox and tabs any smaller...
+        central_layout.setSpacing(0)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        # (left, top, right, bottom)
+        user_layout.setContentsMargins(10, 0, 10, 0)
+        central_layout.setAlignment(self.user_widget, Qt.AlignLeft)
+
+    
+    def change_user(self, user):
+        if user not in self.nicknames:
+            pd.DataFrame({'nickname': [user]}).to_sql('people', conn,
+                if_exists='append', index=False)
+            self.nicknames.add(user)
+        self.user = user
+
+
+    def save_default_user(self):
+        if self.user is None:
+            return
+        with open(self.user_cache_file, 'wb') as f:
+            pickle.dump(self.user, f)
+
+
+    def load_default_user(self):
+        if not exists(self.user_cache_file):
+            return None
+        with open(self.user_cache_file, 'rb') as f:
+            return pickle.load(f)
+
+
+    def closeEvent(self, event):
+        self.save_default_user()
 
 
 def main():
@@ -1514,6 +1607,7 @@ def main():
     win = MainWindow()
     win.showMaximized()
     app.exit(app.exec_())
+
 
 if __name__ == '__main__':
     main()
