@@ -6,6 +6,7 @@ GUI to do make ROIs for trace extraction and validate those ROIs.
 
 import socket
 import sys
+import os
 from os.path import split, join, exists, sep, getmtime
 import xml.etree.ElementTree as etree
 import warnings
@@ -15,34 +16,40 @@ from functools import partial
 import glob
 import hashlib
 import time
-import datetime
+from datetime import datetime
 import getpass
 import pickle
 from copy import deepcopy
+import atexit
+import pprint
 
 # TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
 # differences?
 from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
     Qt)
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
-    QDoubleSpinBox, QLabel)
+    QDoubleSpinBox, QLabel, QListWidgetItem)
 
 import pyqtgraph as pg
 import tifffile
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy import MetaData
+from sqlalchemy import create_engine, MetaData, Table
+# TODO or just use sqlalchemy.types?
+from sqlalchemy.sql import sqltypes
 from sqlalchemy.dialects import postgresql
 # TODO factor all of these out as much as possible
 from scipy.sparse import coo_matrix
 import cv2
-from matplotlib.backends.backend_qt5agg import FigureCanvas
+from matplotlib.backends.backend_qt5agg import (FigureCanvas,
+    NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
 import git
 import pkg_resources
+import matlab.engine
 
 # TODO TODO allow things to fail gracefully if we don't have cnmf.
 # either don't display tabs that involve it or display a message indicating it
@@ -62,6 +69,307 @@ recording_cols = [
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 raw_data_root = '/mnt/nas/mb_team/raw_data'
 analysis_output_root = '/mnt/nas/mb_team/analysis_output'
+
+use_cached_gsheet = True
+show_inferred_paths = True
+overwrite_older_analysis = True
+evil = matlab.engine.start_matlab()
+atexit.register(evil.quit)
+exclude_from_matlab_path = {'CaImAn-MATLAB','matlab_helper_functions'}
+#
+userpath = evil.userpath()
+for root, dirs, _ in os.walk(userpath, topdown=True):
+    dirs[:] = [d for d in dirs if (not d.startswith('.') and
+        not d.startswith('@') and not d.startswith('+') and
+        d not in exclude_from_matlab_path)]
+
+    evil.addpath(root)
+
+
+gsheet_cache_file = '.gsheet_cache.p'
+if use_cached_gsheet and os.path.exists(gsheet_cache_file):
+    print('Loading Google sheet data from cache at {}'.format(
+        gsheet_cache_file))
+
+    with open(gsheet_cache_file, 'rb') as f:
+        sheets = pickle.load(f)
+
+else:
+    with open('google_sheet_link.txt', 'r') as f:
+        gsheet_link = f.readline().split('/edit')[0] + '/export?format=csv&gid='
+
+    # If you want to add more sheets, when you select the new sheet in your
+    # browser, the GID will be at the end of the URL in the address bar.
+    sheet_gids = {
+        'fly_preps': '269082112',
+        'recordings': '0',
+        'daily_settings': '229338960'
+    }
+
+    sheets = dict()
+    for df_name, gid in sheet_gids.items():
+        df = pd.read_csv(gsheet_link + gid)
+
+        # TODO convert any other dtypes?
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+
+        # TODO complain if there are any missing fly_nums
+
+        sheets[df_name] = df
+
+    boolean_columns = {
+        'used_for_analysis',
+        'raw_data_discarded',
+        'raw_data_lost'
+    }
+    na_cols = list(set(sheets['recordings'].columns) - boolean_columns)
+    sheets['recordings'].dropna(how='all', subset=na_cols, inplace=True)
+
+    with open(gsheet_cache_file, 'wb') as f:
+        pickle.dump(sheets, f)
+
+# TODO maybe make df some merge of the three sheets?
+df = sheets['recordings']
+
+df[['date','fly_num']] = df[['date','fly_num']].fillna(method='ffill')
+
+df.raw_data_discarded = df.raw_data_discarded.fillna(False)
+# TODO say when this happens?
+df.drop(df[df.raw_data_discarded].index, inplace=True)
+
+# TODO TODO warn / fail if 'used_for_analysis' and either discard / lost is
+# checked
+
+# Not sure where there were any NaN here anyway...
+df.raw_data_lost = df.raw_data_lost.fillna(False)
+df.drop(df[df.raw_data_lost].index, inplace=True)
+
+keys = ['date', 'fly_num']
+df['recording_num'] = df.groupby(keys).cumcount() + 1
+# Since otherwise cumcount seems to be zero for stuff without a group...
+# (i.e. w/ one of the keys null)
+df.loc[pd.isnull(df[keys]).any(axis=1), 'recording_num'] = np.nan
+
+# TODO delete hack after dealing w/ remy's conventions (some of which were
+# breaking the code assuming my conventions)
+df.drop(df[df.project != 'natural_odors'].index, inplace=True)
+
+if show_inferred_paths:
+    missing_thorimage = pd.isnull(df.thorimage_dir)
+    missing_thorsync = pd.isnull(df.thorsync_dir)
+
+
+df['thorimage_num'] = df.thorimage_dir.apply(lambda x: np.nan if pd.isnull(x)
+    else int(x[1:]))
+df['numbering_consistent'] = \
+    pd.isnull(df.thorimage_num) | (df.thorimage_num == df.recording_num)
+
+# TODO unit test this
+# TODO TODO check that, if there are mismatches here, that they *never* happen
+# when recording num will be used for inference in rows in the group *after*
+# the mismatch
+gkeys = keys + ['thorimage_dir','thorsync_dir','thorimage_num',
+                'recording_num','numbering_consistent']
+for name, group_df in df.groupby(keys):
+    '''
+    # case 1: all consistent
+    # case 2: not all consistent, but all thorimage_dir filled in
+    # case 3: not all consistent, but just because thorimage_dir was null
+    '''
+    #print(group_df[gkeys])
+
+    # TODO check that first_mismatch based approach includes this case
+    #if pd.notnull(group_df.thorimage_dir).all():
+    #    continue
+
+    mismatches = np.argwhere(~ group_df.numbering_consistent)
+    if len(mismatches) == 0:
+        continue
+
+    first_mismatch_idx = mismatches[0][0]
+    #print('first_mismatch:\n', group_df[gkeys].iloc[first_mismatch_idx])
+
+    # TODO test case where the first mismatch is last
+    following_thorimage_dirs = group_df.thorimage_dir.iloc[first_mismatch_idx:]
+    #print('checking these are not null:\n', following_thorimage_dirs)
+    assert pd.notnull(following_thorimage_dirs).all()
+
+df.thorsync_dir.fillna(df.thorimage_num.apply(lambda x: np.nan if pd.isnull(x)
+    else 'SyncData{:03d}'.format(int(x))), inplace=True)
+
+df.drop(columns=['thorimage_num','numbering_consistent'], inplace=True)
+
+
+# TODO TODO check for conditions in which we might need to renumber recording
+# num? (dupes / any entered numbers along the way that are inconsistent w/
+# recording_num results)
+df.thorimage_dir.fillna(df.recording_num.apply(lambda x: np.nan if pd.isnull(x)
+    else'_{:03d}'.format(int(x))), inplace=True)
+
+df.thorsync_dir.fillna(df.recording_num.apply(lambda x: np.nan if pd.isnull(x)
+    else 'SyncData{:03d}'.format(int(x))), inplace=True)
+
+if show_inferred_paths:
+    cols = ['date','fly_num','thorimage_dir','thorsync_dir']
+    print('Inferred ThorImage directories:')
+    print(df.loc[missing_thorimage, cols])
+    print('\nInferred ThorSync directories:')
+    print(df.loc[missing_thorsync, cols])
+    print('')
+
+keys = ['date','fly_num']
+duped_thorimage = df.duplicated(subset=keys + ['thorimage_dir'], keep=False)
+duped_thorsync = df.duplicated(subset=keys + ['thorsync_dir'], keep=False)
+
+try:
+    assert not duped_thorimage.any()
+    assert not duped_thorsync.any()
+except AssertionError:
+    print('Duplicated ThorImage directories after path inference:')
+    print(df[duped_thorimage])
+    print('\nDuplicated ThorSync directories after path inference:')
+    print(df[duped_thorsync])
+    raise
+
+db_hostname = 'atlas'
+our_hostname = socket.gethostname()
+if our_hostname == db_hostname:
+    url = 'postgresql+psycopg2://tracedb:tracedb@localhost:5432/tracedb'
+else:
+    url = ('postgresql+psycopg2://tracedb:tracedb@{}' +
+        ':5432/tracedb').format(db_hostname)
+
+conn = create_engine(url)
+
+def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
+    # TODO TODO if this fails and time won't be saved on reinsertion, any rows
+    # that have been inserted already should be deleted to avoid confusion
+    # (mainly, for the case where the program is interrupted while this is
+    # running)
+    # TODO TODO maybe have some cleaning step that checks everything in database
+    # has the correct number of rows? and maybe prompts to delete?
+
+    # Other columns should be generated by database anyway.
+    cols = list(new_df.columns)
+    if index:
+        cols += list(new_df.index.names)
+    table_cols = ', '.join(cols)
+
+    md = MetaData()
+    table = Table(table_name, md, autoload_with=conn)
+    dtypes = {c.name: c.type for c in table.c}
+
+    if verbose:
+        print('SQL column types:')
+        pprint.pprint(dtypes)
+   
+    df_types = new_df.dtypes.to_dict()
+    if index:
+        df_types.update({n: new_df.index.get_level_values(n).dtype
+            for n in new_df.index.names})
+
+    if verbose:
+        print('\nOld dataframe column types:')
+        pprint.pprint(df_types)
+
+    sqlalchemy2pd_type = {
+        'INTEGER()': np.dtype('int32'),
+        'SMALLINT()': np.dtype('int16'),
+        'REAL()': np.dtype('float32'),
+        'DOUBLE_PRECISION(precision=53)': np.dtype('float64'),
+        # TODO but maybe this was the type causing the problem?
+        'DATE()': np.dtype('<M8[ns]')
+    }
+    if verbose:
+        print('\nSQL types to cast:')
+        pprint.pprint(sqlalchemy2pd_type)
+
+    new_df_types = {n: sqlalchemy2pd_type[repr(t)] for n, t in dtypes.items()
+        if repr(t) in sqlalchemy2pd_type}
+
+    if verbose:
+        print('\nNew dataframe column types:')
+        pprint.pprint(new_df_types)
+
+    # TODO how to get around converting things to int if they have NaN.
+    # possible to not convert?
+    new_column_types = dict()
+    new_index_types = dict()
+    for k, t in new_df_types.items():
+        if k in new_df.columns and not new_df[k].isnull().any():
+            new_column_types[k] = t
+
+        # TODO or is it always true that index level can't be NaN anyway?
+        elif (k in new_df.index.names and
+            not new_df.index.get_level_values(k).isnull().any()):
+
+            new_index_types[k] = t
+
+        # TODO print types being skipped b/c nan?
+
+    new_df = new_df.astype(new_column_types, copy=False)
+    if index:
+        # TODO need to handle case where conversion dict is empty
+        # (seems to fail?)
+        #pprint.pprint(new_index_types)
+
+        # MultiIndex astype method seems to not work the same way?
+        new_df.index = pd.MultiIndex.from_frame(
+            new_df.index.to_frame().astype(new_index_types, copy=False))
+
+    # TODO print the type of any sql types not convertible?
+    # TODO assert all dtypes can be converted w/ this dict?
+
+    if index:
+        print('writing to temporary table temp_{}...'.format(table_name))
+
+    # TODO figure out how to profile
+    new_df.to_sql('temp_' + table_name, conn, if_exists='replace', index=index,
+        dtype=dtypes)
+
+    # TODO change to just get column names?
+    query = '''
+    SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS data_type
+    FROM   pg_index i
+    JOIN   pg_attribute a ON a.attrelid = i.indrelid
+        AND a.attnum = ANY(i.indkey)
+    WHERE  i.indrelid = '{}'::regclass
+    AND    i.indisprimary;
+    '''.format(table_name)
+    result = conn.execute(query)
+    pk_cols = ', '.join([n for n, _ in result])
+
+    # TODO TODO TODO modify so on conflict the new row replaces the old one!
+    # (for updates to analysis, if exact code version w/ uncommited changes and
+    # everything is not going to be part of primary key...)
+    # (want updates to non-PK rows)
+    # TODO prefix w/ ANALYZE EXAMINE and look at results
+    query = ('INSERT INTO {0} ({1}) SELECT {1} FROM temp_{0} ' +
+        'ON CONFLICT ({2}) DO NOTHING').format(table_name, table_cols, pk_cols)
+    # TODO maybe a merge is better for this kind of upsert, in postgres?
+    if index:
+        print('inserting into {} from temporary table... '.format(table_name),
+            end='')
+
+    # TODO let this happen async in the background? (don't need result)
+    conn.execute(query)
+
+    if index:
+        print('done')
+
+    # TODO drop staging table
+
+sheets['fly_preps'].dropna(subset=['date','fly_num'], inplace=True)
+to_sql_with_duplicates(sheets['fly_preps'].rename(
+    columns={'date': 'prep_date'}), 'flies')
+
+rel_to_cnmf_mat = 'cnmf'
+
+stimfile_root = '/mnt/nas/mb_team/stimulus_data_files' 
+
+natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
+natural_odors_concentrations.set_index('name', inplace=True)
 
 
 def get_caiman_version_info():
@@ -268,7 +576,7 @@ def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
     return tif
 
 
-def list_motion_corrected_tifs():
+def list_motion_corrected_tifs(include_rigid=False):
     """
     """
     motion_corrected_tifs = []
@@ -279,8 +587,8 @@ def list_motion_corrected_tifs():
 
                 tif_dir = join(fly_dir, 'tif_stacks')
                 if exists(tif_dir):
-                    # TODO explicitly filter for *_nr.tif / *_rig.tif?
-                    motion_corrected_tifs += glob.glob(join(tif_dir, '*.tif'))
+                    tif_glob = '*.tif' if include_rigid else '*_nr.tif'
+                    motion_corrected_tifs += glob.glob(join(tif_dir, tif_glob))
 
             except ValueError:
                 continue
@@ -403,15 +711,21 @@ class Segmentation(QWidget):
         for d in self.motion_corrected_tifs:
             print(d)
 
-        items = []
-        for d in self.motion_corrected_tifs:
-            x = d.split(sep)
-            fname_parts = x[-1].split('_')
-            cor_type = 'rigid' if fname_parts[-1][:-4] == 'rig' else 'non-rigid'
-            item_parts = [x[-4], x[-3], '_'.join(fname_parts[:-1]), cor_type]
-            items.append('/'.join(item_parts))
-            # TODO make make tooltip the full path? or show full path somewhere
-            # else?
+        entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
+            'fly_num, recording_from, analysis FROM presentations', conn)
+        # TODO TODO check that the right number of rows are in there, otherwise
+        # drop and re-insert (optionally? since it might take a bit of time to
+        # load CNMF output to check / for database to check)
+
+        # TODO more elegant way to check for row w/ certain values?
+        '''
+        curr_entered = (
+            (entered.prep_date == date) &
+            (entered.fly_num == fly_num) &
+            (entered.recording_from == started_at)
+        )
+        curr_entered = curr_entered.any()
+        '''
 
         # TODO maybe make slider between data viewer and everything else?
         # sliders for everything in this layout?
@@ -421,7 +735,41 @@ class Segmentation(QWidget):
         self.list = QListWidget(self)
         self.layout.addWidget(self.list)
         self.list.setFixedWidth(210)
-        self.list.addItems(items)
+
+        # TODO option to hide all rigid stuff / do if non-rigid is there / just
+        # always hide
+        # TODO should i color stuff that has accepted CNMF output, or just hide
+        # it?
+        for d in self.motion_corrected_tifs:
+            x = d.split(sep)
+            fname_parts = x[-1].split('_')
+            cor_type = 'rigid' if fname_parts[-1][:-4] == 'rig' else 'non-rigid'
+
+            date_str = x[-4]
+            fly_str = x[-3]
+            thorimage_id = '_'.join(fname_parts[:-1])
+            item_parts = [date_str, fly_str, thorimage_id, cor_type]
+
+            item = QListWidgetItem('/'.join(item_parts))
+
+            # TODO if add support for labelling single comparisons, check all
+            # comparisons are added, and only color yellow if not all in db
+            # TODO check whether source video was rigid / non-rigid, if going to
+            # display both types of movies in list?
+            analyzed = (
+                (presentations.prep_date == date_str) &
+                (presentations.fly_num == int(fly_str)) &
+                (presentations.thorimage_id == thorimage_id)
+            ).any()
+
+            if analyzed:
+                # TODO below, get item and set bg color if accepted
+                item.setBackground(QColor('#7fc97f'))
+
+            self.list.addItem(item)
+            # TODO make make tooltip the full path? or show full path somewhere
+            # else?
+
         self.list.itemDoubleClicked.connect(self.open_recording)
 
         # Other groups are: motion, online
@@ -443,6 +791,10 @@ class Segmentation(QWidget):
             'data': {'fnames','dims'}, #'fr','dxy'},
             'merging': {'gSig_range'},
         })
+
+        # TODO TODO maybe make either just parameters or both params and data
+        # explorer collapsible (& display intermediate results horizontally,
+        # maybe only in this case?)
             
         # TODO or should this get a layout as input?
         cnmf_ctrl_widget = QWidget(self)
@@ -718,9 +1070,14 @@ class Segmentation(QWidget):
         # TODO TODO add toolbar / make image navigable
 
         self.plot_intermediates = True
+        ########self.plot_intermediates = False
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
         self.display_layout.addWidget(self.mpl_canvas)
+
+        nav_bar = NavigationToolbar(self.mpl_canvas, self)
+        nav_bar.setFixedHeight(80)
+        self.display_layout.addWidget(nav_bar)
 
         # TODO TODO accept / reject dialog beneath this
         # (maybe move save button out of ctrl widget? move reject in there?)
@@ -882,32 +1239,37 @@ class Segmentation(QWidget):
     # seem to accomplish this correctly)
 
     def get_cnmf_output(self):
-        # TODO TODO allow toggling between type of backgrouond image shown
+        # TODO TODO allow toggling between type of background image shown
         # (radio / combobox for avg, snr, etc? "local correlations"?)
         # TODO TODO use histogram equalized avg image as one option
         img = self.avg
 
-        # TODO TODO uncomment!
-        '''
-        contour_axes = self.fig.subplots(1, 4 if self.plot_intermediates else 1,
-            squeeze=False)
+        only_init = self.params.get('patch', 'only_init')
 
-        for i in range(contour_axes.shape[1]):
-            contour_ax = contour_axes[0, i]
+        contour_axes = self.fig.subplots(4 if self.plot_intermediates and
+                not only_init else 1, 1,
+            squeeze=False, sharex=True, sharey=True)
+        self.fig.subplots_adjust(hspace=0, wspace=0)
+
+        for i in range(contour_axes.shape[0]):
+            contour_ax = contour_axes[i, 0]
             contour_ax.axis('off')
 
             # TODO TODO make callbacks for each step and plot as they become
             # available
             if self.plot_intermediates:
-                # TODO TODO title each as appopriate
-
                 # TODO need to correct coordinates b/c slicing? just slice img?
                 # TODO need to transpose or change C/F order or anything?
                 if i == 0:
+                    # TODO why are title's not working? need axis='on'?
+                    # just turn off other parts of axis?
+                    contour_ax.set_title('Initialization')
                     A = self.cnm.A_init
                 elif i == 1:
+                    contour_ax.set_title('After spatial update')
                     A = self.cnm.A_spatial_update_k[0]
                 elif i == 2:
+                    contour_ax.set_title('After merging')
                     A = self.cnm.A_after_merge_k[0]
                 #elif i == 3:
                 #    A = self.cnm.A_spatial_refinement_k[0]
@@ -915,12 +1277,12 @@ class Segmentation(QWidget):
             # TODO maybe show self.cnm.A_spatial_refinement_k[0] too in
             # plot_intermediates case? should be same though (though maybe one
             # is put back in original, non-sliced, coordinates?)
-            if i == contour_axes.shape[1] - 1:
+            if i == contour_axes.shape[1] - 1 and not only_init:
+                contour_ax.set_title('Final estimate')
                 A = self.cnm.estimates.A
 
             caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
                 display_numbers=False, colors='r', linewidth=1.0)
-        '''
 
         # TODO maybe use this anyway, in case i am forgetting some other step
         # cnmf is doing?
@@ -929,6 +1291,9 @@ class Segmentation(QWidget):
             display_numbers=False, colors='r', linewidth=1.0)
         '''
 
+        self.fig.tight_layout()
+
+        #plt.show()
         self.mpl_canvas.draw()
         # TODO maybe allow toggling same pane between avg and movie?
         # or separate pane for movie?
@@ -947,7 +1312,7 @@ class Segmentation(QWidget):
     def common_run_info(self):
         global caiman_version_info
         run_info = {
-            'run_at': [datetime.datetime.fromtimestamp(self.cnmf_start)],
+            'run_at': [datetime.fromtimestamp(self.cnmf_start)],
             'input_filename': self.tiff_fname,
             'input_md5': self.tiff_md5,
             'input_mtime': self.tiff_mtime,
@@ -963,6 +1328,10 @@ class Segmentation(QWidget):
         return run_info
 
 
+    # TODO TODO add support for deleting presentations from db if reject
+    # something that was just accepted?
+    # TODO TODO dialog to confirm overwrite if accepting something already in
+    # database?
     def accept_cnmf(self):
         # TODO maybe visually indicate which has been selected already?
         run_info = self.common_run_info()
@@ -989,6 +1358,210 @@ class Segmentation(QWidget):
 
         # TODO maybe also allow more direct passing of this data to other tab
 
+        # x,y,n_footprints
+        footprints = self.cnm.estimates.A.toarray()
+
+        # Assuming equal number along both dimensions.
+        pixels_per_side = int(np.sqrt(footprints.shape[0]))
+        n_footprints = footprints.shape[1]
+
+        footprints = np.reshape(footprints,
+            (pixels_per_side, pixels_per_side, n_footprints))
+
+        # frame number, cell -> value
+        raw_f = self.cnm.estimates.C.T
+
+        # TODO TODO to copy what Remy's matlab script does, need to detrend
+        # within each "block"
+        if self.cnm.estimates.F_dff is None:
+            self.cnm.estimates.detrend_df_f()
+
+        df_over_f = self.cnm.estimates.F_dff.T
+
+        footprint_dfs = []
+        for cell_num in range(n_footprints):
+            sparse = coo_matrix(footprints[:,:,cell_num])
+            footprint_dfs.append(pd.DataFrame({
+                'recording_from': [self.started_at],
+                'cell': [cell_num],
+                # Can be converted from lists of Python types, but apparently
+                # not from numpy arrays or lists of numpy scalar types.
+                # TODO check this doesn't transpose things
+                # TODO TODO just move appropriate casting to my to_sql function,
+                # and allow having numpy arrays (get type info from combination
+                # of that and the database, like in other cases)
+                'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
+                'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                'weights': [[float(x) for x in sparse.data.astype('float32')]]
+            }))
+
+        footprint_df = pd.concat(footprint_dfs, ignore_index=True)
+        # TODO filter out footprints less than a certain # of pixels in cnmf?
+        # (is 3 pixels really reasonable?)
+        to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
+
+        # TODO store image w/ footprint overlayed?
+        # TODO TODO maybe store an average frame of registered TIF, and then
+        # indexes around that per footprint? (explicitly try to avoid responses
+        # when doing so, for easier interpretation as a background?)
+
+        # dims=dimensions of image (256x256)
+        # T is # of timestamps
+
+        # TODO why 474 x 4 + 548 in one case? i thought frame numbers were
+        # supposed to be more similar... (w/ np.diff(odor_onset_frames))
+        first_onset_frame_offset = \
+            self.odor_onset_frames[0] - self.block_first_frames[0]
+
+        n_frames, n_cells = df_over_f.shape
+        assert n_cells == n_footprints
+
+        start_frames = np.append(0,
+            self.odor_onset_frames[1:] - first_onset_frame_offset)
+        stop_frames = np.append(
+            self.odor_onset_frames[1:] - first_onset_frame_offset - 1, n_frames)
+        lens = [stop - start for start, stop in zip(start_frames, stop_frames)]
+
+        # TODO delete version w/ int cast after checking they give same answers
+        assert int(self.frame_times.shape[0]) == int(n_frames)
+        assert self.frame_times.shape[0] == n_frames
+
+        print(start_frames)
+        print(stop_frames)
+        # TODO find where the discrepancies are!
+        print(sum(lens))
+        print(n_frames)
+
+        # TODO assert here that all frames add up / approx
+
+        # TODO TODO either warn or err if len(start_frames) is !=
+        # len(odor_pair_list)
+
+        odor_id_pairs = [(o1,o2) for o1,o2 in
+            zip(self.odor1_ids, self.odor2_ids)]
+
+        comparison_num = -1
+
+        for i in range(len(start_frames)):
+            if i % (self.presentations_per_repeat * self.n_repeats) == 0:
+                comparison_num += 1
+                repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
+
+            # TODO TODO also save to csv/flat binary/hdf5 per (date, fly,
+            # thorimage)
+            print('Processing presentation {}'.format(i))
+
+            start_frame = start_frames[i]
+            stop_frame = stop_frames[i]
+            # TODO off by one?? check
+            # TODO check against frames calculated directly from odor offset...
+            # may not be const # frames between these "starts" and odor onset?
+            onset_frame = start_frame + first_onset_frame_offset
+
+            # TODO check again that these are always equal and delete
+            # "direct_onset_frame" bit
+            print('onset_frame:', onset_frame)
+            direct_onset_frame = self.odor_onset_frames[i]
+            print('direct_onset_frame:', direct_onset_frame)
+
+            # TODO TODO why was i not using direct_onset_frame for this before?
+            onset_time = self.frame_times[direct_onset_frame]
+            assert start_frame < stop_frame
+            # TODO check these don't jump around b/c discontinuities
+            presentation_frametimes = \
+                self.frame_times[start_frame:stop_frame] - onset_time
+            # TODO delete try/except after fixing
+            try:
+                assert len(presentation_frametimes) > 1
+            except AssertionError:
+                print(self.frame_times)
+                print(start_frame)
+                print(stop_frame)
+                import ipdb; ipdb.set_trace()
+
+            odor_pair = odor_id_pairs[i]
+            odor1, odor2 = odor_pair
+            repeat_num = repeat_nums[odor_pair]
+            repeat_nums[odor_pair] = repeat_num + 1
+
+            offset_frame = self.odor_offset_frames[i]
+            print('offset_frame:', offset_frame)
+            assert offset_frame > direct_onset_frame
+            # TODO share more of this w/ dataframe creation below, unless that
+            # table is changed to just reference presentation table
+            presentation = pd.DataFrame({
+                'prep_date': [self.date],
+                'fly_num': self.fly_num,
+                'recording_from': self.started_at,
+                'comparison': comparison_num,
+                'odor1': odor1,
+                'odor2': odor2,
+                'repeat_num': repeat_num,
+                'odor_onset_frame': direct_onset_frame,
+                'odor_offset_frame': offset_frame,
+                'from_onset': [[float(x) for x in presentation_frametimes]]
+            })
+            to_sql_with_duplicates(presentation, 'presentations')
+
+
+            # maybe share w/ code that checks distinct to decide whether to
+            # load / analyze?
+            key_cols = [
+                'prep_date',
+                'fly_num',
+                'recording_from',
+                'comparison',
+                'odor1',
+                'odor2',
+                'repeat_num'
+            ]
+            db_presentations = pd.read_sql('presentations', conn,
+                columns=(key_cols + ['presentation_id']))
+
+            presentation_ids = (db_presentations[key_cols] ==
+                                presentation[key_cols].iloc[0]).all(axis=1)
+            assert presentation_ids.sum() == 1
+            presentation_id = db_presentations.loc[presentation_ids,
+                'presentation_id'].iat[0]
+
+            # TODO get remy to save it w/ less than 64 bits of precision?
+            presentation_dff = df_over_f[start_frame:stop_frame, :]
+            presentation_raw_f = raw_f[start_frame:stop_frame, :]
+
+            # Assumes that cells are indexed same here as in footprints.
+            cell_dfs = []
+            for cell_num in range(n_cells):
+
+                cell_dff = presentation_dff[:, cell_num].astype('float32')
+                cell_raw_f = presentation_raw_f[:, cell_num].astype('float32')
+
+                cell_dfs.append(pd.DataFrame({
+                    'presentation_id': [presentation_id],
+                    'recording_from': [self.started_at],
+                    'cell': [cell_num],
+                    'df_over_f': [[float(x) for x in cell_dff]],
+                    'raw_f': [[float(x) for x in cell_raw_f]]
+                }))
+            response_df = pd.concat(cell_dfs, ignore_index=True)
+
+            # TODO TODO test this is actually overwriting any old stuff
+            to_sql_with_duplicates(response_df, 'responses')
+
+            # TODO put behind flag
+            db_presentations = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
+                'fly_num, recording_from, comparison FROM presentations', conn)
+            print(db_presentations)
+            print(len(db_presentations))
+            #
+
+            print('Done processing presentation {}'.format(i))
+
+        # TODO check that all frames go somewhere and that frames aren't
+        # given to two presentations. check they stay w/in block boundaries.
+        # (they don't right now. fix!)
+
+        self.current_item.setBackground(QColor('#7fc97f'))
+
 
     # TODO factor accept/reject into a label fn that takes accept as one boolean
     # arg
@@ -1004,22 +1577,172 @@ class Segmentation(QWidget):
     # buttons in the gui? (maybe to some invisible cache?)
 
     def open_recording(self):
-        # TODO TODO avoid circularity problem (right now, only stuff w/ CNMF
-        # output is put in database), so either:
-        # - put non-cnmf data in db w/o cnmf stuff, asap, and also load that
-        #   stuff here
-        # - or detect stuff not in db, put in browser / load for cnmf here, and
-        #   then put in db when done
         idx = self.sender().currentRow()
-        '''
-        rec_row = tuple(self.recordings.iloc[idx])
+        self.current_item = self.sender().currentItem()
 
-        # TODO do i need this?
-        self.metadata = self.presentations.loc[rec_row]
-
-        tiff = motion_corrected_tiff_filename(*rec_row)
-        '''
         tiff = self.motion_corrected_tifs[idx]
+
+        start = time.time()
+
+        tiff_dir, tiff_just_fname = split(tiff)
+        analysis_dir = split(tiff_dir)[0]
+        full_date_dir, fly_dir = split(analysis_dir)
+        date_dir = split(full_date_dir)[-1]
+
+        self.date = datetime.strptime(date_dir, '%Y-%m-%d')
+        self.fly_num = int(fly_dir)
+
+        thorimage_id = tiff_just_fname[:4]
+
+        mat = join(analysis_dir, rel_to_cnmf_mat,
+            thorimage_id + '_cnmf.mat')
+
+
+        recordings = df.loc[(df.date == self.date) &
+                            (df.fly_num == self.fly_num) &
+                            (df.thorimage_dir == thorimage_id)]
+        recording = recordings.iloc[0]
+
+        if recording.project != 'natural_odors':
+            warnings.warn('project type {} not supported. skipping.'.format(
+                recording.project))
+            return
+
+        raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
+        thorsync_dir = join(raw_fly_dir, recording['thorsync_dir'])
+        thorimage_dir = join(raw_fly_dir, recording['thorimage_dir'])
+        stimulus_data_path = join(stimfile_root,
+                                  recording['stimulus_data_file'])
+
+        thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
+        xml_root = etree.parse(thorimage_xml_path).getroot()
+        self.started_at = \
+            datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
+
+        # TODO see part of populate_db.py in this section to see how data
+        # explorer list elements might be colored to indicate they have already
+        # been run? or just get everything w/ pandas and color all from there?
+        # TODO pane to show previous analysis runs of currently selected
+        # experiment, or not worth it since maybe only want one accepted per?
+
+        recordings = pd.DataFrame({
+            'started_at': [self.started_at],
+            'thorsync_path': [thorsync_dir],
+            'thorimage_path': [thorimage_dir],
+            'stimulus_data_path': [stimulus_data_path]
+        })
+        # TODO TODO maybe defer this to accepting...
+        to_sql_with_duplicates(recordings, 'recordings')
+
+
+        stimfile = recording['stimulus_data_file']
+        stimfile_path = join(stimfile_root, stimfile)
+        # TODO also err if not readable
+        if not os.path.exists(stimfile_path):
+            raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
+                stimfile_root))
+
+        with open(stimfile_path, 'rb') as f:
+            data = pickle.load(f)
+
+        self.n_repeats = int(data['n_repeats'])
+
+        # The 3 is because 3 odors are compared in each repeat for the
+        # natural_odors project.
+        self.presentations_per_repeat = 3
+
+        presentations_per_block = self.n_repeats * self.presentations_per_repeat
+
+        n_blocks = int(len(data['odor_pair_list']) / presentations_per_block)
+
+        # TODO TODO subset odor order information by start/end block cols
+        # (for natural_odors stuff)
+        if pd.isnull(recording['first_block']):
+            first_block = 0
+        else:
+            first_block = int(recording['first_block']) - 1
+
+        if pd.isnull(recording['last_block']):
+            last_block = n_blocks - 1
+        else:
+            last_block = int(recording['last_block']) - 1
+
+        first_presentation = first_block * presentations_per_block
+        last_presentation = (last_block + 1) * presentations_per_block
+
+        odors = pd.DataFrame({
+            'name': data['odors'],
+            'log10_conc_vv': [0 if x == 'paraffin' else
+                natural_odors_concentrations.at[x,
+                'log10_vial_volume_fraction'] for x in data['odors']]
+        })
+        # TODO TODO maybe defer this to accepting...
+        to_sql_with_duplicates(odors, 'odors')
+
+        # TODO make unique id before insertion? some way that wouldn't require
+        # the IDs, but would create similar tables?
+
+        db_odors = pd.read_sql('odors', conn)
+        # TODO TODO in general, the name alone won't be unique, so use another
+        # strategy
+        db_odors.set_index('name', inplace=True)
+
+        # TODO test slicing
+        # TODO make sure if there are extra trials in matlab, these get assigned
+        # to first
+        # + if there are less in matlab, should error
+        odor_pair_list = \
+            data['odor_pair_list'][first_presentation:last_presentation]
+
+        assert (len(odor_pair_list) %
+            (self.presentations_per_repeat * self.n_repeats) == 0)
+
+        # TODO invert to check
+        # TODO is this sql table worth anything if both keys actually need to be
+        # referenced later anyway?
+
+        # TODO only add as many as there were blocks from thorsync timing info?
+        self.odor1_ids = [db_odors.at[o1,'odor'] for o1, _ in odor_pair_list]
+        self.odor2_ids = [db_odors.at[o2,'odor'] for _, o2 in odor_pair_list]
+
+        # TODO TODO make unique first. only need order for filling in the values
+        # in responses.
+        mixtures = pd.DataFrame({
+            'odor1': self.odor1_ids,
+            'odor2': self.odor2_ids
+        })
+        # TODO TODO maybe defer this to accepting...
+        to_sql_with_duplicates(mixtures, 'mixtures')
+
+        try:
+            evil.evalc("clear; data = load('{}', 'ti');".format(mat))
+        except matlab.engine.MatlabExecutionError as e:
+            # TODO inspect error somehow to see if it's a memory error?
+            # -> continue if so
+            # TODO print to stderr
+            print(e)
+            return
+
+        ti = evil.eval('data.ti')
+        self.frame_times = np.array(ti['frame_times']).flatten()
+        # Frame indices for CNMF output.
+        # Of length equal to number of blocks. Each element is the frame
+        # index (from 1) in CNMF output that starts the block, where
+        # block is defined as a period of continuous acquisition.
+        self.block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
+            ).flatten() - 1
+        # stim_on is a number as above, but for the frame of the odor
+        # onset.
+        # TODO how does rounding work here? closest frame? first after?
+        # TODO TODO did Remy change these variables? (i mean, it worked w/ some
+        # videos?)
+        self.odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
+            ).flatten() - 1
+        self.odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
+            ).flatten() - 1
+        # TODO TODO TODO if these are 1d, should be sorted... is Remy doing
+        # something else weird?
+        # (address after candidacy)
 
         data_params = cnmf_metadata_from_thor(tiff)
         # TODO set param as appropriate / maybe display in non-editable boxes in
@@ -1060,9 +1783,13 @@ class Segmentation(QWidget):
                 item.setText(repr(v))
                 self.params.set('data', {label: v})
 
+        end = time.time()
+        print('Loading metadata took {:.3f} seconds'.format(end - start))
+
         # TODO worth setting any other parameters from thor metadata?
 
         # TODO why does this not seem to print until load finishes...? end?
+        # TODO stdout flush ?
         #print('Loading tiff {}...'.format(tiff), end='')
         start = time.time()
         # TODO is cnmf expecting float to be in range [0,1], like skimage?
@@ -1091,7 +1818,7 @@ class Segmentation(QWidget):
         end = time.time()
         print('Hashing TIFF took {:.3f} seconds'.format(end - start))
 
-        self.tiff_mtime = datetime.datetime.fromtimestamp(getmtime(tiff))
+        self.tiff_mtime = datetime.fromtimestamp(getmtime(tiff))
 
         self.start_frame = None
         self.stop_frame = None
@@ -1635,6 +2362,7 @@ def main():
     # Calling this first to minimize chances of code diverging.
     caiman_version_info = get_caiman_version_info()
 
+    '''
     db_hostname = 'atlas'
     our_hostname = socket.gethostname()
     if our_hostname == db_hostname:
@@ -1644,6 +2372,7 @@ def main():
             ':5432/tracedb').format(db_hostname)
 
     conn = create_engine(url)
+    '''
 
     meta = MetaData()
     meta.reflect(bind=conn)

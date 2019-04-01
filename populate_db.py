@@ -34,10 +34,10 @@ use_cached_gsheet = True
 show_inferred_paths = True
 
 # TODO TODO make sure both of these only run if necessary
-convert_h5 = False
-calc_timing_info = False
+convert_h5 = True
+calc_timing_info = True
 
-motion_correct = True
+motion_correct = False
 only_motion_correct_for_analysis = True
 
 load_traces = False
@@ -846,6 +846,9 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             continue
         print('not skipping this one')
         '''
+        if not date_dir == '2019-02-27':
+            print('skipping')
+            continue
         #
 
         recordings = df.loc[(df.date == date) & (df.fly_num == fly_num) &
