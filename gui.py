@@ -18,6 +18,7 @@ import time
 import datetime
 import getpass
 import pickle
+from copy import deepcopy
 
 # TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
 # differences?
@@ -32,8 +33,9 @@ import pyqtgraph as pg
 import tifffile
 import numpy as np
 import pandas as pd
-# TODO factor away need for this
 from sqlalchemy import create_engine
+from sqlalchemy import MetaData
+from sqlalchemy.dialects import postgresql
 # TODO factor all of these out as much as possible
 from scipy.sparse import coo_matrix
 import cv2
@@ -47,6 +49,7 @@ import pkg_resources
 # was not found.
 import caiman
 from caiman.source_extraction.cnmf import params, cnmf
+import caiman.utils.visualization
 
 
 # TODO also move these two variable defs? (to globals below?) for sake of
@@ -189,6 +192,18 @@ def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
 # TODO move natural_odors/kc_analysis.py/plot_traces here?
 
 # TODO TODO support loading single comparisons from tiffs in imaging_util
+
+def pg_upsert(table, conn, keys, data_iter):
+    # https://github.com/pandas-dev/pandas/issues/14553
+    for row in data_iter:
+        row_dict = dict(zip(keys, row))
+        sqlalchemy_table = meta.tables[table.name]
+        stmt = postgresql.insert(sqlalchemy_table).values(**row_dict)
+        upsert_stmt = stmt.on_conflict_do_update(
+            index_elements=table.index,
+            set_=row_dict)
+        conn.execute(upsert_stmt)
+
 
 # TODO TODO TODO factor all code duplicated between here and kc_analysis into a
 # util module in this package
@@ -506,6 +521,8 @@ class Segmentation(QWidget):
         else:
             self.params = params.CNMFParams()
 
+        # TODO TODO copy once here to get params to reset back to in GUI
+
         param_dict = self.params.to_dict()
 
         n = int(np.ceil(np.sqrt(len(cnmf_groups))))
@@ -556,6 +573,12 @@ class Segmentation(QWidget):
             # (and should only) be filled in from thorimage metadata
 
             print(g)
+            # TODO maybe infer whether params are optional (via type
+            # annotations, docstring, None already, or explicitly specifying)
+            # and then have a checkbox to the side to enable whatever other
+            # input there is?
+            # TODO some mechanism for mutually exclusive groups of parameters
+            # / parameters that force values of others
             for k, v in param_dict[g].items():
                 if k in dont_show:
                     # maybe still print or something?
@@ -694,6 +717,7 @@ class Segmentation(QWidget):
         self.display_widget.setLayout(self.display_layout)
         # TODO TODO add toolbar / make image navigable
 
+        self.plot_intermediates = True
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
         self.display_layout.addWidget(self.mpl_canvas)
@@ -716,8 +740,6 @@ class Segmentation(QWidget):
 
         # TODO TODO warn if would run analysis on same data w/ same params as
         # had previously led to a rejection
-        self.contour_ax = self.fig.subplots(1, 1)
-        self.contour_ax.axis('off')
 
         # TODO TODO TODO provide the opportunity to compare outputs of sets of
         # parameters, either w/ same displays side by side, or overlayed?
@@ -786,8 +808,8 @@ class Segmentation(QWidget):
         self.reject_cnmf_btn.setEnabled(False)
         # TODO separate button to cancel? change run-button to cancel?
 
-        self.contour_ax.clear()
-        self.contour_ax.axis('off')
+        # TODO this delete all subplots, right?
+        self.fig.clear()
 
         # TODO what kind of (if any) limitations are there on the extent to
         # which data can be shared across threads? can the worker modify
@@ -813,20 +835,36 @@ class Segmentation(QWidget):
     def run_cnmf(self):
         # TODO time cnmf run + report how long it took
         print('running cnmf')
-        # TODO TODO use cm.cluster.setup_cluster or not? required now?
+        # TODO use cm.cluster.setup_cluster?
         # TODO what is the dview that returns as second arg?
+
+        # TODO and maybe go further than just using deepcopy, to the extent that
+        # deepcopy doesn't fully succeed in returning an object independent of
+        # the original
+        # Copying the parameters defensively, because CNMF has the bad habit of
+        # changing the parameter object internally.
+        params_copy = deepcopy(self.params)
+        # TODO check / test that eq is actually working correctly
+        assert params_copy == self.params
+
         # TODO i feel like this should be written to not require n_processes...
         n_processes = 1
-        # TODO need to copy params first?
-        # TODO TODO maybe make CNMF obj w/ params immediately, as it seems to
-        # change some of the parameters? then modify params from there?
-        self.cnm = cnmf.CNMF(n_processes, params=self.params)
+        self.cnm = cnmf.CNMF(n_processes, params=params_copy)
+
+        err_if_cnmf_changes_params = False
+        if err_if_cnmf_changes_params:
+            assert params_copy == self.params, 'CNMF changed params on init'
+
         # images : mapped np.ndarray of shape (t,x,y[,z])
         # TODO does it really need to be mapped? how can you even check if a
         # numpy array is mapped?
         # TODO maybe use fit_file for certain ways of getting here in the gui?
         # TODO TODO TODO check dims / C/F order
         self.cnm.fit(self.movie)
+
+        # TODO see which parameters are changed?
+        if err_if_cnmf_changes_params:
+            assert params_copy == self.params, 'CNMF changed params in fit'
 
         # TODO maybe have a widget that shows the text output from cnmf?
 
@@ -839,12 +877,58 @@ class Segmentation(QWidget):
         print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
 
 
+    # TODO TODO actually provide a way to only initialize cnmf, to test out
+    # various initialization procedures (though only_init arg doesn't actually
+    # seem to accomplish this correctly)
+
     def get_cnmf_output(self):
         # TODO TODO allow toggling between type of backgrouond image shown
         # (radio / combobox for avg, snr, etc? "local correlations"?)
-        # TODO TODO use histogram equalized avg image as one
-        self.cnm.estimates.plot_contours(img=self.avg, ax=self.contour_ax,
+        # TODO TODO use histogram equalized avg image as one option
+        img = self.avg
+
+        # TODO TODO uncomment!
+        '''
+        contour_axes = self.fig.subplots(1, 4 if self.plot_intermediates else 1,
+            squeeze=False)
+
+        for i in range(contour_axes.shape[1]):
+            contour_ax = contour_axes[0, i]
+            contour_ax.axis('off')
+
+            # TODO TODO make callbacks for each step and plot as they become
+            # available
+            if self.plot_intermediates:
+                # TODO TODO title each as appopriate
+
+                # TODO need to correct coordinates b/c slicing? just slice img?
+                # TODO need to transpose or change C/F order or anything?
+                if i == 0:
+                    A = self.cnm.A_init
+                elif i == 1:
+                    A = self.cnm.A_spatial_update_k[0]
+                elif i == 2:
+                    A = self.cnm.A_after_merge_k[0]
+                #elif i == 3:
+                #    A = self.cnm.A_spatial_refinement_k[0]
+
+            # TODO maybe show self.cnm.A_spatial_refinement_k[0] too in
+            # plot_intermediates case? should be same though (though maybe one
+            # is put back in original, non-sliced, coordinates?)
+            if i == contour_axes.shape[1] - 1:
+                A = self.cnm.estimates.A
+
+            caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
+                display_numbers=False, colors='r', linewidth=1.0)
+        '''
+
+        # TODO maybe use this anyway, in case i am forgetting some other step
+        # cnmf is doing?
+        '''
+        self.cnm.estimates.plot_contours(img=img, ax=contour_ax,
             display_numbers=False, colors='r', linewidth=1.0)
+        '''
+
         self.mpl_canvas.draw()
         # TODO maybe allow toggling same pane between avg and movie?
         # or separate pane for movie?
@@ -880,14 +964,16 @@ class Segmentation(QWidget):
 
 
     def accept_cnmf(self):
-        # TODO TODO support changing label
-        # (right now, there is a key error because the pk already exists in the
-        # table...)
         # TODO maybe visually indicate which has been selected already?
         run_info = self.common_run_info()
         run_info['accepted'] = True
         run = pd.DataFrame(run_info)
-        run.to_sql('cnmf_runs', conn, if_exists='append', index=False)
+        run.set_index('run_at', inplace=True)
+        # TODO depending on what table is in method callable, may need to make
+        # pd index match sql pk?
+        # TODO test that result is same w/ or w/o method in case where row did
+        # not exist, and that read shows insert worked in w/ method case
+        run.to_sql('cnmf_runs', conn, if_exists='append', method=pg_upsert)
 
         # TODO TODO TODO merge w/ metadata so i can load into db as in
         # populate_db
@@ -902,21 +988,16 @@ class Segmentation(QWidget):
         # shows up
 
         # TODO maybe also allow more direct passing of this data to other tab
-        #df = pd.read_sql('cnmf_runs', conn)
-        #print(df)
 
 
+    # TODO factor accept/reject into a label fn that takes accept as one boolean
+    # arg
     def reject_cnmf(self):
-        # TODO TODO support changing label
-        # (right now, there is a key error because the pk already exists in the
-        # table...)
         run_info = self.common_run_info()
         run_info['accepted'] = False
         run = pd.DataFrame(run_info)
-        run.to_sql('cnmf_runs', conn, if_exists='append', index=False)
-
-        #df = pd.read_sql('cnmf_runs', conn)
-        #print(df)
+        run.set_index('run_at', inplace=True)
+        run.to_sql('cnmf_runs', conn, if_exists='append', method=pg_upsert)
 
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
@@ -1549,6 +1630,7 @@ def main():
     global footprints
     global comp_cols
     global caiman_version_info
+    global meta
 
     # Calling this first to minimize chances of code diverging.
     caiman_version_info = get_caiman_version_info()
@@ -1562,6 +1644,9 @@ def main():
             ':5432/tracedb').format(db_hostname)
 
     conn = create_engine(url)
+
+    meta = MetaData()
+    meta.reflect(bind=conn)
 
     print('reading odors from postgres...', end='')
     odors = pd.read_sql('odors', conn)
