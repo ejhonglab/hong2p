@@ -47,6 +47,9 @@ import cv2
 from matplotlib.backends.backend_qt5agg import (FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
+#
+import matplotlib.pyplot as plt
+#
 import git
 import pkg_resources
 import matlab.engine
@@ -1200,17 +1203,18 @@ class Segmentation(QWidget):
         # the original
         # Copying the parameters defensively, because CNMF has the bad habit of
         # changing the parameter object internally.
-        params_copy = deepcopy(self.params)
+        self.params_copy = deepcopy(self.params)
         # TODO check / test that eq is actually working correctly
-        assert params_copy == self.params
+        assert self.params_copy == self.params
 
         # TODO i feel like this should be written to not require n_processes...
         n_processes = 1
-        self.cnm = cnmf.CNMF(n_processes, params=params_copy)
+        self.cnm = cnmf.CNMF(n_processes, params=self.params_copy)
 
         err_if_cnmf_changes_params = False
         if err_if_cnmf_changes_params:
-            assert params_copy == self.params, 'CNMF changed params on init'
+            assert (self.params_copy == self.params,
+                'CNMF changed params on init')
 
         # images : mapped np.ndarray of shape (t,x,y[,z])
         # TODO does it really need to be mapped? how can you even check if a
@@ -1221,7 +1225,7 @@ class Segmentation(QWidget):
 
         # TODO see which parameters are changed?
         if err_if_cnmf_changes_params:
-            assert params_copy == self.params, 'CNMF changed params in fit'
+            assert self.params_copy == self.params, 'CNMF changed params in fit'
 
         # TODO maybe have a widget that shows the text output from cnmf?
 
@@ -1230,6 +1234,7 @@ class Segmentation(QWidget):
         self.run_cnmf_btn.setEnabled(True)
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
+        # TODO logging instead?
         print('done with cnmf')
         print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
 
@@ -1244,14 +1249,15 @@ class Segmentation(QWidget):
         # TODO TODO use histogram equalized avg image as one option
         img = self.avg
 
-        only_init = self.params.get('patch', 'only_init')
+        only_init = self.params_copy.get('patch', 'only_init')
 
-        contour_axes = self.fig.subplots(4 if self.plot_intermediates and
-                not only_init else 1, 1,
-            squeeze=False, sharex=True, sharey=True)
+        n_axes = 4 if self.plot_intermediates and not only_init else 1
+        contour_axes = self.fig.subplots(n_axes, 1, squeeze=False, sharex=True,
+            sharey=True)
+
         self.fig.subplots_adjust(hspace=0, wspace=0)
 
-        for i in range(contour_axes.shape[0]):
+        for i in range(n_axes):
             contour_ax = contour_axes[i, 0]
             contour_ax.axis('off')
 
@@ -1277,7 +1283,7 @@ class Segmentation(QWidget):
             # TODO maybe show self.cnm.A_spatial_refinement_k[0] too in
             # plot_intermediates case? should be same though (though maybe one
             # is put back in original, non-sliced, coordinates?)
-            if i == contour_axes.shape[1] - 1 and not only_init:
+            if i == n_axes - 1 and not only_init:
                 contour_ax.set_title('Final estimate')
                 A = self.cnm.estimates.A
 
@@ -1293,18 +1299,17 @@ class Segmentation(QWidget):
 
         self.fig.tight_layout()
 
-        #plt.show()
         self.mpl_canvas.draw()
         # TODO maybe allow toggling same pane between avg and movie?
         # or separate pane for movie?
         # TODO use some non-movie version of pyqtgraph ImageView for avg,
         # to get intensity sliders? or other widget for that?
-        ######import ipdb; ipdb.set_trace()
 
 
     def save_default_params(self):
         print('Writing new default parameters to {}'.format(
             self.default_json_params))
+        # TODO TODO test round trip before terminating w/ success
         self.params.to_json(self.default_json_params)
         # TODO maybe use pickle for this?
 
@@ -1333,6 +1338,10 @@ class Segmentation(QWidget):
     # TODO TODO dialog to confirm overwrite if accepting something already in
     # database?
     def accept_cnmf(self):
+        # TODO delete me
+        ACTUALLY_UPLOAD = False
+        #
+
         # TODO maybe visually indicate which has been selected already?
         run_info = self.common_run_info()
         run_info['accepted'] = True
@@ -1342,7 +1351,8 @@ class Segmentation(QWidget):
         # pd index match sql pk?
         # TODO test that result is same w/ or w/o method in case where row did
         # not exist, and that read shows insert worked in w/ method case
-        run.to_sql('cnmf_runs', conn, if_exists='append', method=pg_upsert)
+        if ACTUALLY_UPLOAD:
+            run.to_sql('cnmf_runs', conn, if_exists='append', method=pg_upsert)
 
         # TODO TODO TODO merge w/ metadata so i can load into db as in
         # populate_db
@@ -1377,6 +1387,7 @@ class Segmentation(QWidget):
             self.cnm.estimates.detrend_df_f()
 
         df_over_f = self.cnm.estimates.F_dff.T
+        import ipdb; ipdb.set_trace()
 
         footprint_dfs = []
         for cell_num in range(n_footprints):
@@ -1398,7 +1409,8 @@ class Segmentation(QWidget):
         footprint_df = pd.concat(footprint_dfs, ignore_index=True)
         # TODO filter out footprints less than a certain # of pixels in cnmf?
         # (is 3 pixels really reasonable?)
-        to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
+        if ACTUALLY_UPLOAD:
+            to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
 
         # TODO store image w/ footprint overlayed?
         # TODO TODO maybe store an average frame of registered TIF, and then
@@ -1479,6 +1491,7 @@ class Segmentation(QWidget):
                 print(stop_frame)
                 import ipdb; ipdb.set_trace()
 
+            # TODO TODO what caused the error here?
             odor_pair = odor_id_pairs[i]
             odor1, odor2 = odor_pair
             repeat_num = repeat_nums[odor_pair]
@@ -1501,7 +1514,8 @@ class Segmentation(QWidget):
                 'odor_offset_frame': offset_frame,
                 'from_onset': [[float(x) for x in presentation_frametimes]]
             })
-            to_sql_with_duplicates(presentation, 'presentations')
+            if ACTUALLY_UPLOAD:
+                to_sql_with_duplicates(presentation, 'presentations')
 
 
             # maybe share w/ code that checks distinct to decide whether to
@@ -1545,7 +1559,8 @@ class Segmentation(QWidget):
             response_df = pd.concat(cell_dfs, ignore_index=True)
 
             # TODO TODO test this is actually overwriting any old stuff
-            to_sql_with_duplicates(response_df, 'responses')
+            if ACTUALLY_UPLOAD:
+                to_sql_with_duplicates(response_df, 'responses')
 
             # TODO put behind flag
             db_presentations = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
@@ -1572,6 +1587,9 @@ class Segmentation(QWidget):
         run.set_index('run_at', inplace=True)
         run.to_sql('cnmf_runs', conn, if_exists='append', method=pg_upsert)
 
+
+    # TODO TODO either automatically considering change parameters / re-running
+    # rejection or store parameters before labelling accept/reject
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
     # buttons in the gui? (maybe to some invisible cache?)
