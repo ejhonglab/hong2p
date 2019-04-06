@@ -22,6 +22,9 @@ import pickle
 from copy import deepcopy
 import atexit
 import pprint
+#
+import traceback
+#
 
 # TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
 # differences?
@@ -47,9 +50,6 @@ import cv2
 from matplotlib.backends.backend_qt5agg import (FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
-#
-import matplotlib.pyplot as plt
-#
 import git
 import pkg_resources
 import matlab.engine
@@ -1339,7 +1339,7 @@ class Segmentation(QWidget):
     # database?
     def accept_cnmf(self):
         # TODO delete me
-        ACTUALLY_UPLOAD = False
+        ACTUALLY_UPLOAD = True
         #
 
         # TODO maybe visually indicate which has been selected already?
@@ -1384,10 +1384,44 @@ class Segmentation(QWidget):
         # TODO TODO to copy what Remy's matlab script does, need to detrend
         # within each "block"
         if self.cnm.estimates.F_dff is None:
+            # quantileMin=8, frames_window=500, flag_auto=True, use_fast=False,
+            # (a, b, C, f, YrA)
             self.cnm.estimates.detrend_df_f()
 
         df_over_f = self.cnm.estimates.F_dff.T
+
+        # TODO TODO TODO just save a bunch of different versions of the df/f,
+        # computed w/ extract / detrend, and any key changes in arguments, then
+        # load that and plot some stuff for troubleshooting
+
+        # TODO to test extract_DF_F, need Yr, A, C, bl
+        # detrend_df_f wants A, b, C, f (YrA=None, but maybe it's used?
+        # in this fn, they call YrA the "residual signals")
+        sliced_movie = self.cnm.get_sliced_movie(self.movie)
+        Yr = self.cnm.get_Yr(sliced_movie)
+        ests = self.cnm.estimates
+
+        '''
+        try:
+            # TODO fix save fn?
+            # TODO test rt ser/deser first?
+            self.cnm.save('dff_debug_cnmf.hdf5')
+        except Exception as e:
+            traceback.print_exc()
+            print(e)
+            import ipdb; ipdb.set_trace()
+        '''
+        
+        #
+        '''
+        self.fig.clear()
+        ax = self.fig.add_subplot(111)
+        ax.plot(df_over_f[:,0])
+        self.mpl_canvas.draw()
+
         import ipdb; ipdb.set_trace()
+        '''
+        #
 
         footprint_dfs = []
         for cell_num in range(n_footprints):
@@ -1444,6 +1478,28 @@ class Segmentation(QWidget):
         print(sum(lens))
         print(n_frames)
 
+        try:
+            state = {
+                'Yr': Yr,
+                'A': ests.A,
+                'C': ests.C,
+                'bl': ests.bl,
+                'b': ests.b,
+                'f': ests.f,
+                'df_over_f': df_over_f,
+                'start_frames': start_frames,
+                'stop_frames': stop_frames,
+                'date': self.date,
+                'fly_num': self.fly_num,
+                'thorimage_id': self.thorimage_id
+            }
+            with open('cnmf_state.p', 'wb') as f:
+                pickle.dump(state, f)
+        except Exception as e:
+            traceback.print_exc()
+            print(e)
+            import ipdb; ipdb.set_trace()
+
         # TODO assert here that all frames add up / approx
 
         # TODO TODO either warn or err if len(start_frames) is !=
@@ -1451,6 +1507,7 @@ class Segmentation(QWidget):
 
         odor_id_pairs = [(o1,o2) for o1,o2 in
             zip(self.odor1_ids, self.odor2_ids)]
+        print('odor_id_pairs:', odor_id_pairs)
 
         comparison_num = -1
 
@@ -1610,15 +1667,15 @@ class Segmentation(QWidget):
         self.date = datetime.strptime(date_dir, '%Y-%m-%d')
         self.fly_num = int(fly_dir)
 
-        thorimage_id = tiff_just_fname[:4]
+        self.thorimage_id = tiff_just_fname[:4]
 
         mat = join(analysis_dir, rel_to_cnmf_mat,
-            thorimage_id + '_cnmf.mat')
+            self.thorimage_id + '_cnmf.mat')
 
 
         recordings = df.loc[(df.date == self.date) &
                             (df.fly_num == self.fly_num) &
-                            (df.thorimage_dir == thorimage_id)]
+                            (df.thorimage_dir == self.thorimage_id)]
         recording = recordings.iloc[0]
 
         if recording.project != 'natural_odors':
@@ -1840,6 +1897,13 @@ class Segmentation(QWidget):
 
         self.start_frame = None
         self.stop_frame = None
+
+        # want to keep this?
+        self.fig.clear()
+        ax = self.fig.add_subplot(111)
+        ax.plot(np.mean(self.movie, axis=(1,2)))
+        self.mpl_canvas.draw()
+        #
 
 
 class ROIAnnotation(QWidget):
