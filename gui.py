@@ -882,6 +882,7 @@ class Segmentation(QWidget):
 
         n = int(np.ceil(np.sqrt(len(cnmf_groups))))
         seen_types = set()
+        formgen_print = False
         for i, g in enumerate(cnmf_groups):
             dont_show = dont_show_by_group[g]
 
@@ -927,7 +928,9 @@ class Segmentation(QWidget):
             # TODO TODO blacklist approp parts of data / other things that can
             # (and should only) be filled in from thorimage metadata
 
-            print(g)
+            if formgen_print:
+                print(g)
+
             # TODO maybe infer whether params are optional (via type
             # annotations, docstring, None already, or explicitly specifying)
             # and then have a checkbox to the side to enable whatever other
@@ -1025,8 +1028,10 @@ class Segmentation(QWidget):
                     # TODO maybe should use regex?
                     v_opts = ([x.strip(" '") for x in doc_line.split(',')[0
                         ].split(':')[1].split('|')])
-                    print('key:', k)
-                    print('parsed options:', v_opts)
+
+                    if formgen_print:
+                        print('key:', k)
+                        print('parsed options:', v_opts)
                     assert v in v_opts
 
                     for vi in v_opts:
@@ -1048,15 +1053,18 @@ class Segmentation(QWidget):
                     w.editingFinished.connect(
                         partial(self.set_from_text, group_key, k, w))
 
-                if print_stuff:
+                if formgen_print and print_stuff:
                     print(k, v, type(v))
                     print(doc_line)
                     print('')
 
                 group_layout.addRow(k, w)
-            print('')
 
-        print('Seen types:', seen_types)
+            if formgen_print:
+                print('')
+
+        if formgen_print:
+            print('Seen types:', seen_types)
 
         # TODO set tab index to most likely to change? spatial?
 
