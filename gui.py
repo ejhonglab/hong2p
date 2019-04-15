@@ -4,7 +4,6 @@
 GUI to do make ROIs for trace extraction and validate those ROIs.
 """
 
-import socket
 import sys
 import os
 from os.path import split, join, exists, sep, getmtime
@@ -17,10 +16,10 @@ import glob
 import hashlib
 import time
 from datetime import datetime
+import socket
 import getpass
 import pickle
 from copy import deepcopy
-import atexit
 import pprint
 #
 import traceback
@@ -40,18 +39,12 @@ import pyqtgraph as pg
 import tifffile
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table
-# TODO or just use sqlalchemy.types?
-from sqlalchemy.sql import sqltypes
-from sqlalchemy.dialects import postgresql
 # TODO factor all of these out as much as possible
 from scipy.sparse import coo_matrix
 import cv2
 from matplotlib.backends.backend_qt5agg import (FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
-import git
-import pkg_resources
 import matlab.engine
 
 # TODO TODO allow things to fail gracefully if we don't have cnmf.
@@ -60,6 +53,8 @@ import matlab.engine
 import caiman
 from caiman.source_extraction.cnmf import params, cnmf
 import caiman.utils.visualization
+
+import util as u
 
 
 # TODO also move these two variable defs? (to globals below?) for sake of
@@ -71,301 +66,16 @@ recording_cols = [
 ]
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 raw_data_root = '/mnt/nas/mb_team/raw_data'
+# TODO support a local and a remote one ([optional] local copy for faster repeat
+# analysis)?
 analysis_output_root = '/mnt/nas/mb_team/analysis_output'
 
 use_cached_gsheet = True
 show_inferred_paths = True
 overwrite_older_analysis = True
-evil = matlab.engine.start_matlab()
-atexit.register(evil.quit)
-exclude_from_matlab_path = {'CaImAn-MATLAB','matlab_helper_functions'}
-#
-userpath = evil.userpath()
-for root, dirs, _ in os.walk(userpath, topdown=True):
-    dirs[:] = [d for d in dirs if (not d.startswith('.') and
-        not d.startswith('@') and not d.startswith('+') and
-        d not in exclude_from_matlab_path)]
 
-    evil.addpath(root)
+df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
 
-
-gsheet_cache_file = '.gsheet_cache.p'
-if use_cached_gsheet and os.path.exists(gsheet_cache_file):
-    print('Loading Google sheet data from cache at {}'.format(
-        gsheet_cache_file))
-
-    with open(gsheet_cache_file, 'rb') as f:
-        sheets = pickle.load(f)
-
-else:
-    with open('google_sheet_link.txt', 'r') as f:
-        gsheet_link = f.readline().split('/edit')[0] + '/export?format=csv&gid='
-
-    # If you want to add more sheets, when you select the new sheet in your
-    # browser, the GID will be at the end of the URL in the address bar.
-    sheet_gids = {
-        'fly_preps': '269082112',
-        'recordings': '0',
-        'daily_settings': '229338960'
-    }
-
-    sheets = dict()
-    for df_name, gid in sheet_gids.items():
-        df = pd.read_csv(gsheet_link + gid)
-
-        # TODO convert any other dtypes?
-        if 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'])
-
-        # TODO complain if there are any missing fly_nums
-
-        sheets[df_name] = df
-
-    boolean_columns = {
-        'used_for_analysis',
-        'raw_data_discarded',
-        'raw_data_lost'
-    }
-    na_cols = list(set(sheets['recordings'].columns) - boolean_columns)
-    sheets['recordings'].dropna(how='all', subset=na_cols, inplace=True)
-
-    with open(gsheet_cache_file, 'wb') as f:
-        pickle.dump(sheets, f)
-
-# TODO maybe make df some merge of the three sheets?
-df = sheets['recordings']
-
-df[['date','fly_num']] = df[['date','fly_num']].fillna(method='ffill')
-
-df.raw_data_discarded = df.raw_data_discarded.fillna(False)
-# TODO say when this happens?
-df.drop(df[df.raw_data_discarded].index, inplace=True)
-
-# TODO TODO warn / fail if 'used_for_analysis' and either discard / lost is
-# checked
-
-# Not sure where there were any NaN here anyway...
-df.raw_data_lost = df.raw_data_lost.fillna(False)
-df.drop(df[df.raw_data_lost].index, inplace=True)
-
-keys = ['date', 'fly_num']
-df['recording_num'] = df.groupby(keys).cumcount() + 1
-# Since otherwise cumcount seems to be zero for stuff without a group...
-# (i.e. w/ one of the keys null)
-df.loc[pd.isnull(df[keys]).any(axis=1), 'recording_num'] = np.nan
-
-# TODO delete hack after dealing w/ remy's conventions (some of which were
-# breaking the code assuming my conventions)
-df.drop(df[df.project != 'natural_odors'].index, inplace=True)
-
-if show_inferred_paths:
-    missing_thorimage = pd.isnull(df.thorimage_dir)
-    missing_thorsync = pd.isnull(df.thorsync_dir)
-
-
-df['thorimage_num'] = df.thorimage_dir.apply(lambda x: np.nan if pd.isnull(x)
-    else int(x[1:]))
-df['numbering_consistent'] = \
-    pd.isnull(df.thorimage_num) | (df.thorimage_num == df.recording_num)
-
-# TODO unit test this
-# TODO TODO check that, if there are mismatches here, that they *never* happen
-# when recording num will be used for inference in rows in the group *after*
-# the mismatch
-gkeys = keys + ['thorimage_dir','thorsync_dir','thorimage_num',
-                'recording_num','numbering_consistent']
-for name, group_df in df.groupby(keys):
-    '''
-    # case 1: all consistent
-    # case 2: not all consistent, but all thorimage_dir filled in
-    # case 3: not all consistent, but just because thorimage_dir was null
-    '''
-    #print(group_df[gkeys])
-
-    # TODO check that first_mismatch based approach includes this case
-    #if pd.notnull(group_df.thorimage_dir).all():
-    #    continue
-
-    mismatches = np.argwhere(~ group_df.numbering_consistent)
-    if len(mismatches) == 0:
-        continue
-
-    first_mismatch_idx = mismatches[0][0]
-    #print('first_mismatch:\n', group_df[gkeys].iloc[first_mismatch_idx])
-
-    # TODO test case where the first mismatch is last
-    following_thorimage_dirs = group_df.thorimage_dir.iloc[first_mismatch_idx:]
-    #print('checking these are not null:\n', following_thorimage_dirs)
-    assert pd.notnull(following_thorimage_dirs).all()
-
-df.thorsync_dir.fillna(df.thorimage_num.apply(lambda x: np.nan if pd.isnull(x)
-    else 'SyncData{:03d}'.format(int(x))), inplace=True)
-
-df.drop(columns=['thorimage_num','numbering_consistent'], inplace=True)
-
-
-# TODO TODO check for conditions in which we might need to renumber recording
-# num? (dupes / any entered numbers along the way that are inconsistent w/
-# recording_num results)
-df.thorimage_dir.fillna(df.recording_num.apply(lambda x: np.nan if pd.isnull(x)
-    else'_{:03d}'.format(int(x))), inplace=True)
-
-df.thorsync_dir.fillna(df.recording_num.apply(lambda x: np.nan if pd.isnull(x)
-    else 'SyncData{:03d}'.format(int(x))), inplace=True)
-
-if show_inferred_paths:
-    cols = ['date','fly_num','thorimage_dir','thorsync_dir']
-    print('Inferred ThorImage directories:')
-    print(df.loc[missing_thorimage, cols])
-    print('\nInferred ThorSync directories:')
-    print(df.loc[missing_thorsync, cols])
-    print('')
-
-keys = ['date','fly_num']
-duped_thorimage = df.duplicated(subset=keys + ['thorimage_dir'], keep=False)
-duped_thorsync = df.duplicated(subset=keys + ['thorsync_dir'], keep=False)
-
-try:
-    assert not duped_thorimage.any()
-    assert not duped_thorsync.any()
-except AssertionError:
-    print('Duplicated ThorImage directories after path inference:')
-    print(df[duped_thorimage])
-    print('\nDuplicated ThorSync directories after path inference:')
-    print(df[duped_thorsync])
-    raise
-
-db_hostname = 'atlas'
-our_hostname = socket.gethostname()
-if our_hostname == db_hostname:
-    url = 'postgresql+psycopg2://tracedb:tracedb@localhost:5432/tracedb'
-else:
-    url = ('postgresql+psycopg2://tracedb:tracedb@{}' +
-        ':5432/tracedb').format(db_hostname)
-
-conn = create_engine(url)
-
-def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
-    # TODO TODO if this fails and time won't be saved on reinsertion, any rows
-    # that have been inserted already should be deleted to avoid confusion
-    # (mainly, for the case where the program is interrupted while this is
-    # running)
-    # TODO TODO maybe have some cleaning step that checks everything in database
-    # has the correct number of rows? and maybe prompts to delete?
-
-    # Other columns should be generated by database anyway.
-    cols = list(new_df.columns)
-    if index:
-        cols += list(new_df.index.names)
-    table_cols = ', '.join(cols)
-
-    md = MetaData()
-    table = Table(table_name, md, autoload_with=conn)
-    dtypes = {c.name: c.type for c in table.c}
-
-    if verbose:
-        print('SQL column types:')
-        pprint.pprint(dtypes)
-   
-    df_types = new_df.dtypes.to_dict()
-    if index:
-        df_types.update({n: new_df.index.get_level_values(n).dtype
-            for n in new_df.index.names})
-
-    if verbose:
-        print('\nOld dataframe column types:')
-        pprint.pprint(df_types)
-
-    sqlalchemy2pd_type = {
-        'INTEGER()': np.dtype('int32'),
-        'SMALLINT()': np.dtype('int16'),
-        'REAL()': np.dtype('float32'),
-        'DOUBLE_PRECISION(precision=53)': np.dtype('float64'),
-        # TODO but maybe this was the type causing the problem?
-        'DATE()': np.dtype('<M8[ns]')
-    }
-    if verbose:
-        print('\nSQL types to cast:')
-        pprint.pprint(sqlalchemy2pd_type)
-
-    new_df_types = {n: sqlalchemy2pd_type[repr(t)] for n, t in dtypes.items()
-        if repr(t) in sqlalchemy2pd_type}
-
-    if verbose:
-        print('\nNew dataframe column types:')
-        pprint.pprint(new_df_types)
-
-    # TODO how to get around converting things to int if they have NaN.
-    # possible to not convert?
-    new_column_types = dict()
-    new_index_types = dict()
-    for k, t in new_df_types.items():
-        if k in new_df.columns and not new_df[k].isnull().any():
-            new_column_types[k] = t
-
-        # TODO or is it always true that index level can't be NaN anyway?
-        elif (k in new_df.index.names and
-            not new_df.index.get_level_values(k).isnull().any()):
-
-            new_index_types[k] = t
-
-        # TODO print types being skipped b/c nan?
-
-    new_df = new_df.astype(new_column_types, copy=False)
-    if index:
-        # TODO need to handle case where conversion dict is empty
-        # (seems to fail?)
-        #pprint.pprint(new_index_types)
-
-        # MultiIndex astype method seems to not work the same way?
-        new_df.index = pd.MultiIndex.from_frame(
-            new_df.index.to_frame().astype(new_index_types, copy=False))
-
-    # TODO print the type of any sql types not convertible?
-    # TODO assert all dtypes can be converted w/ this dict?
-
-    if index:
-        print('writing to temporary table temp_{}...'.format(table_name))
-
-    # TODO figure out how to profile
-    new_df.to_sql('temp_' + table_name, conn, if_exists='replace', index=index,
-        dtype=dtypes)
-
-    # TODO change to just get column names?
-    query = '''
-    SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS data_type
-    FROM   pg_index i
-    JOIN   pg_attribute a ON a.attrelid = i.indrelid
-        AND a.attnum = ANY(i.indkey)
-    WHERE  i.indrelid = '{}'::regclass
-    AND    i.indisprimary;
-    '''.format(table_name)
-    result = conn.execute(query)
-    pk_cols = ', '.join([n for n, _ in result])
-
-    # TODO TODO TODO modify so on conflict the new row replaces the old one!
-    # (for updates to analysis, if exact code version w/ uncommited changes and
-    # everything is not going to be part of primary key...)
-    # (want updates to non-PK rows)
-    # TODO prefix w/ ANALYZE EXAMINE and look at results
-    query = ('INSERT INTO {0} ({1}) SELECT {1} FROM temp_{0} ' +
-        'ON CONFLICT ({2}) DO NOTHING').format(table_name, table_cols, pk_cols)
-    # TODO maybe a merge is better for this kind of upsert, in postgres?
-    if index:
-        print('inserting into {} from temporary table... '.format(table_name),
-            end='')
-
-    # TODO let this happen async in the background? (don't need result)
-    conn.execute(query)
-
-    if index:
-        print('done')
-
-    # TODO drop staging table
-
-sheets['fly_preps'].dropna(subset=['date','fly_num'], inplace=True)
-to_sql_with_duplicates(sheets['fly_preps'].rename(
-    columns={'date': 'prep_date'}), 'flies')
 
 rel_to_cnmf_mat = 'cnmf'
 
@@ -374,34 +84,6 @@ stimfile_root = '/mnt/nas/mb_team/stimulus_data_files'
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', inplace=True)
 
-
-def get_caiman_version_info():
-    try:
-        pkg_path = caiman.__file__
-        repo = git.Repo(pkg_path, search_parent_directories=True)
-        remote_urls = list(repo.remotes.origin.urls)
-        assert len(remote_urls) == 1
-        remote_url = remote_urls[0]
-
-        current_hash = repo.head.object.hexsha
-
-        index = repo.index
-        diff = index.diff(None, create_patch=True)
-        changes = ''
-        for d in diff:
-            changes += str(d)
-
-        return {
-            'git_remote': remote_url,
-            'git_hash': current_hash,
-            'git_uncommitted_changes': changes
-        }
-
-    except git.exc.InvalidGitRepositoryError:
-        # TODO this the right name? try in conda? how does this error?
-        version = pkg_resources.get_distribution('caiman').version
-
-        return {'version': version}
 
 def md5(fname):
     hash_md5 = hashlib.md5()
@@ -503,18 +185,6 @@ def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
 # TODO move natural_odors/kc_analysis.py/plot_traces here?
 
 # TODO TODO support loading single comparisons from tiffs in imaging_util
-
-def pg_upsert(table, conn, keys, data_iter):
-    # https://github.com/pandas-dev/pandas/issues/14553
-    for row in data_iter:
-        row_dict = dict(zip(keys, row))
-        sqlalchemy_table = meta.tables[table.name]
-        stmt = postgresql.insert(sqlalchemy_table).values(**row_dict)
-        upsert_stmt = stmt.on_conflict_do_update(
-            index_elements=table.index,
-            set_=row_dict)
-        conn.execute(upsert_stmt)
-
 
 # TODO TODO TODO factor all code duplicated between here and kc_analysis into a
 # util module in this package
@@ -715,7 +385,7 @@ class Segmentation(QWidget):
             print(d)
 
         entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
-            'fly_num, recording_from, analysis FROM presentations', conn)
+            'fly_num, recording_from, analysis FROM presentations', u.conn)
         # TODO TODO check that the right number of rows are in there, otherwise
         # drop and re-insert (optionally? since it might take a bit of time to
         # load CNMF output to check / for database to check)
@@ -1340,6 +1010,8 @@ class Segmentation(QWidget):
         run_info.update(caiman_version_info)
         return run_info
 
+    # TODO disable cnmf run button until after movie selected
+    # TODO disable accept / reject buttons until after cnmf is run
 
     # TODO TODO add support for deleting presentations from db if reject
     # something that was just accepted?
@@ -1360,7 +1032,8 @@ class Segmentation(QWidget):
         # TODO test that result is same w/ or w/o method in case where row did
         # not exist, and that read shows insert worked in w/ method case
         if ACTUALLY_UPLOAD:
-            run.to_sql('cnmf_runs', conn, if_exists='append', method=pg_upsert)
+            run.to_sql('cnmf_runs', u.conn, if_exists='append',
+                method=u.pg_upsert)
 
         # TODO TODO TODO merge w/ metadata so i can load into db as in
         # populate_db
@@ -1420,17 +1093,6 @@ class Segmentation(QWidget):
             import ipdb; ipdb.set_trace()
         '''
         
-        #
-        '''
-        self.fig.clear()
-        ax = self.fig.add_subplot(111)
-        ax.plot(df_over_f[:,0])
-        self.mpl_canvas.draw()
-
-        import ipdb; ipdb.set_trace()
-        '''
-        #
-
         footprint_dfs = []
         for cell_num in range(n_footprints):
             sparse = coo_matrix(footprints[:,:,cell_num])
@@ -1452,7 +1114,7 @@ class Segmentation(QWidget):
         # TODO filter out footprints less than a certain # of pixels in cnmf?
         # (is 3 pixels really reasonable?)
         if ACTUALLY_UPLOAD:
-            to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
+            u.to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
 
         # TODO store image w/ footprint overlayed?
         # TODO TODO maybe store an average frame of registered TIF, and then
@@ -1580,7 +1242,7 @@ class Segmentation(QWidget):
                 'from_onset': [[float(x) for x in presentation_frametimes]]
             })
             if ACTUALLY_UPLOAD:
-                to_sql_with_duplicates(presentation, 'presentations')
+                u.to_sql_with_duplicates(presentation, 'presentations')
 
 
             # maybe share w/ code that checks distinct to decide whether to
@@ -1594,7 +1256,7 @@ class Segmentation(QWidget):
                 'odor2',
                 'repeat_num'
             ]
-            db_presentations = pd.read_sql('presentations', conn,
+            db_presentations = pd.read_sql('presentations', u.conn,
                 columns=(key_cols + ['presentation_id']))
 
             presentation_ids = (db_presentations[key_cols] ==
@@ -1625,11 +1287,13 @@ class Segmentation(QWidget):
 
             # TODO TODO test this is actually overwriting any old stuff
             if ACTUALLY_UPLOAD:
-                to_sql_with_duplicates(response_df, 'responses')
+                u.to_sql_with_duplicates(response_df, 'responses')
 
             # TODO put behind flag
             db_presentations = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
-                'fly_num, recording_from, comparison FROM presentations', conn)
+                'fly_num, recording_from, comparison FROM presentations',
+                u.conn)
+
             print(db_presentations)
             print(len(db_presentations))
             #
@@ -1650,7 +1314,7 @@ class Segmentation(QWidget):
         run_info['accepted'] = False
         run = pd.DataFrame(run_info)
         run.set_index('run_at', inplace=True)
-        run.to_sql('cnmf_runs', conn, if_exists='append', method=pg_upsert)
+        run.to_sql('cnmf_runs', u.conn, if_exists='append', method=u.pg_upsert)
 
 
     # TODO TODO either automatically considering change parameters / re-running
@@ -1715,7 +1379,7 @@ class Segmentation(QWidget):
             'stimulus_data_path': [stimulus_data_path]
         })
         # TODO TODO maybe defer this to accepting...
-        to_sql_with_duplicates(recordings, 'recordings')
+        u.to_sql_with_duplicates(recordings, 'recordings')
 
 
         stimfile = recording['stimulus_data_file']
@@ -1760,12 +1424,12 @@ class Segmentation(QWidget):
                 'log10_vial_volume_fraction'] for x in data['odors']]
         })
         # TODO TODO maybe defer this to accepting...
-        to_sql_with_duplicates(odors, 'odors')
+        u.to_sql_with_duplicates(odors, 'odors')
 
         # TODO make unique id before insertion? some way that wouldn't require
         # the IDs, but would create similar tables?
 
-        db_odors = pd.read_sql('odors', conn)
+        db_odors = pd.read_sql('odors', u.conn)
         # TODO TODO in general, the name alone won't be unique, so use another
         # strategy
         db_odors.set_index('name', inplace=True)
@@ -1795,7 +1459,7 @@ class Segmentation(QWidget):
             'odor2': self.odor2_ids
         })
         # TODO TODO maybe defer this to accepting...
-        to_sql_with_duplicates(mixtures, 'mixtures')
+        u.to_sql_with_duplicates(mixtures, 'mixtures')
 
         try:
             evil.evalc("clear; data = load('{}', 'ti');".format(mat))
@@ -2337,6 +2001,9 @@ class ROIAnnotation(QWidget):
     # TODO TODO if doing cnmf in this gui, save output directly to database
 
 
+# TODO TODO maybe make a "response calling" tab that does what my response
+# calling / mpl annotation is doing?
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -2366,7 +2033,7 @@ class MainWindow(QMainWindow):
         self.user_cache_file = '.cnmf_gui_user.p'
         self.user = self.load_default_user()
 
-        self.nicknames = set(pd.read_sql('people', conn)['nickname'])
+        self.nicknames = set(pd.read_sql('people', u.conn)['nickname'])
         if self.user is not None:
             user_select.addItem(self.user)
 
@@ -2413,7 +2080,7 @@ class MainWindow(QMainWindow):
     
     def change_user(self, user):
         if user not in self.nicknames:
-            pd.DataFrame({'nickname': [user]}).to_sql('people', conn,
+            pd.DataFrame({'nickname': [user]}).to_sql('people', u.conn,
                 if_exists='append', index=False)
             self.nicknames.add(user)
         self.user = user
@@ -2438,7 +2105,6 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    global conn
     global odors
     global recordings
     global presentations
@@ -2447,32 +2113,17 @@ def main():
     global footprints
     global comp_cols
     global caiman_version_info
-    global meta
+    global evil
 
     # Calling this first to minimize chances of code diverging.
-    caiman_version_info = get_caiman_version_info()
-
-    '''
-    db_hostname = 'atlas'
-    our_hostname = socket.gethostname()
-    if our_hostname == db_hostname:
-        url = 'postgresql+psycopg2://tracedb:tracedb@localhost:5432/tracedb'
-    else:
-        url = ('postgresql+psycopg2://tracedb:tracedb@{}' +
-            ':5432/tracedb').format(db_hostname)
-
-    conn = create_engine(url)
-    '''
-
-    meta = MetaData()
-    meta.reflect(bind=conn)
+    caiman_version_info = u.caiman_version_info()
 
     print('reading odors from postgres...', end='')
-    odors = pd.read_sql('odors', conn)
+    odors = pd.read_sql('odors', u.conn)
     print(' done')
 
     print('reading presentations from postgres...', end='')
-    presentations = pd.read_sql('presentations', conn)
+    presentations = pd.read_sql('presentations', u.conn)
     print(' done')
 
     presentations['from_onset'] = presentations.from_onset.apply(
@@ -2482,7 +2133,7 @@ def main():
 
     # TODO change sql for recordings table to use thorimage dir + date + fly
     # as index?
-    recordings = pd.read_sql('recordings', conn)
+    recordings = pd.read_sql('recordings', u.conn)
 
     presentations = merge_recordings(presentations, recordings)
 
@@ -2497,12 +2148,13 @@ def main():
     ]
     recordings_meta = presentations[rec_meta_cols].drop_duplicates()
 
-    footprints = pd.read_sql('cells', conn)
+    footprints = pd.read_sql('cells', u.conn)
     footprints = footprints.merge(recordings_meta, on='recording_from')
     footprints.set_index(recording_cols, inplace=True)
 
     comp_cols = recording_cols + ['comparison']
 
+    evil = u.matlab_engine()
 
     # TODO convention re: this vs setWindowTitle? latter not available if making
     # a window out of a widget?
