@@ -523,6 +523,9 @@ class Segmentation(QWidget):
 
         self.run_cnmf_btn = QPushButton('Run CNMF')
         other_btns_layout.addWidget(self.run_cnmf_btn)
+        # Will enable after some data is selected. Can't run CNMF without that.
+        self.run_cnmf_btn.setEnabled(False)
+
         save_cnmf_output_btn = QPushButton('Save CNMF Output')
         other_btns_layout.addWidget(save_cnmf_output_btn)
         save_cnmf_output_btn.setEnabled(False)
@@ -1010,8 +1013,11 @@ class Segmentation(QWidget):
         run_info.update(caiman_version_info)
         return run_info
 
-    # TODO disable cnmf run button until after movie selected
     # TODO disable accept / reject buttons until after cnmf is run
+
+    # TODO TODO TODO what happens if cnmf run then data is changed??
+    # do accept / reject still (erroneously) work? should be sure to clear cnmf
+    # output when changing data
 
     # TODO TODO add support for deleting presentations from db if reject
     # something that was just accepted?
@@ -1035,11 +1041,8 @@ class Segmentation(QWidget):
             run.to_sql('cnmf_runs', u.conn, if_exists='append',
                 method=u.pg_upsert)
 
-        # TODO TODO TODO merge w/ metadata so i can load into db as in
-        # populate_db
         # TODO just calculate metadata outright here?
             
-        # TODO TODO TODO load to database
         # TODO TODO save file to nas (particularly so that it can still be there
         # if database gets wiped out...) (should thus include parameters
         # [+version?] info)
@@ -1148,6 +1151,8 @@ class Segmentation(QWidget):
         print(sum(lens))
         print(n_frames)
 
+        # TODO delete me
+        # intended to use this to find best detrend / extract dff method
         try:
             state = {
                 'Yr': Yr,
@@ -1169,6 +1174,7 @@ class Segmentation(QWidget):
             traceback.print_exc()
             print(e)
             import ipdb; ipdb.set_trace()
+        #
 
         # TODO assert here that all frames add up / approx
 
@@ -1325,7 +1331,6 @@ class Segmentation(QWidget):
 
     def open_recording(self):
         idx = self.sender().currentRow()
-        self.current_item = self.sender().currentItem()
 
         tiff = self.motion_corrected_tifs[idx]
 
@@ -1336,19 +1341,43 @@ class Segmentation(QWidget):
         full_date_dir, fly_dir = split(analysis_dir)
         date_dir = split(full_date_dir)[-1]
 
-        self.date = datetime.strptime(date_dir, '%Y-%m-%d')
-        self.fly_num = int(fly_dir)
+        date = datetime.strptime(date_dir, '%Y-%m-%d')
+        fly_num = int(fly_dir)
+        thorimage_id = tiff_just_fname[:4]
 
-        self.thorimage_id = tiff_just_fname[:4]
+        # Trying all the operations that need to find files before setting any
+        # instance variables, so that if those fail, we can stay on the current
+        # data if we want (without having to reload it).
+        ########################################################################
+        # Start stuff more likely to fail (missing file, etc)
+        ########################################################################
 
-        mat = join(analysis_dir, rel_to_cnmf_mat,
-            self.thorimage_id + '_cnmf.mat')
+        mat = join(analysis_dir, rel_to_cnmf_mat, thorimage_id + '_cnmf.mat')
 
+        try:
+            evil.evalc("clear; data = load('{}', 'ti');".format(mat))
+        except matlab.engine.MatlabExecutionError as e:
+            # TODO inspect error somehow to see if it's a memory error?
+            # -> continue if so
+            # TODO print to stderr
+            print(e)
+            return
+        ti = evil.eval('data.ti')
 
-        recordings = df.loc[(df.date == self.date) &
-                            (df.fly_num == self.fly_num) &
-                            (df.thorimage_dir == self.thorimage_id)]
+        recordings = df.loc[(df.date == date) &
+                            (df.fly_num == fly_num) &
+                            (df.thorimage_dir == thorimage_id)]
         recording = recordings.iloc[0]
+
+        stimfile = recording['stimulus_data_file']
+        stimfile_path = join(stimfile_root, stimfile)
+        # TODO also err if not readable
+        if not os.path.exists(stimfile_path):
+            raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
+                stimfile_root))
+
+        with open(stimfile_path, 'rb') as f:
+            data = pickle.load(f)
 
         if recording.project != 'natural_odors':
             warnings.warn('project type {} not supported. skipping.'.format(
@@ -1363,7 +1392,10 @@ class Segmentation(QWidget):
 
         thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
         xml_root = etree.parse(thorimage_xml_path).getroot()
-        self.started_at = \
+
+        data_params = cnmf_metadata_from_thor(tiff)
+
+        started_at = \
             datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
 
         # TODO see part of populate_db.py in this section to see how data
@@ -1373,37 +1405,30 @@ class Segmentation(QWidget):
         # experiment, or not worth it since maybe only want one accepted per?
 
         recordings = pd.DataFrame({
-            'started_at': [self.started_at],
+            'started_at': [started_at],
             'thorsync_path': [thorsync_dir],
             'thorimage_path': [thorimage_dir],
             'stimulus_data_path': [stimulus_data_path]
         })
-        # TODO TODO maybe defer this to accepting...
+        # TODO maybe defer this to accepting?
         u.to_sql_with_duplicates(recordings, 'recordings')
 
-
-        stimfile = recording['stimulus_data_file']
-        stimfile_path = join(stimfile_root, stimfile)
-        # TODO also err if not readable
-        if not os.path.exists(stimfile_path):
-            raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
-                stimfile_root))
-
-        with open(stimfile_path, 'rb') as f:
-            data = pickle.load(f)
-
-        self.n_repeats = int(data['n_repeats'])
+        n_repeats = int(data['n_repeats'])
 
         # The 3 is because 3 odors are compared in each repeat for the
         # natural_odors project.
-        self.presentations_per_repeat = 3
+        presentations_per_repeat = 3
 
-        presentations_per_block = self.n_repeats * self.presentations_per_repeat
+        presentations_per_block = n_repeats * presentations_per_repeat
 
         n_blocks = int(len(data['odor_pair_list']) / presentations_per_block)
 
         # TODO TODO subset odor order information by start/end block cols
         # (for natural_odors stuff)
+        # TODO TODO TODO also subset movie!! don't want partial blocks /
+        # erroneous blocks included
+        # TODO TODO and also subset by which frames are actually in ti
+        # that alone will exclude partial blocks
         if pd.isnull(recording['first_block']):
             first_block = 0
         else:
@@ -1423,7 +1448,6 @@ class Segmentation(QWidget):
                 natural_odors_concentrations.at[x,
                 'log10_vial_volume_fraction'] for x in data['odors']]
         })
-        # TODO TODO maybe defer this to accepting...
         u.to_sql_with_duplicates(odors, 'odors')
 
         # TODO make unique id before insertion? some way that wouldn't require
@@ -1442,56 +1466,97 @@ class Segmentation(QWidget):
             data['odor_pair_list'][first_presentation:last_presentation]
 
         assert (len(odor_pair_list) %
-            (self.presentations_per_repeat * self.n_repeats) == 0)
+            (presentations_per_repeat * n_repeats) == 0)
 
         # TODO invert to check
         # TODO is this sql table worth anything if both keys actually need to be
         # referenced later anyway?
 
         # TODO only add as many as there were blocks from thorsync timing info?
-        self.odor1_ids = [db_odors.at[o1,'odor'] for o1, _ in odor_pair_list]
-        self.odor2_ids = [db_odors.at[o2,'odor'] for _, o2 in odor_pair_list]
+        odor1_ids = [db_odors.at[o1,'odor'] for o1, _ in odor_pair_list]
+        odor2_ids = [db_odors.at[o2,'odor'] for _, o2 in odor_pair_list]
 
         # TODO TODO make unique first. only need order for filling in the values
         # in responses.
         mixtures = pd.DataFrame({
-            'odor1': self.odor1_ids,
-            'odor2': self.odor2_ids
+            'odor1': odor1_ids,
+            'odor2': odor2_ids
         })
         # TODO TODO maybe defer this to accepting...
         u.to_sql_with_duplicates(mixtures, 'mixtures')
 
-        try:
-            evil.evalc("clear; data = load('{}', 'ti');".format(mat))
-        except matlab.engine.MatlabExecutionError as e:
-            # TODO inspect error somehow to see if it's a memory error?
-            # -> continue if so
-            # TODO print to stderr
-            print(e)
-            return
+        frame_times = np.array(ti['frame_times']).flatten()
 
-        ti = evil.eval('data.ti')
-        self.frame_times = np.array(ti['frame_times']).flatten()
         # Frame indices for CNMF output.
         # Of length equal to number of blocks. Each element is the frame
         # index (from 1) in CNMF output that starts the block, where
         # block is defined as a period of continuous acquisition.
-        self.block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
+        block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
             ).flatten() - 1
+
         # stim_on is a number as above, but for the frame of the odor
         # onset.
         # TODO how does rounding work here? closest frame? first after?
         # TODO TODO did Remy change these variables? (i mean, it worked w/ some
         # videos?)
+        end = time.time()
+        print('Loading metadata took {:.3f} seconds'.format(end - start))
+
+        # TODO TODO any way to only del existing movie if required to have
+        # enough memory to load the new one?
+        print('Loading tiff {}...'.format(tiff), end='', flush=True)
+        start = time.time()
+        # TODO is cnmf expecting float to be in range [0,1], like skimage?
+        movie = tifffile.imread(tiff).astype('float32')
+        '''
+        try:
+            movie = tifffile.imread(tiff).astype('float32')
+        # TODO what is appropriate tifffile memory error to catch?
+        except:
+            # This strategy isn't ideal because it requires attempting the load
+            # twice.
+            # TODO if going to be doing this, need to make sure other data is
+            # all cleared + cnm, regardless of whether other loads are
+            # successful
+            # TODO may need to check before attempting del (if on first run)
+            # (or does del just do nothing if var isn't defined?)
+            del self.movie
+            movie = tifffile.imread(tiff).astype('float32')
+        '''
+        end = time.time()
+        print(' done.')
+        print('Loading TIFF took {:.3f} seconds'.format(end - start))
+
+        ########################################################################
+        # End stuff more likely to fail
+        ########################################################################
+        # Need to make sure we don't think the output of CNMF from other data is
+        # associated with the new data we load.
+        del self.cnm
+
+        self.movie = movie
+
+        self.current_item = self.sender().currentItem()
+        self.date = date
+        self.fly_num = fly_num
+        self.thorimage_id = thorimage_id
+        self.started_at = started_at
+        self.n_repeats = n_repeats
+        self.presentations_per_repeat = presentations_per_repeat
+        self.odor1_ids = odor1_ids
+        self.odor2_ids = odor2_ids
+        self.frame_times = frame_times
+        self.block_first_frames = block_first_frames
+
         self.odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
             ).flatten() - 1
         self.odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
             ).flatten() - 1
+
         # TODO TODO TODO if these are 1d, should be sorted... is Remy doing
         # something else weird?
         # (address after candidacy)
 
-        data_params = cnmf_metadata_from_thor(tiff)
         # TODO set param as appropriate / maybe display in non-editable boxes in
         # data parameters
         # TODO how to refer to boxes by name, so the right ones can
@@ -1530,22 +1595,7 @@ class Segmentation(QWidget):
                 item.setText(repr(v))
                 self.params.set('data', {label: v})
 
-        end = time.time()
-        print('Loading metadata took {:.3f} seconds'.format(end - start))
-
         # TODO worth setting any other parameters from thor metadata?
-
-        # TODO why does this not seem to print until load finishes...? end?
-        # TODO stdout flush ?
-        #print('Loading tiff {}...'.format(tiff), end='')
-        start = time.time()
-        # TODO is cnmf expecting float to be in range [0,1], like skimage?
-        self.movie = tifffile.imread(tiff).astype('float32')
-        end = time.time()
-        #print(' done.')
-        print('Loading TIFF took {:.3f} seconds'.format(end - start))
-
-        self.avg = np.mean(self.movie, axis=0)
         '''
         # TODO just try to modify cnmf to work w/ uint16 as input?
         # might make it a bit faster...
@@ -1556,6 +1606,7 @@ class Segmentation(QWidget):
         '''
         # TODO maybe allow playing movie somewhere in display widget?
 
+        self.avg = np.mean(self.movie, axis=0)
         self.tiff_fname = tiff
 
         start = time.time()
@@ -1570,12 +1621,16 @@ class Segmentation(QWidget):
         self.start_frame = None
         self.stop_frame = None
 
-        # want to keep this?
+        # want to keep this? (something like it, yes, but maybe replace w/
+        # pyqtgraph video viewer roi, s.t. it can be restricted to a different
+        # ROI if that would help)
         self.fig.clear()
         ax = self.fig.add_subplot(111)
         ax.plot(np.mean(self.movie, axis=(1,2)))
         self.mpl_canvas.draw()
         #
+
+        self.run_cnmf_btn.setEnabled(True)
 
 
 class ROIAnnotation(QWidget):
