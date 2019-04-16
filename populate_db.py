@@ -28,6 +28,7 @@ import matlab.engine
 import util as u
 
 
+################################################################################
 verbose = False
 
 use_cached_gsheet = False
@@ -35,15 +36,9 @@ show_inferred_paths = True
 
 only_do_anything_for_analysis = True
 
-# TODO TODO make sure both of these only run if necessary
-convert_h5 = False
-calc_timing_info = True
-motion_correct = False
-'''
 convert_h5 = True
 calc_timing_info = True
 motion_correct = True
-'''
 # TODO fix. this seems to not be working correctly.
 only_motion_correct_for_analysis = True
 
@@ -54,6 +49,8 @@ load_traces = False
 # entries?
 #overwrite_older_analysis = True
 overwrite_older_analysis = False
+
+################################################################################
 
 
 if only_do_anything_for_analysis:
@@ -79,182 +76,6 @@ userpath = evil.userpath()
 matlab_code_path = join(userpath, matlab_repo_name)
 #
 
-
-def get_thorimage_dims(xmlroot):
-    """
-    """
-    lsm_attribs = xmlroot.find('LSM').attrib
-    x = int(lsm_attribs['pixelX'])
-    y = int(lsm_attribs['pixelY'])
-    xy = (x,y)
-
-    # TODO make this None unless z-stepping seems to be enabled
-    # + check this variable actually indicates output steps
-    #int(xml.find('ZStage').attrib['steps'])
-    z = None
-    c = None
-
-    return xy, z, c
-
-
-def get_thorimage_fps(xmlroot):
-    """
-    """
-    lsm_attribs = xmlroot.find('LSM').attrib
-    raw_fps = float(lsm_attribs['frameRate'])
-    # TODO what does averageMode = 1 mean? always like that?
-    # 
-    n_averaged_frames = int(lsm_attribs['averageNum'])
-    saved_fps = raw_fps / n_averaged_frames
-    return saved_fps
-
-
-def load_thorimage_metadata(directory):
-    """
-    """
-    xml_path = join(directory, 'Experiment.xml')
-    xml = xml_root(xml_path)
-
-    fps = get_thorimage_fps(xml)
-    xy, z, c = get_thorimage_dims(xml)
-    imaging_file = join(directory, 'Image_0001_0001.raw')
-
-    return fps, xy, z, c, imaging_file
-
-
-def read_movie(thorimage_dir):
-    """Returns (t,x,y) indexed timeseries.
-    """
-    fps, xy, z, c, imaging_file = load_thorimage_metadata(thorimage_dir)
-    x, y = xy
-
-    # From ThorImage manual: "unsigned, 16-bit, with little-endian byte-order"
-    dtype = np.dtype('<u2')
-
-    with open(imaging_file, 'rb') as f:
-        # TODO maybe check we actually get enough bytes for n_frames?
-        data = np.fromfile(f, dtype=dtype)
-
-    data = np.reshape(data, (n_frames, x, y))
-    return data
-
-
-"""
-def motion_correct_to_tiffs(thorimage_dir, output_dir):
-    # TODO only read this if at least one motion correction would be run
-    movie = read_movie(thorimage_dir)
-
-    # TODO do i really want to basically just copy the matlab version?
-    # opportunity for some refactoring?
-
-    output_subdir = 'tif_stacks'
-
-    _, thorimage_id = split(thorimage_dir)
-
-    rig_tif = join(output_dir, output_subdir, thorimage_id + '_rig.tif')
-    avg_rig_tif = join(output_dir, output_subdir, 'AVG', 'rigid',
-        'AVG{}_rig.tif'.format(thorimage_id))
-
-    nr_tif = join(output_dir, output_subdir, thorimage_id + '_nr.tif')
-    avg_nr_tif = join(output_dir, output_subdir, 'AVG', 'nonrigid',
-        'AVG{}_nr.tif'.format(thorimage_id))
-
-    need_rig_tif = not exist(rig_tif)
-    need_avg_rig_tif = not exist(avg_rig_tif)
-    need_nr_tif = not exist(nr_tif)
-    need_avg_nr_tif = not exist(avg_nr_tif)
-
-    if not (need_rig_tif or need_avg_rig_tif or need_nr_tif or need_avg_nr_tif):
-        print('All registration already done.')
-        return
-
-    # Remy: this seems like it might just be reading in the first frame?
-    ###Y = input_tif_path
-    # TODO maybe can just directly use filename for python version though? raw
-    # even?
-
-    # rigid moco (normcorre)
-    # TODO just pass filename instead of Y, and compute dimensions or whatever
-    # separately, so that normcorre can (hopefully?) take up less memory
-    if need_rig_tif:
-        MC_rigid = MotionCorrection(Y)
-
-        options_rigid = NoRMCorreSetParms('d1',MC_rigid.dims(1),
-            'd2',MC_rigid.dims(2),
-            'bin_width',50,
-            'max_shift',15,
-            'phase_flag', 1,
-            'us_fac', 50,
-            'init_batch', 100,
-            'plot_flag', false,
-            'iter', 2) 
-
-        # TODO so is nothing actually happening in parallel?
-        ## rigid moco
-        MC_rigid.motionCorrectSerial(options_rigid)  # can also try parallel
-        # TODO which (if any) of these do i still want?
-        MC_rigid.computeMean()
-        MC_rigid.correlationMean()
-        #####MC_rigid.crispness()
-        print('normcorre done')
-
-        ## plot shifts
-        #plt.plot(MC_rigid.shifts_x)
-        #plt.plot(MC_rigid.shifts_y)
-
-        # save .tif
-        M = MC_rigid.M
-        M = uint16(M)  
-        tiffoptions.overwrite = true
-
-        print(['saving tiff to ' rig_tif])
-        saveastiff(M, rig_tif, tiffoptions)
-
-    if need_avg_rig_tif:
-        ##
-        # save average image
-        #AVG = single(mean(MC_rigid.M,3))
-        AVG = single(MC_rigid.template)
-        tiffoptions.overwrite = true
-
-        print(['saving tiff to ' avg_rig_tif])
-        saveastiff(AVG, avg_rig_tif, tiffoptions)
-
-    if need_nr_tif:
-        MC_nonrigid = MotionCorrection(Y)
-        options_nonrigid = NoRMCorreSetParms('d1',MC_nonrigid.dims(1),
-            'd2',MC_nonrigid.dims(2),
-            'grid_size',[64,64],
-            'mot_uf',4,
-            'bin_width',50,
-            'max_shift',[15 15],
-            'max_dev',3,
-            'us_fac',50,
-            'init_batch',200,
-            'iter', 2)
-
-        MC_nonrigid.motionCorrectParallel(options_nonrigid)
-        MC_nonrigid.computeMean()
-        MC_nonrigid.correlationMean()
-        MC_nonrigid.crispness()
-        print('non-rigid normcorre done')
-
-        # save .tif
-        M = uint16(MC_nonrigid.M)
-        tiffoptions.overwrite  = true
-        print(['saving tiff to ' nr_tif])
-        saveastiff(M, nr_tif, tiffoptions)
-
-    if need_avg_nr_tif:
-        # TODO flag to disable saving this average
-        #AVG = single(mean(MC_nonrigid.M,3))
-        AVG = single(MC_nonrigid.template)
-        tiffoptions.overwrite = true
-        print(['saving tiff to ' avg_nr_tif])
-        saveastiff(AVG, avg_nr_tif, tiffoptions)
-
-    raise NotImplementedError
-"""
 # TODO fn to convert raw output to tifs (that are compat w/ current ij tifs)
 
 df = u.mb_team_gsheet(
@@ -351,6 +172,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
     # TODO maybe do this in analysis actually? (to not just make a bunch of
     # empty dirs...)
+    # TODO TODO or just clean up appropriately
     analysis_fly_dir = join(analysis_output_root, date_dir, fly_dir)
     if not os.path.isdir(analysis_fly_dir):
         # Will also make any necessary parent (date) directories.
@@ -361,32 +183,12 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     if convert_h5:
         ####print('Converting ThorSync HDF5 files to .mat...')
         for syncdir in glob.glob(join(full_fly_dir, 'SyncData*')):
-            #print(syncdir)
-            '''
-            if evil is None:
-                evil = future.result()
-                userpath = evil.userpath()
-                paths_before = set(evil.path().split(':'))
-                for root, dirs, _ in os.walk(userpath, topdown=True):
-                    dirs[:] = [d for d in dirs if (not d.startswith('.') and
-                        not d.startswith('@') and not d.startswith('+') and
-                        d not in exclude_from_matlab_path)]
-
-                    evil.addpath(root)
-
-                paths_after = set(evil.path().split(':'))
-                pprint.pprint(paths_after - paths_before)
-            '''
-
-            # TODO make it so one ctrl-c closes whole program, rather than just
-            # cancelling matlab function and continuing
-
             print('before calling matlab h5->mat conversion...')
             print('syncdir={}'.format(syncdir))
 
             # Will immediately return if output already exists.
             evil.thorsync_h5_to_mat(syncdir, full_fly_dir, nargout=0)
-            # TODO (check whether she is loosing information... file size really
+            # TODO (check whether she is losing information... file size really
             # shouldn't be that different. both hdf5...)
 
             print('after calling matlab h5-> mat conversion')
@@ -413,13 +215,17 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                     'marked as used_for_analysis.')
                 continue
 
+            # TODO maybe check for existance of SyncData<nnn> first, to have
+            # option to be less verbose for stuff that doesn't exist here
+
             print('\nThorImage and ThorSync dirs for call to get_stiminfo:')
             print(thorimage_dir)
             print(thorsync_dir)
             print('')
 
             print(('getting stimulus timing information for {}, {}, {}...'
-                ).format(date_dir, fly_num, row['thorimage_dir']), end='')
+                ).format(date_dir, fly_num, row['thorimage_dir']), end='',
+                flush=True)
 
             # TODO TODO only do this for those that havent been calculated
             try:
@@ -428,7 +234,6 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                 evil.get_stiminfo(thorimage_dir, row['thorsync_dir'],
                     analysis_fly_dir, date_dir, fly_num, nargout=0)
             except matlab.engine.MatlabExecutionError:
-                print('error calculating timing information!')
                 continue
 
             print(' done.')
@@ -576,6 +381,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO check that ThorImageExperiment/Date/uTime parses to date field,
         # w/ appropriate timezone settings (or insert raw and check database has
         # something like date)?
+        # TODO TODO factor this into util, right? gui uses it?
         thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
         xml_root = etree.parse(thorimage_xml_path).getroot()
         started_at = \

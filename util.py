@@ -4,11 +4,13 @@ our databases / movies / CNMF output.
 """
 
 import os
+from os.path import join
 import socket
 import pickle
 import atexit
 import signal
 import sys
+import xml.etree.ElementTree as etree
 
 # TODO or just use sqlalchemy.types?
 from sqlalchemy import create_engine, MetaData, Table
@@ -416,3 +418,183 @@ def caiman_version_info():
 
         return {'version': version}
 
+
+def get_thorimage_dims(xmlroot):
+    """
+    """
+    lsm_attribs = xmlroot.find('LSM').attrib
+    x = int(lsm_attribs['pixelX'])
+    y = int(lsm_attribs['pixelY'])
+    xy = (x,y)
+
+    # TODO make this None unless z-stepping seems to be enabled
+    # + check this variable actually indicates output steps
+    #int(xml.find('ZStage').attrib['steps'])
+    z = None
+    c = None
+
+    return xy, z, c
+
+
+def get_thorimage_fps(xmlroot):
+    """
+    """
+    lsm_attribs = xmlroot.find('LSM').attrib
+    raw_fps = float(lsm_attribs['frameRate'])
+    # TODO what does averageMode = 1 mean? always like that?
+    # 
+    n_averaged_frames = int(lsm_attribs['averageNum'])
+    saved_fps = raw_fps / n_averaged_frames
+    return saved_fps
+
+
+def load_thorimage_metadata(directory):
+    """
+    """
+    xml_path = join(directory, 'Experiment.xml')
+    xml = xml_root(xml_path)
+
+    fps = get_thorimage_fps(xml)
+    xy, z, c = get_thorimage_dims(xml)
+    imaging_file = join(directory, 'Image_0001_0001.raw')
+
+    return fps, xy, z, c, imaging_file
+
+
+# TODO TODO use this to convert to tifs, which will otherwise read the same as
+# those saved w/ imagej
+def read_movie(thorimage_dir):
+    """Returns (t,x,y) indexed timeseries.
+    """
+    fps, xy, z, c, imaging_file = load_thorimage_metadata(thorimage_dir)
+    x, y = xy
+
+    # From ThorImage manual: "unsigned, 16-bit, with little-endian byte-order"
+    dtype = np.dtype('<u2')
+
+    with open(imaging_file, 'rb') as f:
+        # TODO maybe check we actually get enough bytes for n_frames?
+        data = np.fromfile(f, dtype=dtype)
+
+    data = np.reshape(data, (n_frames, x, y))
+    return data
+
+
+# TODO finish translating. was directly translating matlab registration script
+# to python.
+"""
+def motion_correct_to_tiffs(thorimage_dir, output_dir):
+    # TODO only read this if at least one motion correction would be run
+    movie = read_movie(thorimage_dir)
+
+    # TODO do i really want to basically just copy the matlab version?
+    # opportunity for some refactoring?
+
+    output_subdir = 'tif_stacks'
+
+    _, thorimage_id = split(thorimage_dir)
+
+    rig_tif = join(output_dir, output_subdir, thorimage_id + '_rig.tif')
+    avg_rig_tif = join(output_dir, output_subdir, 'AVG', 'rigid',
+        'AVG{}_rig.tif'.format(thorimage_id))
+
+    nr_tif = join(output_dir, output_subdir, thorimage_id + '_nr.tif')
+    avg_nr_tif = join(output_dir, output_subdir, 'AVG', 'nonrigid',
+        'AVG{}_nr.tif'.format(thorimage_id))
+
+    need_rig_tif = not exist(rig_tif)
+    need_avg_rig_tif = not exist(avg_rig_tif)
+    need_nr_tif = not exist(nr_tif)
+    need_avg_nr_tif = not exist(avg_nr_tif)
+
+    if not (need_rig_tif or need_avg_rig_tif or need_nr_tif or need_avg_nr_tif):
+        print('All registration already done.')
+        return
+
+    # Remy: this seems like it might just be reading in the first frame?
+    ###Y = input_tif_path
+    # TODO maybe can just directly use filename for python version though? raw
+    # even?
+
+    # rigid moco (normcorre)
+    # TODO just pass filename instead of Y, and compute dimensions or whatever
+    # separately, so that normcorre can (hopefully?) take up less memory
+    if need_rig_tif:
+        MC_rigid = MotionCorrection(Y)
+
+        options_rigid = NoRMCorreSetParms('d1',MC_rigid.dims(1),
+            'd2',MC_rigid.dims(2),
+            'bin_width',50,
+            'max_shift',15,
+            'phase_flag', 1,
+            'us_fac', 50,
+            'init_batch', 100,
+            'plot_flag', false,
+            'iter', 2) 
+
+        # TODO so is nothing actually happening in parallel?
+        ## rigid moco
+        MC_rigid.motionCorrectSerial(options_rigid)  # can also try parallel
+        # TODO which (if any) of these do i still want?
+        MC_rigid.computeMean()
+        MC_rigid.correlationMean()
+        #####MC_rigid.crispness()
+        print('normcorre done')
+
+        ## plot shifts
+        #plt.plot(MC_rigid.shifts_x)
+        #plt.plot(MC_rigid.shifts_y)
+
+        # save .tif
+        M = MC_rigid.M
+        M = uint16(M)  
+        tiffoptions.overwrite = true
+
+        print(['saving tiff to ' rig_tif])
+        saveastiff(M, rig_tif, tiffoptions)
+
+    if need_avg_rig_tif:
+        ##
+        # save average image
+        #AVG = single(mean(MC_rigid.M,3))
+        AVG = single(MC_rigid.template)
+        tiffoptions.overwrite = true
+
+        print(['saving tiff to ' avg_rig_tif])
+        saveastiff(AVG, avg_rig_tif, tiffoptions)
+
+    if need_nr_tif:
+        MC_nonrigid = MotionCorrection(Y)
+        options_nonrigid = NoRMCorreSetParms('d1',MC_nonrigid.dims(1),
+            'd2',MC_nonrigid.dims(2),
+            'grid_size',[64,64],
+            'mot_uf',4,
+            'bin_width',50,
+            'max_shift',[15 15],
+            'max_dev',3,
+            'us_fac',50,
+            'init_batch',200,
+            'iter', 2)
+
+        MC_nonrigid.motionCorrectParallel(options_nonrigid)
+        MC_nonrigid.computeMean()
+        MC_nonrigid.correlationMean()
+        MC_nonrigid.crispness()
+        print('non-rigid normcorre done')
+
+        # save .tif
+        M = uint16(MC_nonrigid.M)
+        tiffoptions.overwrite  = true
+        print(['saving tiff to ' nr_tif])
+        saveastiff(M, nr_tif, tiffoptions)
+
+    if need_avg_nr_tif:
+        # TODO flag to disable saving this average
+        #AVG = single(mean(MC_nonrigid.M,3))
+        AVG = single(MC_nonrigid.template)
+        tiffoptions.overwrite = true
+        print(['saving tiff to ' avg_nr_tif])
+        saveastiff(AVG, avg_nr_tif, tiffoptions)
+
+    raise NotImplementedError
+"""
