@@ -763,7 +763,7 @@ class Segmentation(QWidget):
         nav_bar.setFixedHeight(80)
         self.display_layout.addWidget(nav_bar)
 
-        # TODO TODO accept / reject dialog beneath this
+        # TODO accept / reject dialog beneath this
         # (maybe move save button out of ctrl widget? move reject in there?)
         display_btns = QWidget(self.display_widget)
         self.display_layout.addWidget(display_btns)
@@ -791,6 +791,23 @@ class Segmentation(QWidget):
         # TODO maybe share this across all widget classes?
         self.threadpool = QThreadPool()
 
+        self.accept_cnmf_btn.setEnabled(False)
+        self.reject_cnmf_btn.setEnabled(False)
+        self.movie = None
+        self.cnm = None
+        self.cnmf_running = False
+        self.params_changed = False
+        self.accepted = None
+
+
+    def check_run_btn_enbl(self):
+        if (not self.params_changed and not self.cnmf_running and
+            self.movie is not None):
+
+            self.run_cnmf_btn.setEnabled(True)
+
+        self.params_changed = True
+
 
     # TODO after implementing per-type, see if can be condensed to one function
     # for all types
@@ -806,6 +823,9 @@ class Segmentation(QWidget):
         self.params.set(group, {key: new_value})
         #print('New value:', self.params.get(group, key))
 
+        # TODO might want to actually check the value is different
+        self.check_run_btn_enbl()
+
 
     # TODO so looks like this can be collapsed w/ list no problem? new name?
     # TODO wrap all these callbacks to enable/disable verbose stuff in one
@@ -815,6 +835,8 @@ class Segmentation(QWidget):
         #print('Old value:', self.params.get(group, key))
         self.params.set(group, {key: new_value})
         #print('New value:', self.params.get(group, key))
+        # TODO might want to actually check the value is different
+        self.check_run_btn_enbl()
 
 
     def set_from_list(self, group, key, new_value):
@@ -822,6 +844,8 @@ class Segmentation(QWidget):
         #print('Old value:', self.params.get(group, key))
         self.params.set(group, {key: new_value})
         #print('New value:', self.params.get(group, key))
+        # TODO might want to actually check the value is different
+        self.check_run_btn_enbl()
 
 
     def set_from_text(self, group, key, qt_line_edit):
@@ -842,14 +866,25 @@ class Segmentation(QWidget):
             self.params.set(group, {key: new_value})
             qt_line_edit.setModified(False)
 
+            self.check_run_btn_enbl()
+
 
     def start_cnmf_worker(self):
         self.run_cnmf_btn.setEnabled(False)
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
+
+        # Might consider moving this to end of cnmf call, so judgement can be
+        # made while something else is running, but that might be kind of risky.
+
+        # TODO notify user this is happening (and how?)? checkbox to not do
+        # this?  and if checkbox is unticked, just store in db w/ accept as
+        # null?
+        if self.accepted is None and self.cnm is not None:
+            self.reject_cnmf()
+
         # TODO separate button to cancel? change run-button to cancel?
 
-        # TODO this delete all subplots, right?
         self.fig.clear()
 
         # TODO what kind of (if any) limitations are there on the extent to
@@ -869,13 +904,15 @@ class Segmentation(QWidget):
 
         self.parameter_json = self.params.to_json()
         self.cnmf_start = time.time()
-        # Execute
+
+        self.params_changed = False
+        self.cnmf_running = True
+
         self.threadpool.start(worker)
 
 
     def run_cnmf(self):
-        # TODO time cnmf run + report how long it took
-        print('running cnmf')
+        print('running cnmf', flush=True)
         # TODO use cm.cluster.setup_cluster?
         # TODO what is the dview that returns as second arg?
 
@@ -911,10 +948,12 @@ class Segmentation(QWidget):
         # TODO maybe have a widget that shows the text output from cnmf?
 
 
+    # TODO maybe just collapse this into get_cnmf_output?
     def cnmf_done(self):
-        self.run_cnmf_btn.setEnabled(True)
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
+        self.accepted = None
+        self.cnmf_running = False
         # TODO logging instead?
         print('done with cnmf')
         print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
@@ -1013,17 +1052,15 @@ class Segmentation(QWidget):
         run_info.update(caiman_version_info)
         return run_info
 
-    # TODO disable accept / reject buttons until after cnmf is run
-
-    # TODO TODO TODO what happens if cnmf run then data is changed??
-    # do accept / reject still (erroneously) work? should be sure to clear cnmf
-    # output when changing data
-
     # TODO TODO add support for deleting presentations from db if reject
     # something that was just accepted?
     # TODO TODO dialog to confirm overwrite if accepting something already in
     # database?
+
     def accept_cnmf(self):
+        if self.accepted:
+            return
+
         # TODO delete me
         ACTUALLY_UPLOAD = True
         #
@@ -1311,23 +1348,24 @@ class Segmentation(QWidget):
         # (they don't right now. fix!)
 
         self.current_item.setBackground(QColor('#7fc97f'))
+        self.accepted = True
 
 
-    # TODO factor accept/reject into a label fn that takes accept as one boolean
-    # arg
     def reject_cnmf(self):
+        if self.accepted == False:
+            return
+
         run_info = self.common_run_info()
         run_info['accepted'] = False
         run = pd.DataFrame(run_info)
         run.set_index('run_at', inplace=True)
         run.to_sql('cnmf_runs', u.conn, if_exists='append', method=u.pg_upsert)
+        self.accepted = False
 
-
-    # TODO TODO either automatically considering change parameters / re-running
-    # rejection or store parameters before labelling accept/reject
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
     # buttons in the gui? (maybe to some invisible cache?)
+    # (would need to fix cnmf save (and maybe load too) fn(s))
 
     def open_recording(self):
         idx = self.sender().currentRow()
@@ -1532,7 +1570,7 @@ class Segmentation(QWidget):
         ########################################################################
         # Need to make sure we don't think the output of CNMF from other data is
         # associated with the new data we load.
-        del self.cnm
+        self.cnm = None
 
         self.movie = movie
 
@@ -1631,6 +1669,9 @@ class Segmentation(QWidget):
         #
 
         self.run_cnmf_btn.setEnabled(True)
+        self.accept_cnmf_btn.setEnabled(False)
+        self.reject_cnmf_btn.setEnabled(False)
+        self.accepted = None
 
 
 class ROIAnnotation(QWidget):
