@@ -70,7 +70,7 @@ raw_data_root = '/mnt/nas/mb_team/raw_data'
 # analysis)?
 analysis_output_root = '/mnt/nas/mb_team/analysis_output'
 
-use_cached_gsheet = True
+use_cached_gsheet = False
 show_inferred_paths = True
 overwrite_older_analysis = True
 
@@ -912,7 +912,7 @@ class Segmentation(QWidget):
 
 
     def run_cnmf(self):
-        print('running cnmf', flush=True)
+        print('running CNMF', flush=True)
         # TODO use cm.cluster.setup_cluster?
         # TODO what is the dview that returns as second arg?
 
@@ -931,15 +931,26 @@ class Segmentation(QWidget):
 
         err_if_cnmf_changes_params = False
         if err_if_cnmf_changes_params:
-            assert (self.params_copy == self.params,
-                'CNMF changed params on init')
+            assert self.params_copy == self.params, \
+                'CNMF changed params on init'
 
-        # images : mapped np.ndarray of shape (t,x,y[,z])
-        # TODO does it really need to be mapped? how can you even check if a
-        # numpy array is mapped?
+        # TODO what to do in case of memory error? 
+        # is the cost / benefit there for trying to save intermediate results?
+        # or just clear them all out?
+
         # TODO maybe use fit_file for certain ways of getting here in the gui?
-        # TODO TODO TODO check dims / C/F order
-        self.cnm.fit(self.movie)
+        # TODO check dims / C/F order
+
+        try:
+            # From CNMF docs, about first arg to fit:
+            # "images : mapped np.ndarray of shape (t,x,y[,z])"
+            # (thought it doesn't actually need to be a memory mapped file)
+            self.cnm.fit(self.movie)
+
+        # TODO test this case
+        except MemoryError:
+            # TODO maybe log this / print traceback regardless
+            self.cnm = None
 
         # TODO see which parameters are changed?
         if err_if_cnmf_changes_params:
@@ -950,13 +961,16 @@ class Segmentation(QWidget):
 
     # TODO maybe just collapse this into get_cnmf_output?
     def cnmf_done(self):
-        self.accept_cnmf_btn.setEnabled(True)
-        self.reject_cnmf_btn.setEnabled(True)
         self.accepted = None
         self.cnmf_running = False
-        # TODO logging instead?
-        print('done with cnmf')
-        print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
+
+        if self.cnm is not None:
+            self.accept_cnmf_btn.setEnabled(True)
+            self.reject_cnmf_btn.setEnabled(True)
+
+            # TODO logging instead?
+            print('done with CNMF')
+            print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
 
 
     # TODO TODO actually provide a way to only initialize cnmf, to test out
@@ -1156,7 +1170,8 @@ class Segmentation(QWidget):
         if ACTUALLY_UPLOAD:
             u.to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
 
-        # TODO store image w/ footprint overlayed?
+        # TODO store image w/ footprint overlayed? (maybe just refer to movie?
+        # leaning towards doing both actually...)
         # TODO TODO maybe store an average frame of registered TIF, and then
         # indexes around that per footprint? (explicitly try to avoid responses
         # when doing so, for easier interpretation as a background?)
@@ -1459,27 +1474,22 @@ class Segmentation(QWidget):
 
         presentations_per_block = n_repeats * presentations_per_repeat
 
-        n_blocks = int(len(data['odor_pair_list']) / presentations_per_block)
-
-        # TODO TODO subset odor order information by start/end block cols
-        # (for natural_odors stuff)
-        # TODO TODO TODO also subset movie!! don't want partial blocks /
-        # erroneous blocks included
-        # TODO TODO and also subset by which frames are actually in ti
-        # that alone will exclude partial blocks
         if pd.isnull(recording['first_block']):
             first_block = 0
         else:
             first_block = int(recording['first_block']) - 1
 
         if pd.isnull(recording['last_block']):
-            last_block = n_blocks - 1
+            n_full_panel_blocks = \
+                int(len(data['odor_pair_list']) / presentations_per_block)
+
+            last_block = n_full_panel_blocks - 1
+
         else:
             last_block = int(recording['last_block']) - 1
 
-        first_presentation = first_block * presentations_per_block
-        last_presentation = (last_block + 1) * presentations_per_block
-
+        # TODO maybe use subset here too, to be consistent w/ which mixtures get
+        # entered...
         odors = pd.DataFrame({
             'name': data['odors'],
             'log10_conc_vv': [0 if x == 'paraffin' else
@@ -1496,12 +1506,11 @@ class Segmentation(QWidget):
         # strategy
         db_odors.set_index('name', inplace=True)
 
-        # TODO test slicing
-        # TODO make sure if there are extra trials in matlab, these get assigned
-        # to first
-        # + if there are less in matlab, should error
+        first_presentation = first_block * presentations_per_block
+        last_presentation = (last_block + 1) * presentations_per_block - 1
+
         odor_pair_list = \
-            data['odor_pair_list'][first_presentation:last_presentation]
+            data['odor_pair_list'][first_presentation:(last_presentation + 1)]
 
         assert (len(odor_pair_list) %
             (presentations_per_repeat * n_repeats) == 0)
@@ -1520,7 +1529,7 @@ class Segmentation(QWidget):
             'odor1': odor1_ids,
             'odor2': odor2_ids
         })
-        # TODO TODO maybe defer this to accepting...
+        # TODO maybe defer this to accepting...
         u.to_sql_with_duplicates(mixtures, 'mixtures')
 
         frame_times = np.array(ti['frame_times']).flatten()
@@ -1531,6 +1540,42 @@ class Segmentation(QWidget):
         # block is defined as a period of continuous acquisition.
         block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
             ).flatten() - 1
+
+        # TODO after better understanding where trial_start comes from,
+        # could get rid of this check if it's just tautological
+        block_ic_thorsync_idx = np.array(ti['block_ic_idx']).flatten()
+        assert len(block_ic_thorsync_idx) == len(block_first_frames), \
+            'variables in MATLAB ti have inconsistent # of blocks'
+
+        # TODO unit tests for block handling code
+        n_blocks_from_gsheet = last_block - first_block + 1
+        n_blocks_from_thorsync = len(block_first_frames)
+
+        assert (len(odor_pair_list) == (last_block - first_block + 1) *
+            presentations_per_block)
+
+        n_presentations = n_blocks_from_gsheet * presentations_per_block
+
+        err_msg = ('{} blocks ({} to {}, inclusive) in Google sheet {{}} {} ' +
+            'blocks from ThorSync.').format(n_blocks_from_gsheet,
+            first_block + 1, last_block + 1, n_blocks_from_thorsync)
+        fail_msg = (' Fix in Google sheet, turn off ' +
+            'cache if necessary, and rerun.')
+
+        allow_gsheet_to_restrict_blocks = True
+
+        # TODO factor all this code out, but especially these checks, so that
+        # populate_db would catch this as well
+        if n_blocks_from_gsheet > n_blocks_from_thorsync:
+            raise ValueError(err_msg.format('>') + fail_msg)
+
+        elif n_blocks_from_gsheet < n_blocks_from_thorsync:
+            if allow_gsheet_to_restrict_blocks:
+                warnings.warn(err_msg.format('<') + (' This is ONLY ok if you '+
+                    'intend to exclude the LAST {} blocks in the Thor output.'
+                    ).format(n_blocks_from_thorsync - n_blocks_from_gsheet))
+            else:
+                raise ValueError(err_msg.format('<') + fail_msg)
 
         # stim_on is a number as above, but for the frame of the odor
         # onset.
@@ -1565,6 +1610,8 @@ class Segmentation(QWidget):
         print(' done.')
         print('Loading TIFF took {:.3f} seconds'.format(end - start))
 
+        # TODO maybe just load a range of movie (if not all blocks/frames used)?
+
         ########################################################################
         # End stuff more likely to fail
         ########################################################################
@@ -1572,7 +1619,50 @@ class Segmentation(QWidget):
         # associated with the new data we load.
         self.cnm = None
 
-        self.movie = movie
+        self.odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
+            ).flatten() - 1
+        self.odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
+            ).flatten() - 1
+
+        assert len(self.odor_onset_frames) == len(self.odor_offset_frames)
+
+        block_last_frames = np.array(ti['trial_end'], dtype=np.uint32
+            ).flatten() - 1
+
+        if allow_gsheet_to_restrict_blocks:
+            old_last_frame = block_last_frames[-1]
+            assert (old_last_frame + 1) == movie.shape[0]
+
+            block_first_frames = block_first_frames[:(last_block + 1)]
+            block_last_frames = block_last_frames[:(last_block + 1)]
+
+            assert len(block_first_frames) == n_blocks_from_gsheet
+            assert len(block_last_frames) == n_blocks_from_gsheet
+
+            self.odor_onset_frames = \
+                self.odor_onset_frames[:(last_presentation + 1)]
+            self.odor_offset_frames = \
+                self.odor_offset_frames[:(last_presentation + 1)]
+
+            assert len(self.odor_onset_frames) == n_presentations
+            assert len(self.odor_offset_frames) == n_presentations
+
+            frame_times = frame_times[:(block_last_frames[-1] + 1)]
+
+        assert len(self.odor_onset_frames) == len(odor_pair_list)
+
+        last_frame = block_last_frames[-1]
+
+        n_tossed_frames = movie.shape[0] - (last_frame + 1)
+        if n_tossed_frames != 0:
+            print(('Tossing trailing {} of {} frames of movie, which did not ' +
+                'belong to any used block.').format(
+                n_tossed_frames, movie.shape[0]))
+
+        # TODO want / need to do more than just slice to free up memory from
+        # other pixels? is that operation worth it?
+        self.movie = movie[:(last_frame + 1)]
+        assert self.movie.shape[0] == len(frame_times)
 
         self.current_item = self.sender().currentItem()
         self.date = date
@@ -1585,15 +1675,6 @@ class Segmentation(QWidget):
         self.odor2_ids = odor2_ids
         self.frame_times = frame_times
         self.block_first_frames = block_first_frames
-
-        self.odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
-            ).flatten() - 1
-        self.odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
-            ).flatten() - 1
-
-        # TODO TODO TODO if these are 1d, should be sorted... is Remy doing
-        # something else weird?
-        # (address after candidacy)
 
         # TODO set param as appropriate / maybe display in non-editable boxes in
         # data parameters
@@ -1650,6 +1731,7 @@ class Segmentation(QWidget):
         start = time.time()
         # TODO maybe md5 array in memory, to not have to load twice?
         # (though for most formats it probably won't be the same... maybe none)
+        # (would want to do it before slicing probably?)
         self.tiff_md5 = md5(tiff)
         end = time.time()
         print('Hashing TIFF took {:.3f} seconds'.format(end - start))
@@ -2214,6 +2296,8 @@ def main():
     # Calling this first to minimize chances of code diverging.
     caiman_version_info = u.caiman_version_info()
 
+    # TODO maybe rename all of these w/ db_ prefix or something, to
+    # differentiate from non-global versions in segmentation tab code
     print('reading odors from postgres...', end='')
     odors = pd.read_sql('odors', u.conn)
     print(' done')
