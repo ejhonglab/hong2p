@@ -1633,16 +1633,24 @@ class Segmentation(QWidget):
             old_last_frame = block_last_frames[-1]
             assert (old_last_frame + 1) == movie.shape[0]
 
-            block_first_frames = block_first_frames[:(last_block + 1)]
-            block_last_frames = block_last_frames[:(last_block + 1)]
+            # TODO unit test for case where first_block != 0 and == 0
+            # w/ last_block == first_block and > first_block
+            # TODO why didn't i detect failure yet? try other data?
+            # TODO TODO check subtracting first_block/presentation fixes the
+            # problem
+            block_first_frames = block_first_frames[
+                :(last_block - first_block + 1)]
+            block_last_frames = block_last_frames[
+                :(last_block - first_block + 1)]
 
             assert len(block_first_frames) == n_blocks_from_gsheet
             assert len(block_last_frames) == n_blocks_from_gsheet
 
-            self.odor_onset_frames = \
-                self.odor_onset_frames[:(last_presentation + 1)]
-            self.odor_offset_frames = \
-                self.odor_offset_frames[:(last_presentation + 1)]
+            self.odor_onset_frames = self.odor_onset_frames[
+                :(last_presentation - first_presentation + 1)]
+
+            self.odor_offset_frames = self.odor_offset_frames[
+                :(last_presentation - first_presentation + 1)]
 
             assert len(self.odor_onset_frames) == n_presentations
             assert len(self.odor_offset_frames) == n_presentations
