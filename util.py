@@ -11,6 +11,7 @@ import atexit
 import signal
 import sys
 import xml.etree.ElementTree as etree
+import pprint
 
 # TODO or just use sqlalchemy.types?
 from sqlalchemy import create_engine, MetaData, Table
