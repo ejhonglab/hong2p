@@ -77,6 +77,21 @@ matlab_repo_name = 'matlab_kc_plane'
 userpath = evil.userpath()
 matlab_code_path = join(userpath, matlab_repo_name)
 
+matlab_caiman_folder = 'CaImAn-MATLAB_remy'
+mc_on_path = [x for x in evil.path().split(':')
+    if x.endswith(matlab_caiman_folder)]
+
+if len(mc_on_path) > 1:
+    raise ValueError('more than one CaImAn version on MATLAB path. add ' +
+        'versions you do not wish to use to exclude_from_matlab_path, in util')
+
+elif len(mc_on_path) == 0:
+    raise ValueError('MATLAB CaImAn package not found. Put on path or update ' +
+        'matlab_caiman_folder')
+
+matlab_caiman_path = mc_on_path[0]
+matlab_caiman_version = u.version_info(matlab_caiman_path)
+
 this_repo_file = os.path.realpath(__file__)
 # TODO just use util fn that gets this internally
 this_repo_path = split(this_repo_file)[0]
@@ -207,6 +222,8 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             # TODO remy could also convert xml here if she wanted
         ####print('Done converting ThorSync HDF5 to .mat\n')
 
+    matfile_dir = join(analysis_fly_dir, 'cnmf')
+
     if calc_timing_info:
         for _, row in used[['thorimage_dir','thorsync_dir']].iterrows():
             thorimage_dir = join(full_fly_dir, row['thorimage_dir'])
@@ -235,6 +252,9 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                 ).format(date_dir, fly_num, row['thorimage_dir']), end='',
                 flush=True)
 
+            matfile = join(matfile_dir, '{}_cnmf.mat'.format(
+                row['thorimage_dir']))
+
             # TODO TODO check exit code -> save all applicable version info
             # into the same matfile, calling the matlab interface from here
             try:
@@ -244,9 +264,9 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
                 # throwing everything into _<>_cnmf.mat, as we are, would need
                 # to inspect it to check whether we already have the stiminfo...
-                updated_ti, matfile = evil.get_stiminfo(thorimage_dir,
+                updated_ti = evil.get_stiminfo(thorimage_dir,
                     row['thorsync_dir'], analysis_fly_dir, date_dir, fly_num,
-                    update_ti, nargout=2)
+                    update_ti, nargout=1)
 
                 if updated_ti:
                     evil.workspace['ti_code_version'] = matlab_code_version 
@@ -286,18 +306,47 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
         for input_tif_path in glob.glob(
             join(full_fly_dir, 'tif_stacks', '_*.tif')):
 
+            thorimage_dir = split(input_tif_path)[-1][:-4]
             if only_motion_correct_for_analysis:
-                thorimage_id = split(input_tif_path)[-1][:-4]
-
-                recordings = used[used.thorimage_dir == thorimage_id]
+                recordings = used[used.thorimage_dir == thorimage_dir]
                 if len(recordings) == 0:
                     continue
+
+            matfile = join(matfile_dir, '{}_cnmf.mat'.format(thorimage_dir))
 
             print('\nRunning normcorre_tiff on', input_tif_path)
             # TODO only register one way by default? nonrigid? args to
             # configure?
-            evil.normcorre_tiff(input_tif_path, analysis_fly_dir, nargout=0)
-            #import ipdb; ipdb.set_trace()
+            rig_updated, nr_updated = evil.normcorre_tiff(input_tif_path,
+                analysis_fly_dir, nargout=2)
+
+            mocorr_code_versions = [matlab_code_version, matlab_caiman_version]
+
+            if rig_updated:
+                evil.workspace['rig_code_versions'] = mocorr_code_versions
+                evil.save(matfile, 'rig_code_versions', '-append', nargout=0)
+
+                # Testing version info is stored correctly.
+                evil.clear(nargout=0)
+                load_output = evil.load(matfile, 'rig_code_versions',
+                    nargout=1)
+
+                rt_mocorr_code_versions = load_output['rig_code_versions']
+                assert mocorr_code_versions == rt_mocorr_code_versions
+                evil.clear(nargout=0)
+
+            if nr_updated:
+                evil.workspace['nr_code_versions'] = mocorr_code_versions
+                evil.save(matfile, 'nr_code_versions', '-append', nargout=0)
+
+                # Testing version info is stored correctly.
+                evil.clear(nargout=0)
+                load_output = evil.load(matfile, 'nr_code_versions',
+                    nargout=1)
+
+                rt_mocorr_code_versions = load_output['nr_code_versions']
+                assert mocorr_code_versions == rt_mocorr_code_versions
+                evil.clear(nargout=0)
 
     # TODO and if remy wants, copy thorimage xmls
 
