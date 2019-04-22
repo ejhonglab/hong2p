@@ -958,10 +958,12 @@ class Segmentation(QWidget):
             self.cnm.fit(self.movie)
 
         # TODO test this case
-        except MemoryError:
+        except MemoryError as err:
+            traceback.print_exc()
             # TODO maybe log this / print traceback regardless
             # TODO get cnmf output not handling this appropriately. fix.
             self.cnm = None
+            # TODO was this not actually printing? cnm was none...
             raise
 
         # TODO see which parameters are changed?
