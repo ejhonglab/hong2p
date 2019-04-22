@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS people (
      * protocols? make their handling generic? */
 );
 
+
 CREATE TABLE IF NOT EXISTS flies (
     /* TODO serial? work w/ pandas insert if just not specified? */
     /*fly smallserial UNIQUE NOT NULL, */
@@ -36,26 +37,69 @@ CREATE TABLE IF NOT EXISTS flies (
     PRIMARY KEY(prep_date, fly_num)
 );
 
+
 CREATE TABLE IF NOT EXISTS odors (
     /* TODO maybe use CAS or some other ID instead? */
     name text NOT NULL,
     log10_conc_vv real NOT NULL,
 
-    odor smallserial UNIQUE NOT NULL,
+    odor_id smallserial UNIQUE NOT NULL,
 
     PRIMARY KEY(name, log10_conc_vv)
 );
 
+
 /* TODO or just make fk based pk w/ all fields of each odor duplicated? */
+/* TODO TODO refactor to many-to-many between odors and mixtures, where mixtures
+ * are either just given serial IDs, or also checked for uniqueness across group
+ * of odors. how is that normally implemented? */
 CREATE TABLE IF NOT EXISTS mixtures (
     /* TODO or just use name + conc? */
-    odor1 smallint REFERENCES odors (odor) NOT NULL,
-    odor2 smallint REFERENCES odors (odor) NOT NULL,
+    odor1 smallint REFERENCES odors (odor_id) NOT NULL,
+    odor2 smallint REFERENCES odors (odor_id) NOT NULL,
     PRIMARY KEY(odor1, odor2)
 );
 
-/* TODO table for stimulus info? */
-/* TODO maybe stimulus code or version somewhere if nothing else? */
+
+/* TODO TODO TODO want to enforce that only one mixture has a specific 
+   (order agnostic) combination of odors */
+/* TODO maybe have a trigger that computes hash unique to set of odors,
+   over all odors of recently inserted/generated mixture, and then enforce
+   uniqueness on that hash? more SQL / postgres idiomatic way to accomplish
+   this?*/
+
+/* TODO fix implementation and use this rather than above mixture table
+CREATE TABLE IF NOT EXISTS mixtures (
+    mixture_id smallserial PRIMARY KEY,
+);
+
+
+CREATE TABLE IF NOT EXISTS mixture_odors (
+    mixture_id smallint REFERENCES mixtures (mixture_id),
+    odor_id smallint REFERENCES odors (odor_id)
+    -- TODO maybe also worth making these unique?
+);
+*/
+
+
+CREATE TABLE IF NOT EXISTS recordings (
+    /* rename to recording_time? */
+    started_at timestamp PRIMARY KEY,
+    /* TODO check thorsync and thorimage are unique (w/in day at least?)
+       require longer path and just check unique across all?
+    */
+
+    /* TODO use combination of paths as primary key? */
+    thorsync_path text NOT NULL,
+    /* TODO check this is not null in the responses case? */
+    /* This is nullable so that recordings can also be used for PID recordings.
+     * */
+    thorimage_path text,
+    /* TODO maybe require this if it's just going to be the pin/odor info? */
+    stimulus_data_path text
+    /* TODO stimulus code here too? (opt if also aiming to support PID-only)*/
+);
+
 
 CREATE TABLE IF NOT EXISTS code_versions (
     /* TODO do i want this to be the PK? it will surely lead to duplicate rows
@@ -65,6 +109,9 @@ CREATE TABLE IF NOT EXISTS code_versions (
 
     /* Could be a Python package/module name. */
     name text NOT NULL,
+    /* To disambiguate two versions of the same package associated with one
+     * analysis run. */
+    used_for text,
 
     /* For when the code is used directly from source. */
     git_remote text,
@@ -82,52 +129,39 @@ CREATE TABLE IF NOT EXISTS code_versions (
     CONSTRAINT have_version CHECK (git_hash is not null or version is not null)
 );
 
+
 /* TODO TODO TODO make sure these is enough references between this and other
  * tables, so that output generated from a certain cnmf run can be deleted, and
  * at least expose this in GUI (so people can retroactively select and reject
  * stuff) */
-/* TODO rename to something more general, like trace_extraction_runs? */
 CREATE TABLE IF NOT EXISTS analysis_runs (
+    /* rename to analysis_time? */
     run_at timestamp PRIMARY KEY,
 
-    /* TODO some check to try to ensure these don't accidentally refer to the
-     * same thing? */
-
-    /* TODO TODO support tracking other repos besides one driver repo?
-       like since i call some of Remy's matlab code from it to extract timing
-       information... */
-    /* TODO option in GUI to add arbitrary repos to track? */
-    /* TODO maybe store driver version is some other table, alongside a ref to
-     * the cnmf_run? something like analysis_runs? but then should that also
-     * include motion correction and stuff? i don't currently have stored
-     * version info for all of those corrected movies... */
-
-    /* This is code that calls the CaImAn library code. */
-    /*
-    driver_version integer REFERENCES code_versions (version_id) NOT NULL,
-    */
-    /* TODO is this really the only thing that will ultimately be unique to
-     * CNMF? remove not null constraint then? */
-    /* This is the CaImAn library, which you may not want to change. */
-    /*caiman_version integer REFERENCES code_versions (version_id) NOT NULL,
-    other_versions 
-    */
-
+    /* TODO option in GUI to add arbitrary repos to track?
+       see analysis_code table. */
     /* TODO store all manual input along the way (when / what for component
      * deletions, creation, decisions on manual control of iteration #, param
        changes along the way, etc) */
 
+    /* TODO bad practice to have any columns w/ duplicate names across stuff
+     * that might ultimately be merged together? */
+    recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
+
+    /* TODO may want to support using subset of a file / multiple files as
+     * input */
+
+    /* TODO TODO store ref (directly or indirectly) to analysis params for
+     * motion correction that produced this input? (keeping in mind curr plan is
+     * still to use this table for morr corr as well)
+     * */
     input_filename text NOT NULL,
     input_md5 text NOT NULL,
     input_mtime timestamp NOT NULL,
-    /* ctime worth it? */
 
     /* Use NULL to indicate from start / to end */
     start_frame integer,
     stop_frame integer,
-
-    /* TODO TODO also store references to date/fly/recording stuff?
-       required or optional? */
 
     /* Could use json/jsonb type, but same values, like Infinity, would have to
      * be handled differently. */
@@ -142,16 +176,26 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 
     accepted boolean NOT NULL
 
+    /* TODO TODO store the data that the decision was based on? like the image
+     * w/ contours overlayed or something? some general way to do this?
+       (ideally s.t. things like movies, images, or arbitrary other data could
+        be loaded in a language indep. manner, but maybe easiest to just use a 
+        python pickle based format?) */
+
     /*  TODO TODO TODO add constraint to this effect:
-     * probably want to ensure all git stuff + input + parameters + user
-     * uniqueness... but maybe not w/ pk? */
+     * probably want to ensure all git stuff + input + parameters (+ user)
+     * uniqueness... but maybe not w/ pk?
+
+       if keeping user... no real need to recompute if only user differs, right?
+       (assuming output was accepted / saved last time)
+     */
     /* TODO though may need to be careful if user is part of pk, just so people
        don't accidentally work w/ the wrong version of traces (including >1
        version) */
 );
 
 
-/* This table will N rows for each analysis run, where N is the number of peices
+/* This table will N rows for each analysis run, where N is the number of pieces
  * of software whose versions we are tracking. */
 CREATE TABLE IF NOT EXISTS analysis_code (
     run_at timestamp REFERENCES analysis_runs (run_at),
@@ -160,30 +204,28 @@ CREATE TABLE IF NOT EXISTS analysis_code (
 );
 
 
-CREATE TABLE IF NOT EXISTS recordings (
-    /*recording_num smallserial PRIMARY KEY,*/
-    /* TODO appropriate precision? */
-    started_at timestamp PRIMARY KEY,
-    /* TODO check thorsync and thorimage are unique (w/in day at least?)
-       require longer path and just check unique across all?
-    */
+CREATE TABLE IF NOT EXISTS segmentation_runs (
+    /* TODO work to have FK as sole PK? pretty sure that is what i want... */
+    run_at timestamp REFERENCES analysis_runs (run_at),
 
-    /* TODO just use combination of paths as primary key */
-    thorsync_path text NOT NULL,
-    /* TODO check this is not null in the responses case? */
-    /* This is nullable so that recordings can also be used for PID recordings.
-     * */
-    thorimage_path text,
-    /* TODO maybe require this if it's just going to be the pin/odor info? */
-    stimulus_data_path text
+    /* TODO footprints, img (svg? png? what size?) as in fig, serialized fig */
+    output_fig_png bytea NOT NULL,
+    output_fig_svg bytea NOT NULL,
+    output_fig_mpl bytea NOT NULL,
 
-    /* TODO store framerate here? so analysis on movies can do stuff for fixed
-     * amount of seconds w/o having to load xml? */
+    PRIMARY KEY(run_at)
 );
 
-/* TODO table for frame indices used to define responses? store alongside
- * responses, particularly if from_onset and df_over_f can be make into array
- * types? make a separate presentations / blocks table again? */
+/* TODO TODO TODO but how am i going to indicate which recordings / analysis
+ * output has passed all other (possibly including manual) rejection criteria?
+ */
+/* TODO TODO should it be a flag comparison by comparison? just in presentations
+ * table then? */
+/* TODO for mocorr too? just refer to some analysis which also
+ * refers back to mocorr? */
+ALTER TABLE recordings
+ADD COLUMN canonical_segmentation timestamp REFERENCES segmentation_runs (run_at);
+
 
 /* TODO worth having a separate representation of cells that is indep. calls on
  * a frame / block basis? (which can be associated together to get this)? */
@@ -193,12 +235,24 @@ CREATE TABLE IF NOT EXISTS recordings (
 CREATE TABLE IF NOT EXISTS cells (
     /* TODO make pk more consistent w/ presentations? get rid of fly / prep_date
      * there? add it here? */
+    /* TODO TODO maybe just refer to segmentation_run, and then get which input
+     * data (and thus recording_from if really necessary) from there? */
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
+    /* TODO TODO TODO make sure however i give K data does not allow same data
+     * w/ multiple segmentation_run
+     
+       maybe make some SQL constraint to indicate that each recording should
+       only have one accepted analysis version? it would seem to limit my
+       softwares usefulness for parameter exploration though, if i were to
+       strictly prevent accepting output of multiple seg runs on same data...
+     */
+    segmentation_run timestamp REFERENCES segmentation_runs (run_at) NOT NULL,
     cell smallint NOT NULL,
 
     /* TODO constraint to check these are all same length? just define a new
      * type? (though that might be harder to insert into...) */
 
+    /* TODO TODO check these are at least length 1 like in traces? */
     x_coords smallint[] NOT NULL,
     y_coords smallint[] NOT NULL,
     /* TODO appropriate precision here? */
@@ -207,7 +261,7 @@ CREATE TABLE IF NOT EXISTS cells (
     /* For manually labelling two important types of segmentation errors. */
     /* TODO maybe change to a one character code describing ROI characteristics?
      */
-    /* TODO TODO TODO move to comparison level!! (maybe put in presentations and
+    /* TODO TODO move to comparison level!! (maybe put in presentations and
      * then just label each w/in a comparison the same? otherwise need new
      * table?) */
     only_one_cell boolean,
@@ -221,18 +275,13 @@ CREATE TABLE IF NOT EXISTS cells (
     /* TODO don't use boolean so you can label something as explicitly unsure?
        (diff from default NULL, which would just be "unlabeled") */
 
-    /* TODO want this nullable or not? */
-    analysis smallint REFERENCES analysis_runs (analysis_run),
-
     /* TODO maybe one wrt average and one wrt activity over time? */
     /* TODO per presentation? */
-    /*good bool*/
 
-    PRIMARY KEY(recording_from, cell)
+    PRIMARY KEY(recording_from, segmentation_run, cell)
 );
 
-/* TODO TODO just combine this w/ responses table (maybe frame #s are slightly
- * inconsistent w/ bounds on timeseries in responses?) */
+
 CREATE TABLE IF NOT EXISTS presentations (
     /* TODO maybe remove these parts of primary key? */
     prep_date timestamp NOT NULL,
@@ -240,7 +289,9 @@ CREATE TABLE IF NOT EXISTS presentations (
 
     /* TODO TODO maybe some kind of alternate index w/ thorimage_id as opposed
      * to recording from, derived in postgres? */
-    recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
+    recording_from timestamp REFERENCES recordings (started_at) NOT NULL, 
+
+    analysis timestamp REFERENCES analysis_runs (run_at) NOT NULL,
 
     /* TODO maybe reference an odor pair here? */
     comparison smallint NOT NULL,
@@ -258,8 +309,11 @@ CREATE TABLE IF NOT EXISTS presentations (
      * responses table. */
     from_onset double precision[] NOT NULL,
 
-    /* TODO want this nullable or not? */
-    analysis smallint REFERENCES analysis_runs (analysis_run),
+    /* TODO maybe store reference to just driver here then? and then
+       either just segmentation or seg + driver in responses?
+    */
+    /* TODO TODO maybe refer to recordings (or the unit actually used as input
+     * to analysis) in analysis_runs, and just use that as the linkage? */
 
     presentation_id SERIAL UNIQUE NOT NULL,
 
@@ -269,12 +323,13 @@ CREATE TABLE IF NOT EXISTS presentations (
 
     FOREIGN KEY(prep_date, fly_num) REFERENCES flies(prep_date, fly_num),
     FOREIGN KEY(odor1, odor2) REFERENCES mixtures(odor1, odor2),
-    PRIMARY KEY(prep_date, fly_num, recording_from,
+    PRIMARY KEY(prep_date, fly_num, recording_from, analysis,
                 comparison, odor1, odor2, repeat_num)
 );
 ALTER TABLE presentations
     ADD CONSTRAINT from_onset_len
     CHECK (cardinality(from_onset) > 1);
+
 
 /* TODO TODO store automated response calls in this table as well? */
 /* TODO if so, how to store algorithm / version / parameters? multiple diff
@@ -284,12 +339,11 @@ CREATE TABLE IF NOT EXISTS responses (
      * table, as far as space / speed performance? */
     presentation_id integer REFERENCES presentations (presentation_id) NOT NULL,
 
+    /* TODO maybe now use ID for cell rather than this triple? */
     /* Redundant w/ information in presentation_id, but seems unavoidable in
      * order to include FK on cell... */
     recording_from timestamp,
-
-    /* TODO could reference a per trial repr of cell boundaries here, if i'm
-     * going to store such a representation... */
+    segmentation_run timestamp,
     cell smallint,
 
     df_over_f real[] NOT NULL,
@@ -304,7 +358,14 @@ CREATE TABLE IF NOT EXISTS responses (
        this footprint or not?
     */
 
-    FOREIGN KEY(recording_from, cell) REFERENCES cells (recording_from, cell),
+    /* TODO TODO TODO somehow only store responses for one canonical set of
+     * analysis output, even if support accepting multiple footprints.
+       i don't want to have to include segmentation_run in handling of this
+       table. not sure i would actually use it...
+     */
+    FOREIGN KEY(recording_from, segmentation_run, cell)
+        REFERENCES cells (recording_from, segmentation_run, cell),
+
     PRIMARY KEY(presentation_id, recording_from, cell)
 );
 /* TODO "if not exists" or something, to prevent error? */
@@ -320,6 +381,7 @@ ALTER TABLE responses
  * contents will probably be deleted. */
 /* ALTER TABLE responses SET UNLOGGED; */
 
+
 CREATE TABLE IF NOT EXISTS pid (
     /*
     mixture smallint REFERENCES mixtures (mixture) NOT NULL,
@@ -328,6 +390,7 @@ CREATE TABLE IF NOT EXISTS pid (
     odor2 smallint,
 
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
+
     /* TODO positive / nonneg constraint. alt repr? */
     repeat_num smallint NOT NULL,
 

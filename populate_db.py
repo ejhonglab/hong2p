@@ -13,6 +13,7 @@ import pickle
 import warnings
 import time
 import xml.etree.ElementTree as etree
+import copy
 import pprint
 
 from sqlalchemy import create_engine, MetaData, Table
@@ -98,6 +99,9 @@ this_repo_path = split(this_repo_file)[0]
 
 #driver_version_info ?
 matlab_code_version = u.version_info(matlab_code_path)
+ti_code_version = copy.deepcopy(matlab_code_version)
+ti_code_version['used_for'] = 'calculating timing information'
+matlab_code_version['used_for'] = 'driving motion correction'
 
 # TODO fn to convert raw output to tifs (that are compat w/ current ij tifs)
 
@@ -269,7 +273,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                     update_ti, nargout=1)
 
                 if updated_ti:
-                    evil.workspace['ti_code_version'] = matlab_code_version 
+                    evil.workspace['ti_code_version'] = ti_code_version 
                     evil.save(matfile, 'ti_code_version', '-append', nargout=0)
 
                     # Testing version info is stored correctly.
@@ -278,7 +282,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                         nargout=1)
 
                     rt_matlab_code_version = load_output['ti_code_version']
-                    assert matlab_code_version == rt_matlab_code_version
+                    assert ti_code_version == rt_matlab_code_version
                     evil.clear(nargout=0)
 
             except matlab.engine.MatlabExecutionError:
@@ -356,6 +360,8 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
 if not load_traces:
     sys.exit()
+raise NotImplementedError(
+    'load_traces path not yet adapted to new database layout')
 
 # TODO delete all this stuff after saving full version info as appropriate
 current_hash = u.git_hash(this_repo_file)

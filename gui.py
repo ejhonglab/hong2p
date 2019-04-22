@@ -20,6 +20,7 @@ import socket
 import getpass
 import pickle
 from copy import deepcopy
+from io import BytesIO
 import pprint
 #
 import traceback
@@ -193,19 +194,18 @@ def merge_odors(df, odors):
     # TODO way to do w/o resetting index? merge failing to find odor1 or just
     # drop?
     df.reset_index(inplace=True, drop=True)
-    #
 
-    df = pd.merge(df, odors, left_on='odor1', right_on='odor',
+    df = pd.merge(df, odors, left_on='odor1', right_on='odor_id',
                   suffixes=(False,False))
 
-    df.drop(columns=['odor','odor1'], inplace=True)
+    df.drop(columns=['odor_id','odor1'], inplace=True)
     df.rename(columns={'name': 'name1',
         'log10_conc_vv': 'log10_conc_vv1'}, inplace=True)
 
-    df = pd.merge(df, odors, left_on='odor2', right_on='odor',
+    df = pd.merge(df, odors, left_on='odor2', right_on='odor_id',
                   suffixes=(False,False))
 
-    df.drop(columns=['odor','odor2'], inplace=True)
+    df.drop(columns=['odor_id','odor2'], inplace=True)
     df.rename(columns={'name': 'name2',
         'log10_conc_vv': 'log10_conc_vv2'}, inplace=True)
 
@@ -340,7 +340,7 @@ class Worker(QRunnable):
             # Return the result of the processing
             self.signals.result.emit(result)
         finally:
-            self.signals.finished.emit()  # Done
+            self.signals.finished.emit()
 
 
 class MotionCorrection(QWidget):
@@ -384,6 +384,7 @@ class Segmentation(QWidget):
         for d in self.motion_corrected_tifs:
             print(d)
 
+        # TODO so this isn't used? delete...
         entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
             'fly_num, recording_from, analysis FROM presentations', u.conn)
         # TODO TODO check that the right number of rows are in there, otherwise
@@ -429,6 +430,12 @@ class Segmentation(QWidget):
             # comparisons are added, and only color yellow if not all in db
             # TODO check whether source video was rigid / non-rigid, if going to
             # display both types of movies in list?
+
+            # TODO TODO maybe with the new db layout, it'd be better to check
+            # something else? maybe only color green if there's a canonical
+            # analysis version?
+            # TODO or maybe check whether *any* of the analysis was accepted,
+            # and color green if so?
             analyzed = (
                 (presentations.prep_date == date_str) &
                 (presentations.fly_num == int(fly_str)) &
@@ -521,6 +528,8 @@ class Segmentation(QWidget):
         save_params_btn.setEnabled(False)
         param_btns_layout.addWidget(save_params_btn)
 
+        # TODO TODO allow this to be checked while data is loading, and then
+        # just start as soon as data finishes loading
         self.run_cnmf_btn = QPushButton('Run CNMF')
         other_btns_layout.addWidget(self.run_cnmf_btn)
         # Will enable after some data is selected. Can't run CNMF without that.
@@ -799,8 +808,12 @@ class Segmentation(QWidget):
         self.params_changed = False
         self.accepted = None
 
+        # TODO delete / handle differently
+        self.ACTUALLY_UPLOAD = True
+        #
 
-    def check_run_btn_enbl(self):
+
+    def check_run_btn_enbl(self) -> None:
         if (not self.params_changed and not self.cnmf_running and
             self.movie is not None):
 
@@ -811,7 +824,7 @@ class Segmentation(QWidget):
 
     # TODO after implementing per-type, see if can be condensed to one function
     # for all types
-    def set_boolean(self, group, key, qt_value):
+    def set_boolean(self, group, key, qt_value) -> None:
         if qt_value == 0:
             new_value = False
         elif qt_value == 2:
@@ -830,7 +843,7 @@ class Segmentation(QWidget):
     # TODO so looks like this can be collapsed w/ list no problem? new name?
     # TODO wrap all these callbacks to enable/disable verbose stuff in one
     # place?
-    def set_from_spinbox(self, group, key, new_value):
+    def set_from_spinbox(self, group, key, new_value) -> None:
         #print('Group:', group, 'Key:', key)
         #print('Old value:', self.params.get(group, key))
         self.params.set(group, {key: new_value})
@@ -839,7 +852,7 @@ class Segmentation(QWidget):
         self.check_run_btn_enbl()
 
 
-    def set_from_list(self, group, key, new_value):
+    def set_from_list(self, group, key, new_value) -> None:
         #print('Group:', group, 'Key:', key)
         #print('Old value:', self.params.get(group, key))
         self.params.set(group, {key: new_value})
@@ -848,7 +861,7 @@ class Segmentation(QWidget):
         self.check_run_btn_enbl()
 
 
-    def set_from_text(self, group, key, qt_line_edit):
+    def set_from_text(self, group, key, qt_line_edit) -> None:
         if qt_line_edit.isModified():
             new_text = qt_line_edit.text()
             #print('new_text:', new_text)
@@ -869,7 +882,7 @@ class Segmentation(QWidget):
             self.check_run_btn_enbl()
 
 
-    def start_cnmf_worker(self):
+    def start_cnmf_worker(self) -> None:
         self.run_cnmf_btn.setEnabled(False)
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
@@ -911,8 +924,8 @@ class Segmentation(QWidget):
         self.threadpool.start(worker)
 
 
-    def run_cnmf(self):
-        print('running CNMF', flush=True)
+    def run_cnmf(self) -> None:
+        print('Running CNMF', flush=True)
         # TODO use cm.cluster.setup_cluster?
         # TODO what is the dview that returns as second arg?
 
@@ -960,7 +973,7 @@ class Segmentation(QWidget):
 
 
     # TODO maybe just collapse this into get_cnmf_output?
-    def cnmf_done(self):
+    def cnmf_done(self) -> None:
         self.accepted = None
         self.cnmf_running = False
 
@@ -972,12 +985,15 @@ class Segmentation(QWidget):
             print('done with CNMF')
             print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
 
+        print('')
+
 
     # TODO TODO actually provide a way to only initialize cnmf, to test out
     # various initialization procedures (though only_init arg doesn't actually
     # seem to accomplish this correctly)
 
-    def get_cnmf_output(self):
+    # TODO rename to "process_..." or something?
+    def get_cnmf_output(self) -> None:
         # TODO TODO allow toggling between type of background image shown
         # (radio / combobox for avg, snr, etc? "local correlations"?)
         # TODO TODO use histogram equalized avg image as one option
@@ -1040,7 +1056,7 @@ class Segmentation(QWidget):
         # to get intensity sliders? or other widget for that?
 
 
-    def save_default_params(self):
+    def save_default_params(self) -> None:
         print('Writing new default parameters to {}'.format(
             self.default_json_params))
         # TODO TODO test round trip before terminating w/ success
@@ -1048,10 +1064,19 @@ class Segmentation(QWidget):
         # TODO maybe use pickle for this?
 
 
-    def common_run_info(self):
-        global caiman_version_info
+    # TODO TODO add support for deleting presentations from db if reject
+    # something that was just accepted?
+
+
+    # TODO move core of this to util and just wrap it here
+    def upload_analysis_info(self, accepted: bool) -> None:
+        # TODO move this definition to one of cnmf call/callback fns
+        self.run_at = datetime.fromtimestamp(self.cnmf_start)
+
+        # TODO maybe visually indicate which has been selected already?
         run_info = {
-            'run_at': [datetime.fromtimestamp(self.cnmf_start)],
+            'run_at': [self.run_at],
+            'recording_from': self.started_at,
             'input_filename': self.tiff_fname,
             'input_md5': self.tiff_md5,
             'input_mtime': self.tiff_mtime,
@@ -1063,34 +1088,155 @@ class Segmentation(QWidget):
             'host': socket.gethostname(),
             'host_user': getpass.getuser()
         }
-        run_info.update(caiman_version_info)
-        return run_info
-
-    # TODO TODO add support for deleting presentations from db if reject
-    # something that was just accepted?
-    # TODO TODO dialog to confirm overwrite if accepting something already in
-    # database?
-
-    def accept_cnmf(self):
-        if self.accepted:
-            return
-
-        # TODO delete me
-        ACTUALLY_UPLOAD = True
-        #
-
-        # TODO maybe visually indicate which has been selected already?
-        run_info = self.common_run_info()
-        run_info['accepted'] = True
+        run_info['accepted'] = accepted
         run = pd.DataFrame(run_info)
         run.set_index('run_at', inplace=True)
+
         # TODO depending on what table is in method callable, may need to make
         # pd index match sql pk?
         # TODO test that result is same w/ or w/o method in case where row did
         # not exist, and that read shows insert worked in w/ method case
-        if ACTUALLY_UPLOAD:
-            run.to_sql('cnmf_runs', u.conn, if_exists='append',
+        if self.ACTUALLY_UPLOAD:
+            run.to_sql('analysis_runs', u.conn, if_exists='append',
                 method=u.pg_upsert)
+
+        if self.accepted is not None:
+            # The remainder of the metadata must have already been uploaded,
+            # when self.accepted was first set.
+            return
+
+        # TODO nr_code_versions, rig_code_versions (both lists of dicts)
+        # TODO ti_code_version (dict)
+        if self.tiff_fname.endswith('_nr.tif'):
+            mocorr_version_varname = 'nr_code_versions'
+        elif self.tiff_fname.endswith('_rig.tif'):
+            mocorr_version_varname = 'rig_code_versions'
+        else:
+            raise NotImplementedError
+
+        # TODO TODO need to acquire a lock to use the matlab instance safely?
+        # (if i'm sure gui is enforcing only one call at a time anyway, probably
+        # don't need to worry about it)
+        def get_matfile_var(varname, require=True):
+            try:
+                load_output = evil.load(self.matfile, varname, nargout=1)
+                var = load_output[varname]
+                if type(var) is dict:
+                    return [var]
+                return var
+            except KeyError:
+                # TODO maybe check for var presence some other way than just
+                # catching this generic error?
+                if require:
+                    raise
+                else:
+                    return []
+
+        ti_code_version = get_matfile_var('ti_code_version')
+        mocorr_code_versions = get_matfile_var(mocorr_version_varname,
+            require=False)
+
+        code_versions = (common_code_versions + ti_code_version +
+            mocorr_code_versions)
+
+        code_versions_df = pd.DataFrame(code_versions)
+        if self.ACTUALLY_UPLOAD:
+            code_versions_df.to_sql('code_versions', u.conn, if_exists='append',
+                index=False)
+
+        # TODO maybe only read most recent few / restrict to some other key if i
+        # make one?
+        db_code_versions = pd.read_sql('code_versions', u.conn)
+
+        our_version_cols = code_versions_df.columns
+        version_ids = set()
+        for _, row in code_versions_df.iterrows():
+            # This should take the *first* row that is equal.
+            idx = (db_code_versions[code_versions_df.columns] == row).all(
+                axis=1).idxmax()
+            version_id = db_code_versions['version_id'].iat[idx]
+            assert version_id not in version_ids
+            version_ids.add(version_id)
+
+        # TODO maybe impute missing mocorr version in some cases?
+
+        analysis_code = pd.DataFrame({
+            'run_at': self.run_at,
+            'version_id': list(version_ids)
+        })
+        if self.ACTUALLY_UPLOAD:
+            u.to_sql_with_duplicates(analysis_code, 'analysis_code')
+
+        png_buff = BytesIO()
+        self.fig.savefig(png_buff, format='png')
+        svg_buff = BytesIO()
+        self.fig.savefig(svg_buff, format='svg')
+
+        # I haven't yet figured out how to deserialize these in regular
+        # interactive pyplot, but one test case did work in the same kind of Qt
+        # setting (which is main goal anyway).
+        fig_buff = BytesIO()
+        pickle.dump(self.fig, fig_buff)
+
+        segmentation_run = pd.DataFrame({
+            'run_at': [self.run_at],
+            'output_fig_png': png_buff.getvalue(),
+            'output_fig_svg': svg_buff.getvalue(),
+            'output_fig_mpl': fig_buff.getvalue()
+        })
+        segmentation_run.set_index('run_at', inplace=True)
+
+        if self.ACTUALLY_UPLOAD:
+            segmentation_run.to_sql('segmentation_runs', u.conn,
+                if_exists='append', method=u.pg_upsert)
+
+        # TODO TODO do all footprints stuff w/o converting to full array!
+        # x,y,n_footprints
+        footprints = self.cnm.estimates.A.toarray()
+
+        # Assuming equal number along both dimensions.
+        pixels_per_side = int(np.sqrt(footprints.shape[0]))
+        n_footprints = footprints.shape[1]
+
+        footprints = np.reshape(footprints,
+            (pixels_per_side, pixels_per_side, n_footprints))
+        
+        footprint_dfs = []
+        for cell_num in range(n_footprints):
+            sparse = coo_matrix(footprints[:,:,cell_num])
+            footprint_dfs.append(pd.DataFrame({
+                'recording_from': [self.started_at],
+                'segmentation_run': [self.run_at],
+                'cell': [cell_num],
+                # Can be converted from lists of Python types, but apparently
+                # not from numpy arrays or lists of numpy scalar types.
+                # TODO check this doesn't transpose things
+                # TODO just move appropriate casting to my to_sql function,
+                # and allow having numpy arrays (get type info from combination
+                # of that and the database, like in other cases)
+                'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
+                'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                'weights': [[float(x) for x in sparse.data.astype('float32')]]
+            }))
+
+        footprint_df = pd.concat(footprint_dfs, ignore_index=True)
+        # TODO filter out footprints less than a certain # of pixels in cnmf?
+        # (is 3 pixels really reasonable?)
+        if self.ACTUALLY_UPLOAD:
+            u.to_sql_with_duplicates(footprint_df, 'cells')
+
+
+    # TODO maybe make all accept / reject buttons gray until current accept /
+    # reject finishes running (mostly to avoid having to think about whether not
+    # doing so could possibly cause a problem)?
+    def accept_cnmf(self):
+        if self.accepted:
+            return
+
+        self.accept_cnmf_btn.setEnabled(False)
+        self.reject_cnmf_btn.setEnabled(False)
+
+        self.upload_analysis_info(True)
 
         # TODO just calculate metadata outright here?
             
@@ -1103,20 +1249,10 @@ class Segmentation(QWidget):
 
         # TODO maybe also allow more direct passing of this data to other tab
 
-        # x,y,n_footprints
-        footprints = self.cnm.estimates.A.toarray()
-
-        # Assuming equal number along both dimensions.
-        pixels_per_side = int(np.sqrt(footprints.shape[0]))
-        n_footprints = footprints.shape[1]
-
-        footprints = np.reshape(footprints,
-            (pixels_per_side, pixels_per_side, n_footprints))
-
         # frame number, cell -> value
         raw_f = self.cnm.estimates.C.T
 
-        # TODO TODO to copy what Remy's matlab script does, need to detrend
+        # TODO TODO TODO to copy what Remy's matlab script does, need to detrend
         # within each "block"
         if self.cnm.estimates.F_dff is None:
             # quantileMin=8, frames_window=500, flag_auto=True, use_fast=False,
@@ -1146,38 +1282,6 @@ class Segmentation(QWidget):
             print(e)
             import ipdb; ipdb.set_trace()
         '''
-        
-        footprint_dfs = []
-        for cell_num in range(n_footprints):
-            sparse = coo_matrix(footprints[:,:,cell_num])
-            footprint_dfs.append(pd.DataFrame({
-                'recording_from': [self.started_at],
-                'cell': [cell_num],
-                # Can be converted from lists of Python types, but apparently
-                # not from numpy arrays or lists of numpy scalar types.
-                # TODO check this doesn't transpose things
-                # TODO TODO just move appropriate casting to my to_sql function,
-                # and allow having numpy arrays (get type info from combination
-                # of that and the database, like in other cases)
-                'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
-                'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
-                'weights': [[float(x) for x in sparse.data.astype('float32')]]
-            }))
-
-        footprint_df = pd.concat(footprint_dfs, ignore_index=True)
-        # TODO filter out footprints less than a certain # of pixels in cnmf?
-        # (is 3 pixels really reasonable?)
-        if ACTUALLY_UPLOAD:
-            u.to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
-
-        # TODO store image w/ footprint overlayed? (maybe just refer to movie?
-        # leaning towards doing both actually...)
-        # TODO TODO maybe store an average frame of registered TIF, and then
-        # indexes around that per footprint? (explicitly try to avoid responses
-        # when doing so, for easier interpretation as a background?)
-
-        # dims=dimensions of image (256x256)
-        # T is # of timestamps
 
         # TODO why 474 x 4 + 548 in one case? i thought frame numbers were
         # supposed to be more similar... (w/ np.diff(odor_onset_frames))
@@ -1185,7 +1289,8 @@ class Segmentation(QWidget):
             self.odor_onset_frames[0] - self.block_first_frames[0]
 
         n_frames, n_cells = df_over_f.shape
-        assert n_cells == n_footprints
+        # would have to pass footprints back / read from sql / read # from sql
+        ##assert n_cells == n_footprints
 
         start_frames = np.append(0,
             self.odor_onset_frames[1:] - first_onset_frame_offset)
@@ -1204,6 +1309,7 @@ class Segmentation(QWidget):
         print(n_frames)
 
         # TODO delete me
+        print('saving CNMF state to cnmf_state.p for debugging', flush=True)
         # intended to use this to find best detrend / extract dff method
         try:
             state = {
@@ -1226,6 +1332,7 @@ class Segmentation(QWidget):
             traceback.print_exc()
             print(e)
             import ipdb; ipdb.set_trace()
+        print('done saving cnmf_state.p', flush=True)
         #
 
         # TODO assert here that all frames add up / approx
@@ -1238,6 +1345,10 @@ class Segmentation(QWidget):
         print('odor_id_pairs:', odor_id_pairs)
 
         comparison_num = -1
+
+        if self.uploaded_presentations:
+            # Just to skip to end of function.
+            start_frames = []
 
         for i in range(len(start_frames)):
             if i % (self.presentations_per_repeat * self.n_repeats) == 0:
@@ -1291,6 +1402,7 @@ class Segmentation(QWidget):
                 'prep_date': [self.date],
                 'fly_num': self.fly_num,
                 'recording_from': self.started_at,
+                'analysis': self.run_at,
                 'comparison': comparison_num,
                 'odor1': odor1,
                 'odor2': odor2,
@@ -1299,9 +1411,8 @@ class Segmentation(QWidget):
                 'odor_offset_frame': offset_frame,
                 'from_onset': [[float(x) for x in presentation_frametimes]]
             })
-            if ACTUALLY_UPLOAD:
+            if self.ACTUALLY_UPLOAD:
                 u.to_sql_with_duplicates(presentation, 'presentations')
-
 
             # maybe share w/ code that checks distinct to decide whether to
             # load / analyze?
@@ -1309,6 +1420,7 @@ class Segmentation(QWidget):
                 'prep_date',
                 'fly_num',
                 'recording_from',
+                'analysis',
                 'comparison',
                 'odor1',
                 'odor2',
@@ -1337,17 +1449,18 @@ class Segmentation(QWidget):
                 cell_dfs.append(pd.DataFrame({
                     'presentation_id': [presentation_id],
                     'recording_from': [self.started_at],
+                    'segmentation_run': [self.run_at],
                     'cell': [cell_num],
                     'df_over_f': [[float(x) for x in cell_dff]],
                     'raw_f': [[float(x) for x in cell_raw_f]]
                 }))
             response_df = pd.concat(cell_dfs, ignore_index=True)
 
-            # TODO TODO test this is actually overwriting any old stuff
-            if ACTUALLY_UPLOAD:
+            if self.ACTUALLY_UPLOAD:
                 u.to_sql_with_duplicates(response_df, 'responses')
 
             # TODO put behind flag
+            '''
             db_presentations = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
                 'fly_num, recording_from, comparison FROM presentations',
                 u.conn)
@@ -1355,27 +1468,41 @@ class Segmentation(QWidget):
             print(db_presentations)
             print(len(db_presentations))
             #
-
+            '''
             print('Done processing presentation {}'.format(i))
+
+        self.uploaded_presentations = True
 
         # TODO check that all frames go somewhere and that frames aren't
         # given to two presentations. check they stay w/in block boundaries.
         # (they don't right now. fix!)
 
+        # TODO TODO mark as canonical if first accepted / most recently
+        # accepted?
+        # (maybe unless there's one explicitly marked as canonical?)
+
+        self.accept_cnmf_btn.setEnabled(True)
+        self.reject_cnmf_btn.setEnabled(True)
+
         self.current_item.setBackground(QColor('#7fc97f'))
         self.accepted = True
+        print('accepted')
 
 
     def reject_cnmf(self):
         if self.accepted == False:
             return
 
-        run_info = self.common_run_info()
-        run_info['accepted'] = False
-        run = pd.DataFrame(run_info)
-        run.set_index('run_at', inplace=True)
-        run.to_sql('cnmf_runs', u.conn, if_exists='append', method=u.pg_upsert)
+        self.accept_cnmf_btn.setEnabled(False)
+        self.reject_cnmf_btn.setEnabled(False)
+
+        self.upload_analysis_info(False)
+
+        self.accept_cnmf_btn.setEnabled(True)
+        self.reject_cnmf_btn.setEnabled(True)
+
         self.accepted = False
+        print('rejected')
 
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
@@ -1397,6 +1524,7 @@ class Segmentation(QWidget):
         date = datetime.strptime(date_dir, '%Y-%m-%d')
         fly_num = int(fly_dir)
         thorimage_id = tiff_just_fname[:4]
+        print('{}/{}/{}'.format(date_dir, fly_num, thorimage_id))
 
         # Trying all the operations that need to find files before setting any
         # instance variables, so that if those fail, we can stay on the current
@@ -1408,14 +1536,23 @@ class Segmentation(QWidget):
         mat = join(analysis_dir, rel_to_cnmf_mat, thorimage_id + '_cnmf.mat')
 
         try:
+            # TODO probably switch to doing it this way
+            '''
+            evil.clear(nargout=0)
+            load_output = evil.load(mat, 'ti', nargout=1)
+            ti = load_output['ti']
+            '''
             evil.evalc("clear; data = load('{}', 'ti');".format(mat))
+
         except matlab.engine.MatlabExecutionError as e:
             # TODO inspect error somehow to see if it's a memory error?
             # -> continue if so
             # TODO print to stderr
             print(e)
             return
+        #
         ti = evil.eval('data.ti')
+        #
 
         recordings = df.loc[(df.date == date) &
                             (df.fly_num == fly_num) &
@@ -1520,8 +1657,8 @@ class Segmentation(QWidget):
         # referenced later anyway?
 
         # TODO only add as many as there were blocks from thorsync timing info?
-        odor1_ids = [db_odors.at[o1,'odor'] for o1, _ in odor_pair_list]
-        odor2_ids = [db_odors.at[o2,'odor'] for _, o2 in odor_pair_list]
+        odor1_ids = [db_odors.at[o1,'odor_id'] for o1, _ in odor_pair_list]
+        odor2_ids = [db_odors.at[o2,'odor_id'] for _, o2 in odor_pair_list]
 
         # TODO TODO make unique first. only need order for filling in the values
         # in responses.
@@ -1577,6 +1714,29 @@ class Segmentation(QWidget):
             else:
                 raise ValueError(err_msg.format('<') + fail_msg)
 
+        # TODO maybe factor this printing stuff out?
+        print(('{} comparisons ({{A, B, A+B}} in random order x {} repeats)')
+            .format(n_blocks_from_gsheet, n_repeats))
+
+        # TODO maybe print this in tabular form?
+        # TODO TODO TODO use abbreviations (defined in one place for all hong
+        # lab code, ideally)
+        for i in range(n_blocks_from_gsheet):
+            p_start = presentations_per_block * i
+            p_end = presentations_per_block * (i + 1)
+            cline = '{}: '.format(i)
+
+            odor_strings = []
+            for o in odor_pair_list[p_start:p_end]:
+                if o[1] == 'paraffin':
+                    odor_string = o[0]
+                else:
+                    odor_string = ' + '.join(o)
+                odor_strings.append(odor_string)
+
+            print(cline + ', '.join(odor_strings))
+        print('')
+
         # stim_on is a number as above, but for the frame of the odor
         # onset.
         # TODO how does rounding work here? closest frame? first after?
@@ -1630,14 +1790,8 @@ class Segmentation(QWidget):
             ).flatten() - 1
 
         if allow_gsheet_to_restrict_blocks:
-            old_last_frame = block_last_frames[-1]
-            assert (old_last_frame + 1) == movie.shape[0]
-
             # TODO unit test for case where first_block != 0 and == 0
             # w/ last_block == first_block and > first_block
-            # TODO why didn't i detect failure yet? try other data?
-            # TODO TODO check subtracting first_block/presentation fixes the
-            # problem
             block_first_frames = block_first_frames[
                 :(last_block - first_block + 1)]
             block_last_frames = block_last_frames[
@@ -1683,6 +1837,8 @@ class Segmentation(QWidget):
         self.odor2_ids = odor2_ids
         self.frame_times = frame_times
         self.block_first_frames = block_first_frames
+
+        self.matfile = mat
 
         # TODO set param as appropriate / maybe display in non-editable boxes in
         # data parameters
@@ -1762,6 +1918,7 @@ class Segmentation(QWidget):
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
         self.accepted = None
+        self.uploaded_presentations = False
 
 
 class ROIAnnotation(QWidget):
@@ -1776,7 +1933,11 @@ class ROIAnnotation(QWidget):
         # TODO manage current user somehow? / work into database where
         # appropriate
 
+        # TODO TODO maybe just read presentations in here if this is the only
+        # widget that's going to use it? (want it to be up-to-date anyway...)
+
         self.presentations = presentations.set_index(comp_cols)
+        # TODO same as w/ presentations. maybe not global.
         self.footprints = footprints
 
         # TODO TODO option to operate at recording level instead
@@ -1926,7 +2087,7 @@ class ROIAnnotation(QWidget):
         # TODO if not just going to load just comparison, keep movie loaded if
         # clicking other comparisons / until run out of memory
         # TODO just load part of movie for this comparison
-        print('loading tiff {}...'.format(tiff), end='')
+        print('Loading TIFF {}...'.format(tiff), end='')
         self.movie = tifffile.imread(tiff)
         print(' done.')
 
@@ -2221,6 +2382,10 @@ class MainWindow(QMainWindow):
 
         self.nicknames = set(pd.read_sql('people', u.conn)['nickname'])
         if self.user is not None:
+            pd.DataFrame({'nickname': [self.user]}).set_index('nickname'
+                ).to_sql('people', u.conn, if_exists='append',
+                method=u.pg_upsert)
+
             user_select.addItem(self.user)
 
         for nickname in self.nicknames:
@@ -2291,18 +2456,32 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    global odors
-    global recordings
     global presentations
-    global rec_meta_cols
     global recordings_meta
     global footprints
     global comp_cols
-    global caiman_version_info
+    # TODO try to eliminate matlab requirement here. currently just to read
+    # matlab "ti" (timing info) output from Remy's cnmf MAT files
+    # (but maybe h5py worked in that case?)
     global evil
+    global common_code_versions
 
     # Calling this first to minimize chances of code diverging.
-    caiman_version_info = u.caiman_version_info()
+    # TODO might be better to do before some imports... some of the imports are
+    # kinda slow
+    # TODO will __file__ still work if i get to the point of installing this
+    # package w/ pip?
+    common_code_versions = [u.version_info(m,
+        used_for='extracting footprints and traces')
+        for m in [caiman, __file__]]
+
+    # TODO TODO matlab stuff that only generated saved output needs to be
+    # handled, and it can't work this way.
+
+    # TODO maybe use gitpython to check for remote updates and pull them /
+    # relaunch / fail until user pulls them?
+
+    # TODO TODO also deal w/ matlab code versionS somehow...
 
     # TODO maybe rename all of these w/ db_ prefix or something, to
     # differentiate from non-global versions in segmentation tab code

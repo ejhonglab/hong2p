@@ -4,13 +4,14 @@ our databases / movies / CNMF output.
 """
 
 import os
-from os.path import join
+from os.path import join, split
 import socket
 import pickle
 import atexit
 import signal
 import sys
 import xml.etree.ElementTree as etree
+from types import ModuleType
 import pprint
 
 # TODO or just use sqlalchemy.types?
@@ -62,7 +63,11 @@ def matlab_engine():
     # TODO work inside a fn?
     atexit.register(evil.quit)
 
-    exclude_from_matlab_path = {'CaImAn-MATLAB','matlab_helper_functions'}
+    exclude_from_matlab_path = {
+        'CaImAn-MATLAB',
+        'CaImAn-MATLAB_hong',
+        'matlab_helper_functions'
+    }
     userpath = evil.userpath()
     for root, dirs, _ in os.walk(userpath, topdown=True):
         dirs[:] = [d for d in dirs if (not d.startswith('.') and
@@ -80,6 +85,8 @@ def matlab_engine():
     return evil
 
 
+# TODO TODO can to_sql with pg_upsert replace this? what extra features did this
+# provide?
 def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
     # TODO TODO document what index means / delete
 
@@ -259,7 +266,7 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False):
             sheets[df_name] = df
 
         boolean_columns = {
-            'used_for_analysis',
+            'attempt_analysis',
             'raw_data_discarded',
             'raw_data_lost'
         }
@@ -278,7 +285,7 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False):
     # TODO say when this happens?
     df.drop(df[df.raw_data_discarded].index, inplace=True)
 
-    # TODO TODO warn / fail if 'used_for_analysis' and either discard / lost is
+    # TODO TODO warn / fail if 'attempt_analysis' and either discard / lost is
     # checked
 
     # Not sure where there were any NaN here anyway...
@@ -375,10 +382,19 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False):
         print(df[duped_thorsync])
         raise
 
+    flies = sheets['fly_preps']
+    flies['date'] = flies['date'].fillna(method='ffill')
+    flies.dropna(subset=['date','fly_num'], inplace=True)
+
     # TODO maybe flag to not update database? or just don't?
-    sheets['fly_preps'].dropna(subset=['date','fly_num'], inplace=True)
+    # TODO groups all inserts into transactions across tables, and as few as
+    # possible (i.e. only do this later)?
     to_sql_with_duplicates(sheets['fly_preps'].rename(
         columns={'date': 'prep_date'}), 'flies')
+
+    # TODO handle case where database is empty but gsheet cache still exists
+    # (all inserts will probably fail, for lack of being able to reference fly
+    # table)
 
     return df
 
@@ -389,12 +405,25 @@ def git_hash(repo_file):
     return current_hash
 
 
-def caiman_version_info():
-    # TODO generalize to version_info / take module / module name?
+# TODO TODO maybe check that remote seems to be valid, and fail if not.
+# don't want to assume we have an online (backed up) record of git repo when we
+# don't...
+def version_info(module_or_path, used_for=''):
+    """Takes module or string path to file in Git repo.
+    """
+    if isinstance(module_or_path, ModuleType):
+        module = module_or_path
+        pkg_path = module.__file__
+        name = module.__name__
+    else:
+        if type(module_or_path) != str:
+            raise ValueError('must path either a Python module or str path')
+        pkg_path = module_or_path
+        module = None
+
     try:
-        import caiman
-        pkg_path = caiman.__file__
         repo = git.Repo(pkg_path, search_parent_directories=True)
+        name = split(repo.working_tree_dir)[-1]
         remote_urls = list(repo.remotes.origin.urls)
         assert len(remote_urls) == 1
         remote_url = remote_urls[0]
@@ -408,16 +437,24 @@ def caiman_version_info():
             changes += str(d)
 
         return {
+            'name': name,
+            'used_for': used_for,
             'git_remote': remote_url,
             'git_hash': current_hash,
             'git_uncommitted_changes': changes
         }
 
     except git.exc.InvalidGitRepositoryError:
-        # TODO this the right name? try in conda? how does this error?
-        version = pkg_resources.get_distribution('caiman').version
+        if module is None:
+            # TODO try to find module from str
+            raise NotImplementedError(
+                'pass module for non-source installations')
 
-        return {'version': version}
+        # There may be circumstances in which module name isn't the right name
+        # to use here, but assuming we won't encounter that for now.
+        version = pkg_resources.get_distribution(module.__name__).version
+
+        return {'name': name, 'used_for': used_for, 'version': version}
 
 
 def get_thorimage_dims(xmlroot):
