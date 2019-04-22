@@ -814,12 +814,9 @@ class Segmentation(QWidget):
 
 
     def check_run_btn_enbl(self) -> None:
-        if (not self.params_changed and not self.cnmf_running and
-            self.movie is not None):
-
-            self.run_cnmf_btn.setEnabled(True)
-
         self.params_changed = True
+        if (not self.cnmf_running and self.movie is not None):
+            self.run_cnmf_btn.setEnabled(True)
 
 
     # TODO after implementing per-type, see if can be condensed to one function
@@ -963,7 +960,9 @@ class Segmentation(QWidget):
         # TODO test this case
         except MemoryError:
             # TODO maybe log this / print traceback regardless
+            # TODO get cnmf output not handling this appropriately. fix.
             self.cnm = None
+            raise
 
         # TODO see which parameters are changed?
         if err_if_cnmf_changes_params:
@@ -980,6 +979,9 @@ class Segmentation(QWidget):
         if self.cnm is not None:
             self.accept_cnmf_btn.setEnabled(True)
             self.reject_cnmf_btn.setEnabled(True)
+
+            if self.params_changed:
+                self.run_cnmf_btn.setEnabled(True)
 
             # TODO logging instead?
             print('done with CNMF')
