@@ -38,6 +38,8 @@ only_do_anything_for_analysis = True
 
 convert_h5 = True
 calc_timing_info = True
+# If timing info ("ti") already exists in .mat, should we recalculate it?
+update_timing_info = True
 motion_correct = True
 # TODO fix. this seems to not be working correctly.
 only_motion_correct_for_analysis = True
@@ -74,7 +76,13 @@ evil = u.matlab_engine()
 matlab_repo_name = 'matlab_kc_plane'
 userpath = evil.userpath()
 matlab_code_path = join(userpath, matlab_repo_name)
-#
+
+this_repo_file = os.path.realpath(__file__)
+# TODO just use util fn that gets this internally
+this_repo_path = split(this_repo_file)[0]
+
+#driver_version_info ?
+matlab_code_version = u.version_info(matlab_code_path)
 
 # TODO fn to convert raw output to tifs (that are compat w/ current ij tifs)
 
@@ -93,7 +101,7 @@ df = u.mb_team_gsheet(
 # anyway)
 
 # TODO + summarize those that still need analysis run on them (and run it?)
-# TODO print stuff w/ used_for_analysis checked w/o either data in database or
+# TODO print stuff w/ attempt_analysis checked w/o either data in database or
 # analysis output on disk (or just latter)
 
 # TODO move these paths to config file...
@@ -107,10 +115,10 @@ stimfile_root = '/mnt/nas/mb_team/stimulus_data_files'
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', inplace=True)
 
-# TODO TODO loop over more stuff than just natural_odors / used_for_analysis
+# TODO TODO loop over more stuff than just natural_odors / attempt_analysis
 # to load all PID stuff in (will need pin info for prep checking, etc, exps)
 
-# TODO complain if there are flies w/ used_for_analysis not checked w/o
+# TODO complain if there are flies w/ attempt_analysis not checked w/o
 # rejection reason
 
 # TODO maybe don't err in this case (w/ option to only run on analysis?)
@@ -157,7 +165,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     print('Date:', date_dir)
     print('Fly:', fly_num)
 
-    used = df.loc[df.used_for_analysis &
+    used = df.loc[df.attempt_analysis &
         (df.date == date) & (df.fly_num == fly_num)]
 
     if len(used) > 0:
@@ -204,7 +212,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             thorimage_dir = join(full_fly_dir, row['thorimage_dir'])
             if not os.path.isdir(thorimage_dir):
                 warnings.warn('thorimage_dir {} did not exist for recording ' +
-                    'marked as used_for_analysis.')
+                    'marked as attempt_analysis.')
                 continue
 
             # If not always running h5->mat conversion first, will need to check
@@ -212,7 +220,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             thorsync_dir = join(full_fly_dir, row['thorsync_dir'])
             if not os.path.isdir(thorsync_dir):
                 warnings.warn('thorsync_dir {} did not exist for recording ' +
-                    'marked as used_for_analysis.')
+                    'marked as attempt_analysis.')
                 continue
 
             # TODO maybe check for existance of SyncData<nnn> first, to have
@@ -227,12 +235,32 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                 ).format(date_dir, fly_num, row['thorimage_dir']), end='',
                 flush=True)
 
-            # TODO TODO only do this for those that havent been calculated
+            # TODO TODO check exit code -> save all applicable version info
+            # into the same matfile, calling the matlab interface from here
             try:
+                # TODO maybe determine whether to update_ti based on reading
+                # version info (in update_timing_info == False case)?
+                update_ti = update_timing_info
+
                 # throwing everything into _<>_cnmf.mat, as we are, would need
                 # to inspect it to check whether we already have the stiminfo...
-                evil.get_stiminfo(thorimage_dir, row['thorsync_dir'],
-                    analysis_fly_dir, date_dir, fly_num, nargout=0)
+                updated_ti, matfile = evil.get_stiminfo(thorimage_dir,
+                    row['thorsync_dir'], analysis_fly_dir, date_dir, fly_num,
+                    update_ti, nargout=2)
+
+                if updated_ti:
+                    evil.workspace['ti_code_version'] = matlab_code_version 
+                    evil.save(matfile, 'ti_code_version', '-append', nargout=0)
+
+                    # Testing version info is stored correctly.
+                    evil.clear(nargout=0)
+                    load_output = evil.load(matfile, 'ti_code_version',
+                        nargout=1)
+
+                    rt_matlab_code_version = load_output['ti_code_version']
+                    assert matlab_code_version == rt_matlab_code_version
+                    evil.clear(nargout=0)
+
             except matlab.engine.MatlabExecutionError:
                 continue
 
@@ -280,8 +308,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 if not load_traces:
     sys.exit()
 
-this_repo_file = os.path.realpath(__file__)
-this_repo_path = split(this_repo_file)[0]
+# TODO delete all this stuff after saving full version info as appropriate
 current_hash = u.git_hash(this_repo_file)
 matlab_hash = u.git_hash(matlab_code_path)
 
@@ -440,31 +467,26 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # natural_odors project.
         presentations_per_repeat = 3
 
-        presentations_per_block = n_repeats * presentations_per_repeat
+        presentations_per_block = \
+            n_repeats * presentations_per_repeat
 
-        n_blocks = int(len(data['odor_pair_list']) / presentations_per_block)
 
-        # TODO TODO subset odor order information by start/end block cols
-        # (for natural_odors stuff)
         if pd.isnull(recording['first_block']):
             first_block = 0
         else:
             first_block = int(recording['first_block']) - 1
 
         if pd.isnull(recording['last_block']):
-            last_block = n_blocks - 1
+            n_full_panel_blocks = \
+                int(len(data['odor_pair_list']) / presentations_per_block)
+
+            last_block = n_full_panel_blocks - 1
+
         else:
             last_block = int(recording['last_block']) - 1
 
         first_presentation = first_block * presentations_per_block
         last_presentation = (last_block + 1) * presentations_per_block
-
-        '''
-        print('n_repeats:', n_repeats)
-        print('n_blocks:', n_blocks)
-        print('first_presentation:', first_presentation)
-        print('last_presentation:', last_presentation)
-        '''
 
         # TODO will need to augment w/ concentration info somehow...
         # maybe handle in a way specific to natural_odors project?
@@ -493,7 +515,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         odor_pair_list = \
             data['odor_pair_list'][first_presentation:last_presentation]
 
-        assert len(odor_pair_list) % (presentations_per_repeat * n_repeats) == 0
+        assert (len(odor_pair_list) %
+            (presentations_per_repeat * n_repeats) == 0)
 
         # TODO invert to check
         # TODO is this sql table worth anything if both keys actually need to be
