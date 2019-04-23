@@ -760,10 +760,8 @@ class Segmentation(QWidget):
         self.layout.addWidget(self.display_widget)
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
-        # TODO TODO add toolbar / make image navigable
 
-        self.plot_intermediates = True
-        ########self.plot_intermediates = False
+        self.plot_intermediates = False
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
         self.display_layout.addWidget(self.mpl_canvas)
@@ -955,7 +953,8 @@ class Segmentation(QWidget):
             # From CNMF docs, about first arg to fit:
             # "images : mapped np.ndarray of shape (t,x,y[,z])"
             # (thought it doesn't actually need to be a memory mapped file)
-            self.cnm.fit(self.movie)
+            self.cnm.fit(self.movie,
+                intermediate_footprints=self.plot_intermediates)
 
         # TODO test this case
         except MemoryError as err:
@@ -1828,7 +1827,8 @@ class Segmentation(QWidget):
         # TODO want / need to do more than just slice to free up memory from
         # other pixels? is that operation worth it?
         self.movie = movie[:(last_frame + 1)]
-        assert self.movie.shape[0] == len(frame_times)
+        assert self.movie.shape[0] == len(frame_times), \
+            '{} != {}'.format(self.movie.shape[0], len(frame_times))
 
         self.current_item = self.sender().currentItem()
         self.date = date
