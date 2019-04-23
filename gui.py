@@ -1040,6 +1040,10 @@ class Segmentation(QWidget):
                 contour_ax.set_title('Final estimate')
                 A = self.cnm.estimates.A
 
+            elif not self.plot_intermediates and i == 0 and only_init:
+                contour_ax.set_title('Initialization')
+                A = self.cnm.estimates.A
+
             caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
                 display_numbers=False, colors='r', linewidth=1.0)
 
