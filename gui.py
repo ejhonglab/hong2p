@@ -1507,8 +1507,8 @@ class Segmentation(QWidget):
 
             presentation_order_ax = corr_axes[0, i]
 
-            ticklabels = \
-                matlabels(odor_order_trial_mean_corrs, odors_label)
+            ticklabels = matlabels(presentation_order_trial_mean_corrs,
+                odors_label)
 
             matshow(presentation_order_trial_mean_corrs,
                 ticklabels=ticklabels,
@@ -1520,8 +1520,8 @@ class Segmentation(QWidget):
 
             odor_order_ax = corr_axes[1, i]
 
-            ticklabels = matlabels(presentation_order_trial_mean_corrs,
-                odors_label)
+            ticklabels = \
+                matlabels(odor_order_trial_mean_corrs, odors_label)
 
             matshow(odor_order_trial_mean_corrs,
                 ticklabels=ticklabels,
