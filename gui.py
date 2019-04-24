@@ -65,6 +65,18 @@ recording_cols = [
     'fly_num',
     'thorimage_id'
 ]
+# TODO might need to add analysis here (although if i'm using it before upload,
+# it should always be most recent anyway...)
+trial_only_cols = [
+    'comparison',
+    'name1',
+    'name2',
+    'repeat_num'
+]
+trial_cols = recording_cols + trial_only_cols
+# Maybe rename. It's these cols once already in a recording + comparison.
+cell_cols = ['name1','name2','repeat_num','cell']
+
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 raw_data_root = '/mnt/nas/mb_team/raw_data'
 # TODO support a local and a remote one ([optional] local copy for faster repeat
@@ -145,6 +157,65 @@ def fps_from_thor(df, nas_prefix='/mnt/nas'):
     fps = float(lsm['frameRate']) / float(lsm['averageNum'])
     return fps
 
+
+def matshow(df, title=None, ticklabels=None, colorbar_label=None,
+    group_ticklabels=False, ax=None):
+
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+    fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
+
+    # TODO TODO enable again
+    # TODO maybe one shared cbar? or fixed range or something?
+    cax = ax.matshow(df)
+    '''
+    cbar = fig.colorbar(cax)
+
+    if colorbar_label is not None:
+        # rotation=270?
+        cbar.ax.set_ylabel(colorbar_label)
+    '''
+
+    # TODO automatically only group labels in case where all repeats are
+    # adjacent?
+    if group_ticklabels:
+        n_repeats = int(len(ticklabels) / len(ticklabels.unique()))
+        # Assumes order is preserved if labels are grouped at input.
+        # May need to calculate some other way if not always true.
+        ticklabels = ticklabels.unique()
+        # TODO make fontsize / weight more in this case?
+        tick_step = n_repeats
+    else:
+        tick_step = 1
+
+    # TODO need to support abbreviations anyway?
+    # legend to full names off to side? global mapping to a table?
+
+    if ticklabels is not None:
+        ax.set_yticklabels(ticklabels, fontsize=fontsize,
+            rotation='horizontal')
+        #    rotation='vertical' if group_ticklabels else 'horizontal')
+        ax.set_xticklabels(ticklabels, fontsize=fontsize,
+            rotation='vertical')
+        #    rotation='horizontal' if group_ticklabels else 'vertical')
+
+        if group_ticklabels:
+            offset = n_repeats / 2 - 0.5
+        else:
+            offset = 0
+
+        ax.set_yticks(np.arange(0, len(df), tick_step) + offset)
+        ax.set_xticks(np.arange(0, len(df.columns), tick_step) + offset)
+
+    if title is not None:
+        ax.set_xlabel(title)
+
+    #plt.tight_layout()
+    #return fig
+
+
 def crop_to_nonzero(matrix, margin=0):
     coords = np.argwhere(matrix > 0)
     x_min, y_min = coords.min(axis=0)
@@ -193,7 +264,8 @@ def merge_odors(df, odors):
     print('merging with odors table...', end='')
     # TODO way to do w/o resetting index? merge failing to find odor1 or just
     # drop?
-    df.reset_index(inplace=True, drop=True)
+    #df.reset_index(inplace=True, drop=True)
+    df = df.reset_index(drop=True)
 
     df = pd.merge(df, odors, left_on='odor1', right_on='odor_id',
                   suffixes=(False,False))
@@ -216,7 +288,8 @@ def merge_odors(df, odors):
 def merge_recordings(df, recordings):
     print('merging with recordings table...', end='')
 
-    df.reset_index(inplace=True, drop=True)
+    #####df.reset_index(inplace=True, drop=True)
+    df = df.reset_index(drop=True)
 
     df = pd.merge(df, recordings,
                   left_on='recording_from', right_on='started_at')
@@ -922,7 +995,9 @@ class Segmentation(QWidget):
         ####worker.signals.progress.connect(self.progress_fn)
 
         self.parameter_json = self.params.to_json()
+        # TODO make names of these more similar
         self.cnmf_start = time.time()
+        self.run_at = datetime.fromtimestamp(self.cnmf_start)
 
         self.params_changed = False
         self.cnmf_running = True
@@ -1005,6 +1080,196 @@ class Segmentation(QWidget):
     # TODO TODO actually provide a way to only initialize cnmf, to test out
     # various initialization procedures (though only_init arg doesn't actually
     # seem to accomplish this correctly)
+    def get_recording_df(self):
+
+        # TODO could maybe compute my own df/f from this if i'm worried...
+        # frame number, cell -> value
+        raw_f = self.cnm.estimates.C.T
+
+        # TODO TODO TODO to copy what Remy's matlab script does, need to detrend
+        # within each "block"
+        if self.cnm.estimates.F_dff is None:
+            # quantileMin=8, frames_window=500, flag_auto=True, use_fast=False,
+            # (a, b, C, f, YrA)
+            # TODO TODO TODO don't i want to use extract_... though, since more
+            # exact?
+            self.cnm.estimates.detrend_df_f()
+
+        self.df_over_f = self.cnm.estimates.F_dff.T
+
+        # TODO why 474 x 4 + 548 in one case? i thought frame numbers were
+        # supposed to be more similar... (w/ np.diff(odor_onset_frames))
+        first_onset_frame_offset = \
+            self.odor_onset_frames[0] - self.block_first_frames[0]
+
+        n_frames, n_cells = self.df_over_f.shape
+        # would have to pass footprints back / read from sql / read # from sql
+        ##assert n_cells == n_footprints
+
+        start_frames = np.append(0,
+            self.odor_onset_frames[1:] - first_onset_frame_offset)
+        stop_frames = np.append(
+            self.odor_onset_frames[1:] - first_onset_frame_offset - 1, n_frames)
+        lens = [stop - start for start, stop in zip(start_frames, stop_frames)]
+
+        # TODO delete version w/ int cast after checking they give same answers
+        assert int(self.frame_times.shape[0]) == int(n_frames)
+        assert self.frame_times.shape[0] == n_frames
+
+        print(start_frames)
+        print(stop_frames)
+        # TODO find where the discrepancies are!
+        print(sum(lens))
+        print(n_frames)
+        # TODO TODO TODO should i assert that all lens are the same????
+        # (it seems analysis code requires this...)
+
+        # TODO assert here that all frames add up / approx
+
+        # TODO TODO either warn or err if len(start_frames) is !=
+        # len(odor_pair_list)
+
+        odor_id_pairs = [(o1,o2) for o1,o2 in
+            zip(self.odor1_ids, self.odor2_ids)]
+        print('odor_id_pairs:', odor_id_pairs)
+
+        self.presentation_dfs = []
+        self.comparison_dfs = []
+        comparison_num = -1
+        for i in range(len(start_frames)):
+            if i % (self.presentations_per_block) == 0:
+                comparison_num += 1
+                repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
+
+            # TODO TODO also save to csv/flat binary/hdf5 per (date, fly,
+            # thorimage) (probably at most, only when actually accepted.
+            # that or explicit button for it.)
+            print('Processing presentation {}'.format(i))
+
+            start_frame = start_frames[i]
+            stop_frame = stop_frames[i]
+            # TODO off by one?? check
+            # TODO check against frames calculated directly from odor offset...
+            # may not be const # frames between these "starts" and odor onset?
+            onset_frame = start_frame + first_onset_frame_offset
+
+            # TODO check again that these are always equal and delete
+            # "direct_onset_frame" bit
+            print('onset_frame:', onset_frame)
+            direct_onset_frame = self.odor_onset_frames[i]
+            print('direct_onset_frame:', direct_onset_frame)
+
+            # TODO TODO why was i not using direct_onset_frame for this before?
+            onset_time = self.frame_times[direct_onset_frame]
+            assert start_frame < stop_frame
+            # TODO check these don't jump around b/c discontinuities
+            presentation_frametimes = \
+                self.frame_times[start_frame:stop_frame] - onset_time
+            # TODO delete try/except after fixing
+            '''
+            try:
+            '''
+            assert len(presentation_frametimes) > 1
+            '''
+            except AssertionError:
+                print(self.frame_times)
+                print(start_frame)
+                print(stop_frame)
+                import ipdb; ipdb.set_trace()
+            '''
+
+            odor_pair = odor_id_pairs[i]
+            odor1, odor2 = odor_pair
+            repeat_num = repeat_nums[odor_pair]
+            repeat_nums[odor_pair] = repeat_num + 1
+
+            offset_frame = self.odor_offset_frames[i]
+            print('offset_frame:', offset_frame)
+            assert offset_frame > direct_onset_frame
+
+            # TODO check that all frames go somewhere and that frames aren't
+            # given to two presentations. check they stay w/in block boundaries.
+            # (they don't right now. fix!)
+
+            # TODO share more of this w/ dataframe creation below, unless that
+            # table is changed to just reference presentation table
+            presentation = pd.DataFrame({
+                # TODO fix hack
+                'temp_presentation_id': [i],
+                'prep_date': [self.date],
+                'fly_num': self.fly_num,
+                'recording_from': self.started_at,
+                'analysis': self.run_at,
+                'comparison': comparison_num,
+                'odor1': odor1,
+                'odor2': odor2,
+                'repeat_num': repeat_num,
+                'odor_onset_frame': direct_onset_frame,
+                'odor_offset_frame': offset_frame,
+                'from_onset': [[float(x) for x in presentation_frametimes]]
+            })
+
+            # TODO TODO TODO assert that len(presentation_frametimes)
+            # == stop_frame - start_frame (off-by-one?)
+            # TODO (it would fail now) fix!!
+            # maybe this is a failure to merge correctly later???
+            # b/c presentation frametimes seems to be defined to be same length
+            # above... same indices...
+            # (unless maybe self.frame_times is sometimes shorter than
+            # self.df_over_f, etc)
+
+            '''
+            presentation_dff = self.df_over_f[start_frame:stop_frame, :]
+            presentation_raw_f = raw_f[start_frame:stop_frame, :]
+            '''
+
+            # TODO TODO TODO fix / delete hack!!
+            # TODO probably just need to more correctly calculate stop_frame?
+            # (or could also try expanding frametimes to include that...)
+            actual_frametimes_slice_len = len(presentation_frametimes)
+            # TODO TODO why didn't this fix it!?!?!? (did it?)
+            stop_frame = start_frame + actual_frametimes_slice_len
+            presentation_dff = self.df_over_f[start_frame:stop_frame, :]
+            presentation_raw_f = raw_f[start_frame:stop_frame, :]
+
+            # TODO TODO TODO if these all start off as the same length,
+            # what ultimately compresses the frame times to len 680?
+            # just do the same thing w/ the other two?
+            # or don't do it w/ frame times?
+            print(presentation_frametimes.shape)
+            print(presentation_raw_f.shape)
+            print(presentation_dff.shape)
+
+            ############import ipdb; ipdb.set_trace()
+            #
+
+            # Assumes that cells are indexed same here as in footprints.
+            cell_dfs = []
+            for cell_num in range(n_cells):
+
+                cell_dff = presentation_dff[:, cell_num].astype('float32')
+                cell_raw_f = presentation_raw_f[:, cell_num].astype('float32')
+
+                cell_dfs.append(pd.DataFrame({
+                    # TODO maybe rename / do in a less hacky way
+                    'temp_presentation_id': [i],
+                    ###'presentation_id': [presentation_id],
+                    'recording_from': [self.started_at],
+                    'segmentation_run': [self.run_at],
+                    'cell': [cell_num],
+                    'df_over_f': [[float(x) for x in cell_dff]],
+                    'raw_f': [[float(x) for x in cell_raw_f]]
+                }))
+            response_df = pd.concat(cell_dfs, ignore_index=True)
+
+            # TODO maybe draw correlations from each of these, as i go?
+            # (would still need to do block by block, not per trial)
+
+            self.presentation_dfs.append(presentation)
+            self.comparison_dfs.append(response_df)
+
+            print('Done processing presentation {}'.format(i))
+
 
     # TODO rename to "process_..." or something?
     def get_cnmf_output(self) -> None:
@@ -1015,14 +1280,53 @@ class Segmentation(QWidget):
 
         only_init = self.params_copy.get('patch', 'only_init')
 
-        n_axes = 4 if self.plot_intermediates and not only_init else 1
-        contour_axes = self.fig.subplots(n_axes, 1, squeeze=False, sharex=True,
-            sharey=True)
+        n_footprint_axes = 4 if self.plot_intermediates and not only_init else 1
 
-        self.fig.subplots_adjust(hspace=0, wspace=0)
+        # nrows, ncols
+        gs = self.fig.add_gridspec(3, 1, hspace=0, wspace=0)
 
-        for i in range(n_axes):
-            contour_ax = contour_axes[i, 0]
+        #contour_axes = self.fig.subplots(n_footprint_axes, 1,
+        #    squeeze=False, sharex=True, sharey=True)
+        footprint_gs = gs[:-1, :].subgridspec(
+            n_footprint_axes, 1, hspace=0, wspace=0)
+
+        axs = []
+        ax0 = None
+        for i in range(footprint_gs._nrows):
+            if ax0 is None:
+                ax = self.fig.add_subplot(footprint_gs[i])
+            else:
+                ax = self.fig.add_subplot(footprint_gs[i],
+                    sharex=ax0, sharey=ax0)
+
+            axs.append(ax)
+        contour_axes = np.array(axs)
+
+        # 2 rows: one for correlation matrices ordered as in experiment,
+        # and the other for matrices ordered by odor
+        corr_gs = gs[-1, :].subgridspec(2, self.n_blocks, hspace=0, wspace=0)
+
+        axs = []
+        #ax0 = None
+        for i in range(corr_gs._nrows):
+            axs.append([])
+            for j in range(corr_gs._ncols):
+                # TODO maybe still do this? anyway way to indicate the matrix
+                # intensity scale should be shared (but that's not x or y,
+                # right?)?
+                '''
+                if ax0 is None:
+                    ax = fig.add_subplot(corr_gs[i])
+                else:
+                    ax = fig.add_subplot(corr_gs[i], sharex=ax0, sharey=ax0)
+                '''
+                ax = self.fig.add_subplot(corr_gs[i,j])
+                axs[-1].append(ax)
+        corr_axes = np.array(axs)
+
+
+        for i in range(n_footprint_axes):
+            contour_ax = contour_axes[i]
             contour_ax.axis('off')
 
             # TODO TODO make callbacks for each step and plot as they become
@@ -1047,7 +1351,7 @@ class Segmentation(QWidget):
             # TODO maybe show self.cnm.A_spatial_refinement_k[0] too in
             # plot_intermediates case? should be same though (though maybe one
             # is put back in original, non-sliced, coordinates?)
-            if i == n_axes - 1 and not only_init:
+            if i == n_footprint_axes - 1 and not only_init:
                 contour_ax.set_title('Final estimate')
                 A = self.cnm.estimates.A
 
@@ -1058,12 +1362,175 @@ class Segmentation(QWidget):
             caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
                 display_numbers=False, colors='r', linewidth=1.0)
 
-        # TODO maybe use this anyway, in case i am forgetting some other step
-        # cnmf is doing?
-        '''
-        self.cnm.estimates.plot_contours(img=img, ax=contour_ax,
-            display_numbers=False, colors='r', linewidth=1.0)
-        '''
+            # TODO call draw in each iteration?
+
+        ###################################################################
+        self.get_recording_df()
+
+        # TODO TODO single letter abbreviations (+ key, but maybe just print
+        # for now?)
+
+        response_calling_s = 3.0
+
+        # TODO probably handle this some other way. messy...
+        for i in range(self.n_blocks):
+
+            presentation_dfs = self.presentation_dfs[
+                (self.presentations_per_block * i):
+                (self.presentations_per_block * (i + 1))
+            ]
+            presentation_df = pd.concat(presentation_dfs,
+                ignore_index=True)
+
+            comparison_dfs = self.comparison_dfs[
+                (self.presentations_per_block * i):
+                (self.presentations_per_block * (i + 1))
+            ]
+            comparison_df = pd.concat(comparison_dfs,
+                ignore_index=True)
+            # TODO set index?
+
+            '''
+            for i, (presentation_df, comparison_df) in enumerate(zip(
+                self.presentation_dfs, self.comparison_dfs)):
+            '''
+            # TODO don't have separate instance variables for presentation_dfs
+            # and comparison_dfs if i'm always going to merge here.
+            # just merge before and then put in one instance variable.
+            # (probably just keep name comparison_dfs)
+            presentation_df['from_onset'] = presentation_df['from_onset'].apply(
+                lambda x: np.array(x))
+
+            print(presentation_df.shape)
+            presentation_df = merge_odors(presentation_df,
+                self.db_odors.reset_index())
+
+            print(presentation_df.shape)
+            presentation_df = merge_recordings(presentation_df, self.recordings)
+
+            array_cols = ['raw_f', 'df_over_f']
+            for ac in array_cols:
+                comparison_df[ac] = comparison_df[ac].apply(
+                    lambda x: np.array(x))
+            array_cols = array_cols + ['from_onset']
+
+            # TODO TODO why are lengths of raw_f and df_over_f not always equal
+            # to the length of from_onset????? fix!!!!!
+            # (they do seem to always be equal to themselves though)
+
+            # TODO why does response_df (comparison_df) have recording_from col
+            # again? (since kinda redundant w/ presentation...)
+            comparison_df_shape_before = comparison_df.shape
+            #print(comparison_df_shape_before)
+            comparison_df = comparison_df.merge(presentation_df, how='left',
+                left_on='temp_presentation_id', right_on='temp_presentation_id')
+            comparison_df = comparison_df.drop(columns='temp_presentation_id')
+            '''
+            for c in presentation_df.columns:
+                comparison_df[c] = presentation_df[c]
+            '''
+            #print(comparison_df.shape)
+
+            non_array_cols = comparison_df.columns.difference(array_cols)
+            cell_response_dfs = []
+            for _, cell_df in comparison_df.groupby(trial_cols + ['cell']):
+                lens = cell_df[array_cols].apply(lambda x: x.str.len(),
+                    axis='columns')
+                # TODO delete try except
+                try:
+                    # TODO TODO what do i need to fix this????
+                    # TODO was this originally supposed to be a check on
+                    # uniqueness? (it's not now, whether or not that was orig
+                    # intention)
+                    assert len(lens) == 1
+                except AssertionError:
+                    import ipdb; ipdb.set_trace()
+
+                length = lens.iat[0,0]
+                assert (lens == length).all().all()
+
+                # TODO maybe also do explosion stuff with index if the input
+                # here has a meaningful index
+                exploded = pd.DataFrame({c: np.repeat(cell_df[c].values, length)
+                    for c in non_array_cols})
+
+                for ac in array_cols:
+                    exploded[ac] = np.concatenate(cell_df[ac].values)
+
+                exploded.set_index(trial_cols, inplace=True)
+                cell_response_dfs.append(exploded)
+
+                # TODO maybe plot a set of traces here, as a sanity check?
+
+            comparison_df = pd.concat(cell_response_dfs)
+            comparison_df.reset_index(inplace=True) 
+
+            frame2order = {f: o for o,f in
+                enumerate(sorted(comparison_df.odor_onset_frame.unique()))}
+
+            # TODO TODO exclude stuff that wasn't randomized w/in each
+            # comparison?  (or at least be aware which are which...)
+
+            comparison_df['order'] = \
+                comparison_df.odor_onset_frame.map(frame2order)
+
+            # TODO TODO add column mapping odors to order -> sort (index) on
+            # that column + repeat_num to order w/ mixture last
+
+            # TODO TODO might want to only compute responders/criteria one
+            # place, to avoid inconsistencies (so either move this section into
+            # next loop and aggregate, or index into this stuff from within that
+            # loop?)
+            in_response_window = ((comparison_df.from_onset > 0.0) &
+                (comparison_df.from_onset <= response_calling_s))
+
+            # TODO TODO include from_onset col then compute mean?
+            window_df = comparison_df.loc[in_response_window,
+                cell_cols + ['order','from_onset','df_over_f']]
+
+            # TODO maybe move this to bottom, around example trace plotting
+            window_by_trial = \
+                window_df.groupby(cell_cols + ['order'])['df_over_f']
+
+            window_trial_means = window_by_trial.mean()
+            # TODO rename to 'mean_df_over_f' or something, to avoid confusion
+            trial_by_cell_means = window_trial_means.to_frame().pivot_table(
+                index=['name1','name2','repeat_num','order'],
+                columns='cell', values='df_over_f').T
+
+            trial_mean_presentation_order = \
+                trial_by_cell_means.sort_index(axis=1, level='order')
+
+            odor_order_trial_mean_corrs = trial_by_cell_means.corr()
+            presentation_order_trial_mean_corrs = \
+                trial_mean_presentation_order.corr()
+
+            presentation_order_ax = corr_axes[0, i]
+
+            ticklabels = \
+                matlabels(odor_order_trial_mean_corrs, odors_label)
+
+            matshow(presentation_order_trial_mean_corrs,
+                ticklabels=ticklabels,
+                colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
+                    ' correlation'),
+                #title=fly_comparison_title,
+                group_ticklabels=True,
+                ax=presentation_order_ax)
+
+            odor_order_ax = corr_axes[1, i]
+
+            ticklabels = matlabels(presentation_order_trial_mean_corrs,
+                odors_label)
+
+            matshow(odor_order_trial_mean_corrs,
+                ticklabels=ticklabels,
+                colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
+                    ' correlation'),
+                #title=fly_comparison_title,
+                ax=odor_order_ax)
+
+        ###################################################################
 
         self.fig.tight_layout()
 
@@ -1088,9 +1555,6 @@ class Segmentation(QWidget):
 
     # TODO move core of this to util and just wrap it here
     def upload_analysis_info(self, accepted: bool) -> None:
-        # TODO move this definition to one of cnmf call/callback fns
-        self.run_at = datetime.fromtimestamp(self.cnmf_start)
-
         # TODO maybe visually indicate which has been selected already?
         run_info = {
             'run_at': [self.run_at],
@@ -1267,18 +1731,6 @@ class Segmentation(QWidget):
 
         # TODO maybe also allow more direct passing of this data to other tab
 
-        # frame number, cell -> value
-        raw_f = self.cnm.estimates.C.T
-
-        # TODO TODO TODO to copy what Remy's matlab script does, need to detrend
-        # within each "block"
-        if self.cnm.estimates.F_dff is None:
-            # quantileMin=8, frames_window=500, flag_auto=True, use_fast=False,
-            # (a, b, C, f, YrA)
-            self.cnm.estimates.detrend_df_f()
-
-        df_over_f = self.cnm.estimates.F_dff.T
-
         # TODO TODO TODO just save a bunch of different versions of the df/f,
         # computed w/ extract / detrend, and any key changes in arguments, then
         # load that and plot some stuff for troubleshooting
@@ -1301,31 +1753,6 @@ class Segmentation(QWidget):
             import ipdb; ipdb.set_trace()
         '''
 
-        # TODO why 474 x 4 + 548 in one case? i thought frame numbers were
-        # supposed to be more similar... (w/ np.diff(odor_onset_frames))
-        first_onset_frame_offset = \
-            self.odor_onset_frames[0] - self.block_first_frames[0]
-
-        n_frames, n_cells = df_over_f.shape
-        # would have to pass footprints back / read from sql / read # from sql
-        ##assert n_cells == n_footprints
-
-        start_frames = np.append(0,
-            self.odor_onset_frames[1:] - first_onset_frame_offset)
-        stop_frames = np.append(
-            self.odor_onset_frames[1:] - first_onset_frame_offset - 1, n_frames)
-        lens = [stop - start for start, stop in zip(start_frames, stop_frames)]
-
-        # TODO delete version w/ int cast after checking they give same answers
-        assert int(self.frame_times.shape[0]) == int(n_frames)
-        assert self.frame_times.shape[0] == n_frames
-
-        print(start_frames)
-        print(stop_frames)
-        # TODO find where the discrepancies are!
-        print(sum(lens))
-        print(n_frames)
-
         # TODO delete me
         print('saving CNMF state to cnmf_state.p for debugging', flush=True)
         # intended to use this to find best detrend / extract dff method
@@ -1337,7 +1764,8 @@ class Segmentation(QWidget):
                 'bl': ests.bl,
                 'b': ests.b,
                 'f': ests.f,
-                'df_over_f': df_over_f,
+                'df_over_f': self.df_over_f,
+                # TODO raw_f too? or already included in one of these things?
                 'start_frames': start_frames,
                 'stop_frames': stop_frames,
                 'date': self.date,
@@ -1353,147 +1781,56 @@ class Segmentation(QWidget):
         print('done saving cnmf_state.p', flush=True)
         #
 
-        # TODO assert here that all frames add up / approx
-
-        # TODO TODO either warn or err if len(start_frames) is !=
-        # len(odor_pair_list)
-
-        odor_id_pairs = [(o1,o2) for o1,o2 in
-            zip(self.odor1_ids, self.odor2_ids)]
-        print('odor_id_pairs:', odor_id_pairs)
-
-        comparison_num = -1
-
         if self.uploaded_presentations:
             # Just to skip to end of function.
-            start_frames = []
+            presentation_dfs = []
+            comparison_dfs = []
+        else:
+            presentation_dfs = self.presentation_dfs
+            comparison_dfs = self.comparison_dfs
 
-        for i in range(len(start_frames)):
-            if i % (self.presentations_per_repeat * self.n_repeats) == 0:
-                comparison_num += 1
-                repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
+        # TODO could also add some check / cleanup routines for orphaned
+        # rows in presentations table (and maybe some other tables)
+        # maybe share w/ code that checks distinct to decide whether to
+        # load / analyze?
+        key_cols = [
+            'prep_date',
+            'fly_num',
+            'recording_from',
+            'analysis',
+            'comparison',
+            'odor1',
+            'odor2',
+            'repeat_num'
+        ]
 
-            # TODO TODO also save to csv/flat binary/hdf5 per (date, fly,
-            # thorimage)
-            print('Processing presentation {}'.format(i))
+        if self.ACTUALLY_UPLOAD:
+            for presentation_df, comparison_df in zip(
+                presentation_dfs, comparison_dfs):
 
-            start_frame = start_frames[i]
-            stop_frame = stop_frames[i]
-            # TODO off by one?? check
-            # TODO check against frames calculated directly from odor offset...
-            # may not be const # frames between these "starts" and odor onset?
-            onset_frame = start_frame + first_onset_frame_offset
+                u.to_sql_with_duplicates(presentation.drop(
+                    columns='temp_presentation_id'), 'presentations')
 
-            # TODO check again that these are always equal and delete
-            # "direct_onset_frame" bit
-            print('onset_frame:', onset_frame)
-            direct_onset_frame = self.odor_onset_frames[i]
-            print('direct_onset_frame:', direct_onset_frame)
+                # TODO how exactly is this supposed to work in not
+                # self.ACTUALLY_UPLOAD case anyway? it wouldn't necessarily,
+                # right?
+                db_presentations = pd.read_sql('presentations', u.conn,
+                    columns=(key_cols + ['presentation_id']))
 
-            # TODO TODO why was i not using direct_onset_frame for this before?
-            onset_time = self.frame_times[direct_onset_frame]
-            assert start_frame < stop_frame
-            # TODO check these don't jump around b/c discontinuities
-            presentation_frametimes = \
-                self.frame_times[start_frame:stop_frame] - onset_time
-            # TODO delete try/except after fixing
-            try:
-                assert len(presentation_frametimes) > 1
-            except AssertionError:
-                print(self.frame_times)
-                print(start_frame)
-                print(stop_frame)
-                import ipdb; ipdb.set_trace()
+                presentation_ids = (db_presentations[key_cols] ==
+                                    presentation[key_cols].iloc[0]).all(axis=1)
+                assert presentation_ids.sum() == 1, \
+                    'presentation_id could not be determined uniquely'
 
-            # TODO TODO what caused the error here?
-            odor_pair = odor_id_pairs[i]
-            odor1, odor2 = odor_pair
-            repeat_num = repeat_nums[odor_pair]
-            repeat_nums[odor_pair] = repeat_num + 1
+                presentation_id = db_presentations.loc[presentation_ids,
+                    'presentation_id'].iat[0]
 
-            offset_frame = self.odor_offset_frames[i]
-            print('offset_frame:', offset_frame)
-            assert offset_frame > direct_onset_frame
-            # TODO share more of this w/ dataframe creation below, unless that
-            # table is changed to just reference presentation table
-            presentation = pd.DataFrame({
-                'prep_date': [self.date],
-                'fly_num': self.fly_num,
-                'recording_from': self.started_at,
-                'analysis': self.run_at,
-                'comparison': comparison_num,
-                'odor1': odor1,
-                'odor2': odor2,
-                'repeat_num': repeat_num,
-                'odor_onset_frame': direct_onset_frame,
-                'odor_offset_frame': offset_frame,
-                'from_onset': [[float(x) for x in presentation_frametimes]]
-            })
-            if self.ACTUALLY_UPLOAD:
-                u.to_sql_with_duplicates(presentation, 'presentations')
+                comparison_df['presentation_id'] = presentation_id
 
-            # maybe share w/ code that checks distinct to decide whether to
-            # load / analyze?
-            key_cols = [
-                'prep_date',
-                'fly_num',
-                'recording_from',
-                'analysis',
-                'comparison',
-                'odor1',
-                'odor2',
-                'repeat_num'
-            ]
-            db_presentations = pd.read_sql('presentations', u.conn,
-                columns=(key_cols + ['presentation_id']))
-
-            presentation_ids = (db_presentations[key_cols] ==
-                                presentation[key_cols].iloc[0]).all(axis=1)
-            assert presentation_ids.sum() == 1
-            presentation_id = db_presentations.loc[presentation_ids,
-                'presentation_id'].iat[0]
-
-            # TODO get remy to save it w/ less than 64 bits of precision?
-            presentation_dff = df_over_f[start_frame:stop_frame, :]
-            presentation_raw_f = raw_f[start_frame:stop_frame, :]
-
-            # Assumes that cells are indexed same here as in footprints.
-            cell_dfs = []
-            for cell_num in range(n_cells):
-
-                cell_dff = presentation_dff[:, cell_num].astype('float32')
-                cell_raw_f = presentation_raw_f[:, cell_num].astype('float32')
-
-                cell_dfs.append(pd.DataFrame({
-                    'presentation_id': [presentation_id],
-                    'recording_from': [self.started_at],
-                    'segmentation_run': [self.run_at],
-                    'cell': [cell_num],
-                    'df_over_f': [[float(x) for x in cell_dff]],
-                    'raw_f': [[float(x) for x in cell_raw_f]]
-                }))
-            response_df = pd.concat(cell_dfs, ignore_index=True)
-
-            if self.ACTUALLY_UPLOAD:
-                u.to_sql_with_duplicates(response_df, 'responses')
-
-            # TODO put behind flag
-            '''
-            db_presentations = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
-                'fly_num, recording_from, comparison FROM presentations',
-                u.conn)
-
-            print(db_presentations)
-            print(len(db_presentations))
-            #
-            '''
-            print('Done processing presentation {}'.format(i))
+                u.to_sql_with_duplicates(comparison_df.drop(
+                    columns='temp_presentation_id'), 'responses')
 
         self.uploaded_presentations = True
-
-        # TODO check that all frames go somewhere and that frames aren't
-        # given to two presentations. check they stay w/in block boundaries.
-        # (they don't right now. fix!)
 
         # TODO TODO mark as canonical if first accepted / most recently
         # accepted?
@@ -1612,14 +1949,16 @@ class Segmentation(QWidget):
         # TODO pane to show previous analysis runs of currently selected
         # experiment, or not worth it since maybe only want one accepted per?
 
-        recordings = pd.DataFrame({
+        self.recordings = pd.DataFrame({
             'started_at': [started_at],
             'thorsync_path': [thorsync_dir],
             'thorimage_path': [thorimage_dir],
             'stimulus_data_path': [stimulus_data_path]
         })
+        # TODO at least put behind self.ACTUALLY_UPLOAD?
         # TODO maybe defer this to accepting?
-        u.to_sql_with_duplicates(recordings, 'recordings')
+        # TODO rename to singular?
+        u.to_sql_with_duplicates(self.recordings, 'recordings')
 
         n_repeats = int(data['n_repeats'])
 
@@ -1656,10 +1995,10 @@ class Segmentation(QWidget):
         # TODO make unique id before insertion? some way that wouldn't require
         # the IDs, but would create similar tables?
 
-        db_odors = pd.read_sql('odors', u.conn)
+        self.db_odors = pd.read_sql('odors', u.conn)
         # TODO TODO in general, the name alone won't be unique, so use another
         # strategy
-        db_odors.set_index('name', inplace=True)
+        self.db_odors.set_index('name', inplace=True)
 
         first_presentation = first_block * presentations_per_block
         last_presentation = (last_block + 1) * presentations_per_block - 1
@@ -1675,8 +2014,8 @@ class Segmentation(QWidget):
         # referenced later anyway?
 
         # TODO only add as many as there were blocks from thorsync timing info?
-        odor1_ids = [db_odors.at[o1,'odor_id'] for o1, _ in odor_pair_list]
-        odor2_ids = [db_odors.at[o2,'odor_id'] for _, o2 in odor_pair_list]
+        odor1_ids = [self.db_odors.at[o1,'odor_id'] for o1, _ in odor_pair_list]
+        odor2_ids = [self.db_odors.at[o2,'odor_id'] for _, o2 in odor_pair_list]
 
         # TODO TODO make unique first. only need order for filling in the values
         # in responses.
@@ -1851,7 +2190,9 @@ class Segmentation(QWidget):
         self.thorimage_id = thorimage_id
         self.started_at = started_at
         self.n_repeats = n_repeats
+        self.n_blocks = n_blocks_from_gsheet
         self.presentations_per_repeat = presentations_per_repeat
+        self.presentations_per_block = presentations_per_block 
         self.odor1_ids = odor1_ids
         self.odor2_ids = odor2_ids
         self.frame_times = frame_times
