@@ -38,6 +38,16 @@ meta = MetaData()
 meta.reflect(bind=conn)
 
 
+def nas_prefix():
+    # TODO separate env var for local one? or have that be the default?
+    nas_prefix_key = 'HONG_NAS'
+    if nas_prefix_key in os.environ:
+        nas_prefix = os.environ[nas_prefix_key]
+    else:
+        nas_prefix = '/mnt/nas'
+    return nas_prefix
+
+
 def matlab_exit_except_hook(exctype, value, traceback):
     if exctype == TypeError:
         args = value.args

@@ -12,6 +12,7 @@
 
 LD_LIBRARY_PATH=/usr/local/lib64/:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH
+# TODO detect sufficient gcc and skip this step (like default on 18.04)
 sudo apt-add-repository ppa:ubuntu-toolchain-r/test -y
 sudo apt-get update
 sudo apt-get install gcc-6 g++-6 -y

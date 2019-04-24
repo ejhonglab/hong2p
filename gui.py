@@ -77,11 +77,13 @@ trial_cols = recording_cols + trial_only_cols
 # Maybe rename. It's these cols once already in a recording + comparison.
 cell_cols = ['name1','name2','repeat_num','cell']
 
+nas_prefix = u.nas_prefix()
+
 # TODO use env var like kc_analysis currently does for prefix after refactoring
-raw_data_root = '/mnt/nas/mb_team/raw_data'
+raw_data_root = join(nas_prefix, 'mb_team/raw_data')
 # TODO support a local and a remote one ([optional] local copy for faster repeat
 # analysis)?
-analysis_output_root = '/mnt/nas/mb_team/analysis_output'
+analysis_output_root = join(nas_prefix, 'mb_team/analysis_output')
 
 use_cached_gsheet = False
 show_inferred_paths = True
@@ -92,7 +94,7 @@ df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
 
 rel_to_cnmf_mat = 'cnmf'
 
-stimfile_root = '/mnt/nas/mb_team/stimulus_data_files' 
+stimfile_root = join(nas_prefix, 'mb_team/stimulus_data_files')
 
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', inplace=True)
@@ -144,12 +146,10 @@ def cnmf_metadata_from_thor(filename):
     # TODO maybe load dims anyway?
     return {'fr': fps, 'dxy': dxy}
 
-def fps_from_thor(df, nas_prefix='/mnt/nas'):
+def fps_from_thor(df):
     # TODO assert unique first?
     thorimage_dir = df['thorimage_path'].iat[0]
-
-    if nas_prefix is not None:
-        thorimage_dir = join(nas_prefix, *thorimage_dir.split('/')[3:])
+    thorimage_dir = join(nas_prefix, *thorimage_dir.split('/')[3:])
 
     thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
     xml_root = etree.parse(thorimage_xml_path).getroot()
