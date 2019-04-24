@@ -249,19 +249,30 @@ def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
     return tif
 
 
-def list_motion_corrected_tifs(include_rigid=False):
+def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
     """
     """
     motion_corrected_tifs = []
-    for date_dir in glob.glob(join(analysis_output_root, '**')):
-        for fly_dir in glob.glob(join(date_dir, '**')):
+    for full_date_dir in glob.glob(join(analysis_output_root, '**')):
+        for full_fly_dir in glob.glob(join(full_date_dir, '**')):
+            date_dir = split(full_date_dir)[-1]
             try:
-                fly_num = int(split(fly_dir)[-1])
+                fly_num = int(split(full_fly_dir)[-1])
 
-                tif_dir = join(fly_dir, 'tif_stacks')
+                fly_used = df.loc[df.attempt_analysis &
+                    (df.date == date_dir) & (df.fly_num == fly_num)]
+
+                used_thorimage_dirs = set(fly_used.thorimage_dir)
+
+                tif_dir = join(full_fly_dir, 'tif_stacks')
                 if exists(tif_dir):
                     tif_glob = '*.tif' if include_rigid else '*_nr.tif'
-                    motion_corrected_tifs += glob.glob(join(tif_dir, tif_glob))
+                    fly_tifs = glob.glob(join(tif_dir, tif_glob))
+
+                    used_tifs = [x for x in fly_tifs if '_' +
+                        split(x)[-1].split('_')[1] in used_thorimage_dirs]
+
+                    motion_corrected_tifs += used_tifs
 
             except ValueError:
                 continue
