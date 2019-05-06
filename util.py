@@ -12,9 +12,9 @@ import signal
 import sys
 import xml.etree.ElementTree as etree
 from types import ModuleType
+import warnings
 import pprint
 
-# TODO or just use sqlalchemy.types?
 from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.sql import sqltypes
 from sqlalchemy.dialects import postgresql
@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import git
 import pkg_resources
+from scipy.optimize import curve_fit
 
 
 db_hostname = 'atlas'
@@ -66,6 +67,7 @@ def matlab_engine():
     Tries to undo Ctrl-C capturing that MATLAB seems to do.
     """
     import matlab.engine
+    global evil
 
     evil = matlab.engine.start_matlab()
     # TODO TODO this doesn't seem to kill parallel workers... it should
@@ -93,6 +95,55 @@ def matlab_engine():
     sys.excepthook = matlab_exit_except_hook
 
     return evil
+
+
+# TODO TODO need to acquire a lock to use the matlab instance safely?
+# (if i'm sure gui is enforcing only one call at a time anyway, probably
+# don't need to worry about it)
+def get_matfile_var(matfile, varname, require=True):
+    """Returns length-one list with variable contents, or empty list.
+
+    Raises KeyError if require is True and variable not found.
+    """
+    global evil
+    try:
+        # TODO maybe clear workspace either before or after?
+        # or at least clear this specific variable after?
+        load_output = evil.load(matfile, varname, nargout=1)
+        var = load_output[varname]
+        if type(var) is dict:
+            return [var]
+        return var
+    except KeyError:
+        # TODO maybe check for var presence some other way than just
+        # catching this generic error?
+        if require:
+            raise
+        else:
+            return []
+
+
+# TODO maybe just wrap get_matfile_var?
+def load_mat_timing_information(mat_file):
+    """Loads and returns timing information from .mat output of Remy's script.
+
+    Raises matlab.engine.MatlabExecutionError
+    """
+    # TODO this sufficient w/ global above to get access to matlab engine in
+    # here?
+    global evil
+    try:
+        # TODO probably switch to doing it this way
+        '''
+        evil.clear(nargout=0)
+        load_output = evil.load(mat_file, 'ti', nargout=1)
+        ti = load_output['ti']
+        '''
+        evil.evalc("clear; data = load('{}', 'ti');".format(mat_file))
+
+    except matlab.engine.MatlabExecutionError as e:
+        raise
+    return evil.eval('data.ti')
 
 
 # TODO TODO can to_sql with pg_upsert replace this? what extra features did this
@@ -239,7 +290,8 @@ def pg_upsert(table, conn, keys, data_iter):
         conn.execute(upsert_stmt)
 
 
-def mb_team_gsheet(use_cache=False, show_inferred_paths=False):
+def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
+    natural_odors_only=False):
     '''Returns a pandas.DataFrame with data on flies and MB team recordings.
     '''
     gsheet_cache_file = '.gsheet_cache.p'
@@ -312,10 +364,14 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False):
     # breaking the code assuming my conventions)
     df.drop(df[df.project != 'natural_odors'].index, inplace=True)
 
+    # TODO TODO implement option to (at least) also keep prep checking that
+    # preceded natural_odors (or maybe just that was on the same day)
+    # (so that i can get all that ethyl acetate data for use as a reference
+    # odor)
+
     if show_inferred_paths:
         missing_thorimage = pd.isnull(df.thorimage_dir)
         missing_thorsync = pd.isnull(df.thorsync_dir)
-
 
     df['thorimage_num'] = df.thorimage_dir.apply(lambda x:
         np.nan if pd.isnull(x) else int(x[1:]))
@@ -409,6 +465,132 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False):
     return df
 
 
+def merge_odors(df, *varargs):
+    if len(varargs) == 0:
+        odors = pd.read_sql('odors', conn)
+    elif len(varargs) == 1:
+        odors = varargs[0]
+    else:
+        raise ValueError('incorrect number of arguments')
+
+    print('merging with odors table...', end='')
+    # TODO way to do w/o resetting index? merge failing to find odor1 or just
+    # drop?
+    df = df.reset_index(drop=True)
+
+    df = pd.merge(df, odors, left_on='odor1', right_on='odor_id',
+                  suffixes=(False, False))
+
+    df.drop(columns=['odor_id','odor1'], inplace=True)
+    df.rename(columns={'name': 'name1',
+        'log10_conc_vv': 'log10_conc_vv1'}, inplace=True)
+
+    df = pd.merge(df, odors, left_on='odor2', right_on='odor_id',
+                  suffixes=(False, False))
+
+    df.drop(columns=['odor_id','odor2'], inplace=True)
+    df.rename(columns={'name': 'name2',
+        'log10_conc_vv': 'log10_conc_vv2'}, inplace=True)
+
+    print(' done')
+    return df
+
+
+def merge_recordings(df, *varargs):
+    if len(varargs) == 0:
+        recordings = pd.read_sql('recordings', conn)
+    elif len(varargs) == 1:
+        recordings = varargs[0]
+    else:
+        raise ValueError('incorrect number of arguments')
+
+    print('merging with recordings table...', end='')
+
+    df = df.reset_index(drop=True)
+
+    df = pd.merge(df, recordings,
+                  left_on='recording_from', right_on='started_at')
+
+    df.drop(columns=['started_at'], inplace=True)
+
+    df['thorimage_id'] = df.thorimage_path.apply(lambda x: split(x)[-1])
+
+    print(' done')
+    return df
+
+
+def arraylike_cols(df):
+    """Returns a list of column names that were lists or arrays.
+    """
+    df = df.select_dtypes(include='object')
+    return df.columns[df.applymap(lambda o:
+        type(o) is list or isinstance(o, np.ndarray)).all()]
+
+
+def diff_dataframes(df1, df2):
+    """Returns a DataFrame summarizing input differences.
+    """
+    # TODO do i want df1 and df2 to be allowed to be series?
+    # (is that what they are now? need to modify anything?)
+    assert (df1.columns == df2.columns).all(), \
+        "DataFrame column names are different"
+    if any(df1.dtypes != df2.dtypes):
+        "Data Types are different, trying to convert"
+        df2 = df2.astype(df1.dtypes)
+    # TODO is this really necessary? not an empty df in this case anyway?
+    if df1.equals(df2):
+        return None
+    else:
+        # TODO unit test w/ descrepencies in each of the cases.
+        # TODO also test w/ nan in list / nan in float column (one / both nan)
+        floats1 = df1.select_dtypes(include='float')
+        floats2 = df2.select_dtypes(include='float')
+        assert set(floats1.columns) == set(floats2.columns)
+        diff_mask_floats = ~pd.DataFrame(
+            columns=floats1.columns,
+            index=df1.index,
+            # TODO TODO does this already deal w/ nan correctly?
+            # otherwise, this part needs to handle possibility of nan
+            # (it does not. need to handle.)
+            data=np.isclose(floats1, floats2)
+        )
+        diff_mask_floats = (diff_mask_floats &
+            ~(floats1.isnull() & floats2.isnull()))
+
+        # Just assuming, for now, that array-like cols are same across two dfs.
+        arr_cols = arraylike_cols(df1)
+        # Also assuming, for now, that no elements of these lists / arrays will
+        # be nan (which is currently true).
+        diff_mask_arr = ~pd.DataFrame(
+            columns=arr_cols,
+            index=df1.index,
+            data=np.vectorize(np.allclose)(df1[arr_cols], df2[arr_cols])
+        )
+
+        other_cols = set(df1.columns) - set(floats1.columns) - set(arr_cols)
+        other_diff_mask = df1[other_cols] != df2[other_cols]
+
+        diff_mask = pd.concat([
+            diff_mask_floats,
+            diff_mask_arr,
+            other_diff_mask], axis=1)
+
+        if diff_mask.sum().sum() == 0:
+            return None
+
+        ne_stacked = diff_mask.stack()
+        changed = ne_stacked[ne_stacked]
+        # TODO are these what i want? prob change id (basically just to index?)?
+        # TODO get id from index name of input dfs? and assert only one index
+        # (assuming this wouldn't work w/ multiindex w/o modification)?
+        changed.index.names = ['id', 'col']
+        difference_locations = np.where(diff_mask)
+        changed_from = df1.values[difference_locations]
+        changed_to = df2.values[difference_locations]
+        return pd.DataFrame({'from': changed_from, 'to': changed_to},
+                            index=changed.index)
+
+
 def git_hash(repo_file):
     repo = git.Repo(repo_file, search_parent_directories=True)
     current_hash = repo.head.object.hexsha
@@ -467,7 +649,86 @@ def version_info(module_or_path, used_for=''):
         return {'name': name, 'used_for': used_for, 'version': version}
 
 
-def get_thorimage_dims(xmlroot):
+def upload_code_info(code_versions):
+    """Returns a list of integer IDs for inserted code version rows.
+
+    code_versions should be a list of dicts, each dict representing a row in the
+    corresponding table.
+    """
+    if len(code_versions) == 0:
+        raise ValueError('code versions can not be empty')
+
+    code_versions_df = pd.DataFrame(code_versions)
+    # TODO delete try/except
+    try:
+        code_versions_df.to_sql('code_versions', conn, if_exists='append',
+            index=False)
+    except:
+        print(code_versions_df)
+        import ipdb; ipdb.set_trace()
+
+    # TODO maybe only read most recent few / restrict to some other key if i
+    # make one?
+    db_code_versions = pd.read_sql('code_versions', conn)
+
+    our_version_cols = code_versions_df.columns
+    version_ids = list()
+    for _, row in code_versions_df.iterrows():
+        # This should take the *first* row that is equal.
+        idx = (db_code_versions[code_versions_df.columns] == row).all(
+            axis=1).idxmax()
+        version_id = db_code_versions['version_id'].iat[idx]
+        assert version_id not in version_ids
+        version_ids.append(version_id)
+
+    return version_ids
+
+
+def upload_analysis_info(*args) -> None:
+    """
+    Requires that corresponding row in analysis_runs table already exists,
+    if only two args are passed.
+    """
+    have_ids = False
+    if len(args) == 2:
+        analysis_started_at, code_versions = args
+    elif len(args) == 3:
+        recording_started_at, analysis_started_at, code_versions = args
+
+        if len(code_versions) == 0:
+            raise ValueError('code_versions can not be empty')
+
+        if type(code_versions) == list and np.issubdtype(
+            type(code_versions[0]), np.integer):
+
+            version_ids = code_versions
+            have_ids = True
+
+        pd.DataFrame({
+            'run_at': [analysis_started_at],
+            'recording_from': recording_started_at
+        }).set_index('run_at').to_sql('analysis_runs', conn,
+            if_exists='append', method=pg_upsert)
+
+    else:
+        raise ValueError('incorrect number of arguments')
+
+    if not have_ids:
+        version_ids = upload_code_info(code_versions)
+
+    analysis_code = pd.DataFrame({
+        'run_at': analysis_started_at,
+        'version_id': version_ids
+    })
+    to_sql_with_duplicates(analysis_code, 'analysis_code')
+
+
+def get_experiment_xmlroot(directory):
+    xml_path = join(directory, 'Experiment.xml')
+    return etree.parse(xml_path).getroot()
+
+
+def get_thorimage_dims_xml(xmlroot):
     """
     """
     lsm_attribs = xmlroot.find('LSM').attrib
@@ -484,7 +745,7 @@ def get_thorimage_dims(xmlroot):
     return xy, z, c
 
 
-def get_thorimage_fps(xmlroot):
+def get_thorimage_fps_xml(xmlroot):
     """
     """
     lsm_attribs = xmlroot.find('LSM').attrib
@@ -496,15 +757,21 @@ def get_thorimage_fps(xmlroot):
     return saved_fps
 
 
-def load_thorimage_metadata(directory):
+def get_thorimage_fps(thorimage_directory):
     """
     """
-    xml_path = join(directory, 'Experiment.xml')
-    xml = xml_root(xml_path)
+    xmlroot = get_experiment_xmlroot(thorimage_directory)
+    return get_thorimage_fps_xml(xmlroot)
 
-    fps = get_thorimage_fps(xml)
-    xy, z, c = get_thorimage_dims(xml)
-    imaging_file = join(directory, 'Image_0001_0001.raw')
+
+def load_thorimage_metadata(thorimage_directory):
+    """
+    """
+    xml = get_experiment_xmlroot(thorimage_directory)
+
+    fps = get_thorimage_fps_xml(xml)
+    xy, z, c = get_thorimage_dims_xml(xml)
+    imaging_file = join(thorimage_directory, 'Image_0001_0001.raw')
 
     return fps, xy, z, c, imaging_file
 
@@ -526,6 +793,242 @@ def read_movie(thorimage_dir):
 
     data = np.reshape(data, (n_frames, x, y))
     return data
+
+
+def exp_decay(t, scale, tau, offset):
+    # TODO is this the usual definition of tau (as in RC time constant?)
+    return scale * np.exp(-t / tau) + offset
+
+
+# TODO call for each odor onset (after fixed onset period?)
+# est onset period? est rise kinetics jointly? how does cnmf do it?
+def fit_exp_decay(signal, sampling_rate=None, times=None, numerical_scale=1.0):
+    """Returns fit parameters for an exponential decay in the input signal.
+
+    Args:
+        signal (1 dimensional np.ndarray): time series, beginning at decay onset
+        sampling_rate (float): sampling rate in Hz
+    """
+    if sampling_rate is None and times is None:
+        raise ValueError('pass either sampling_rate or times as keyword arg')
+
+    if sampling_rate is not None:
+        sampling_interval = 1 / sampling_rate
+        n_samples = len(signal)
+        end_time = n_samples * sampling_interval
+        times = np.linspace(0, end_time, num=n_samples, endpoint=True)
+
+    # TODO make sure input is not modified here. copy?
+    signal = signal * numerical_scale
+
+    # TODO constrain params somehow? for example, so scale stays positive
+    popt, pcov = curve_fit(exp_decay, times, signal,
+        p0=(1.8 * numerical_scale, 5.0, 0.0 * numerical_scale))
+
+    # TODO is this correct to scale after converting variance to stddev?
+    sigmas = np.sqrt(np.diag(pcov))
+    sigmas[0] = sigmas[0] / numerical_scale
+    # skipping tau, which shouldn't need to change (?)
+    sigmas[2] = sigmas[2] / numerical_scale
+
+    # TODO only keep this if signal is modified s.t. it affects calling fn.
+    # in this case, maybe still just copy above?
+    signal = signal / numerical_scale
+
+    scale, tau, offset = popt
+    return (scale / numerical_scale, tau, offset / numerical_scale), sigmas
+    
+
+response_stat_cols = [
+    'exp_scale',
+    'exp_tau',
+    'exp_offset',
+    'exp_scale_sigma',
+    'exp_tau_sigma',
+    'exp_offset_sigma',
+    'avg_dff_5s',
+    'avg_zchange_5s'
+]
+def latest_response_stats(*varargs):
+    """
+    """
+    index_cols = [
+        'prep_date',
+        'fly_num',
+        'recording_from',
+        'analysis',
+        'comparison',
+        'odor1',
+        'odor2',
+        'repeat_num'
+    ]
+    # TODO maybe just get cols db has and exclude from_onset or something?
+    # just get all?
+    presentation_cols_to_get = index_cols + response_stat_cols
+    if len(varargs) == 0:
+        db_presentations = pd.read_sql('presentations', conn,
+            columns=(presentation_cols_to_get + ['presentation_id']))
+
+    elif len(varargs) == 1:
+        db_presentations = varargs[0]
+
+    else:
+        raise ValueError('too many arguments. expected 0 or 1')
+
+    referenced_recordings = set(db_presentations['recording_from'].unique())
+
+    if len(referenced_recordings) == 0:
+        return
+
+    db_analysis_runs = pd.read_sql('analysis_runs', conn,
+        columns=['run_at', 'recording_from', 'accepted'])
+    db_analysis_runs.set_index(['recording_from', 'run_at'],
+        inplace=True)
+
+    # Making sure not to get multiple presentation entries referencing the same
+    # real presentation in any single recording.
+    presentation_stats = []
+    for r in referenced_recordings:
+        # TODO are presentation->recording and presentation->
+        # analysis_runs->recording inconsistent somehow?
+        # TODO or is this an insertion order thing? rounding err?
+        # maybe set_index is squashing stuff?
+        # TODO maybe just stuff i'm skipping now somehow?
+
+        # TODO TODO merge db_analysis_runs w/ recordings to get
+        # thorimage_dir / id for troubleshooting?
+        # TODO fix and delete try / except
+        try:
+            rec_analysis_runs = db_analysis_runs.loc[(r,)]
+        except KeyError:
+            '''
+            print(db_analysis_runs)
+            print(referenced_recordings)
+            print(r)
+            import ipdb; ipdb.set_trace()
+            '''
+            warnings.warn('referenced recording not in analysis_runs!')
+            continue
+
+        rec_usable = rec_analysis_runs.accepted.any()
+
+        rec_presentations = db_presentations[
+            db_presentations.recording_from == r]
+
+        for g, gdf in rec_presentations.groupby(['comparison', 'repeat_num']):
+            # TODO rename (maybe just check all response stats at this point...)
+            # maybe just get most recent row that has *any* of them?
+            # (otherwise would have to combine across rows...)
+            has_exp_fit = gdf[gdf.exp_scale.notnull()]
+
+            # TODO compute if no response stats?
+            if len(has_exp_fit) == 0:
+                continue
+
+            most_recent_fit_idx = has_exp_fit.analysis.idxmax()
+            most_recent_fit = has_exp_fit.loc[most_recent_fit_idx].copy()
+
+            assert len(most_recent_fit.shape) == 1
+
+            most_recent_fit['accepted'] = rec_usable
+
+            # TODO TODO TODO clean up older fits on same data?
+            # (delete from database)
+            # (if no dependent objects...)
+            # probably somewhere else...?
+
+            presentation_stats.append(most_recent_fit.to_frame().T)
+
+    if len(presentation_stats) == 0:
+        return
+
+    presentation_stats_df = pd.concat(presentation_stats, ignore_index=True)
+
+    # TODO just convert all things that look like floats?
+
+    for c in response_stat_cols:
+        presentation_stats_df[c] = presentation_stats_df[c].astype('float64')
+
+    return presentation_stats_df
+
+
+def missing_repeats(df, n_repeats=None):
+    raise NotImplementedError
+    # TODO finish
+    '''
+    # TODO n_repeats defalut to 3 or None?
+    if n_repeats is None:
+        # TODO or should i require input is merged w/ recordings for stimuli
+        # data file paths and then just load for n_repeats and stuff?
+        max_repeat = df.repeat_num.max()
+
+        # Expect repeats to include {0,1,2} for 3 repeat experiments.
+        #if max_repeat != 2:
+    else:
+        max_repeat = n_repeats - 1
+
+    # TODO could check len of this groupby consistent w/ expected num blocks
+    # **for this recording** BUT also want to check expected # blocks
+    # **for all recordings for this fly**
+    for g, gdf in df.groupby(['recording_from','comparison']):
+        comparison_max_repeat = gdf.repeat_num.max()
+        # TODO maybe print as well, for troubleshooting?
+        if comparison_max_repeat != max_repeat:
+            # TODO TODO append to missing repeats
+            
+
+        comparison_n_repeats = len(gdf.repeat_num.unique())
+        if comparison_n_repeats != (max_repeat + 1):
+            # TODO TODO append to missing repeats
+
+    # TODO should expected # blocks be passed in?
+
+    # TODO should the specific comparisons / odors be checked?
+
+    # TODO TODO TODO are comparisons numbered correctly when i break the full
+    # panel across recordings within a fly flies??????
+    # (shouldn't they not start at 0 on the next recording?)
+
+    return missing_repeats_df
+    '''
+
+
+def have_all_repeats(df):
+    """
+    Returns True if a recording has all blocks gsheet says it has, w/ full
+    number of repeats for each. False otherwise.
+    """
+    missing_repeats_df = missing_repeats(df)
+    if len(missing_repeats_df) == 0:
+        return True
+    else:
+        return False
+
+
+# TODO do i actually need this, or just call drop_orphaned/missing_...?
+'''
+def db_has_all_repeats():
+    # TODO just read db and call have_all_repeats
+    # TODO may need to merge stuff?
+    raise NotImplementedError
+'''
+
+
+# TODO also check recording has as many blocks (in df / in db) as it's supposed
+# to, given what the metadata + gsheet say
+
+
+def drop_orphaned_presentations():
+    # TODO only stuff that isn't also most recent response params?
+    # TODO find presentation rows that don't have response row referring to them
+    raise NotImplementedError
+
+
+# TODO TODO maybe implement check fns above as wrappers around another fn that
+# finds inomplete stuff? (check if len is 0), so that these fns can just wrap
+# the same thing...
+def drop_incomplete_presentations():
+    raise NotImplementedError
 
 
 # TODO finish translating. was directly translating matlab registration script

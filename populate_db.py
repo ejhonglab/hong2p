@@ -5,7 +5,7 @@ Traverses analysis output and loads traces and odor information into database.
 """
 
 import os
-from os.path import join, split
+from os.path import join, split, exists
 import sys
 import glob
 from datetime import datetime
@@ -25,6 +25,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 import pandas as pd
 import matlab.engine
+import tifffile
 
 import util as u
 
@@ -32,24 +33,36 @@ import util as u
 ################################################################################
 verbose = False
 
-use_cached_gsheet = False
+use_cached_gsheet = True
 show_inferred_paths = True
+allow_gsheet_to_restrict_blocks = True
 
-only_do_anything_for_analysis = True
+#only_do_anything_for_analysis = True
+only_do_anything_for_analysis = False
 
+'''
+convert_h5 = False
+calc_timing_info = False
+update_timing_info = False
+motion_correct = False
+'''
 convert_h5 = True
 calc_timing_info = True
 # If timing info ("ti") already exists in .mat, should we recalculate it?
-update_timing_info = True
-motion_correct = True
-# TODO fix. this seems to not be working correctly.
+# TODO if this is False, still check that ti_code_version is there
+update_timing_info = False
+motion_correct = False
+# TODO test. it's working now, right?
 only_motion_correct_for_analysis = True
 
-load_traces = False
+process_time_averages = True
+upload_matlab_cnmf_output = False
+ACTUALLY_UPLOAD = True
+
 # TODO make sure that incomplete entries are not preventing full
 # analysis from being inserted, despite setting of this flag
-# TODO maybe just use some kind of transaction to guarantee no incomplete
-# entries?
+# TODO maybe just use some kind of (across to_sql calls) transaction to
+# guarantee no incomplete entries?
 #overwrite_older_analysis = True
 overwrite_older_analysis = False
 
@@ -62,7 +75,7 @@ if only_do_anything_for_analysis:
 # TODO TODO implement some kind of queue (or just lock files on NAS?) so
 # multiple instantiations can work in parallel
 
-analysis_started_at = time.time()
+analyzed_at = datetime.fromtimestamp(time.time())
 
 # TODO just factor all calls to matlab fns into util and don't even expose
 # engine?
@@ -91,7 +104,8 @@ elif len(mc_on_path) == 0:
         'matlab_caiman_folder')
 
 matlab_caiman_path = mc_on_path[0]
-matlab_caiman_version = u.version_info(matlab_caiman_path)
+matlab_caiman_version = u.version_info(matlab_caiman_path,
+                                       used_for='motion correction')
 
 this_repo_file = os.path.realpath(__file__)
 # TODO just use util fn that gets this internally
@@ -99,8 +113,8 @@ this_repo_path = split(this_repo_file)[0]
 
 #driver_version_info ?
 matlab_code_version = u.version_info(matlab_code_path)
-ti_code_version = copy.deepcopy(matlab_code_version)
-ti_code_version['used_for'] = 'calculating timing information'
+curr_ti_code_version = copy.deepcopy(matlab_code_version)
+curr_ti_code_version['used_for'] = 'calculating timing information'
 matlab_code_version['used_for'] = 'driving motion correction'
 
 # TODO fn to convert raw output to tifs (that are compat w/ current ij tifs)
@@ -160,6 +174,16 @@ if not os.path.isdir(stimfile_root):
 # TODO make fns that take date + fly_num + cwd then re-use iteration
 # over date / fly_num (if mirrored data layout for raw / analysis)?
 
+# TODO delete
+# assertion fails in w/ get_stiminfo
+#test_recording = ('2019-02-27', 4, '_003')
+# this one had a MATLAB function cannot be evaluated error
+# (but maybe context was important?)
+# (this error didn't seem to repeat when calling just on this...)
+#test_recording = ('2019-04-11', 2, '_002')
+test_recording = None
+#
+
 for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     full_fly_dir = os.path.normpath(full_fly_dir)
     #print(full_fly_dir)
@@ -181,11 +205,21 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     except ValueError:
         continue
 
+    # TODO maybe try to address this issue (get_stiminfo), probably don't
+    if date_dir == '2019-01-17':
+        continue
+
+    # TODO delete
+    if test_recording is not None:
+        if date_dir != test_recording[0] or fly_num != test_recording[1]:
+            continue
+    #
+
     print('Date:', date_dir)
     print('Fly:', fly_num)
 
-    used = df.loc[df.attempt_analysis &
-        (df.date == date) & (df.fly_num == fly_num)]
+    fly_df = df.loc[(df.date == date) & (df.fly_num == fly_num)]
+    used = fly_df.loc[fly_df.attempt_analysis]
 
     if len(used) > 0:
         print('Used ThorImage dirs:')
@@ -229,19 +263,30 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     matfile_dir = join(analysis_fly_dir, 'cnmf')
 
     if calc_timing_info:
-        for _, row in used[['thorimage_dir','thorsync_dir']].iterrows():
+        if only_do_anything_for_analysis:
+            get_ti_df = used
+        else:
+            get_ti_df = fly_df
+
+        for _, row in get_ti_df[['thorimage_dir','thorsync_dir']].iterrows():
             thorimage_dir = join(full_fly_dir, row['thorimage_dir'])
             if not os.path.isdir(thorimage_dir):
                 warnings.warn('thorimage_dir {} did not exist for recording ' +
-                    'marked as attempt_analysis.')
+                    'marked as attempt_analysis.'.format(thorimage_dir))
                 continue
+
+            # TODO delete. for debugging.
+            if test_recording is not None:
+                if row['thorimage_dir'] != test_recording[2]:
+                    continue
+            #
 
             # If not always running h5->mat conversion first, will need to check
             # for the mat, rather than just thorsync_dir.
             thorsync_dir = join(full_fly_dir, row['thorsync_dir'])
             if not os.path.isdir(thorsync_dir):
                 warnings.warn('thorsync_dir {} did not exist for recording ' +
-                    'marked as attempt_analysis.')
+                    'marked as attempt_analysis.'.format(thorsync_dir))
                 continue
 
             # TODO maybe check for existance of SyncData<nnn> first, to have
@@ -273,7 +318,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                     update_ti, nargout=1)
 
                 if updated_ti:
-                    evil.workspace['ti_code_version'] = ti_code_version 
+                    evil.workspace['ti_code_version'] = curr_ti_code_version 
                     evil.save(matfile, 'ti_code_version', '-append', nargout=0)
 
                     # Testing version info is stored correctly.
@@ -282,7 +327,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                         nargout=1)
 
                     rt_matlab_code_version = load_output['ti_code_version']
-                    assert ti_code_version == rt_matlab_code_version
+                    assert curr_ti_code_version == rt_matlab_code_version
                     evil.clear(nargout=0)
 
             except matlab.engine.MatlabExecutionError:
@@ -326,6 +371,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
             mocorr_code_versions = [matlab_code_version, matlab_caiman_version]
 
+            # TODO any reason i'm not just/also directly uploading these...?
             if rig_updated:
                 evil.workspace['rig_code_versions'] = mocorr_code_versions
                 evil.save(matfile, 'rig_code_versions', '-append', nargout=0)
@@ -358,24 +404,11 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
     # TODO maybe delete empty folders under analysis? (do in atexit handler)
 
-if not load_traces:
+if not (upload_matlab_cnmf_output or process_time_averages):
     sys.exit()
-raise NotImplementedError(
-    'load_traces path not yet adapted to new database layout')
 
 # TODO delete all this stuff after saving full version info as appropriate
-current_hash = u.git_hash(this_repo_file)
-matlab_hash = u.git_hash(matlab_code_path)
-
-# TODO just store all data separately?
-# TODO TODO maybe just use matlab code repo + description in analysis
-# description that gets checked? (because that's what actually generates cnmf,
-# which is used for responses)
-analysis_description = '{}@{}\n{}@{}'.format(this_repo_path, current_hash,
-    matlab_code_path, matlab_hash)
-
-analyzed_at = datetime.fromtimestamp(analysis_started_at)
-
+'''
 # TODO TODO clean this of runs that don't have data in the database...
 # (+ reindex serial id?)
 analysis_runs = pd.DataFrame({
@@ -385,14 +418,7 @@ analysis_runs = pd.DataFrame({
 # TODO don't insert into this if dependent stuff won't be written? same for some
 # of the other metadata tables?
 u.to_sql_with_duplicates(analysis_runs, 'analysis_runs')
-
-# Need to do this as long as the part of the key indicating the
-# analysis, in the recordings table, is generated by the database.
-db_analysis_runs = pd.read_sql('analysis_runs', u.conn).set_index(
-    'analysis_description')
-analysis_run = \
-    db_analysis_runs.loc[analysis_description, 'analysis_run']
-
+'''
 
 # TODO diff between ** and */ ?
 # TODO os.path.join + os invariant way of looping over dirs
@@ -412,6 +438,17 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
     except ValueError:
         continue
 
+    # It's clear the timing information for these experiments is incorrect,
+    # though they had a slightly different trial structure.
+    # TODO TODO fix get_stiminfo for this case, just in case it might affect
+    # future recordings
+    if date_dir == '2019-01-18' or date_dir == '2019-01-17':
+        continue
+    #
+    if test_recording is not None:
+        if date_dir != test_recording[0] or fly_num != test_recording[1]:
+            continue
+    #
 
     mat_files = glob.glob(join(analysis_dir, rel_to_cnmf_mat, '*_cnmf.mat'))
     # TODO both in this case and w/ stuff above, maybe don't print anything in
@@ -430,27 +467,28 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         prefix = split(mat)[-1].split('_')[:-1]
 
         thorimage_id = '_' + prefix[1]
-        # TODO TODO delete
-        '''
-        if not (date_dir == '2019-01-18' and fly_num == 2 and
-                thorimage_id == '_003'):
-            print('skipping')
+
+        # get_stiminfo also currently fails on this recording, with an assertion
+        # error (4/28)
+        # TODO also fix get_stiminfo in this case
+        if date_dir == '2019-02-27' and fly_num == 4 and thorimage_id == '_003':
             continue
-        print('not skipping this one')
-        '''
-        if not date_dir == '2019-02-27':
-            print('skipping')
-            continue
+
+        # TODO delete. for debugging.
+        if test_recording is not None:
+            if thorimage_id != test_recording[2]:
+                continue
         #
 
         recordings = df.loc[(df.date == date) & (df.fly_num == fly_num) &
                             (df.thorimage_dir == thorimage_id)]
         recording = recordings.iloc[0]
 
+        # TODO TODO does util function that gets everything drop non-natural
+        # odors stuff anyway? might not want that now...
         if recording.project != 'natural_odors':
             warnings.warn('project type {} not supported. skipping.')
             continue
-
 
         raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
         thorsync_dir = join(raw_fly_dir, recording['thorsync_dir'])
@@ -458,44 +496,40 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         stimulus_data_path = join(stimfile_root,
                                   recording['stimulus_data_file'])
 
-        # TODO for recordings.started_at, load time from one of the thorlabs
-        # files
-        # TODO check that ThorImageExperiment/Date/uTime parses to date field,
-        # w/ appropriate timezone settings (or insert raw and check database has
-        # something like date)?
         # TODO TODO factor this into util, right? gui uses it?
         thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
         xml_root = etree.parse(thorimage_xml_path).getroot()
         started_at = \
             datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
 
+        if upload_matlab_cnmf_output:
+            # TODO check this whole section after analysis refactoring...
+            entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
+                'fly_num, recording_from, analysis FROM presentations', u.conn)
+            # TODO TODO check that the right number of rows are in there,
+            # otherwise drop and re-insert (optionally? since it might take a
+            # bit of time to load CNMF output to check / for database to check)
 
-        # TODO check this whole section after analysis refactoring...
-        entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
-            'fly_num, recording_from, analysis FROM presentations', u.conn)
-        # TODO TODO check that the right number of rows are in there, otherwise
-        # drop and re-insert (optionally? since it might take a bit of time to
-        # load CNMF output to check / for database to check)
+            # TODO more elegant way to check for row w/ certain values?
+            curr_entered = (
+                (entered.prep_date == date) &
+                (entered.fly_num == fly_num) &
+                (entered.recording_from == started_at)
+            )
 
-        # TODO more elegant way to check for row w/ certain values?
-        curr_entered = (
-            (entered.prep_date == date) &
-            (entered.fly_num == fly_num) &
-            (entered.recording_from == started_at)
-        )
+            raise NotImplementedError
+            if overwrite_older_analysis:
+                curr_entered = curr_entered & (entered.analysis == analysis_run)
 
-        if overwrite_older_analysis:
-            curr_entered = curr_entered & (entered.analysis == analysis_run)
+            curr_entered = curr_entered.any()
 
-        curr_entered = curr_entered.any()
-
-        # TODO maybe replace analysis w/ same description but earlier version?
-        # (where description is just combination of repo names, not w/ version
-        # as now
-        if curr_entered:
-            print('{}, {}, {} already entered with current analysis'.format(
-                date, fly_num, thorimage_id))
-            continue
+            # TODO maybe replace analysis w/ same description but earlier
+            # version? (where description is just combination of repo names,
+            # not w/ version as now)
+            if curr_entered:
+                print('{}, {}, {} already entered with current analysis'.format(
+                    date, fly_num, thorimage_id))
+                continue
 
         recordings = pd.DataFrame({
             'started_at': [started_at],
@@ -503,12 +537,34 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             'thorimage_path': [thorimage_dir],
             'stimulus_data_path': [stimulus_data_path]
         })
-        u.to_sql_with_duplicates(recordings, 'recordings')
 
+        if process_time_averages:
+            tif_path = join(raw_fly_dir, 'tif_stacks', thorimage_id  + '.tif')
+            if not exists(tif_path):
+                print('Raw TIFF {} did not exist!'.format(tif_path))
+                continue
+
+            print('Loading TIFF from {}...'.format(tif_path), flush=True,
+                end='')
+            movie = tifffile.imread(tif_path)
+            print(' done.')
+
+            # TODO but maybe want to check consistent wrt both movie and matlab
+            # cnmf output in case where we load both?? (-> don't name either
+            # just n_frames)
+            n_frames = movie.shape[0]
+
+            # TODO would have to include 3 in axis in 3D + T case
+            full_frame_avg_trace = np.mean(movie, axis=(1,2))
+            recordings['full_frame_avg_trace'] = [[float(x) for x in
+                full_frame_avg_trace.astype('float32')]]
+
+        if ACTUALLY_UPLOAD:
+            u.to_sql_with_duplicates(recordings, 'recordings')
 
         stimfile = recording['stimulus_data_file']
         stimfile_path = join(stimfile_root, stimfile)
-        # TODO also err if not readable
+        # TODO also err if not readable (validate after read)
         if not os.path.exists(stimfile_path):
             raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
                 stimfile_root))
@@ -525,7 +581,6 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         presentations_per_block = \
             n_repeats * presentations_per_repeat
 
-
         if pd.isnull(recording['first_block']):
             first_block = 0
         else:
@@ -541,7 +596,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             last_block = int(recording['last_block']) - 1
 
         first_presentation = first_block * presentations_per_block
-        last_presentation = (last_block + 1) * presentations_per_block
+        last_presentation = (last_block + 1) * presentations_per_block - 1
 
         # TODO will need to augment w/ concentration info somehow...
         # maybe handle in a way specific to natural_odors project?
@@ -553,7 +608,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'log10_vial_volume_fraction'] for x in data['odors']]
         })
 
-        u.to_sql_with_duplicates(odors, 'odors')
+        if ACTUALLY_UPLOAD:
+            u.to_sql_with_duplicates(odors, 'odors')
 
         # TODO make unique id before insertion? some way that wouldn't require
         # the IDs, but would create similar tables?
@@ -568,18 +624,17 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # to first
         # + if there are less in matlab, should error
         odor_pair_list = \
-            data['odor_pair_list'][first_presentation:last_presentation]
+            data['odor_pair_list'][first_presentation:(last_presentation + 1)]
 
-        assert (len(odor_pair_list) %
-            (presentations_per_repeat * n_repeats) == 0)
+        assert len(odor_pair_list) % presentations_per_block == 0
 
         # TODO invert to check
         # TODO is this sql table worth anything if both keys actually need to be
         # referenced later anyway?
 
         # TODO only add as many as there were blocks from thorsync timing info?
-        odor1_ids = [db_odors.at[o1,'odor'] for o1, _ in odor_pair_list]
-        odor2_ids = [db_odors.at[o2,'odor'] for _, o2 in odor_pair_list]
+        odor1_ids = [db_odors.at[o1,'odor_id'] for o1, _ in odor_pair_list]
+        odor2_ids = [db_odors.at[o2,'odor_id'] for _, o2 in odor_pair_list]
 
         # TODO TODO make unique first. only need order for filling in the values
         # in responses.
@@ -588,7 +643,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             'odor2': odor2_ids
         })
 
-        u.to_sql_with_duplicates(mixtures, 'mixtures')
+        if ACTUALLY_UPLOAD:
+            u.to_sql_with_duplicates(mixtures, 'mixtures')
         # TODO merge w/ odors to check
 
         # TODO maybe use Remy's thorsync timing info to get num pulses for prep
@@ -597,44 +653,73 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO would need to make sure all types are compat to load this way
         #print('loading MAT file in MATLAB...', end='')
 
-        evil.evalc("clear; data = load('{}', 'S');".format(mat))
+        if upload_matlab_cnmf_output:
+            evil.evalc("clear; data = load('{}', 'S');".format(mat))
 
-        # sDFF - filtered traces (filtered how?)
-        # F0 - background fluorescence (dims?)
-        #print(' done')
+            # sDFF - filtered traces (filtered how?)
+            # F0 - background fluorescence (dims?)
+            #print(' done')
+            try:
+                S = evil.eval('data.S')
+            except matlab.engine.MatlabExecutionError:
+                # TODO inspect error somehow to see if it's a memory error?
+                print('CNMF still needs to be run on this data')
+                # TODO TODO since process_time_averages is in same loop, maybe
+                # don't continue / otherwise restructure
+                continue
+
+            # TODO rename to indicate this is not just a filtered version of C?
+            # (and how exactly is it different again?)
+            # Loading w/ h5py lead to transposed indices wrt loading w/ MATLAB
+            # engine.
+            #filtered_df_over_f = np.array(S['sDFF']).T
+            # TODO possible to just load a subfield of the CNM object / S w/
+            # load semantics?
+            df_over_f = np.array(S['DFF']).T
+
+            # TODO quantitatively compare sDFF / DFF. (s=smoothed)
+            # maybe just upload non-smoothed and let people smooth downstream if
+            # they want?
+
+            # TODO could check for sCNM, to load that in cases where we can't
+            # make a cnmf object? (but we should able able to here...)
+            try:
+                evil.evalc("clear; data = load('{}', 'CNM');".format(mat))
+            except matlab.engine.MatlabExecutionError as e:
+                # TODO inspect error somehow to see if it's a memory error?
+                # TODO print to stderr
+                print(e)
+                continue
+
+            raw_f = np.array(evil.eval('data.CNM.C')).T
+
         try:
-            S = evil.eval('data.S')
-        except matlab.engine.MatlabExecutionError:
-            print('CNMF still needs to be run on this data')
-            continue
-
-        # TODO rename to indicate this is not just a filtered version of C?
-        # (and how exactly is it different again?)
-        # Loading w/ h5py lead to transposed indices wrt loading w/ MATLAB
-        # engine.
-        #filtered_df_over_f = np.array(S['sDFF']).T
-        # TODO possible to just load a subfield of the CNM object / S w/ load
-        # semantics?
-        df_over_f = np.array(S['DFF']).T
-
-        # TODO quantitatively compare sDFF / DFF. (s=smoothed)
-        # maybe just upload non-smoothed and let people smooth downstream if
-        # they want?
-
-        # TODO could check for sCNM, to load that in cases where we can't make a
-        # cnmf object? (but we should able able to here...)
-        try:
-            evil.evalc("clear; data = load('{}', 'CNM', 'ti');".format(mat))
+            ti = u.load_mat_timing_information(mat)
         except matlab.engine.MatlabExecutionError as e:
-            # TODO inspect error somehow to see if it's a memory error?
-            # -> continue if so
-            # TODO print to stderr
             print(e)
             continue
 
-        raw_f = np.array(evil.eval('data.CNM.C')).T
+        # TODO maybe change to return None/dict rather than deal with lists
+        # and then just check not None in a list comprehension aggregating them?
+        ti_code_version = u.get_matfile_var(mat, 'ti_code_version')
 
-        ti = evil.eval('data.ti')
+        # TODO maybe it was not possible to calc timing info because input has
+        # moved / was corrupted (either the thorsync file or the .mat it gets
+        # converted to)?
+        if calc_timing_info and update_timing_info:
+            # TODO probably just print error message and continue
+            assert ti_code_version != curr_ti_code_version, \
+                'timing information should have been regenerated but was not'
+
+        # TODO TODO would have to check whether motion correction was run for
+        # this particular experiment in order to determine whether or not to
+        # add the two motion correction code repos to this.
+        # May ultimately make the most sense to have the outer loop be over
+        # keys to recordings, and have trace process just follow motion
+        # correction?
+        if ACTUALLY_UPLOAD:
+            u.upload_analysis_info(started_at, analyzed_at, ti_code_version)
+
         # TODO dtype appropriate?
         frame_times = np.array(ti['frame_times']).flatten()
 
@@ -644,6 +729,40 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # block is defined as a period of continuous acquisition.
         block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
             ).flatten() - 1
+
+        # TODO after better understanding where trial_start comes from,
+        # could get rid of this check if it's just tautological
+        block_ic_thorsync_idx = np.array(ti['block_ic_idx']).flatten()
+        assert len(block_ic_thorsync_idx) == len(block_first_frames), \
+            'variables in MATLAB ti have inconsistent # of blocks'
+
+        # TODO unit tests for block handling code
+        n_blocks_from_gsheet = last_block - first_block + 1
+        n_blocks_from_thorsync = len(block_first_frames)
+
+        assert (len(odor_pair_list) == (last_block - first_block + 1) *
+            presentations_per_block)
+
+        n_presentations = n_blocks_from_gsheet * presentations_per_block
+
+        err_msg = ('{} blocks ({} to {}, inclusive) in Google sheet {{}} {} ' +
+            'blocks from ThorSync.').format(n_blocks_from_gsheet,
+            first_block + 1, last_block + 1, n_blocks_from_thorsync)
+        fail_msg = (' Fix in Google sheet, turn off ' +
+            'cache if necessary, and rerun.')
+
+        # TODO factor all this code out, but especially these checks, so that
+        # populate_db would catch this as well
+        if n_blocks_from_gsheet > n_blocks_from_thorsync:
+            raise ValueError(err_msg.format('>') + fail_msg)
+
+        elif n_blocks_from_gsheet < n_blocks_from_thorsync:
+            if allow_gsheet_to_restrict_blocks:
+                warnings.warn(err_msg.format('<') + (' This is ONLY ok if you '+
+                    'intend to exclude the LAST {} blocks in the Thor output.'
+                    ).format(n_blocks_from_thorsync - n_blocks_from_gsheet))
+            else:
+                raise ValueError(err_msg.format('<') + fail_msg)
 
         # stim_on is a number as above, but for the frame of the odor
         # onset.
@@ -657,92 +776,146 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO TODO TODO if these are 1d, should be sorted... is Remy doing
         # something else weird?
         # (address after candidacy)
-        
+        # TODO just assert equal to sorted version
+        # TODO some fn for checking sorted? (i mean it's linear vs n*log(n)...)
+
+        block_last_frames = np.array(ti['trial_end'], dtype=np.uint32
+            ).flatten() - 1
+
+        if allow_gsheet_to_restrict_blocks:
+            # TODO unit test for case where first_block != 0 and == 0
+            # w/ last_block == first_block and > first_block
+            block_first_frames = block_first_frames[
+                :(last_block - first_block + 1)]
+            block_last_frames = block_last_frames[
+                :(last_block - first_block + 1)]
+
+            assert len(block_first_frames) == n_blocks_from_gsheet
+            assert len(block_last_frames) == n_blocks_from_gsheet
+
+            odor_onset_frames = odor_onset_frames[
+                :(last_presentation - first_presentation + 1)]
+
+            odor_offset_frames = odor_offset_frames[
+                :(last_presentation - first_presentation + 1)]
+
+            assert len(odor_onset_frames) == n_presentations
+            assert len(odor_offset_frames) == n_presentations
+
+            frame_times = frame_times[:(block_last_frames[-1] + 1)]
+
+        # Since trace is computed on full movie, not the subset we define above.
+        last_frame = block_last_frames[-1]
+        full_frame_avg_trace = full_frame_avg_trace[:(last_frame + 1)]
+        assert full_frame_avg_trace.shape[0] == len(frame_times)
+
+        assert len(odor_onset_frames) == len(odor_pair_list)
+
+        # TODO delete try / except
+        try:
+            assert len(odor_onset_frames) == len(odor_offset_frames)
+            print('past first assertion')
+            assert (len(block_first_frames) * presentations_per_block == 
+                    len(odor_onset_frames)), ('timing information wrong. ' +
+                '# presentations inconsistent with # blocks.')
+
+        except AssertionError:
+            print(len(block_first_frames))
+            print(len(odor_onset_frames))
+            print(ti_code_version[0])
+            import ipdb; ipdb.set_trace()
 
         # TODO how to get odor pid
 
-        # A has footprints
-        # from caiman docs:
-        # "A: ... (d x K)"
-        # "K: ... # of neurons to extract"
-        # so what is d? (looks like 256 x 256, the # of pixels)
+        if upload_matlab_cnmf_output:
+            raise NotImplementedError('not currently getting new required ' +
+                'segmentation_run info from matlab output')
 
-        # TODO TODO maybe get some representation of the sparse matrix that i
-        # can use to create one from the scipy constructors, to minimize amount
-        # of data sent from matlab
-        print('loading footprints...', end='')
-        footprints = np.array(evil.eval('full(data.CNM.A)'))
-        # Assuming equal number along both dimensions.
-        pixels_per_side = int(np.sqrt(footprints.shape[0]))
-        n_footprints = footprints.shape[1]
+            # A has footprints
+            # from caiman docs:
+            # "A: ... (d x K)"
+            # "K: ... # of neurons to extract"
+            # so what is d? (looks like 256 x 256, the # of pixels)
+            # dims=dimensions of image (256x256)
+            # T is # of timestamps
 
-        # TODO C order? (check against image to make sure things don't seem
-        # transposed...)
-        footprints = np.reshape(footprints,
-            (pixels_per_side, pixels_per_side, n_footprints))
-        print(' done')
+            # TODO TODO maybe get some representation of the sparse matrix that
+            # i can use to create one from the scipy constructors, to minimize
+            # amount of data sent from matlab
+            print('loading footprints...', end='')
+            footprints = np.array(evil.eval('full(data.CNM.A)'))
+            # Assuming equal number along both dimensions.
+            pixels_per_side = int(np.sqrt(footprints.shape[0]))
+            n_footprints = footprints.shape[1]
 
-        # Just to try to free up some memory.
-        evil.evalc('clear;')
+            # TODO C order? (check against image to make sure things don't seem
+            # transposed...)
+            footprints = np.reshape(footprints,
+                (pixels_per_side, pixels_per_side, n_footprints))
+            print(' done')
 
-        # TODO TODO TODO make sure these cell IDs match up with the ones from
-        # below!!!
+            # Just to try to free up some memory.
+            evil.evalc('clear;')
 
-        footprint_dfs = []
-        for cell_num in range(n_footprints):
-            sparse = coo_matrix(footprints[:,:,cell_num])
-            footprint_dfs.append(pd.DataFrame({
-                'recording_from': [started_at],
-                'cell': [cell_num],
-                # Can be converted from lists of Python types, but apparently
-                # not from numpy arrays or lists of numpy scalar types.
-                # TODO check this doesn't transpose things
-                # TODO TODO just move appropriate casting to my to_sql function,
-                # and allow having numpy arrays (get type info from combination
-                # of that and the database, like in other cases)
-                'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
-                'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
-                'weights': [[float(x) for x in sparse.data.astype('float32')]],
-                'analysis': [analysis_run]
-            }))
+            # TODO TODO TODO make sure these cell IDs match up with the ones
+            # from below!!!
 
-        footprint_df = pd.concat(footprint_dfs, ignore_index=True)
-        # TODO filter out footprints less than a certain # of pixels in cnmf?
-        # (is 3 pixels really reasonable?)
-        u.to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
+            footprint_dfs = []
+            for cell_num in range(n_footprints):
+                sparse = coo_matrix(footprints[:,:,cell_num])
+                footprint_dfs.append(pd.DataFrame({
+                    'recording_from': [started_at],
+                    'cell': [cell_num],
+                    # Can be converted from lists of Python types, but
+                    # apparently not from numpy arrays or lists of numpy scalar
+                    # types.
+                    # TODO TODO just move appropriate casting to my to_sql
+                    # function, and allow having numpy arrays (get type info
+                    # from combination of that and the database, like in other
+                    # cases)
+                    'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
+                    'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                    'weights': [[float(x) for x in
+                                 sparse.data.astype('float32')]],
+                    # TODO TODO generate all required info
+                    # (have everything needed in matlab output, or would i have
+                    # to relax some other requirements?)
+                    'segmentation_run': None
+                }))
 
-        # TODO and what would be a good db representation of footprint?
-        # TODO TODO generalize to_sql casting to array types too?
-        
+            footprint_df = pd.concat(footprint_dfs, ignore_index=True)
+            # TODO filter out footprints less than a certain # of pixels in
+            # cnmf?  (is 3 pixels really reasonable?)
+            if ACTUALLY_UPLOAD:
+                u.to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
 
-        # TODO store image w/ footprint overlayed?
-        # TODO TODO maybe store an average frame of registered TIF, and then
-        # indexes around that per footprint? (explicitly try to avoid responses
-        # when doing so, for easier interpretation as a background?)
+            n_frames, n_cells = df_over_f.shape
+            assert n_cells == n_footprints
 
-        # dims=dimensions of image (256x256)
-        # T is # of timestamps
-
+        # TODO TODO assertion to detect whatever this was talking about...
         # TODO why 474 x 4 + 548 in one case? i thought frame numbers were
         # supposed to be more similar... (w/ np.diff(odor_onset_frames))
         first_onset_frame_offset = odor_onset_frames[0] - block_first_frames[0]
 
-        n_frames, n_cells = df_over_f.shape
-        assert n_cells == n_footprints
-
+        # TODO why is odor_onset_frames[0] not used? always 0?
+        # should start_frames just be (odor_onset_frames -
+        # first_onset_frame_offset)?
         start_frames = np.append(0,
             odor_onset_frames[1:] - first_onset_frame_offset)
         stop_frames = np.append(
             odor_onset_frames[1:] - first_onset_frame_offset - 1, n_frames)
         lens = [stop - start for start, stop in zip(start_frames, stop_frames)]
 
-        # TODO delete version w/ int cast after checking they give same answers
-        assert int(frame_times.shape[0]) == int(n_frames)
-        assert frame_times.shape[0] == n_frames
+        # This will fail in case of unsliced movie now...
+        # would have to do slice the movie as the gui does and then get # frames
+        if upload_matlab_cnmf_output:
+            assert frame_times.shape[0] == n_frames
 
         print(start_frames)
         print(stop_frames)
+        # TODO TODO which discrepancies? put back whichever assertion would fail
         # TODO find where the discrepancies are!
+        # seems n_frames could be sum(lens) + len(lens) - 1 in some cases?
         print(sum(lens))
         print(n_frames)
 
@@ -756,7 +929,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         comparison_num = -1
 
         for i in range(len(start_frames)):
-            if i % (presentations_per_repeat * n_repeats) == 0:
+            if i % presentations_per_block == 0:
                 comparison_num += 1
                 repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
 
@@ -769,6 +942,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # TODO off by one?? check
             # TODO check against frames calculated directly from odor offset...
             # may not be const # frames between these "starts" and odor onset?
+            # (below line copied from above just to see what onset_frame is)
+            #first_onset_frame_offset = odor_onset_frames[0] - block_first_frames[0]
             onset_frame = start_frame + first_onset_frame_offset
 
             # TODO check again that these are always equal and delete
@@ -783,16 +958,18 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # TODO check these don't jump around b/c discontinuities
             presentation_frametimes = \
                 frame_times[start_frame:stop_frame] - onset_time
-            # TODO delete try/except after fixing
-            try:
-                assert len(presentation_frametimes) > 1
-            except AssertionError:
-                print(frame_times)
-                print(start_frame)
-                print(stop_frame)
-                import ipdb; ipdb.set_trace()
+            assert len(presentation_frametimes) > 1
 
-            odor_pair = odor_id_pairs[i]
+            # TODO delete try/except
+            try:
+                odor_pair = odor_id_pairs[i]
+            except IndexError:
+                print('odor_id_pairs:', odor_id_pairs)
+                print('len(odor_id_pairs):', len(odor_id_pairs))
+                print('len(start_frames):', len(start_frames))
+                print('i:', i)
+                import ipdb; ipdb.set_trace()
+            #
             odor1, odor2 = odor_pair
             repeat_num = repeat_nums[odor_pair]
             repeat_nums[odor_pair] = repeat_num + 1
@@ -806,17 +983,118 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'prep_date': [date],
                 'fly_num': fly_num,
                 'recording_from': started_at,
+                'analysis': analyzed_at,
                 'comparison': comparison_num,
                 'odor1': odor1,
                 'odor2': odor2,
                 'repeat_num': repeat_num,
                 'odor_onset_frame': direct_onset_frame,
                 'odor_offset_frame': offset_frame,
-                'from_onset': [[float(x) for x in presentation_frametimes]],
-                'analysis': analysis_run
+                'from_onset': [[float(x) for x in presentation_frametimes]]
             })
-            u.to_sql_with_duplicates(presentation, 'presentations')
 
+            # TODO run this over all of the prep checking stuff?  for
+            # natural_odors at least (where it should all have been ~same
+            # concentration of ethyl acetate?) (which would i guess mean any
+            # prep checking immediately followed by natural_odors?)
+            if process_time_averages:
+                fps = u.get_thorimage_fps(thorimage_dir)
+                # TODO does it really take this long in most cases?
+                rise_time_s = 2.0 #1.5
+                rise_time_frames = int(round(rise_time_s * fps))
+                decay_start_frame = direct_onset_frame + rise_time_frames
+
+                # Relationship between presentation indices and times will
+                # differ from presentation_frametimes, to the extent of rise
+                # time.
+
+                # TODO subtract something added to onset_time?
+                decay_frametimes = (frame_times[decay_start_frame:stop_frame] -
+                                    onset_time)
+                decay_trace = full_frame_avg_trace[
+                    decay_start_frame:stop_frame]
+                assert decay_trace.shape == decay_frametimes.shape
+
+                # This still only goes to odor onset, in case rise time is
+                # slightly misspecified.
+                baseline = full_frame_avg_trace[start_frame:direct_onset_frame]
+                avg_baseline = np.mean(baseline)
+                stddev_baseline = np.std(baseline)
+
+                avg_df_over_f = (decay_trace - avg_baseline) / avg_baseline
+                # TODO TODO should this be avg_df_over_f - new baseline computed
+                # over df_over_f?
+                zchange_dff = (decay_trace - avg_baseline) / stddev_baseline
+
+                # TODO principled way of setting this? to maximize some kind of
+                # separability / robustness?
+                resp_time_s = 5.0
+                resp_time_frames = int(round(resp_time_s * fps))
+
+                avg_dff_5s = np.mean(avg_df_over_f[:(resp_time_frames + 1)])
+                avg_zchange_5s = np.mean(zchange_dff[:(resp_time_frames + 1)])
+
+                presentation['avg_dff_5s'] = avg_dff_5s
+                presentation['avg_zchange_5s'] = avg_zchange_5s
+
+                # TODO TODO catch runtimewarning overflow and turn into error
+                (scale, tau, offset), sigmas = u.fit_exp_decay(
+                    avg_df_over_f,
+                    times=decay_frametimes,
+                    numerical_scale=200
+                )
+                # TODO TODO test that w/ n * numerical_scale,
+                # scale and offset are scaled by n, and tau is the same
+                # (so that the scaling can be inverted before entering the
+                # parametrs in the database)
+
+                presentation['calc_exp_from'] = rise_time_s
+                presentation['exp_scale'] = scale
+                presentation['exp_tau'] = tau
+                presentation['exp_offset'] = offset
+                presentation['exp_scale_sigma'] = sigmas[0]
+                presentation['exp_tau_sigma'] = sigmas[1]
+                presentation['exp_offset_sigma'] = sigmas[2]
+                # TODO maybe do store (all) pcov components?
+                # might help evaluate goodness of fit, and that might be more
+                # useful than just means of params, since some params can be
+                # huge / small when fit is poor...
+                # (see notes in fit_exp_decay)
+
+                # TODO are these sufficient, or would it also make sense to
+                # include average dffs for various numbers of seconds after odor
+                # onset? try it?
+
+                print('avg_dff_5s:', avg_dff_5s)
+                print('avg_zchange_5s:', avg_zchange_5s)
+
+                # TODO reformat?
+                print('scale:', scale)
+                print('tau:', tau)
+                print('offset:', offset)
+                #
+
+                #
+                # TODO TODO still plot times before hardcoded rise time,
+                # just so that i can see i'm not throwing out some earlier peaks
+                # TODO or just smooth and find maxima for everything ->
+                # use that as rise time
+                '''
+                model_trace = u.exp_decay(decay_frametimes, scale, tau, offset)
+                import matplotlib.pyplot as plt
+                plt.plot(decay_frametimes, avg_df_over_f, label='data')
+                plt.plot(decay_frametimes, model_trace, label='fit')
+                plt.show()
+                '''
+                #
+
+            if ACTUALLY_UPLOAD:
+                # TODO TODO TODO is this insertion method causing some
+                # parameters to not actually get updated?
+                # use to_sql w/ pg_upsert?
+                u.to_sql_with_duplicates(presentation, 'presentations')
+
+            db_presentations = pd.read_sql('presentations', u.conn)
 
             # maybe share w/ code that checks distinct to decide whether to
             # load / analyze?
@@ -824,13 +1102,12 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'prep_date',
                 'fly_num',
                 'recording_from',
+                'analysis',
                 'comparison',
                 'odor1',
                 'odor2',
                 'repeat_num'
             ]
-            db_presentations = pd.read_sql('presentations', u.conn,
-                columns=(key_cols + ['presentation_id']))
 
             presentation_ids = (db_presentations[key_cols] ==
                                 presentation[key_cols].iloc[0]).all(axis=1)
@@ -838,37 +1115,120 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             presentation_id = db_presentations.loc[presentation_ids,
                 'presentation_id'].iat[0]
 
-            # TODO get remy to save it w/ less than 64 bits of precision?
-            presentation_dff = df_over_f[start_frame:stop_frame, :]
-            presentation_raw_f = raw_f[start_frame:stop_frame, :]
+            # TODO TODO need to handle NaN? won't NaN == NaN -> False make
+            # equality fail?
+            # Check correct insertion
 
-            # Assumes that cells are indexed same here as in footprints.
-            cell_dfs = []
-            for cell_num in range(n_cells):
+            db_presentation = db_presentations.loc[presentation_ids,
+                presentation.columns].reset_index(drop=True)
 
-                cell_dff = presentation_dff[:, cell_num].astype('float32')
-                cell_raw_f = presentation_raw_f[:, cell_num].astype('float32')
+            '''
+            diff = db_presentation == presentation
+            assert len(diff) == 1
+            diff = diff.iloc[0]
 
-                cell_dfs.append(pd.DataFrame({
-                    'presentation_id': [presentation_id],
-                    'recording_from': [started_at],
-                    'cell': [cell_num],
-                    'df_over_f': [[float(x) for x in cell_dff]],
-                    'raw_f': [[float(x) for x in cell_raw_f]]
-                }))
-            response_df = pd.concat(cell_dfs, ignore_index=True)
+            if not diff.all():
+                diff_cols = diff.columns[diff]
+                print('Columns where local and db presentation differ:')
+                # TODO convert to df w/ three cols:
+                # colname, local, db
+            '''
+            diff = u.diff_dataframes(presentation, db_presentation)
+            if diff is not None:
+                print(diff)
+                raise IOError('SQL insertion failed')
 
-            u.to_sql_with_duplicates(response_df, 'responses')
+            if upload_matlab_cnmf_output:
+                # TODO get remy to save it w/ less than 64 bits of precision?
+                # (or just change matlab code myself)
+                presentation_dff = df_over_f[start_frame:stop_frame, :]
+                presentation_raw_f = raw_f[start_frame:stop_frame, :]
 
-            # TODO put behind flag
-            db_presentations = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
-                'fly_num, recording_from, comparison FROM presentations',
-                u.conn)
+                # Assumes that cells are indexed same here as in footprints.
+                cell_dfs = []
+                for cell_num in range(n_cells):
 
-            print(db_presentations)
-            print(len(db_presentations))
-            #
+                    cell_dff = presentation_dff[:, cell_num].astype('float32')
+                    cell_raw_f = presentation_raw_f[:, cell_num].astype(
+                        'float32')
 
+                    cell_dfs.append(pd.DataFrame({
+                        'presentation_id': [presentation_id],
+                        'recording_from': [started_at],
+                        'cell': [cell_num],
+                        'df_over_f': [[float(x) for x in cell_dff]],
+                        'raw_f': [[float(x) for x in cell_raw_f]]
+                    }))
+                response_df = pd.concat(cell_dfs, ignore_index=True)
+
+                if ACTUALLY_UPLOAD:
+                    u.to_sql_with_duplicates(response_df, 'responses')
+
+                # TODO put behind flag?
+                '''
+                new_db_presentations = pd.read_sql_query('SELECT DISTINCT ' +
+                    'prep_date, fly_num, recording_from, comparison FROM' +
+                    'presentations', u.conn)
+
+                print(new_db_presentations)
+                print(len(new_db_presentations))
+                '''
+
+            # TODO move out of this populate_db script?
+            # Case for keeping it in here, is that all the dependencies will
+            # still need to be calculated to evaluate a given experiment,
+            # although maybe the input would need to be rewritten a little to
+            # just select one specific (the most recent) experiment.
+            # TODO factor out and still call it here?
+            if process_time_averages:
+                # TODO unit test this bit (w/ or w/o multiple versions of
+                # analysis, etc)
+
+                # TODO maybe don't exclude current presentation_id?
+                # TODO TODO TODO uncomment
+                db_curr_odor_presentations = db_presentations[
+                    ~presentation_ids & 
+                    (db_presentations.odor1 == odor1) &
+                    (db_presentations.odor2 == odor2)
+                ]
+                # TODO TODO print which odors / concs this is too
+
+                # TODO maybe just return empty df as base case?
+                response_stats = \
+                    u.latest_response_stats(db_curr_odor_presentations)
+
+                if response_stats is None:
+                    continue
+
+                response_stat_cols = [
+                    'exp_scale',
+                    'exp_tau',
+                    'exp_offset',
+                    'exp_scale_sigma',
+                    'exp_tau_sigma',
+                    'exp_offset_sigma',
+                    'avg_dff_5s',
+                    'avg_zchange_5s'
+                ]
+                # TODO compute percentile of current set of response_stat_cols
+                # to all past response_stat_cols. idiomatic way to do that in
+                # pandas?
+
+                good_bad_means = response_stats.groupby('accepted'
+                    )[response_stat_cols].mean()
+
+                # TODO maybe print # accepted vs not, for context.
+                # might just be a lot not labelled one way or the other?
+                # TODO list what was accepted and what wasn't too
+                print(good_bad_means)
+
+                # TODO maybe also take repeat_num into account?
+
+                # TODO define cutoff relative to good / not good and then print
+                # which side of that cutoff we are on
+                # TODO maybe cluster all stuff, good or not?
+                # TODO good or not, print how this compares to other recordings,
+                # maybe using a percentile?
 
             print('Done processing presentation {}'.format(i))
 

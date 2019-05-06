@@ -22,12 +22,8 @@ import pickle
 from copy import deepcopy
 from io import BytesIO
 import pprint
-#
 import traceback
-#
 
-# TODO first three are in QtCore for sure, but the rest? .Qt? .QtGUI?
-# differences?
 from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
     Qt)
 from PyQt5.QtGui import QColor
@@ -260,48 +256,6 @@ def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
 
 # TODO TODO TODO factor all code duplicated between here and kc_analysis into a
 # util module in this package
-def merge_odors(df, odors):
-    print('merging with odors table...', end='')
-    # TODO way to do w/o resetting index? merge failing to find odor1 or just
-    # drop?
-    #df.reset_index(inplace=True, drop=True)
-    df = df.reset_index(drop=True)
-
-    df = pd.merge(df, odors, left_on='odor1', right_on='odor_id',
-                  suffixes=(False,False))
-
-    df.drop(columns=['odor_id','odor1'], inplace=True)
-    df.rename(columns={'name': 'name1',
-        'log10_conc_vv': 'log10_conc_vv1'}, inplace=True)
-
-    df = pd.merge(df, odors, left_on='odor2', right_on='odor_id',
-                  suffixes=(False,False))
-
-    df.drop(columns=['odor_id','odor2'], inplace=True)
-    df.rename(columns={'name': 'name2',
-        'log10_conc_vv': 'log10_conc_vv2'}, inplace=True)
-
-    print(' done')
-    return df
-
-
-def merge_recordings(df, recordings):
-    print('merging with recordings table...', end='')
-
-    #####df.reset_index(inplace=True, drop=True)
-    df = df.reset_index(drop=True)
-
-    df = pd.merge(df, recordings,
-                  left_on='recording_from', right_on='started_at')
-
-    df.drop(columns=['started_at'], inplace=True)
-
-    df['thorimage_id'] = df.thorimage_path.apply(lambda x: split(x)[-1])
-
-    print(' done')
-    return df
-
-
 def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
     date_dir = date.strftime('%Y-%m-%d')
     fly_num = str(fly_num)
@@ -989,7 +943,6 @@ class Segmentation(QWidget):
         # TODO so how does it know to pass one arg in this case?
         # (as opposed to cnmf_done case)
         worker.signals.result.connect(self.get_cnmf_output)
-        worker.signals.finished.connect(self.cnmf_done)
         # TODO TODO implement. may require allowing callbacks to be passed into
         # cnmf code to report progress?
         ####worker.signals.progress.connect(self.progress_fn)
@@ -1058,25 +1011,6 @@ class Segmentation(QWidget):
         # TODO maybe have a widget that shows the text output from cnmf?
 
 
-    # TODO maybe just collapse this into get_cnmf_output?
-    def cnmf_done(self) -> None:
-        self.accepted = None
-        self.cnmf_running = False
-
-        if self.cnm is not None:
-            self.accept_cnmf_btn.setEnabled(True)
-            self.reject_cnmf_btn.setEnabled(True)
-
-            if self.params_changed:
-                self.run_cnmf_btn.setEnabled(True)
-
-            # TODO logging instead?
-            print('done with CNMF')
-            print('CNMF took {:.1f}s'.format(time.time() - self.cnmf_start))
-
-        print('')
-
-
     # TODO TODO actually provide a way to only initialize cnmf, to test out
     # various initialization procedures (though only_init arg doesn't actually
     # seem to accomplish this correctly)
@@ -1112,8 +1046,6 @@ class Segmentation(QWidget):
             self.odor_onset_frames[1:] - first_onset_frame_offset - 1, n_frames)
         lens = [stop - start for start, stop in zip(start_frames, stop_frames)]
 
-        # TODO delete version w/ int cast after checking they give same answers
-        assert int(self.frame_times.shape[0]) == int(n_frames)
         assert self.frame_times.shape[0] == n_frames
 
         print(start_frames)
@@ -1133,11 +1065,14 @@ class Segmentation(QWidget):
             zip(self.odor1_ids, self.odor2_ids)]
         print('odor_id_pairs:', odor_id_pairs)
 
+        self.start_frames = start_frames
+        self.stop_frames = stop_frames
+
         self.presentation_dfs = []
         self.comparison_dfs = []
         comparison_num = -1
         for i in range(len(start_frames)):
-            if i % (self.presentations_per_block) == 0:
+            if i % self.presentations_per_block == 0:
                 comparison_num += 1
                 repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
 
@@ -1165,18 +1100,7 @@ class Segmentation(QWidget):
             # TODO check these don't jump around b/c discontinuities
             presentation_frametimes = \
                 self.frame_times[start_frame:stop_frame] - onset_time
-            # TODO delete try/except after fixing
-            '''
-            try:
-            '''
             assert len(presentation_frametimes) > 1
-            '''
-            except AssertionError:
-                print(self.frame_times)
-                print(start_frame)
-                print(stop_frame)
-                import ipdb; ipdb.set_trace()
-            '''
 
             odor_pair = odor_id_pairs[i]
             odor1, odor2 = odor_pair
@@ -1273,6 +1197,9 @@ class Segmentation(QWidget):
 
     # TODO rename to "process_..." or something?
     def get_cnmf_output(self) -> None:
+        self.run_len_seconds = time.time() - self.cnmf_start
+        print('CNMF took {:.1f}s'.format(self.run_len_seconds))
+
         # TODO TODO allow toggling between type of background image shown
         # (radio / combobox for avg, snr, etc? "local correlations"?)
         # TODO TODO use histogram equalized avg image as one option
@@ -1402,11 +1329,14 @@ class Segmentation(QWidget):
                 lambda x: np.array(x))
 
             print(presentation_df.shape)
-            presentation_df = merge_odors(presentation_df,
+            presentation_df = u.merge_odors(presentation_df,
                 self.db_odors.reset_index())
 
             print(presentation_df.shape)
-            presentation_df = merge_recordings(presentation_df, self.recordings)
+            # TODO TODO TODO is self.recordings really what i want here????
+            raise NotImplementedError('check self.recordings is what i want')
+            presentation_df = u.merge_recordings(
+                presentation_df, self.recordings)
 
             array_cols = ['raw_f', 'df_over_f']
             for ac in array_cols:
@@ -1539,6 +1469,15 @@ class Segmentation(QWidget):
         # or separate pane for movie?
         # TODO use some non-movie version of pyqtgraph ImageView for avg,
         # to get intensity sliders? or other widget for that?
+        self.accepted = None
+        self.cnmf_running = False
+
+        if self.cnm is not None:
+            self.accept_cnmf_btn.setEnabled(True)
+            self.reject_cnmf_btn.setEnabled(True)
+
+            if self.params_changed:
+                self.run_cnmf_btn.setEnabled(True)
 
 
     def save_default_params(self) -> None:
@@ -1554,7 +1493,8 @@ class Segmentation(QWidget):
 
 
     # TODO move core of this to util and just wrap it here
-    def upload_analysis_info(self, accepted: bool) -> None:
+    def upload_segmentation_info(self, accepted: bool) -> None:
+        ########################################################################
         # TODO maybe visually indicate which has been selected already?
         run_info = {
             'run_at': [self.run_at],
@@ -1582,6 +1522,8 @@ class Segmentation(QWidget):
             run.to_sql('analysis_runs', u.conn, if_exists='append',
                 method=u.pg_upsert)
 
+        # TODO worth preventing (attempts to) insert code versions and
+        # pairings with analysis_runs, or is that premature optimization?
         if self.accepted is not None:
             # The remainder of the metadata must have already been uploaded,
             # when self.accepted was first set.
@@ -1596,58 +1538,17 @@ class Segmentation(QWidget):
         else:
             raise NotImplementedError
 
-        # TODO TODO need to acquire a lock to use the matlab instance safely?
-        # (if i'm sure gui is enforcing only one call at a time anyway, probably
-        # don't need to worry about it)
-        def get_matfile_var(varname, require=True):
-            try:
-                load_output = evil.load(self.matfile, varname, nargout=1)
-                var = load_output[varname]
-                if type(var) is dict:
-                    return [var]
-                return var
-            except KeyError:
-                # TODO maybe check for var presence some other way than just
-                # catching this generic error?
-                if require:
-                    raise
-                else:
-                    return []
-
-        ti_code_version = get_matfile_var('ti_code_version')
-        mocorr_code_versions = get_matfile_var(mocorr_version_varname,
-            require=False)
+        ti_code_version = u.get_matfile_var(self.matfile, 'ti_code_version')
+        mocorr_code_versions = u.get_matfile_var(self.matfile,
+            mocorr_version_varname, require=False)
 
         code_versions = (common_code_versions + ti_code_version +
             mocorr_code_versions)
 
-        code_versions_df = pd.DataFrame(code_versions)
-        if self.ACTUALLY_UPLOAD:
-            code_versions_df.to_sql('code_versions', u.conn, if_exists='append',
-                index=False)
-
-        # TODO maybe only read most recent few / restrict to some other key if i
-        # make one?
-        db_code_versions = pd.read_sql('code_versions', u.conn)
-
-        our_version_cols = code_versions_df.columns
-        version_ids = set()
-        for _, row in code_versions_df.iterrows():
-            # This should take the *first* row that is equal.
-            idx = (db_code_versions[code_versions_df.columns] == row).all(
-                axis=1).idxmax()
-            version_id = db_code_versions['version_id'].iat[idx]
-            assert version_id not in version_ids
-            version_ids.add(version_id)
-
         # TODO maybe impute missing mocorr version in some cases?
 
-        analysis_code = pd.DataFrame({
-            'run_at': self.run_at,
-            'version_id': list(version_ids)
-        })
         if self.ACTUALLY_UPLOAD:
-            u.to_sql_with_duplicates(analysis_code, 'analysis_code')
+            u.upload_analysis_info(self.run_at, code_versions)
 
         png_buff = BytesIO()
         self.fig.savefig(png_buff, format='png')
@@ -1664,7 +1565,8 @@ class Segmentation(QWidget):
             'run_at': [self.run_at],
             'output_fig_png': png_buff.getvalue(),
             'output_fig_svg': svg_buff.getvalue(),
-            'output_fig_mpl': fig_buff.getvalue()
+            'output_fig_mpl': fig_buff.getvalue(),
+            'run_len_seconds': self.run_len_seconds
         })
         segmentation_run.set_index('run_at', inplace=True)
 
@@ -1718,7 +1620,7 @@ class Segmentation(QWidget):
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
 
-        self.upload_analysis_info(True)
+        self.upload_segmentation_info(True)
 
         # TODO just calculate metadata outright here?
             
@@ -1766,8 +1668,8 @@ class Segmentation(QWidget):
                 'f': ests.f,
                 'df_over_f': self.df_over_f,
                 # TODO raw_f too? or already included in one of these things?
-                'start_frames': start_frames,
-                'stop_frames': stop_frames,
+                'start_frames': self.start_frames,
+                'stop_frames': self.stop_frames,
                 'date': self.date,
                 'fly_num': self.fly_num,
                 'thorimage_id': self.thorimage_id
@@ -1808,7 +1710,7 @@ class Segmentation(QWidget):
             for presentation_df, comparison_df in zip(
                 presentation_dfs, comparison_dfs):
 
-                u.to_sql_with_duplicates(presentation.drop(
+                u.to_sql_with_duplicates(presentation_df.drop(
                     columns='temp_presentation_id'), 'presentations')
 
                 # TODO how exactly is this supposed to work in not
@@ -1818,7 +1720,8 @@ class Segmentation(QWidget):
                     columns=(key_cols + ['presentation_id']))
 
                 presentation_ids = (db_presentations[key_cols] ==
-                                    presentation[key_cols].iloc[0]).all(axis=1)
+                    presentation_df[key_cols].iloc[0]).all(axis=1)
+
                 assert presentation_ids.sum() == 1, \
                     'presentation_id could not be determined uniquely'
 
@@ -1851,7 +1754,7 @@ class Segmentation(QWidget):
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
 
-        self.upload_analysis_info(False)
+        self.upload_segmentation_info(False)
 
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
@@ -1891,23 +1794,13 @@ class Segmentation(QWidget):
         mat = join(analysis_dir, rel_to_cnmf_mat, thorimage_id + '_cnmf.mat')
 
         try:
-            # TODO probably switch to doing it this way
-            '''
-            evil.clear(nargout=0)
-            load_output = evil.load(mat, 'ti', nargout=1)
-            ti = load_output['ti']
-            '''
-            evil.evalc("clear; data = load('{}', 'ti');".format(mat))
-
+            ti = u.load_mat_timing_information(mat)
         except matlab.engine.MatlabExecutionError as e:
             # TODO inspect error somehow to see if it's a memory error?
             # -> continue if so
             # TODO print to stderr
             print(e)
             return
-        #
-        ti = evil.eval('data.ti')
-        #
 
         recordings = df.loc[(df.date == date) &
                             (df.fly_num == fly_num) &
@@ -2468,7 +2361,6 @@ class ROIAnnotation(QWidget):
         # TODO TODO put to left of where video is? left of annotation buttons?
         # under data selection part?
         response_calling_s = 3.0
-        # TODO TODO TODO get fps from thor (check this works...)
         fps = fps_from_thor(self.metadata)
         self.fps = fps
         self.response_frames = int(np.ceil(fps * response_calling_s))
@@ -2856,13 +2748,13 @@ def main():
     presentations['from_onset'] = presentations.from_onset.apply(
         lambda x: np.array(x))
 
-    presentations = merge_odors(presentations, odors)
+    presentations = u.merge_odors(presentations, odors)
 
     # TODO change sql for recordings table to use thorimage dir + date + fly
     # as index?
     recordings = pd.read_sql('recordings', u.conn)
 
-    presentations = merge_recordings(presentations, recordings)
+    presentations = u.merge_recordings(presentations, recordings)
 
     rec_meta_cols = [
         'recording_from',

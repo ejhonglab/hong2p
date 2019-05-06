@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS recordings (
     stimulus_data_path text
     /* TODO stimulus code here too? (opt if also aiming to support PID-only)*/
 );
+ALTER TABLE recordings
+    ADD COLUMN full_frame_avg_trace real[];
 
 
 CREATE TABLE IF NOT EXISTS code_versions (
@@ -140,59 +142,95 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 
     /* TODO option in GUI to add arbitrary repos to track?
        see analysis_code table. */
-    /* TODO store all manual input along the way (when / what for component
-     * deletions, creation, decisions on manual control of iteration #, param
-       changes along the way, etc) */
-
     /* TODO bad practice to have any columns w/ duplicate names across stuff
      * that might ultimately be merged together? */
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
+    /* TODO TODO maybe only add these to a table that references analysis runs,
+       like maybe human_checked_analysis_runs?
 
-    /* TODO may want to support using subset of a file / multiple files as
-     * input */
+       everything from input_* to accepted are probably not necessary in some of
+       the uses for this table. i mostly just want to group the analysis_code
+       rows in the same way in those cases.
 
-    /* TODO TODO store ref (directly or indirectly) to analysis params for
-     * motion correction that produced this input? (keeping in mind curr plan is
-     * still to use this table for morr corr as well)
-     * */
+       (considering presentations requirement for analysis and lack of any check
+       on that portion of the analysis...)
+       could also either just set this to true / make nullable and leave null
+    */
+    --/*
+    -- TODO TODO only check NOT NULL constraint from segmentation_runs table?
     input_filename text NOT NULL,
     input_md5 text NOT NULL,
     input_mtime timestamp NOT NULL,
 
-    /* Use NULL to indicate from start / to end */
+    -- Use NULL to indicate from start / to end
     start_frame integer,
     stop_frame integer,
 
-    /* Could use json/jsonb type, but same values, like Infinity, would have to
-     * be handled differently. */
+    -- Could use json/jsonb type, but same values, like Infinity, would have to
+    -- be handled differently.
     parameters text NOT NULL,
 
     who text REFERENCES people (nickname),
-    /* Partially to figure out who ran it if they forgot to select their name.
-    */
-    /* TODO also check these are at least non-empty */
+    -- Partially to figure out who ran it if they forgot to select their name.
+    -- TODO also check these are at least non-empty
     host text NOT NULL,
     host_user text NOT NULL,
 
     accepted boolean NOT NULL
+    --*/
 
-    /* TODO TODO store the data that the decision was based on? like the image
-     * w/ contours overlayed or something? some general way to do this?
-       (ideally s.t. things like movies, images, or arbitrary other data could
-        be loaded in a language indep. manner, but maybe easiest to just use a 
-        python pickle based format?) */
-
-    /*  TODO TODO TODO add constraint to this effect:
-     * probably want to ensure all git stuff + input + parameters (+ user)
-     * uniqueness... but maybe not w/ pk?
+    /* TODO TODO enforce uniqueness of all git stuff + input + parameters
+     * (+ user)?
 
        if keeping user... no real need to recompute if only user differs, right?
        (assuming output was accepted / saved last time)
      */
-    /* TODO though may need to be careful if user is part of pk, just so people
-       don't accidentally work w/ the wrong version of traces (including >1
-       version) */
 );
+ALTER TABLE analysis_runs ALTER COLUMN input_filename DROP NOT NULL;
+ALTER TABLE analysis_runs ALTER COLUMN input_md5 DROP NOT NULL;
+ALTER TABLE analysis_runs ALTER COLUMN input_mtime DROP NOT NULL;
+ALTER TABLE analysis_runs ALTER COLUMN parameters DROP NOT NULL;
+ALTER TABLE analysis_runs ALTER COLUMN host DROP NOT NULL;
+ALTER TABLE analysis_runs ALTER COLUMN host_user DROP NOT NULL;
+ALTER TABLE analysis_runs ALTER COLUMN accepted DROP NOT NULL;
+
+/*
+CREATE TABLE IF NOT EXISTS analysis_run_inputs (
+    run_at timestamp REFERENCES analysis_runs (run_at),
+
+    -- TODO TODO only check NOT NULL constraint from segmentation_runs table?
+    input_filename text NOT NULL,
+    input_md5 text NOT NULL,
+    input_mtime timestamp NOT NULL,
+
+    -- Use NULL to indicate from start / to end
+    start_frame integer,
+    stop_frame integer,
+
+    PRIMARY KEY(run_at)
+);
+
+
+CREATE TABLE IF NOT EXISTS human_analysis_runs (
+    run_at timestamp REFERENCES analysis_runs (run_at),
+
+    -- TODO only want this here? make a table just for params? just add to each
+    -- terminal table that needs them (e.g. segmentation_runs)?
+    -- Could use json/jsonb type, but same values, like Infinity, would have to
+    -- be handled differently.
+    parameters text NOT NULL,
+
+    who text REFERENCES people (nickname),
+    -- Partially to figure out who ran it if they forgot to select their name.
+    -- TODO also check these are at least non-empty
+    host text NOT NULL,
+    host_user text NOT NULL,
+
+    accepted boolean NOT NULL,
+
+    PRIMARY KEY(run_at)
+);
+*/
 
 
 /* This table will N rows for each analysis run, where N is the number of pieces
@@ -205,16 +243,30 @@ CREATE TABLE IF NOT EXISTS analysis_code (
 
 
 CREATE TABLE IF NOT EXISTS segmentation_runs (
-    /* TODO work to have FK as sole PK? pretty sure that is what i want... */
+    -- TODO work to have FK as sole PK? pretty sure that is what i want...
     run_at timestamp REFERENCES analysis_runs (run_at),
 
-    /* TODO footprints, img (svg? png? what size?) as in fig, serialized fig */
+    -- TODO footprints, img (svg? png? what size?) as in fig, serialized fig
     output_fig_png bytea NOT NULL,
     output_fig_svg bytea NOT NULL,
     output_fig_mpl bytea NOT NULL,
 
+    -- TODO store ref (directly or indirectly) to analysis params for motion
+    -- correction that produced this input? (keeping in mind curr plan is still
+    -- to use analysis_runs table for morr corr as well)
+
+    -- TODO store all manual input along the way (when / what for component
+    -- deletions, creation, decisions on manual control of iteration #, param
+    -- changes along the way, etc) (if i ever support manual input...)
+
+
     PRIMARY KEY(run_at)
 );
+-- TODO maybe move back to analysis_runs table?
+ALTER TABLE segmentation_runs ADD COLUMN run_len_seconds real;
+-- TODO enforce that there is at least one row in analysis_code referring to
+-- each run?
+
 
 /* TODO TODO TODO but how am i going to indicate which recordings / analysis
  * output has passed all other (possibly including manual) rejection criteria?
@@ -224,7 +276,8 @@ CREATE TABLE IF NOT EXISTS segmentation_runs (
 /* TODO for mocorr too? just refer to some analysis which also
  * refers back to mocorr? */
 ALTER TABLE recordings
-ADD COLUMN canonical_segmentation timestamp REFERENCES segmentation_runs (run_at);
+    ADD COLUMN canonical_segmentation timestamp
+    REFERENCES segmentation_runs (run_at);
 
 
 /* TODO worth having a separate representation of cells that is indep. calls on
@@ -291,6 +344,14 @@ CREATE TABLE IF NOT EXISTS presentations (
      * to recording from, derived in postgres? */
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL, 
 
+    -- TODO maybe take analysis out of here... how important is it really?
+    -- the chances of getting things like the framenumbers wrong, in a way
+    -- that really matters, are probably pretty low?
+    -- and relatively cheap to recalculate. exponential fitting also not super
+    -- critical, right?
+    -- I guess a reason to keep it in is that some relatively insignificant
+    -- change might still kinda break depedent CNMF output, which we might not
+    -- want.
     analysis timestamp REFERENCES analysis_runs (run_at) NOT NULL,
 
     /* TODO maybe reference an odor pair here? */
@@ -301,7 +362,6 @@ CREATE TABLE IF NOT EXISTS presentations (
 
     repeat_num smallint NOT NULL,
     
-    /* TODO make include other key frames too? or relegate to block info? */
     odor_onset_frame integer NOT NULL,
     odor_offset_frame integer NOT NULL,
 
@@ -329,6 +389,36 @@ CREATE TABLE IF NOT EXISTS presentations (
 ALTER TABLE presentations
     ADD CONSTRAINT from_onset_len
     CHECK (cardinality(from_onset) > 1);
+
+/* Seconds from odor onset. t=0 to this time will not be used to calculate the
+ * exponential decay. This should be roughly when the peak of the signal is. */
+ALTER TABLE presentations
+    ADD COLUMN calc_exp_from real;
+ALTER TABLE presentations
+    ADD COLUMN exp_scale real;
+ALTER TABLE presentations
+    ADD COLUMN exp_tau real;
+ALTER TABLE presentations
+    ADD COLUMN exp_offset real;
+-- TODO keep these?
+ALTER TABLE presentations
+    ADD COLUMN exp_scale_sigma real;
+ALTER TABLE presentations
+    ADD COLUMN exp_tau_sigma real;
+ALTER TABLE presentations
+    ADD COLUMN exp_offset_sigma real;
+-- TODO keep this one?
+-- not exactly sure how to get things into right units here, if rescaling stuff
+-- for numerical reasons. should be pretty easy to work out...
+--ALTER TABLE presentations
+--    ADD COLUMN exp_pcov real[];
+
+ALTER TABLE presentations
+    ADD COLUMN avg_dff_5s real;
+ALTER TABLE presentations
+    ADD COLUMN avg_zchange_5s real;
+
+-- TODO TODO add peak (amplitude) and calculated peak time
 
 
 /* TODO TODO store automated response calls in this table as well? */
@@ -383,15 +473,13 @@ ALTER TABLE responses
 
 
 CREATE TABLE IF NOT EXISTS pid (
-    /*
-    mixture smallint REFERENCES mixtures (mixture) NOT NULL,
-    */
+    -- mixture smallint REFERENCES mixtures (mixture) NOT NULL,
     odor1 smallint,
     odor2 smallint,
 
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
 
-    /* TODO positive / nonneg constraint. alt repr? */
+    -- TODO positive / nonneg constraint. alt repr?
     repeat_num smallint NOT NULL,
 
     from_onset double precision[] NOT NULL,
@@ -417,4 +505,3 @@ ALTER TABLE pid
    just include start frame / time for each chunk?
  */
 
-/* TODO store footprints? how to represent? */
