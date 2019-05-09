@@ -901,6 +901,7 @@ def latest_response_stats(*varargs):
         try:
             rec_analysis_runs = db_analysis_runs.loc[(r,)]
         except KeyError:
+            # TODO should this maybe be an error?
             '''
             print(db_analysis_runs)
             print(referenced_recordings)
@@ -915,7 +916,12 @@ def latest_response_stats(*varargs):
         rec_presentations = db_presentations[
             db_presentations.recording_from == r]
 
-        for g, gdf in rec_presentations.groupby(['comparison', 'repeat_num']):
+        # TODO maybe use other fns here to check it has all repeats / full
+        # comparisons?
+
+        for g, gdf in rec_presentations.groupby(
+            ['comparison', 'odor1', 'odor2', 'repeat_num']):
+
             # TODO rename (maybe just check all response stats at this point...)
             # maybe just get most recent row that has *any* of them?
             # (otherwise would have to combine across rows...)
@@ -949,57 +955,207 @@ def latest_response_stats(*varargs):
     for c in response_stat_cols:
         presentation_stats_df[c] = presentation_stats_df[c].astype('float64')
 
+    for date_col in ('prep_date', 'recording_from'):
+        presentation_stats_df[date_col] = \
+            pd.to_datetime(presentation_stats_df[date_col])
+
     return presentation_stats_df
 
 
 def missing_repeats(df, n_repeats=None):
-    raise NotImplementedError
-    # TODO finish
-    '''
     # TODO n_repeats defalut to 3 or None?
     if n_repeats is None:
         # TODO or should i require input is merged w/ recordings for stimuli
         # data file paths and then just load for n_repeats and stuff?
         max_repeat = df.repeat_num.max()
+        n_repeats = max_repeat + 1
 
         # Expect repeats to include {0,1,2} for 3 repeat experiments.
         #if max_repeat != 2:
     else:
         max_repeat = n_repeats - 1
 
-    # TODO could check len of this groupby consistent w/ expected num blocks
-    # **for this recording** BUT also want to check expected # blocks
-    # **for all recordings for this fly**
-    for g, gdf in df.groupby(['recording_from','comparison']):
-        comparison_max_repeat = gdf.repeat_num.max()
-        # TODO maybe print as well, for troubleshooting?
-        if comparison_max_repeat != max_repeat:
-            # TODO TODO append to missing repeats
-            
+    expected_repeats = set(range(n_repeats))
 
-        comparison_n_repeats = len(gdf.repeat_num.unique())
-        if comparison_n_repeats != (max_repeat + 1):
-            # TODO TODO append to missing repeats
+    repeat_cols = []
+    opt_repeat_cols = [
+        'prep_date',
+        'fly_num',
+        'thorimage_id'
+    ]
+    for oc in opt_repeat_cols:
+        if oc in df.columns:
+            repeat_cols.append(oc)
+
+    repeat_cols += [
+        'recording_from',
+        'comparison',
+        'name1',
+        'name2'#,
+        #'log10_conc_vv1',
+        #'log10_conc_vv2'
+    ]
+    # TODO some issue created by using float concs as a key?
+    # TODO use odor ids instead?
+    missing_repeat_dfs = []
+    for g, gdf in df.groupby(repeat_cols):
+        comparison_n_repeats = gdf.repeat_num.unique()
+
+        no_extra_repeats = (gdf.repeat_num.value_counts() == 1).all()
+        assert no_extra_repeats
+
+        missing_repeats = [r for r in expected_repeats
+            if r not in comparison_n_repeats]
+
+        if len(missing_repeats) > 0:
+            gmeta = gdf[repeat_cols].drop_duplicates().reset_index(drop=True)
+
+        for r in missing_repeats:
+            new_row = gmeta.copy()
+            new_row['repeat_num'] = r
+            missing_repeat_dfs.append(new_row)
+
+    if len(missing_repeat_dfs) == 0:
+        missing_repeats_df = \
+            pd.DataFrame({r: [] for r in repeat_cols + ['repeat_num']})
+    else:
+        # TODO maybe merge w/ odor info so caller doesn't have to, if thats the
+        # most useful for troubleshooting?
+        missing_repeats_df = pd.concat(missing_repeat_dfs, ignore_index=True)
+
+    missing_repeats_df.recording_from = \
+        pd.to_datetime(missing_repeats_df.recording_from)
 
     # TODO should expected # blocks be passed in?
-
-    # TODO should the specific comparisons / odors be checked?
 
     # TODO TODO TODO are comparisons numbered correctly when i break the full
     # panel across recordings within a fly flies??????
     # (shouldn't they not start at 0 on the next recording?)
-
     return missing_repeats_df
-    '''
 
 
-def have_all_repeats(df):
+def have_all_repeats(df, n_repeats=None):
     """
     Returns True if a recording has all blocks gsheet says it has, w/ full
     number of repeats for each. False otherwise.
     """
-    missing_repeats_df = missing_repeats(df)
+    missing_repeats_df = missing_repeats(df, n_repeats=n_repeats)
     if len(missing_repeats_df) == 0:
+        return True
+    else:
+        return False
+
+
+# TODO TODO TODO separately, also check correct # blocks / comparisons per fly
+# (including that comparisons from diff recordings don't overwrite each other)
+def missing_odor_pairs(df):
+    # TODO check that for each comparison, both A, B, and A+B are there
+    # (3 combos of name1, name2, or whichever other odor ids)
+    comp_cols = []
+    opt_rec_cols = [
+        'prep_date',
+        'fly_num',
+        'thorimage_id'
+    ]
+    for oc in opt_rec_cols:
+        if oc in df.columns:
+            comp_cols.append(oc)
+
+    comp_cols += [
+        'recording_from',
+        'comparison'
+    ]
+
+    odor_cols = [
+        'name1',
+        'name2'
+    ]
+
+    incomplete_comparison_dfs = []
+    for g, gdf in df.groupby(comp_cols):
+        comp_odor_pairs = gdf[odor_cols].drop_duplicates()
+        if len(comp_odor_pairs) != 3:
+            incomplete_comparison_dfs.append(gdf[comp_cols].drop_duplicates(
+                ).reset_index(drop=True))
+
+        # TODO generate expected combinations of name1,name2
+        # TODO possible either odor not in db, in which case, would need extra
+        # information to say which odor is actually missing... (would need
+        # stimulus data)
+        '''
+        if len(missing_odor_pairs) > 0:
+            gmeta = gdf[comp_cols].drop_duplicates().reset_index(drop=True)
+
+        for r in missing_odor_pairs:
+            new_row = gmeta.copy()
+            new_row['repeat_num'] = r
+            missing_odor_pair_dfs.append(new_row)
+        '''
+
+    if len(incomplete_comparison_dfs) == 0:
+        incomplete_comparison_df = pd.DataFrame({r: [] for r in comp_cols})
+    else:
+        incomplete_comparison_df = \
+            pd.concat(incomplete_comparison_dfs, ignore_index=True)
+
+    incomplete_comparison_df.recording_from = \
+        pd.to_datetime(incomplete_comparison_df.recording_from)
+
+    return incomplete_comparison_df
+
+
+def have_full_comparisons(df):
+    if len(missing_odor_pairs(df)) == 0:
+        return True
+    else:
+        return False
+
+
+def skipped_comparison_nums(df):
+    rec_cols = []
+    opt_rec_cols = [
+        'prep_date',
+        'fly_num',
+        'thorimage_id'
+    ]
+    for oc in opt_rec_cols:
+        if oc in df.columns:
+            rec_cols.append(oc)
+
+    rec_cols.append('recording_from')
+
+    skipped_comparison_dfs = []
+    for g, gdf in df.groupby(rec_cols):
+        max_comp_num = gdf.comparison.max()
+        min_comp_num = gdf.comparison.min()
+        skipped_comp_nums = [x for x in range(min_comp_num, max_comp_num + 1)
+            if x not in gdf.comparison]
+
+        if len(skipped_comp_nums) > 0:
+            gmeta = gdf[rec_cols].drop_duplicates().reset_index(drop=True)
+
+        for c in skipped_comp_nums:
+            new_row = gmeta.copy()
+            new_row['comparison'] = c
+            skipped_comparison_dfs.append(new_row)
+
+    if len(skipped_comparison_dfs) == 0:
+        skipped_comparison_df = pd.DataFrame({r: [] for r in
+            rec_cols + ['comparison']})
+    else:
+        skipped_comparison_df = \
+            pd.concat(skipped_comparison_dfs, ignore_index=True)
+
+    # TODO move this out of each of these check fns, and put wherever this
+    # columns is generated (in the way that required this cast...)
+    skipped_comparison_df.recording_from = \
+        pd.to_datetime(skipped_comparison_df.recording_from)
+
+    return skipped_comparison_df
+
+
+def no_skipped_comparisons(df):
+    if len(skipped_comparison_nums(df)) == 0:
         return True
     else:
         return False

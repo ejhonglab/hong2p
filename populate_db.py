@@ -31,7 +31,7 @@ import util as u
 
 
 ################################################################################
-verbose = False
+verbose = True
 
 use_cached_gsheet = True
 show_inferred_paths = True
@@ -40,7 +40,6 @@ allow_gsheet_to_restrict_blocks = True
 #only_do_anything_for_analysis = True
 only_do_anything_for_analysis = False
 
-'''
 convert_h5 = False
 calc_timing_info = False
 update_timing_info = False
@@ -52,12 +51,13 @@ calc_timing_info = True
 # TODO if this is False, still check that ti_code_version is there
 update_timing_info = False
 motion_correct = False
+'''
 # TODO test. it's working now, right?
 only_motion_correct_for_analysis = True
 
 process_time_averages = True
 upload_matlab_cnmf_output = False
-ACTUALLY_UPLOAD = True
+ACTUALLY_UPLOAD = False
 
 # TODO make sure that incomplete entries are not preventing full
 # analysis from being inserted, despite setting of this flag
@@ -67,7 +67,6 @@ ACTUALLY_UPLOAD = True
 overwrite_older_analysis = False
 
 ################################################################################
-
 
 if only_do_anything_for_analysis:
     only_motion_correct_for_analysis = True
@@ -420,6 +419,7 @@ analysis_runs = pd.DataFrame({
 u.to_sql_with_duplicates(analysis_runs, 'analysis_runs')
 '''
 
+recording_outcomes = []
 # TODO diff between ** and */ ?
 # TODO os.path.join + os invariant way of looping over dirs
 for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
@@ -438,18 +438,47 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
     except ValueError:
         continue
 
+    recording_outcome = {
+        'date': date_dir,
+        'fly_num': fly_num,
+        'thorimage_dir': '*',
+        'skipped': False,
+        'no_movie': False,
+        'no_mat': False,
+        'unsupported_project': False
+    }
+
     # It's clear the timing information for these experiments is incorrect,
     # though they had a slightly different trial structure.
     # TODO TODO fix get_stiminfo for this case, just in case it might affect
     # future recordings
+    skip = False
     if date_dir == '2019-01-18' or date_dir == '2019-01-17':
-        continue
+        skip = True
     #
     if test_recording is not None:
         if date_dir != test_recording[0] or fly_num != test_recording[1]:
-            continue
+            skip = True
     #
 
+    if skip:
+        recording_outcome['skipped'] = True
+        recording_outcomes.append(recording_outcome)
+        continue
+
+    print('')
+    print('#' * 80)
+    print('#' * 80)
+    print('date_dir:', date_dir)
+    print('fly_num:', fly_num)
+    print('')
+
+    # TODO TODO loop over thorimage dirs and then just find mat files if we are
+    # going to be supporting a trace analysis only path here
+    # (only would really matter for whole trace storage right... still need odor
+    # info to get the rejection criteria from that...)
+    # TODO make dataframe saying whether each entry in mb_team_gsheet df
+    # has cnmf output / timing information / tif / motion correction?
     mat_files = glob.glob(join(analysis_dir, rel_to_cnmf_mat, '*_cnmf.mat'))
     # TODO both in this case and w/ stuff above, maybe don't print anything in
     # case where no data is found
@@ -457,6 +486,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         if verbose:
             print(analysis_dir)
             print('no CNMF output MAT files')
+        recording_outcome['no_mat'] = True
+        recording_outcomes.append(recording_outcome)
         continue
 
     # TODO complain if stuff marked as used for analysis is not found here
@@ -468,17 +499,25 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         thorimage_id = '_' + prefix[1]
 
+        recording_outcome['thorimage_dir'] = thorimage_id
+
         # get_stiminfo also currently fails on this recording, with an assertion
         # error (4/28)
         # TODO also fix get_stiminfo in this case
+        skip = False
         if date_dir == '2019-02-27' and fly_num == 4 and thorimage_id == '_003':
-            continue
+            skip =True
 
         # TODO delete. for debugging.
         if test_recording is not None:
             if thorimage_id != test_recording[2]:
-                continue
+                skip = True
         #
+
+        if skip:
+            recording_outcome['skipped'] = True
+            recording_outcomes.append(recording_outcome)
+            continue
 
         recordings = df.loc[(df.date == date) & (df.fly_num == fly_num) &
                             (df.thorimage_dir == thorimage_id)]
@@ -488,6 +527,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # odors stuff anyway? might not want that now...
         if recording.project != 'natural_odors':
             warnings.warn('project type {} not supported. skipping.')
+            recording_outcome['unsupported_project'] = True
+            recording_outcomes.append(recording_outcome)
             continue
 
         raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
@@ -529,6 +570,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             if curr_entered:
                 print('{}, {}, {} already entered with current analysis'.format(
                     date, fly_num, thorimage_id))
+                # TODO if still going to support this path, add a flag for
+                # recording_outcomes here
                 continue
 
         recordings = pd.DataFrame({
@@ -539,9 +582,14 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         })
 
         if process_time_averages:
+            # TODO TODO TODO just load .raw? (or .tif in case of accidentally
+            # having saved an ome tiff)
+            # just for .raw/.tif where raw would be/.tif in separate tif dir
             tif_path = join(raw_fly_dir, 'tif_stacks', thorimage_id  + '.tif')
             if not exists(tif_path):
                 print('Raw TIFF {} did not exist!'.format(tif_path))
+                recording_outcome['no_movie'] = True
+                recording_outcomes.append(recording_outcome)
                 continue
 
             print('Loading TIFF from {}...'.format(tif_path), flush=True,
@@ -578,8 +626,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # natural_odors project.
         presentations_per_repeat = 3
 
-        presentations_per_block = \
-            n_repeats * presentations_per_repeat
+        presentations_per_block = n_repeats * presentations_per_repeat
 
         if pd.isnull(recording['first_block']):
             first_block = 0
@@ -608,43 +655,44 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'log10_vial_volume_fraction'] for x in data['odors']]
         })
 
-        if ACTUALLY_UPLOAD:
-            u.to_sql_with_duplicates(odors, 'odors')
-
-        # TODO make unique id before insertion? some way that wouldn't require
-        # the IDs, but would create similar tables?
-
-        db_odors = pd.read_sql('odors', u.conn)
-        # TODO TODO in general, the name alone won't be unique, so use another
-        # strategy
-        db_odors.set_index('name', inplace=True)
-
-        # TODO test slicing
-        # TODO make sure if there are extra trials in matlab, these get assigned
-        # to first
-        # + if there are less in matlab, should error
-        odor_pair_list = \
-            data['odor_pair_list'][first_presentation:(last_presentation + 1)]
+        odor_pair_list = data['odor_pair_list'][
+            first_presentation:(last_presentation + 1)]
 
         assert len(odor_pair_list) % presentations_per_block == 0
 
-        # TODO invert to check
-        # TODO is this sql table worth anything if both keys actually need to be
-        # referenced later anyway?
-
-        # TODO only add as many as there were blocks from thorsync timing info?
-        odor1_ids = [db_odors.at[o1,'odor_id'] for o1, _ in odor_pair_list]
-        odor2_ids = [db_odors.at[o2,'odor_id'] for _, o2 in odor_pair_list]
-
-        # TODO TODO make unique first. only need order for filling in the values
-        # in responses.
-        mixtures = pd.DataFrame({
-            'odor1': odor1_ids,
-            'odor2': odor2_ids
-        })
-
         if ACTUALLY_UPLOAD:
+            u.to_sql_with_duplicates(odors, 'odors')
+
+            # TODO make unique id before insertion? some way that wouldn't
+            # require the IDs, but would create similar tables?
+
+            db_odors = pd.read_sql('odors', u.conn)
+            # TODO TODO in general, the name alone won't be unique, so use
+            # another strategy
+            db_odors.set_index('name', inplace=True)
+
+            # TODO test slicing
+            # TODO make sure if there are extra trials in matlab, these get
+            # assigned to first
+            # + if there are less in matlab, should error
+            # TODO invert to check
+            # TODO is this sql table worth anything if both keys actually need
+            # to be referenced later anyway?
+
+            # TODO only add as many as there were blocks from thorsync timing
+            # info?
+            odor1_ids = [db_odors.at[o1,'odor_id'] for o1, _ in odor_pair_list]
+            odor2_ids = [db_odors.at[o2,'odor_id'] for _, o2 in odor_pair_list]
+
+            # TODO TODO make unique first. only need order for filling in the
+            # values in responses.
+            mixtures = pd.DataFrame({
+                'odor1': odor1_ids,
+                'odor2': odor2_ids
+            })
+
             u.to_sql_with_duplicates(mixtures, 'mixtures')
+
         # TODO merge w/ odors to check
 
         # TODO maybe use Remy's thorsync timing info to get num pulses for prep
@@ -666,6 +714,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 print('CNMF still needs to be run on this data')
                 # TODO TODO since process_time_averages is in same loop, maybe
                 # don't continue / otherwise restructure
+                # TODO maybe support recording outcome flag here?
                 continue
 
             # TODO rename to indicate this is not just a filtered version of C?
@@ -697,6 +746,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             ti = u.load_mat_timing_information(mat)
         except matlab.engine.MatlabExecutionError as e:
             print(e)
+            # TODO recording outcome? or just fail here?
             continue
 
         # TODO maybe change to return None/dict rather than deal with lists
@@ -924,6 +974,12 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO TODO either warn or err if len(start_frames) is !=
         # len(odor_pair_list)
 
+        recording_outcomes.append(recording_outcome)
+        if not ACTUALLY_UPLOAD:
+            continue
+
+        # TODO make this work in not ACTUALLY_UPLOAD case w/o odor1_ids
+        # or odor2_ids
         odor_id_pairs = [(o1,o2) for o1,o2 in zip(odor1_ids, odor2_ids)]
 
         comparison_num = -1
@@ -1115,24 +1171,9 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             presentation_id = db_presentations.loc[presentation_ids,
                 'presentation_id'].iat[0]
 
-            # TODO TODO need to handle NaN? won't NaN == NaN -> False make
-            # equality fail?
             # Check correct insertion
-
             db_presentation = db_presentations.loc[presentation_ids,
                 presentation.columns].reset_index(drop=True)
-
-            '''
-            diff = db_presentation == presentation
-            assert len(diff) == 1
-            diff = diff.iloc[0]
-
-            if not diff.all():
-                diff_cols = diff.columns[diff]
-                print('Columns where local and db presentation differ:')
-                # TODO convert to df w/ three cols:
-                # colname, local, db
-            '''
             diff = u.diff_dataframes(presentation, db_presentation)
             if diff is not None:
                 print(diff)
@@ -1235,6 +1276,11 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO check that all frames go somewhere and that frames aren't
         # given to two presentations. check they stay w/in block boundaries.
         # (they don't right now. fix!)
+
+# TODO print recording_outcomes stuff
+recording_outcomes_df = pd.DataFrame(recording_outcomes)
+import ipdb; ipdb.set_trace()
+
 
 # TODO print unused stimfiles / option to delete them
 
