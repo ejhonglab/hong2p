@@ -27,19 +27,20 @@ import pandas as pd
 import matlab.engine
 import tifffile
 
-import util as u
+import hong2p.util as u
 
 
 ################################################################################
 verbose = True
 
-use_cached_gsheet = True
+use_cached_gsheet = False
 show_inferred_paths = True
 allow_gsheet_to_restrict_blocks = True
 
 #only_do_anything_for_analysis = True
 only_do_anything_for_analysis = False
 
+'''
 convert_h5 = False
 calc_timing_info = False
 update_timing_info = False
@@ -50,14 +51,12 @@ calc_timing_info = True
 # If timing info ("ti") already exists in .mat, should we recalculate it?
 # TODO if this is False, still check that ti_code_version is there
 update_timing_info = False
-motion_correct = False
-'''
-# TODO test. it's working now, right?
+motion_correct = True
 only_motion_correct_for_analysis = True
 
 process_time_averages = True
 upload_matlab_cnmf_output = False
-ACTUALLY_UPLOAD = False
+ACTUALLY_UPLOAD = True
 
 # TODO make sure that incomplete entries are not preventing full
 # analysis from being inserted, despite setting of this flag
@@ -338,7 +337,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     # TODO TODO what all metadata is important in the tif? need to script imagej
     # to get most reliable tifs? some python / matlab fn work?
     '''
-    for thorimage_dir in glob.glob(join(full_fly_dir, '_*/')):
+    for thorimage_dir in glob.glob(join(full_fly_dir, '*/')):
         thorimage_id = split(os.path.normpath(thorimage_dir))[-1]
     '''
 
@@ -352,12 +351,15 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     if motion_correct:
         # TODO maybe also look w/o underscore, if that's remy's convention
         for input_tif_path in glob.glob(
-            join(full_fly_dir, 'tif_stacks', '_*.tif')):
+            join(full_fly_dir, 'tif_stacks', '*.tif')):
 
             thorimage_dir = split(input_tif_path)[-1][:-4]
             if only_motion_correct_for_analysis:
                 recordings = used[used.thorimage_dir == thorimage_dir]
                 if len(recordings) == 0:
+                    print(('{}: skipping motion correction b/c ' +
+                        'only_motion_correct_for_analysis').format(
+                        thorimage_dir))
                     continue
 
             matfile = join(matfile_dir, '{}_cnmf.mat'.format(thorimage_dir))
@@ -373,7 +375,14 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             # TODO any reason i'm not just/also directly uploading these...?
             if rig_updated:
                 evil.workspace['rig_code_versions'] = mocorr_code_versions
-                evil.save(matfile, 'rig_code_versions', '-append', nargout=0)
+                # TODO only append if not exists
+                # (timing info calculation could fail but we still want to
+                # mocorr)
+                if exists(matfile):
+                    evil.save(matfile, 'rig_code_versions', '-append',
+                        nargout=0)
+                else:
+                    evil.save(matfile, 'rig_code_versions', nargout=0)
 
                 # Testing version info is stored correctly.
                 evil.clear(nargout=0)
@@ -386,7 +395,10 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
             if nr_updated:
                 evil.workspace['nr_code_versions'] = mocorr_code_versions
-                evil.save(matfile, 'nr_code_versions', '-append', nargout=0)
+                if exists(matfile):
+                    evil.save(matfile, 'nr_code_versions', '-append', nargout=0)
+                else:
+                    evil.save(matfile, 'nr_code_versions', nargout=0)
 
                 # Testing version info is stored correctly.
                 evil.clear(nargout=0)
@@ -494,11 +506,8 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
     # TODO also implement only_do_anything_for_analysis here
     for mat in mat_files:
         print(mat)
-
         prefix = split(mat)[-1].split('_')[:-1]
-
-        thorimage_id = '_' + prefix[1]
-
+        thorimage_id = '_'.join(prefix)
         recording_outcome['thorimage_dir'] = thorimage_id
 
         # get_stiminfo also currently fails on this recording, with an assertion

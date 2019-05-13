@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.max_open_warning': 0})
 import seaborn as sns
 
-import util as u
+import hong2p.util as u
 
 
 # TODO move these to util?
@@ -207,10 +207,15 @@ def main():
     date_plot_min = response_stats.prep_date.min() - date_plot_margin
     date_plot_max = response_stats.prep_date.max() + date_plot_margin
 
-    odor_groups = response_stats.groupby(odor_cols)
-    # TODO count # w/ len2 for sanity checking (should be equal to number of
-    # comparisons and size of my odors panel) (?)
-    print(len(odor_groups))
+    per_odor_analysis = False
+    if per_odor_analysis:
+        odor_groups = response_stats.groupby(odor_cols)
+        # TODO count # w/ len2 for sanity checking (should be equal to number of
+        # comparisons and size of my odors panel) (?)
+        print(len(odor_groups))
+    else:
+        odor_groups = []
+
     for odors, odor_group in odor_groups:
         title = format_mixture(*odors)
         print(title)
@@ -223,7 +228,6 @@ def main():
         fig = axes[0,0].figure
         fig.suptitle(title)
 
-        # TODO plots response stats over days (to notice experimental drift)
         # TODO (one line plot per variable in cols_to_hist)
         # TODO like below, but:
         # - one axes per variable (facetgrid? otherwise use seaborn?)
@@ -258,9 +262,6 @@ def main():
         # same problem as above (otherwise works tho)
         g.set_xticklabels(rotation=90)
 
-        #plt.show()
-        #import ipdb; ipdb.set_trace()
-
         # TODO plot histograms of (a subset of?) the stats conditional on
         # recording ultimately being accepted or not
         # (maybe green vs red overlayed or something?)
@@ -290,8 +291,6 @@ def main():
     #plt.close('all')
     #
 
-    # TODO TODO TODO maybe timeseries across odors, normalized to max across
-    # days or something?
     # TODO first try normalizing w/in each existing plot to see what those look
     # like / if comparable
     sns_df = pd.melt(response_stats, id_vars=id_vars, value_vars=cols_to_hist,
@@ -305,6 +304,9 @@ def main():
     g = sns.FacetGrid(sns_df, col='stat', hue='odor_title', sharey=False,
         xlim=(date_plot_min, date_plot_max))
 
+    # TODO TODO why does legend not just have one for colors and another for
+    # fly_num? (possible?) is still still fly_num and hue still odor,
+    # purely?
     g.map_dataframe(sns.scatterplot, 'prep_date', 'normed_stat',
         style='fly_num')
     # make things kind of hard to read
@@ -314,12 +316,13 @@ def main():
     g.set_ylabels('')
     g.add_legend()
     g.fig.suptitle('Full-frame stats for all odors')
+    g.set_xticklabels(rotation=90)
 
     # TODO maybe look at exp fit params for stuff w/ avg dff change / zchange 
     # over good threshold? or from good experiments?
 
+    import ipdb; ipdb.set_trace()
     plt.show()
-
     import ipdb; ipdb.set_trace()
 
 

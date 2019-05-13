@@ -30,7 +30,7 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
-    QDoubleSpinBox, QLabel, QListWidgetItem)
+    QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea)
 
 import pyqtgraph as pg
 import tifffile
@@ -51,7 +51,7 @@ import caiman
 from caiman.source_extraction.cnmf import params, cnmf
 import caiman.utils.visualization
 
-import util as u
+import hong2p.util as u
 
 
 # TODO also move these two variable defs? (to globals below?) for sake of
@@ -106,6 +106,7 @@ def md5(fname):
 def matlabels(df, rowlabel_fn):
     return df.index.to_frame().apply(rowlabel_fn, axis=1)
 
+# TODO share w/ fn in report_response_stats (both -> util)
 def odors_label(row):
     if row['name1'] == 'paraffin':
         odors = row['name2']
@@ -114,10 +115,6 @@ def odors_label(row):
     else:
         odors = '{} + {}'.format(row['name1'], row['name2'])
     return odors
-
-def odors_and_repeat_label(row):
-    odors = odors_label(row)
-    return '{}\n{}'.format(odors, row['repeat_num'])
 
 def thor_xml_root(filename):
     """Returns etree root of ThorImage XML settings from TIFF filename.
@@ -794,7 +791,10 @@ class Segmentation(QWidget):
         # does the division make sense b/c some validation takes longer than
         # others (and that is what can be in the separate validation tab)?
 
-        self.display_widget = QWidget(self)
+        # TODO TODO put this in a (vertical) scrollarea
+        # TODO or would vboxlayout do that if needed anyway?
+        #self.display_widget = QWidget(self)
+        self.display_widget = QScrollArea(self)
         self.layout.addWidget(self.display_widget)
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
@@ -810,6 +810,7 @@ class Segmentation(QWidget):
 
         # TODO accept / reject dialog beneath this
         # (maybe move save button out of ctrl widget? move reject in there?)
+        # TODO maybe keep these buttons outside of the scroll area?
         display_btns = QWidget(self.display_widget)
         self.display_layout.addWidget(display_btns)
         display_btns.setFixedHeight(100)
@@ -1195,6 +1196,8 @@ class Segmentation(QWidget):
             print('Done processing presentation {}'.format(i))
 
 
+    # TODO some kind of test option / w/ test data for this part that doesn't
+    # require actually running cnmf
     # TODO rename to "process_..." or something?
     def get_cnmf_output(self) -> None:
         self.run_len_seconds = time.time() - self.cnmf_start
@@ -1209,12 +1212,22 @@ class Segmentation(QWidget):
 
         n_footprint_axes = 4 if self.plot_intermediates and not only_init else 1
 
-        # nrows, ncols
-        gs = self.fig.add_gridspec(3, 1, hspace=0, wspace=0)
+
+        plot_traces = True
+        if plot_traces:
+            # nrows, ncols
+            gs = self.fig.add_gridspec(5, 1, hspace=0.05, wspace=0.05)
+            footprint_slice = gs[:2, :]
+            corr_slice = gs[2, :]
+            trace_slice = gs[3:, :]
+        else:
+            gs = self.fig.add_gridspec(3, 1, hspace=0.05, wspace=0.05)
+            footprint_slice = gs[:-1, :]
+            corr_slice = gs[-1, :]
 
         #contour_axes = self.fig.subplots(n_footprint_axes, 1,
         #    squeeze=False, sharex=True, sharey=True)
-        footprint_gs = gs[:-1, :].subgridspec(
+        footprint_gs = footprint_slice.subgridspec(
             n_footprint_axes, 1, hspace=0, wspace=0)
 
         axs = []
@@ -1231,7 +1244,8 @@ class Segmentation(QWidget):
 
         # 2 rows: one for correlation matrices ordered as in experiment,
         # and the other for matrices ordered by odor
-        corr_gs = gs[-1, :].subgridspec(2, self.n_blocks, hspace=0, wspace=0)
+        corr_gs = corr_slice.subgridspec(2, self.n_blocks,
+            hspace=0.1, wspace=0.1)
 
         axs = []
         #ax0 = None
@@ -1333,8 +1347,6 @@ class Segmentation(QWidget):
                 self.db_odors.reset_index())
 
             print(presentation_df.shape)
-            # TODO TODO TODO is self.recordings really what i want here????
-            raise NotImplementedError('check self.recordings is what i want')
             presentation_df = u.merge_recordings(
                 presentation_df, self.recordings)
 
@@ -1439,9 +1451,23 @@ class Segmentation(QWidget):
 
             ticklabels = matlabels(presentation_order_trial_mean_corrs,
                 odors_label)
+            # TODO maybe use abbreviation that won't need a separate table to be
+            # meaningful...
+            # TODO sort s.t. always goes A,B,C in odor corr?
+            odor2abbrev = {o: chr(ord('A') + i) for i, o in
+                enumerate(set(ticklabels))}
+            # TODO maybe sort keys first?
+
+            abbrev2odor = {v: k for k, v in odor2abbrev}
+            print('\nOdor abbreviations:')
+            for k in sorted(abbrev2odor.keys()):
+                print('{}: {}'.format(k, abbrev2odor[k]))
+            print('')
+
+            abbreviated_labels = [odor2abbrev[o] for o in ticklabels]
 
             matshow(presentation_order_trial_mean_corrs,
-                ticklabels=ticklabels,
+                ticklabels=abbreviated_labels,
                 colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
                     ' correlation'),
                 #title=fly_comparison_title,
@@ -1452,9 +1478,10 @@ class Segmentation(QWidget):
 
             ticklabels = \
                 matlabels(odor_order_trial_mean_corrs, odors_label)
+            abbreviated_labels = [odor2abbrev[o] for o in ticklabels]
 
             matshow(odor_order_trial_mean_corrs,
-                ticklabels=ticklabels,
+                ticklabels=abbreviated_labels,
                 colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
                     ' correlation'),
                 #title=fly_comparison_title,

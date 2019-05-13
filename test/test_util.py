@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 import pandas as pd
 
-import util as u
+import hong2p.util as u
 
 
 test_df = pd.DataFrame({

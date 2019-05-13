@@ -6,3 +6,5 @@ google_sheet_link.txt
 .default_cnmf_params.json
 *.p
 *.txt
+.eggs/
+*.egg-info/

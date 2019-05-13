@@ -360,6 +360,7 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     # (i.e. w/ one of the keys null)
     df.loc[pd.isnull(df[keys]).any(axis=1), 'recording_num'] = np.nan
 
+    df['stimulus_data_file'] = df['stimulus_data_file'].fillna(method='ffill')
     # TODO delete hack after dealing w/ remy's conventions (some of which were
     # breaking the code assuming my conventions)
     df.drop(df[df.project != 'natural_odors'].index, inplace=True)
@@ -373,8 +374,16 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
         missing_thorimage = pd.isnull(df.thorimage_dir)
         missing_thorsync = pd.isnull(df.thorsync_dir)
 
-    df['thorimage_num'] = df.thorimage_dir.apply(lambda x:
-        np.nan if pd.isnull(x) else int(x[1:]))
+    def thorimage_num(x):
+        if pd.isnull(x) or not (x[0] == '_' and len(x) == 4):
+            return np.nan
+        try:
+            n = int(x[1:])
+            return n
+        except ValueError:
+            return np.nan
+        
+    df['thorimage_num'] = df.thorimage_dir.apply(thorimage_num)
     df['numbering_consistent'] = \
         pd.isnull(df.thorimage_num) | (df.thorimage_num == df.recording_num)
 
@@ -419,8 +428,11 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     # TODO TODO check for conditions in which we might need to renumber
     # recording num? (dupes / any entered numbers along the way that are
     # inconsistent w/ recording_num results)
+    # TODO update to handle case where thorimage dir does not start w/
+    # _ and is not just 3 digits after that?
+    # (see what format other stuff from day is?)
     df.thorimage_dir.fillna(df.recording_num.apply(lambda x:
-        np.nan if pd.isnull(x) else'_{:03d}'.format(int(x))), inplace=True)
+        np.nan if pd.isnull(x) else '_{:03d}'.format(int(x))), inplace=True)
 
     df.thorsync_dir.fillna(df.recording_num.apply(lambda x:
         np.nan if pd.isnull(x) else 'SyncData{:03d}'.format(int(x))),
@@ -1185,6 +1197,75 @@ def drop_orphaned_presentations():
 # the same thing...
 def drop_incomplete_presentations():
     raise NotImplementedError
+
+
+def smooth(x, window_len=11, window='hanning'):
+    """smooth the data using a window with requested size.
+    
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal 
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+    
+    input:
+        x: the input signal 
+        window_len: the dimension of the smoothing window; should be an odd
+            integer
+        window: the type of window from 'flat', 'hanning', 'hamming',
+            'bartlett', 'blackman' flat window will produce a moving average
+            smoothing.
+
+    output:
+        the smoothed signal
+        
+    example:
+
+    t=linspace(-2,2,0.1)
+    x=sin(t)+randn(len(t))*0.1
+    y=smooth(x)
+    
+    see also: 
+    
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+    scipy.signal.lfilter
+ 
+    TODO: the window parameter could be the window itself if an array instead of
+    a string
+    NOTE: length(output) != length(input), to correct this: return
+    y[(window_len/2-1):-(window_len/2)] instead of just y.
+    """
+
+    if x.ndim != 1:
+        raise ValueError("smooth only accepts 1 dimension arrays.")
+
+    if x.size < window_len:
+        raise ValueError("Input vector needs to be bigger than window size.")
+
+
+    if window_len<3:
+        return x
+
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise ValueError("Window is on of 'flat', 'hanning', " +
+            "'hamming', 'bartlett', 'blackman'")
+
+
+    # is this necessary?
+    #s = np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
+
+    #print(len(s))
+    if window == 'flat': #moving average
+        w = np.ones(window_len, 'd')
+    else:
+        w = eval('np.' + window + '(window_len)')
+
+    #y = np.convolve(w/w.sum(), s, mode='valid')
+    # not sure what to change above to get this to work...
+
+    y = np.convolve(w/w.sum(), x, mode='same')
+
+    return y
 
 
 # TODO finish translating. was directly translating matlab registration script
