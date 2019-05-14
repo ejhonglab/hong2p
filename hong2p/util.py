@@ -807,6 +807,20 @@ def read_movie(thorimage_dir):
     return data
 
 
+def crop_to_nonzero(matrix, margin=0):
+    coords = np.argwhere(matrix > 0)
+    x_min, y_min = coords.min(axis=0)
+    x_max, y_max = coords.max(axis=0)
+
+    x_min = x_min - margin
+    x_max = x_max + margin
+    y_min = y_min - margin
+    y_max = y_max + margin
+
+    cropped = matrix[x_min:x_max+1, y_min:y_max+1]
+    return cropped, ((x_min, x_max), (y_min, y_max))
+
+
 def exp_decay(t, scale, tau, offset):
     # TODO is this the usual definition of tau (as in RC time constant?)
     return scale * np.exp(-t / tau) + offset
@@ -1386,3 +1400,71 @@ def motion_correct_to_tiffs(thorimage_dir, output_dir):
 
     raise NotImplementedError
 """
+
+
+def matlabels(df, rowlabel_fn):
+    return df.index.to_frame().apply(rowlabel_fn, axis=1)
+
+
+def matshow(df, title=None, ticklabels=None, colorbar_label=None,
+    group_ticklabels=False, ax=None):
+
+    made_fig = False
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        made_fig = True
+
+    fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
+
+    # TODO TODO enable again
+    # TODO maybe one shared cbar? or fixed range or something?
+    cax = ax.matshow(df)
+
+    # just doing it in this case now to support kc_analysis use case
+    if made_fig:
+        cbar = fig.colorbar(cax)
+
+        if colorbar_label is not None:
+            # rotation=270?
+            cbar.ax.set_ylabel(colorbar_label)
+
+    # TODO automatically only group labels in case where all repeats are
+    # adjacent?
+    if group_ticklabels:
+        n_repeats = int(len(ticklabels) / len(ticklabels.unique()))
+        # Assumes order is preserved if labels are grouped at input.
+        # May need to calculate some other way if not always true.
+        ticklabels = ticklabels.unique()
+        # TODO make fontsize / weight more in this case?
+        tick_step = n_repeats
+    else:
+        tick_step = 1
+
+    # TODO need to support abbreviations anyway?
+    # legend to full names off to side? global mapping to a table?
+
+    if ticklabels is not None:
+        ax.set_yticklabels(ticklabels, fontsize=fontsize,
+            rotation='horizontal')
+        #    rotation='vertical' if group_ticklabels else 'horizontal')
+        ax.set_xticklabels(ticklabels, fontsize=fontsize,
+            rotation='vertical')
+        #    rotation='horizontal' if group_ticklabels else 'vertical')
+
+        if group_ticklabels:
+            offset = n_repeats / 2 - 0.5
+        else:
+            offset = 0
+
+        ax.set_yticks(np.arange(0, len(df), tick_step) + offset)
+        ax.set_xticks(np.arange(0, len(df.columns), tick_step) + offset)
+
+    if title is not None:
+        ax.set_xlabel(title)
+
+    if made_fig:
+        plt.tight_layout()
+        return fig
+
+
