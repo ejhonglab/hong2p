@@ -1640,6 +1640,9 @@ def pair_ordering(comparison_df):
 
 def matshow(df, title=None, ticklabels=None, colorbar_label=None,
     group_ticklabels=False, ax=None, fontsize=None):
+    # TODO shouldn't this get ticklabels from matrix if nothing else?
+    # maybe at least in the case when both columns and row indices are all just
+    # one level of strings?
 
     made_fig = False
     if ax is None:
@@ -1647,15 +1650,33 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
         ax = fig.add_subplot(111)
         made_fig = True
 
+    def one_level_str_index(index):
+        return (len(index.shape) == 1 and
+            all(index.map(lambda x: type(x) is str)))
+
+    if ticklabels is None:
+        if one_level_str_index(df.columns):
+            xticklabels = df.columns
+        else:
+            xticklabels = None
+        if one_level_str_index(df.index):
+            yticklabels = df.index
+        else:
+            yticklabels = None
+    else:
+        assert df.shape[0] == df.shape[1]
+        # TODO maybe also assert indices are actually equal?
+        xticklabels = ticklabels
+        yticklabels = ticklabels
+
     # TODO update this formula to work w/ gui corrs (too big now)
     if fontsize is None:
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
-    # TODO TODO enable again
-    # TODO maybe one shared cbar? or fixed range or something?
     cax = ax.matshow(df)
 
     # just doing it in this case now to support kc_analysis use case
+    # TODO put behind flag or something
     if made_fig:
         cbar = fig.colorbar(cax)
 
@@ -1663,46 +1684,47 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
             # rotation=270?
             cbar.ax.set_ylabel(colorbar_label)
 
-    # TODO automatically only group labels in case where all repeats are
-    # adjacent?
-    if group_ticklabels:
-        # TODO support ticklabels == None case here...
-        ticklabels = pd.Series(ticklabels)
-        n_repeats = int(len(ticklabels) / len(ticklabels.unique()))
+    def grouped_labels_info(labels):
+        if not group_ticklabels or labels is None:
+            return labels, 1, 0
+
+        labels = pd.Series(labels)
+        n_repeats = int(len(labels) / len(labels.unique()))
+
+        # TODO TODO assert same # things from each unique element.
+        # that's what this whole tickstep thing seems to assume.
+
         # Assumes order is preserved if labels are grouped at input.
         # May need to calculate some other way if not always true.
-        ticklabels = ticklabels.unique()
-        # TODO make fontsize / weight more in this case?
+        labels = labels.unique()
         tick_step = n_repeats
-    else:
-        tick_step = 1
+        offset = n_repeats / 2 - 0.5
+        return labels, tick_step, offset
 
-    # TODO need to support abbreviations anyway?
-    # legend to full names off to side? global mapping to a table?
+    # TODO automatically only group labels in case where all repeats are
+    # adjacent?
+    # TODO make fontsize / weight more in group_ticklabels case?
+    xticklabels, xstep, xoffset = grouped_labels_info(xticklabels)
+    yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
 
-    if ticklabels is not None:
-        ax.set_yticklabels(ticklabels, fontsize=fontsize,
-            rotation='horizontal')
-        #    rotation='vertical' if group_ticklabels else 'horizontal')
-
+    if xticklabels is not None:
         # TODO nan / None value aren't supported in ticklabels are they?
         # (couldn't assume len is defined if so)
-        if all([len(x) == 1 for x in ticklabels]):
+        if all([len(x) == 1 for x in xticklabels]):
             xtickrotation = 'horizontal'
         else:
             xtickrotation = 'vertical'
 
-        ax.set_xticklabels(ticklabels, fontsize=fontsize,
+        ax.set_xticklabels(xticklabels, fontsize=fontsize,
             rotation=xtickrotation)
         #    rotation='horizontal' if group_ticklabels else 'vertical')
+        ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
 
-        if group_ticklabels:
-            offset = n_repeats / 2 - 0.5
-        else:
-            offset = 0
-
-        ax.set_yticks(np.arange(0, len(df), tick_step) + offset)
-        ax.set_xticks(np.arange(0, len(df.columns), tick_step) + offset)
+    if yticklabels is not None:
+        ax.set_yticklabels(yticklabels, fontsize=fontsize,
+            rotation='horizontal')
+        #    rotation='vertical' if group_ticklabels else 'horizontal')
+        ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
 
     if title is not None:
         ax.set_xlabel(title)
@@ -1727,8 +1749,8 @@ def plot_pair_n(df, *args):
         Data already collected w/ odor pairs.
 
     odor_panel (pd.DataFrame): (optional) DataFrame with columns:
-        - name1
-        - name2
+        - odor_1
+        - odor_2
         - reason (maybe make this optional?)
         The odor pairs experiments are supposed to collect data for.
     """
@@ -1761,7 +1783,22 @@ def plot_pair_n(df, *args):
 
     # Making the rectangular matrix pair_n square
     # (same indexes on row and column axes)
-    full_pair_n = pair_n.combine_first(pair_n.T).fillna(0.0)
+
+    if odor_panel is None:
+        # This is basically equivalent to the logic in the branch below,
+        # although the index is not defined separately here.
+        full_pair_n = pair_n.combine_first(pair_n.T).fillna(0.0)
+    else:
+        # TODO [change odor<n> to / handle] name<n>, to be consistent w/ above
+        odor_panel = odor_panel.pivot_table(index='odor_1', columns='odor_2',
+            aggfunc=lambda x: True, values='reason')
+
+        full_panel_index = odor_panel.index.union(odor_panel.columns)
+        full_data_index = pair_n.index.union(pair_n.columns)
+        assert full_data_index.isin(full_panel_index).all()
+        # TODO also check no pairs occur in data that are not in panel
+
+        import ipdb; ipdb.set_trace()
 
     # TODO TODO TODO maybe use this combine_first thing on odor_panel
     # and then use those INDICES (but not values, as w/ combine_first)
@@ -1934,8 +1971,9 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='none',
     if title is not None:
         #pad = 40
         pad = 15
+        # was also using default fontsize here in kc_analysis use case
         # increment pad by 5 for each newline in title?
-        bax.set_title(title, pad=pad)
+        bax.set_title(title, pad=pad, fontsize=9)
 
     bax.set_ylabel('Cell')
 

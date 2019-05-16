@@ -30,7 +30,8 @@ from PyQt5.QtGui import QColor, QKeySequence
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
-    QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut)
+    QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut,
+    QSplitter, QToolButton)
 
 import pyqtgraph as pg
 import tifffile
@@ -252,13 +253,21 @@ class Segmentation(QWidget):
         curr_entered = curr_entered.any()
         '''
 
-        # TODO maybe make slider between data viewer and everything else?
-        # sliders for everything in this layout?
-        self.layout = QHBoxLayout(self)
-        self.setLayout(self.layout)
+        self.splitter = QSplitter(self)
+        self.layout = QVBoxLayout(self)
+        self.layout.addWidget(self.splitter)
+
+        self.data_and_ctrl_widget = QWidget(self)
+        self.splitter.addWidget(self.data_and_ctrl_widget)
+
+        self.data_and_ctrl_layout = QHBoxLayout(self.data_and_ctrl_widget)
+        # TODO try deleting all calls to setLayout. may work fine?
+        # (as long as layout inits are passed the same widget)
+        self.data_and_ctrl_widget.setLayout(self.data_and_ctrl_layout)
+        self.data_and_ctrl_layout.setContentsMargins(0, 0, 0, 0)
 
         self.list = QListWidget(self)
-        self.layout.addWidget(self.list)
+        self.data_and_ctrl_layout.addWidget(self.list)
         self.list.setFixedWidth(210)
 
         # TODO option to hide all rigid stuff / do if non-rigid is there / just
@@ -293,6 +302,12 @@ class Segmentation(QWidget):
                 (presentations.thorimage_id == thorimage_id)
             ).any()
 
+            # TODO TODO TODO will need to change this to something actually
+            # being accepted, w/ new populate_db code that adds stuff to
+            # everything
+            # TODO TODO probably make some kind of QTreeView where child nodes
+            # are analysis runs (colored as accepted or not) and parents are
+            # the motion corrected recording tifs as now
             if analyzed:
                 # TODO below, get item and set bg color if accepted
                 item.setBackground(QColor('#7fc97f'))
@@ -329,7 +344,7 @@ class Segmentation(QWidget):
             
         # TODO or should this get a layout as input?
         cnmf_ctrl_widget = QWidget(self)
-        self.layout.addWidget(cnmf_ctrl_widget)
+        self.data_and_ctrl_layout.addWidget(cnmf_ctrl_widget)
 
         cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
         cnmf_ctrl_widget.setLayout(cnmf_ctrl_layout)
@@ -601,15 +616,20 @@ class Segmentation(QWidget):
 
         # TODO set tab index to most likely to change? spatial?
 
-        # TODO TODO is there really any point to displaying anything here?
-        # almost seems like button->dialog or something would be more
-        # appropriate if not...
-        # does the division make sense b/c some validation takes longer than
-        # others (and that is what can be in the separate validation tab)?
-
-        # TODO or would vboxlayout do that if needed anyway?
         self.display_widget = QWidget(self)
-        self.layout.addWidget(self.display_widget)
+        self.splitter.addWidget(self.display_widget)
+
+        self.splitter_handle = self.splitter.handle(1)
+        self.splitter_bar_layout = QVBoxLayout()
+        self.splitter_bar_layout.setContentsMargins(0, 0, 0, 0)
+        self.splitter_btn = QToolButton(self.splitter_handle)
+        self.splitter_btn.clicked.connect(self.toggle_splitter)
+        self.splitter_bar_layout.addWidget(self.splitter_btn)
+        self.splitter_handle.setLayout(self.splitter_bar_layout)
+
+        self.splitter_btn.setArrowType(Qt.LeftArrow)
+        self.splitter_collapsed = False
+
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
 
@@ -620,23 +640,8 @@ class Segmentation(QWidget):
         # unclear... probably no?
         ###self.mpl_canvas.fixed_dpi = 100
         
-        # TODO TODO does each change of fig size correspond to (immediate?)
-        # change in mpl_canvas, which only differs by units, or does canvas
-        # need to be explicitly resized
-        # TODO can canvas size exceed scroll area size? is that what gets the
-        # scroll bars to be active?
-
-        # TODO maybe set size for each different thing i'll show here
-        # (before showing trace should probably be more square,
-        # when showing traces from multiple blocks as rows, should probably make
-        # the whole thing taller, and probably set fig height as a fn of # of 
-        # blocks)
-        # TODO TODO want canvas to always be scrollable and pannable in all
-        # dimensions though!
-        # TODO test that clipping doesn't change what is serialized. especially
+        # TODO test that zoom doesn't change what is serialized. especially
         # the png / svgs
-        # TODO TODO make this fill up whole available space, as mpl_canvas had
-        # done before!
         self.scrollable_canvas = QScrollArea(self)
         self.current_zoom = 1.0
         self.max_zoom = 5.0
@@ -644,28 +649,11 @@ class Segmentation(QWidget):
         self.fig_w_inches = 7
         self.fig_h_inches = 7
 
-        # TODO change these back to only being enabled as necessary,
-        # once i figure out what was preventing them from showing at all
-        # / how to resize this + mpl_canvas appropriately
-        '''
-        self.scrollable_canvas.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarAlwaysOn)
-        self.scrollable_canvas.setVerticalScrollBarPolicy(
-            Qt.ScrollBarAlwaysOn)
-        '''
-
         self.scrollable_canvas.setWidget(self.mpl_canvas)
         self.scrollable_canvas.setWidgetResizable(False)
         # This looks for the eventFilter function of this class.
         self.scrollable_canvas.viewport().installEventFilter(self)
 
-        #self.display_layout.addWidget(self.mpl_canvas)
-        # TODO TODO why does this not fill all space as mpl_canvas did
-        # (within this vboxlayout)
-        # what changes how widgets behave in a layout?
-        # is there just more hidden stuff to the bottom and right of the
-        # mpl canvas bit?
-        # TODO color widget to show its extent?
         self.display_layout.addWidget(self.scrollable_canvas)
 
         self.nav_bar = NavigationToolbar(self.mpl_canvas, self)
@@ -683,9 +671,8 @@ class Segmentation(QWidget):
         # (break into fn that parses cnmf docstring and another that takes that
         # output and makes the widget)
 
-        # TODO accept / reject dialog beneath this
-        # (maybe move save button out of ctrl widget? move reject in there?)
         # TODO maybe keep these buttons outside of the scroll area?
+        # maybe move save button out of ctrl widget?
         display_btns = QWidget(self.display_widget)
         self.display_layout.addWidget(display_btns)
         display_btns.setFixedHeight(100)
@@ -723,6 +710,21 @@ class Segmentation(QWidget):
         # TODO delete / handle differently
         self.ACTUALLY_UPLOAD = True
         #
+
+
+    def toggle_splitter(self):
+        # TODO maybe go back to last position when uncollapsing
+        # (and save position when collapsing)
+        if self.splitter_collapsed:
+            self.splitter_btn.setArrowType(Qt.LeftArrow)
+            self.splitter.setSizes(self.last_splitter_sizes)
+            self.splitter_collapsed = False
+        else:
+            # TODO set arrow dir (can this be changed / how?)
+            self.splitter_btn.setArrowType(Qt.RightArrow)
+            self.last_splitter_sizes = self.splitter.sizes()
+            self.splitter.setSizes([0, 1])
+            self.splitter_collapsed = True
 
 
     # TODO delete. for debugging scroll area.
@@ -1224,6 +1226,9 @@ class Segmentation(QWidget):
             h_inches_traceplots)
 
         self.set_fig_size(fig_w_inches, fig_h_inches)
+        # TODO maybe there isn't always too much space between this and first
+        # thing, but there is in some cases. avoid if possible.
+        self.fig.suptitle(self.recording_title)
 
         plot_traces = True
         if plot_traces:
@@ -1232,18 +1237,24 @@ class Segmentation(QWidget):
             trace_rows = 2 * sum([top_components, random_components])
             # nrows, ncols
             gs = self.fig.add_gridspec(3 + trace_rows, 1,
-                hspace=0.3, wspace=0.05)
+                hspace=0.4, wspace=0.05)
 
+            # TODO maybe redo gs... maybe it should be direved from the
+            # h/w_inches stuff? (if everything gets 2/6 why not just 1/3...?)
             footprint_slice = gs[:2, :]
-            corr_slice = gs[2, :]
+            # (end slice is not included, as always, so it's same size as above)
+            corr_slice = gs[2:4, :]
             # TODO maybe stack each block vertically here, and then make total
             # rows in gs depend on # of blocks??? (maybe put corrs to the side?)
-            all_blocks_trace_gs = gs[3:, :].subgridspec(trace_rows,
-                self.n_blocks, hspace=0.2, wspace=0.15)
+            # TODO might make sense to have one grid unit per set of two
+            # subplots, so space for shared title above the two is separate from
+            # space between the two (e.g. the "Top components" thing)
+            all_blocks_trace_gs = gs[4:, :].subgridspec(trace_rows,
+                self.n_blocks, hspace=0.3, wspace=0.15)
         else:
             gs = self.fig.add_gridspec(3, 1, hspace=0.05, wspace=0.05)
-            footprint_slice = gs[:-1, :]
-            corr_slice = gs[-1, :]
+            footprint_slice = gs[:-2, :]
+            corr_slice = gs[-2:, :]
 
         footprint_gs = footprint_slice.subgridspec(
             n_footprint_axes, 1, hspace=0, wspace=0)
@@ -1874,7 +1885,10 @@ class Segmentation(QWidget):
         date = datetime.strptime(date_dir, '%Y-%m-%d')
         fly_num = int(fly_dir)
         thorimage_id = tiff_just_fname[:4]
-        print('{}/{}/{}'.format(date_dir, fly_num, thorimage_id))
+
+        self.recording_title = '{}/{}/{}'.format(
+            date_dir, fly_num, thorimage_id)
+        print(self.recording_title)
 
         # Trying all the operations that need to find files before setting any
         # instance variables, so that if those fail, we can stay on the current
@@ -2264,6 +2278,7 @@ class Segmentation(QWidget):
 
         ax = self.fig.add_subplot(111)
         ax.plot(np.mean(self.movie, axis=(1,2)))
+        ax.set_title(self.recording_title)
         self.mpl_canvas.draw()
 
         self.run_cnmf_btn.setEnabled(True)
