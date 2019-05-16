@@ -16,17 +16,14 @@ import xml.etree.ElementTree as etree
 import copy
 import pprint
 
-from sqlalchemy import create_engine, MetaData, Table
-# TODO or just use sqlalchemy.types?
-from sqlalchemy.sql import sqltypes
-from sqlalchemy.dialects import postgresql
-import h5py
 import numpy as np
 from scipy.sparse import coo_matrix
 import pandas as pd
 import matlab.engine
 import tifffile
 
+# TODO maybe just move these fns into a module hong2p, rather than hong2p util?
+# or maybe __init__ stuff to get them importable under hong2p?
 import hong2p.util as u
 
 
@@ -54,9 +51,14 @@ update_timing_info = False
 motion_correct = True
 only_motion_correct_for_analysis = True
 
+'''
 process_time_averages = True
 upload_matlab_cnmf_output = False
 ACTUALLY_UPLOAD = True
+'''
+process_time_averages = False
+upload_matlab_cnmf_output = False
+ACTUALLY_UPLOAD = False
 
 # TODO make sure that incomplete entries are not preventing full
 # analysis from being inserted, despite setting of this flag
@@ -367,8 +369,23 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             print('\nRunning normcorre_tiff on', input_tif_path)
             # TODO only register one way by default? nonrigid? args to
             # configure?
-            rig_updated, nr_updated = evil.normcorre_tiff(input_tif_path,
-                analysis_fly_dir, nargout=2)
+            try:
+                rig_updated, nr_updated = evil.normcorre_tiff(
+                    input_tif_path, analysis_fly_dir, nargout=2)
+
+            except matlab.engine.MatlabExecutionError as e:
+                # TODO check if it is the "Unable to perform assignment
+                # because..." error (as opposed to memory error) ->
+                if len(e.args) >= 1:
+                    err_lines = e.args[0].split('\n')
+                    if len(err_lines) >= 2 and err_lines[-2].startswith(
+                        'Unable to perform assignment because the size'):
+                        # TODO check dims w. tifffile? maybe concat didn't work
+                        # correctly? resave? just load in python?
+                        movie = tifffile.imread(input_tif_path)
+                        print(movie.shape)
+                        import ipdb; ipdb.set_trace()
+                continue
 
             mocorr_code_versions = [matlab_code_version, matlab_caiman_version]
 

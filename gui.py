@@ -25,12 +25,12 @@ import pprint
 import traceback
 
 from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
-    Qt)
-from PyQt5.QtGui import QColor
+    Qt, QEvent)
+from PyQt5.QtGui import QColor, QKeySequence
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
-    QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea)
+    QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut)
 
 import pyqtgraph as pg
 import tifffile
@@ -54,45 +54,24 @@ import caiman.utils.visualization
 import hong2p.util as u
 
 
-# TODO also move these two variable defs? (to globals below?) for sake of
-# consistency?
-recording_cols = [
-    'prep_date',
-    'fly_num',
-    'thorimage_id'
-]
-# TODO might need to add analysis here (although if i'm using it before upload,
-# it should always be most recent anyway...)
-trial_only_cols = [
-    'comparison',
-    'name1',
-    'name2',
-    'repeat_num'
-]
-trial_cols = recording_cols + trial_only_cols
 # Maybe rename. It's these cols once already in a recording + comparison.
 cell_cols = ['name1','name2','repeat_num','cell']
 
-nas_prefix = u.nas_prefix()
-
-# TODO use env var like kc_analysis currently does for prefix after refactoring
-raw_data_root = join(nas_prefix, 'mb_team/raw_data')
-# TODO support a local and a remote one ([optional] local copy for faster repeat
-# analysis)?
-analysis_output_root = join(nas_prefix, 'mb_team/analysis_output')
+raw_data_root = u.raw_data_root()
+analysis_output_root = u.analysis_output_root()
+stimfile_root = u.stimfile_root()
 
 use_cached_gsheet = False
 show_inferred_paths = True
 overwrite_older_analysis = True
 
 df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
-
+#import ipdb; ipdb.set_trace()
 
 rel_to_cnmf_mat = 'cnmf'
 
-stimfile_root = join(nas_prefix, 'mb_team/stimulus_data_files')
-
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
+# TODO maybe assert no duplicate names first
 natural_odors_concentrations.set_index('name', inplace=True)
 
 
@@ -103,100 +82,12 @@ def md5(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest() 
 
-# TODO share w/ fn in report_response_stats (both -> util)
-def odors_label(row):
-    if row['name1'] == 'paraffin':
-        odors = row['name2']
-    elif row['name2'] == 'paraffin':
-        odors = row['name1']
-    else:
-        odors = '{} + {}'.format(row['name1'], row['name2'])
-    return odors
-
-def thor_xml_root(filename):
-    """Returns etree root of ThorImage XML settings from TIFF filename.
-    """
-    if filename.startswith(analysis_output_root):
-        filename = filename.replace(analysis_output_root, raw_data_root)
-
-    parts = filename.split(sep)
-    thorimage_id = '_'.join(parts[-1].split('_')[:-1])
-
-    xml_fname = sep.join(parts[:-2] + [thorimage_id, 'Experiment.xml'])
-    return etree.parse(xml_fname).getroot()
-
-def cnmf_metadata_from_thor(filename):
-    xml_root = thor_xml_root(filename)
-    lsm = xml_root.find('LSM').attrib
-    fps = float(lsm['frameRate']) / float(lsm['averageNum'])
-    # "spatial resolution of FOV in pixels per um" "(float, float)"
-    # TODO do they really mean pixel/um, not um/pixel?
-    pixels_per_um = 1 / float(lsm['pixelSizeUM'])
-    dxy = (pixels_per_um, pixels_per_um)
-    # TODO maybe load dims anyway?
-    return {'fr': fps, 'dxy': dxy}
-
-def fps_from_thor(df):
-    # TODO assert unique first?
-    thorimage_dir = df['thorimage_path'].iat[0]
-    thorimage_dir = join(nas_prefix, *thorimage_dir.split('/')[3:])
-
-    thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
-    xml_root = etree.parse(thorimage_xml_path).getroot()
-    lsm = xml_root.find('LSM').attrib
-    fps = float(lsm['frameRate']) / float(lsm['averageNum'])
-    return fps
-
-
-def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
-    """
-    """
-    dims = footprint.shape
-    padded_footprint = np.zeros(tuple(d + 2 for d in dims))
-    padded_footprint[tuple(slice(1,-1) for _ in dims)] = footprint
-    
-    mpl_contour = ax.contour(padded_footprint > 0, [0.5], **kwargs)
-    # TODO which of these is actually > 1 in multiple comps case?
-    # handle that one approp w/ err_on_multiple_comps!
-    assert len(mpl_contour.collections) == 1
-    paths = mpl_contour.collections[0].get_paths()
-    assert len(paths) == 1
-    contour = paths[0].vertices
-
-    # Correct index change caused by padding.
-    return contour - 1
-
-
 # TODO worth allowing selection of a folder?
 # TODO worth saving labels to some kind of file (CSV?) in case database not
 # reachable? fn to load these to database?
 # TODO alternative to database for input (for metadata mostly)?
 
-# TODO move natural_odors/kc_analysis.py/plot_traces here?
-
-# TODO TODO support loading single comparisons from tiffs in imaging_util
-
-# TODO TODO TODO factor all code duplicated between here and kc_analysis into a
-# util module in this package
-def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
-    date_dir = date.strftime('%Y-%m-%d')
-    fly_num = str(fly_num)
-
-    tif_dir = join(analysis_output_root, date_dir, fly_num, 'tif_stacks')
-
-    nr_tif = join(tif_dir, '{}_nr.tif'.format(thorimage_id))
-    rig_tif = join(tif_dir, '{}_rig.tif'.format(thorimage_id))
-    tif = None
-    if exists(nr_tif):
-        tif = nr_tif
-    elif exists(rig_tif):
-        tif = rig_tif
-
-    if tif is None:
-        raise IOError('No motion corrected TIFs found in {}'.format(tif_dir))
-
-    return tif
-
+# TODO TODO support loading single comparisons from tiffs in util
 
 def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
     """
@@ -218,8 +109,8 @@ def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
                     tif_glob = '*.tif' if include_rigid else '*_nr.tif'
                     fly_tifs = glob.glob(join(tif_dir, tif_glob))
 
-                    used_tifs = [x for x in fly_tifs if '_' +
-                        split(x)[-1].split('_')[1] in used_thorimage_dirs]
+                    used_tifs = [x for x in fly_tifs if '_'.join(
+                        split(x)[-1].split('_')[:-1]) in used_thorimage_dirs]
 
                     motion_corrected_tifs += used_tifs
 
@@ -334,8 +225,8 @@ class Segmentation(QWidget):
         '''
         self.presentations = presentations.set_index(comp_cols)
         # Needs to be indexed same as items, for open_recording to work.
-        self.recordings = presentations[recording_cols].drop_duplicates(
-            ).sort_values(recording_cols)
+        self.recordings = presentations[u.recording_cols].drop_duplicates(
+            ).sort_values(u.recording_cols)
 
         items = ['/'.join(r.split()[1:])
             for r in str(self.recordings).split('\n')[1:]]
@@ -446,7 +337,7 @@ class Segmentation(QWidget):
         param_tabs = QTabWidget(cnmf_ctrl_widget)
         cnmf_ctrl_layout.addWidget(param_tabs)
 
-        # TODO TODO eliminate vertical space between these rows of buttons
+        # TODO eliminate vertical space between these rows of buttons
         shared_btns = QWidget(cnmf_ctrl_widget)
         cnmf_ctrl_layout.addWidget(shared_btns)
         shared_btn_layout = QVBoxLayout(shared_btns)
@@ -716,10 +607,8 @@ class Segmentation(QWidget):
         # does the division make sense b/c some validation takes longer than
         # others (and that is what can be in the separate validation tab)?
 
-        # TODO TODO put this in a (vertical) scrollarea
         # TODO or would vboxlayout do that if needed anyway?
-        #self.display_widget = QWidget(self)
-        self.display_widget = QScrollArea(self)
+        self.display_widget = QWidget(self)
         self.layout.addWidget(self.display_widget)
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
@@ -727,11 +616,72 @@ class Segmentation(QWidget):
         self.plot_intermediates = False
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
-        self.display_layout.addWidget(self.mpl_canvas)
+        # TODO this fixed_dpi thing work? let me make things resizable again?
+        # unclear... probably no?
+        ###self.mpl_canvas.fixed_dpi = 100
+        
+        # TODO TODO does each change of fig size correspond to (immediate?)
+        # change in mpl_canvas, which only differs by units, or does canvas
+        # need to be explicitly resized
+        # TODO can canvas size exceed scroll area size? is that what gets the
+        # scroll bars to be active?
 
-        nav_bar = NavigationToolbar(self.mpl_canvas, self)
-        nav_bar.setFixedHeight(80)
-        self.display_layout.addWidget(nav_bar)
+        # TODO maybe set size for each different thing i'll show here
+        # (before showing trace should probably be more square,
+        # when showing traces from multiple blocks as rows, should probably make
+        # the whole thing taller, and probably set fig height as a fn of # of 
+        # blocks)
+        # TODO TODO want canvas to always be scrollable and pannable in all
+        # dimensions though!
+        # TODO test that clipping doesn't change what is serialized. especially
+        # the png / svgs
+        # TODO TODO make this fill up whole available space, as mpl_canvas had
+        # done before!
+        self.scrollable_canvas = QScrollArea(self)
+        self.current_zoom = 1.0
+        self.max_zoom = 5.0
+        self.min_zoom = 0.1
+        self.fig_w_inches = 7
+        self.fig_h_inches = 7
+
+        # TODO change these back to only being enabled as necessary,
+        # once i figure out what was preventing them from showing at all
+        # / how to resize this + mpl_canvas appropriately
+        '''
+        self.scrollable_canvas.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOn)
+        self.scrollable_canvas.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOn)
+        '''
+
+        self.scrollable_canvas.setWidget(self.mpl_canvas)
+        self.scrollable_canvas.setWidgetResizable(False)
+        # This looks for the eventFilter function of this class.
+        self.scrollable_canvas.viewport().installEventFilter(self)
+
+        #self.display_layout.addWidget(self.mpl_canvas)
+        # TODO TODO why does this not fill all space as mpl_canvas did
+        # (within this vboxlayout)
+        # what changes how widgets behave in a layout?
+        # is there just more hidden stuff to the bottom and right of the
+        # mpl canvas bit?
+        # TODO color widget to show its extent?
+        self.display_layout.addWidget(self.scrollable_canvas)
+
+        self.nav_bar = NavigationToolbar(self.mpl_canvas, self)
+        self.nav_bar.setFixedHeight(80)
+        self.display_layout.addWidget(self.nav_bar)
+
+        # TODO TODO TODO maybe make display_widget tabbed, w/ one tab as it
+        # currently is, and the other to control postpressing params (like
+        # response window length for correlations, trace extraction, etc) and
+        # update the display on the former tab. should switch back to other tab
+        # when pressing update.
+        # (tabbed just b/c window is getting pretty crowded now...)
+        # could maybe fit in at the bottom or something. collapsible?
+        # would be nice to share parameter widget code with that for cnmf...
+        # (break into fn that parses cnmf docstring and another that takes that
+        # output and makes the widget)
 
         # TODO accept / reject dialog beneath this
         # (maybe move save button out of ctrl widget? move reject in there?)
@@ -773,6 +723,73 @@ class Segmentation(QWidget):
         # TODO delete / handle differently
         self.ACTUALLY_UPLOAD = True
         #
+
+
+    # TODO delete. for debugging scroll area.
+    def szinfo(self) -> None:
+        print('FIGURE SIZE:', self.fig.get_size_inches())
+        print('FIGURE DPI:', self.fig.dpi)
+        # TODO as this grows, will scroll bar appear as necessary?
+        print('FigureCanvas SIZE:', self.mpl_canvas.size())
+        print('QScrollArea SIZE:', self.scrollable_canvas.size())
+    #
+
+
+    def set_fig_size(self, fig_w_inches, fig_h_inches) -> None:
+        self.fig.set_size_inches(fig_w_inches, fig_h_inches)
+        # TODO maybe some conversion factor so inches are actually inches on
+        # scren (between mpl dots and pixels)
+        # (assuming this is accurate)
+        dpi = self.fig.dpi
+        # TODO not sure why this isn't happening automatically, when figure
+        # size changes. i feel like i'm missing something.
+        # something like adjust size 
+        self.mpl_canvas.resize(dpi * fig_w_inches, dpi * fig_h_inches)
+        # TODO can you resize already plotted stuff? need for other calls?
+        self.fig_w_inches = fig_w_inches
+        self.fig_h_inches = fig_h_inches
+        # So that the resize call is correct.
+        self.current_zoom = 1.0
+
+
+    # TODO TODO how to make zoom not affect size / placement of text relative to
+    # other figure elments?? just calling self.mpl_canvas.resize
+    # DOES change these things (zooming does not seem to apply to text)
+    def zoom_canvas(self, delta) -> None:
+        # TODO implement some lockout time to let slow drawing finish
+        # TODO TODO maybe increment delta in eventFilter and then call
+        # zoom_canvas after some delay from first event?
+        # (so that a burst of scrolls is lumped together into one larger zoom)
+        # TODO how to actually implement this...?
+        if delta < 0:
+            new_zoom = self.current_zoom - 0.2
+            if new_zoom >= self.min_zoom:
+                self.current_zoom = new_zoom
+            else:
+                return
+        elif delta > 0:
+            new_zoom = self.current_zoom + 0.2
+            if new_zoom <= self.max_zoom:
+                self.current_zoom = new_zoom
+            else:
+                return
+        else:
+            return
+        dpi = self.fig.dpi
+        self.mpl_canvas.resize(
+            int(round(self.current_zoom * dpi * self.fig_w_inches)),
+            int(round(self.current_zoom * dpi * self.fig_h_inches))
+        )
+
+
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.Wheel:
+            modifiers = QApplication.keyboardModifiers()
+            if modifiers == Qt.ControlModifier:
+                delta = event.angleDelta().y()
+                self.zoom_canvas(delta)
+                return True
+        return super(Segmentation, self).eventFilter(source, event)
 
 
     def check_run_btn_enbl(self) -> None:
@@ -940,8 +957,16 @@ class Segmentation(QWidget):
     # TODO TODO actually provide a way to only initialize cnmf, to test out
     # various initialization procedures (though only_init arg doesn't actually
     # seem to accomplish this correctly)
-    def get_recording_df(self):
-
+    def get_recording_dfs(self) -> None:
+        """
+        Sets:
+        - self.df_over_f
+        - self.start_frames
+        - self.stop_frames
+        - self.presentation_dfs (list # trials long)
+        - self.comparison_dfs (list # trials long)
+        - self.footprint_df
+        """
         # TODO could maybe compute my own df/f from this if i'm worried...
         # frame number, cell -> value
         raw_f = self.cnm.estimates.C.T
@@ -1116,17 +1141,56 @@ class Segmentation(QWidget):
             # (would still need to do block by block, not per trial)
 
             self.presentation_dfs.append(presentation)
+            # TODO rename...
             self.comparison_dfs.append(response_df)
 
             print('Done processing presentation {}'.format(i))
+
+        # TODO TODO do all footprints stuff w/o converting to full array!
+        # x,y,n_footprints
+        footprints = self.cnm.estimates.A.toarray()
+
+        # Assuming equal number along both dimensions.
+        pixels_per_side = int(np.sqrt(footprints.shape[0]))
+        n_footprints = footprints.shape[1]
+
+        footprints = np.reshape(footprints,
+            (pixels_per_side, pixels_per_side, n_footprints))
+        
+        footprint_dfs = []
+        for cell_num in range(n_footprints):
+            sparse = coo_matrix(footprints[:,:,cell_num])
+            footprint_dfs.append(pd.DataFrame({
+                'recording_from': [self.started_at],
+                'segmentation_run': [self.run_at],
+                'cell': [cell_num],
+                # Can be converted from lists of Python types, but apparently
+                # not from numpy arrays or lists of numpy scalar types.
+                # TODO check this doesn't transpose things
+                # TODO just move appropriate casting to my to_sql function,
+                # and allow having numpy arrays (get type info from combination
+                # of that and the database, like in other cases)
+                'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
+                'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                'weights': [[float(x) for x in sparse.data.astype('float32')]]
+            }))
+        self.footprint_df = pd.concat(footprint_dfs, ignore_index=True)
 
 
     # TODO some kind of test option / w/ test data for this part that doesn't
     # require actually running cnmf
     # TODO rename to "process_..." or something?
+    # TODO make this fn not block gui? did cnmf_done not block gui? maybe that's
+    # a reason to keep it? or put most of this stuff in the worker?
     def get_cnmf_output(self) -> None:
+        # TODO TODO TODO w/ python version of cnmf, as i'm using it, do i need
+        # to explicitly order components to get same ordering as in matlab ver?
+
         self.run_len_seconds = time.time() - self.cnmf_start
         print('CNMF took {:.1f}s'.format(self.run_len_seconds))
+        # TODO maybe time this too? (probably don't store in db tho)
+        # at temporarily, to see which parts are taking so long...
+        print('Processing the output...')
 
         # TODO TODO allow toggling between type of background image shown
         # (radio / combobox for avg, snr, etc? "local correlations"?)
@@ -1137,21 +1201,50 @@ class Segmentation(QWidget):
 
         n_footprint_axes = 4 if self.plot_intermediates and not only_init else 1
 
+        w_inches_footprint_axes = 3
+        h_inches_per_footprint_ax = 3
+        w_inches_per_corr = 3
+        h_inches_corrs = 2 * w_inches_per_corr
+        w_inches_per_traceplot = 8
+        h_inches_traceplots = 10
+        
+        w_inches_corr = w_inches_per_corr * self.n_blocks
+        h_inches_footprint_axes = h_inches_per_footprint_ax * n_footprint_axes
+        w_inches_traceplots = w_inches_per_traceplot * self.n_blocks
+        # TODO could set this based on whether i want 1 / both orders
+        #h_inches_per_traceplot = 5
+        #h_inches_traceplots = h_inches_per_traceplot * 
+
+        fig_w_inches = max(
+            w_inches_footprint_axes,
+            w_inches_corr,
+            w_inches_traceplots
+        )
+        fig_h_inches = (h_inches_footprint_axes + h_inches_corrs +
+            h_inches_traceplots)
+
+        self.set_fig_size(fig_w_inches, fig_h_inches)
 
         plot_traces = True
         if plot_traces:
+            top_components = True
+            random_components = True
+            trace_rows = 2 * sum([top_components, random_components])
             # nrows, ncols
-            gs = self.fig.add_gridspec(5, 1, hspace=0.05, wspace=0.05)
+            gs = self.fig.add_gridspec(3 + trace_rows, 1,
+                hspace=0.3, wspace=0.05)
+
             footprint_slice = gs[:2, :]
             corr_slice = gs[2, :]
-            trace_slice = gs[3:, :]
+            # TODO maybe stack each block vertically here, and then make total
+            # rows in gs depend on # of blocks??? (maybe put corrs to the side?)
+            all_blocks_trace_gs = gs[3:, :].subgridspec(trace_rows,
+                self.n_blocks, hspace=0.2, wspace=0.15)
         else:
             gs = self.fig.add_gridspec(3, 1, hspace=0.05, wspace=0.05)
             footprint_slice = gs[:-1, :]
             corr_slice = gs[-1, :]
 
-        #contour_axes = self.fig.subplots(n_footprint_axes, 1,
-        #    squeeze=False, sharex=True, sharey=True)
         footprint_gs = footprint_slice.subgridspec(
             n_footprint_axes, 1, hspace=0, wspace=0)
 
@@ -1170,10 +1263,9 @@ class Segmentation(QWidget):
         # 2 rows: one for correlation matrices ordered as in experiment,
         # and the other for matrices ordered by odor
         corr_gs = corr_slice.subgridspec(2, self.n_blocks,
-            hspace=0.1, wspace=0.1)
+            hspace=0.4, wspace=0.1)
 
         axs = []
-        #ax0 = None
         for i in range(corr_gs._nrows):
             axs.append([])
             for j in range(corr_gs._ncols):
@@ -1189,7 +1281,6 @@ class Segmentation(QWidget):
                 ax = self.fig.add_subplot(corr_gs[i,j])
                 axs[-1].append(ax)
         corr_axes = np.array(axs)
-
 
         for i in range(n_footprint_axes):
             contour_ax = contour_axes[i]
@@ -1228,19 +1319,49 @@ class Segmentation(QWidget):
             caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
                 display_numbers=False, colors='r', linewidth=1.0)
 
-            # TODO call draw in each iteration?
+            self.mpl_canvas.draw()
 
         ###################################################################
-        self.get_recording_df()
+        self.get_recording_dfs()
 
-        # TODO TODO single letter abbreviations (+ key, but maybe just print
-        # for now?)
-
+        # TODO make this configurable in gui / have correlations update
+        # (maybe not alongside CNMF parameters, to avoid confusion?)
         response_calling_s = 3.0
+
+        # TODO maybe make this abbreviation making a fn
+        # TODO maybe use abbreviation that won't need a separate table to be
+        # meaningful...
+        # TODO sort s.t. always goes A,B,C in odor corr?
+        # TODO TODO or sort so mixture is always last (or middle?)
+        # TODO TODO only get abbreviations for monomolecular odors and then just
+        # do stuff like "A+B" for the mixture
+        presentations_df = pd.concat(self.presentation_dfs, ignore_index=True)
+        # TODO check again that this also works in case where odors from this
+        # experiment are new (weren't in db before)
+        # (and maybe support some local analysis anyway that doesn't require rt
+        # through the db...)
+        presentations_df = u.merge_odors(presentations_df,
+            self.db_odors.reset_index())
+        # TODO maybe adapt to case where name2 might have only occurence of 
+        # an odor, or name1 might be paraffin.
+        # TODO TODO check this is actually in the order i want across blocks
+        # (idk if name1,name2 are sorted / re-ordered somewhere)
+        name1_unique = presentations_df.name1.unique()
+        name2_unique = presentations_df.name2.unique()
+        assert set(name2_unique) - set(name1_unique) == {'paraffin'}
+        odor2abbrev = {o: chr(ord('A') + i) for i, o in enumerate(name1_unique)}
+        # So that code detecting which combinations of name1+name2 are
+        # monomolecular does not need to change.
+        odor2abbrev['paraffin'] = 'paraffin'
+
+        # TODO TODO TODO use same abbreviations in plot_traces
+        # (pass them in). or just don't include them at all.
 
         # TODO probably handle this some other way. messy...
         for i in range(self.n_blocks):
-
+            # TODO maybe concat and only set whole df as instance variable in
+            # get_recording_df? then use just as in kc_analysis all throughout
+            # here?
             presentation_dfs = self.presentation_dfs[
                 (self.presentations_per_block * i):
                 (self.presentations_per_block * (i + 1))
@@ -1256,10 +1377,6 @@ class Segmentation(QWidget):
                 ignore_index=True)
             # TODO set index?
 
-            '''
-            for i, (presentation_df, comparison_df) in enumerate(zip(
-                self.presentation_dfs, self.comparison_dfs)):
-            '''
             # TODO don't have separate instance variables for presentation_dfs
             # and comparison_dfs if i'm always going to merge here.
             # just merge before and then put in one instance variable.
@@ -1267,11 +1384,11 @@ class Segmentation(QWidget):
             presentation_df['from_onset'] = presentation_df['from_onset'].apply(
                 lambda x: np.array(x))
 
-            print(presentation_df.shape)
             presentation_df = u.merge_odors(presentation_df,
                 self.db_odors.reset_index())
+            presentation_df['name1'] = presentation_df.name1.map(odor2abbrev)
+            presentation_df['name2'] = presentation_df.name2.map(odor2abbrev)
 
-            print(presentation_df.shape)
             presentation_df = u.merge_recordings(
                 presentation_df, self.recordings)
 
@@ -1297,10 +1414,11 @@ class Segmentation(QWidget):
                 comparison_df[c] = presentation_df[c]
             '''
             #print(comparison_df.shape)
+            # TODO del presentation_df?
 
             non_array_cols = comparison_df.columns.difference(array_cols)
             cell_response_dfs = []
-            for _, cell_df in comparison_df.groupby(trial_cols + ['cell']):
+            for _, cell_df in comparison_df.groupby(u.trial_cols + ['cell']):
                 lens = cell_df[array_cols].apply(lambda x: x.str.len(),
                     axis='columns')
                 # TODO delete try except
@@ -1324,7 +1442,7 @@ class Segmentation(QWidget):
                 for ac in array_cols:
                     exploded[ac] = np.concatenate(cell_df[ac].values)
 
-                exploded.set_index(trial_cols, inplace=True)
+                exploded.set_index(u.trial_cols, inplace=True)
                 cell_response_dfs.append(exploded)
 
                 # TODO maybe plot a set of traces here, as a sanity check?
@@ -1343,6 +1461,60 @@ class Segmentation(QWidget):
 
             # TODO TODO add column mapping odors to order -> sort (index) on
             # that column + repeat_num to order w/ mixture last
+
+            ###################################################################
+            if plot_traces:
+                n = 20
+
+                # TODO or maybe just set show_footprints to false?
+                footprints = u.merge_recordings(self.footprint_df,
+                    self.recordings)
+                footprints = u.merge_gsheet(footprints, df)
+                footprints.set_index(u.recording_cols + ['cell'], inplace=True)
+
+                # TODO TODO factor out response calling and also do that here,
+                # so that random subset can be selected from responders, as in
+                # kc_analysis? (maybe even put it in plot_traces?)
+                # TODO maybe adapt whole mpl gui w/ updating db response calls
+                # into here?
+
+                # TODO TODO TODO + ensure components are actually ordered for
+                # this approach (maybe scale is just innapropriate? radiobutton
+                # to change it?)
+                if top_components:
+                    odor_order_trace_gs = all_blocks_trace_gs[0, i]
+
+                    # TODO maybe allow passing movie in to not have to load it
+                    # multiple times when plotting traces on same data?
+                    # (then just use self.movie)
+                    u.plot_traces(comparison_df, footprints=footprints,
+                        gridspec=odor_order_trace_gs, n=n,
+                        title='Top components')
+
+                    presentation_order_trace_gs = all_blocks_trace_gs[1, i]
+                    u.plot_traces(comparison_df, footprints=footprints,
+                        gridspec=presentation_order_trace_gs,
+                        order_by='presentation_order', n=n)
+
+                if random_components:
+                    if top_components:
+                        orow = 2
+                        prow = 3
+                    else:
+                        orow = 0
+                        prow = 1
+
+                    odor_order_trace_gs = all_blocks_trace_gs[orow, i]
+                    u.plot_traces(comparison_df, footprints=footprints,
+                        gridspec=odor_order_trace_gs, n=n, random=True,
+                        title='Random components')
+
+                    presentation_order_trace_gs = all_blocks_trace_gs[prow, i]
+                    u.plot_traces(comparison_df, footprints=footprints,
+                        gridspec=presentation_order_trace_gs,
+                        order_by='presentation_order', n=n, random=True)
+
+            ###################################################################
 
             # TODO TODO might want to only compute responders/criteria one
             # place, to avoid inconsistencies (so either move this section into
@@ -1372,50 +1544,48 @@ class Segmentation(QWidget):
             presentation_order_trial_mean_corrs = \
                 trial_mean_presentation_order.corr()
 
+
             presentation_order_ax = corr_axes[0, i]
 
             ticklabels = u.matlabels(presentation_order_trial_mean_corrs,
-                odors_label)
-            # TODO maybe use abbreviation that won't need a separate table to be
-            # meaningful...
-            # TODO sort s.t. always goes A,B,C in odor corr?
-            odor2abbrev = {o: chr(ord('A') + i) for i, o in
-                enumerate(set(ticklabels))}
-            # TODO maybe sort keys first?
+                u.format_mixture)
 
-            abbrev2odor = {v: k for k, v in odor2abbrev}
-            print('\nOdor abbreviations:')
-            for k in sorted(abbrev2odor.keys()):
-                print('{}: {}'.format(k, abbrev2odor[k]))
-            print('')
-
-            abbreviated_labels = [odor2abbrev[o] for o in ticklabels]
-
+            # TODO TODO use titles to say which two odors it was
             u.matshow(presentation_order_trial_mean_corrs,
-                ticklabels=abbreviated_labels,
+                ticklabels=ticklabels,
                 colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
                     ' correlation'),
                 #title=fly_comparison_title,
-                group_ticklabels=True,
-                ax=presentation_order_ax)
+                ax=presentation_order_ax,
+                fontsize=6)
+            self.mpl_canvas.draw()
+
 
             odor_order_ax = corr_axes[1, i]
 
-            ticklabels = \
-                u.matlabels(odor_order_trial_mean_corrs, odors_label)
-            abbreviated_labels = [odor2abbrev[o] for o in ticklabels]
+            ticklabels = u.matlabels(odor_order_trial_mean_corrs,
+                u.format_mixture)
 
             u.matshow(odor_order_trial_mean_corrs,
-                ticklabels=abbreviated_labels,
+                ticklabels=ticklabels,
+                group_ticklabels=True,
                 colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
                     ' correlation'),
                 #title=fly_comparison_title,
-                ax=odor_order_ax)
+                ax=odor_order_ax,
+                fontsize=6)
+            self.mpl_canvas.draw()
 
         ###################################################################
+        abbrev2odor = {v: k for k, v in odor2abbrev.items()}
+        print('\nOdor abbreviations:')
+        for k in sorted(abbrev2odor.keys()):
+            if k != 'paraffin':
+                print('{}: {}'.format(k, abbrev2odor[k]))
+        print('')
 
+        # TODO maybe delete this...
         self.fig.tight_layout()
-
         self.mpl_canvas.draw()
         # TODO maybe allow toggling same pane between avg and movie?
         # or separate pane for movie?
@@ -1526,40 +1696,10 @@ class Segmentation(QWidget):
             segmentation_run.to_sql('segmentation_runs', u.conn,
                 if_exists='append', method=u.pg_upsert)
 
-        # TODO TODO do all footprints stuff w/o converting to full array!
-        # x,y,n_footprints
-        footprints = self.cnm.estimates.A.toarray()
-
-        # Assuming equal number along both dimensions.
-        pixels_per_side = int(np.sqrt(footprints.shape[0]))
-        n_footprints = footprints.shape[1]
-
-        footprints = np.reshape(footprints,
-            (pixels_per_side, pixels_per_side, n_footprints))
-        
-        footprint_dfs = []
-        for cell_num in range(n_footprints):
-            sparse = coo_matrix(footprints[:,:,cell_num])
-            footprint_dfs.append(pd.DataFrame({
-                'recording_from': [self.started_at],
-                'segmentation_run': [self.run_at],
-                'cell': [cell_num],
-                # Can be converted from lists of Python types, but apparently
-                # not from numpy arrays or lists of numpy scalar types.
-                # TODO check this doesn't transpose things
-                # TODO just move appropriate casting to my to_sql function,
-                # and allow having numpy arrays (get type info from combination
-                # of that and the database, like in other cases)
-                'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
-                'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
-                'weights': [[float(x) for x in sparse.data.astype('float32')]]
-            }))
-
-        footprint_df = pd.concat(footprint_dfs, ignore_index=True)
         # TODO filter out footprints less than a certain # of pixels in cnmf?
         # (is 3 pixels really reasonable?)
         if self.ACTUALLY_UPLOAD:
-            u.to_sql_with_duplicates(footprint_df, 'cells')
+            u.to_sql_with_duplicates(self.footprint_df, 'cells')
 
 
     # TODO maybe make all accept / reject buttons gray until current accept /
@@ -1783,7 +1923,7 @@ class Segmentation(QWidget):
         thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
         xml_root = etree.parse(thorimage_xml_path).getroot()
 
-        data_params = cnmf_metadata_from_thor(tiff)
+        data_params = u.cnmf_metadata_from_thor(tiff)
 
         started_at = \
             datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
@@ -1794,11 +1934,13 @@ class Segmentation(QWidget):
         # TODO pane to show previous analysis runs of currently selected
         # experiment, or not worth it since maybe only want one accepted per?
 
+        # TODO TODO TODO upload full_frame_avg_trace like in populate_db
         self.recordings = pd.DataFrame({
             'started_at': [started_at],
             'thorsync_path': [thorsync_dir],
             'thorimage_path': [thorimage_dir],
             'stimulus_data_path': [stimulus_data_path]
+            #'full_frame_avg_trace': 
         })
         # TODO at least put behind self.ACTUALLY_UPLOAD?
         # TODO maybe defer this to accepting?
@@ -2114,10 +2256,15 @@ class Segmentation(QWidget):
         # pyqtgraph video viewer roi, s.t. it can be restricted to a different
         # ROI if that would help)
         self.fig.clear()
+        # TODO maybe add some height for pixel based correlation matrix if i
+        # include that
+        fig_w_inches = 7
+        fig_h_inches = 7
+        self.set_fig_size(fig_w_inches, fig_h_inches)
+
         ax = self.fig.add_subplot(111)
         ax.plot(np.mean(self.movie, axis=(1,2)))
         self.mpl_canvas.draw()
-        #
 
         self.run_cnmf_btn.setEnabled(True)
         self.accept_cnmf_btn.setEnabled(False)
@@ -2287,7 +2434,7 @@ class ROIAnnotation(QWidget):
         # TODO rewrite to avoid performancewarning (indexing past lexsort depth)
         self.metadata = self.presentations.loc[comp]
 
-        tiff = motion_corrected_tiff_filename(*comp[:-1])
+        tiff = u.motion_corrected_tiff_filename(*comp[:-1])
         # TODO move loading to some other process? QRunnable? progress bar?
         # TODO if not just going to load just comparison, keep movie loaded if
         # clicking other comparisons / until run out of memory
@@ -2313,7 +2460,7 @@ class ROIAnnotation(QWidget):
         # TODO TODO put to left of where video is? left of annotation buttons?
         # under data selection part?
         response_calling_s = 3.0
-        fps = fps_from_thor(self.metadata)
+        fps = u.fps_from_thor(self.metadata)
         self.fps = fps
         self.response_frames = int(np.ceil(fps * response_calling_s))
         self.background_frames = int(np.floor(fps * np.abs(
@@ -2405,10 +2552,10 @@ class ROIAnnotation(QWidget):
                     # TODO maybe indicate somehow visually if contour is cutoff
                     # (not?)hatched? don't draw as closed? diff color?
                     near_footprint_contours[c] = \
-                        closed_mpl_contours(f, ax, colors='blue')
+                        u.closed_mpl_contours(f, ax, colors='blue')
 
                 contour = \
-                    closed_mpl_contours(cropped_footprint, ax, colors='red')
+                    u.closed_mpl_contours(cropped_footprint, ax, colors='red')
             else:
                 for c, cont in near_footprint_contours.items():
                     ax.plot(cont[:,0], cont[:,1], 'b-')
@@ -2632,6 +2779,20 @@ class MainWindow(QMainWindow):
         user_layout.setContentsMargins(10, 0, 10, 0)
         central_layout.setAlignment(self.user_widget, Qt.AlignLeft)
 
+
+        # TODO add this back after fixing size policies s.t.
+        # buttons aren't cut off at the bottom.
+        '''
+        debug_action = QAction('&Debug shell', self)
+        debug_action.triggered.connect(self.debug_shell)
+
+        menu = self.menuBar()
+        tools = menu.addMenu('&Tools')
+        tools.addAction(debug_action)
+        '''
+        debug_shortcut = QShortcut(QKeySequence('Ctrl+d'), self)
+        debug_shortcut.activated.connect(self.debug_shell)
+
     
     def change_user(self, user):
         if user not in self.nicknames:
@@ -2657,6 +2818,11 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.save_default_user()
+
+
+    def debug_shell(self):
+        import ipdb
+        ipdb.set_trace()
 
 
 def main():
@@ -2721,9 +2887,9 @@ def main():
 
     footprints = pd.read_sql('cells', u.conn)
     footprints = footprints.merge(recordings_meta, on='recording_from')
-    footprints.set_index(recording_cols, inplace=True)
+    footprints.set_index(u.recording_cols, inplace=True)
 
-    comp_cols = recording_cols + ['comparison']
+    comp_cols = u.recording_cols + ['comparison']
 
     evil = u.matlab_engine()
 

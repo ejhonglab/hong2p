@@ -4,7 +4,7 @@ our databases / movies / CNMF output.
 """
 
 import os
-from os.path import join, split
+from os.path import join, split, exists, sep
 import socket
 import pickle
 import atexit
@@ -12,6 +12,7 @@ import signal
 import sys
 import xml.etree.ElementTree as etree
 from types import ModuleType
+from datetime import datetime
 import warnings
 import pprint
 
@@ -23,8 +24,32 @@ import pandas as pd
 import git
 import pkg_resources
 from scipy.optimize import curve_fit
+from scipy.sparse import coo_matrix
+import tifffile
+import cv2
+# TODO maybe use cv2 and get rid of this dep?
+from skimage import color
+import matplotlib.patches as patches
+# is just importing this potentially going to interfere w/ gui?
+# put import behind paths that use it?
+import matplotlib.pyplot as plt
 
 
+recording_cols = [
+    'prep_date',
+    'fly_num',
+    'thorimage_id'
+]
+# TODO might need to add analysis here (although if i'm using it before upload,
+# it should always be most recent anyway...)
+trial_only_cols = [
+    'comparison',
+    'name1',
+    'name2',
+    'repeat_num'
+]
+
+trial_cols = recording_cols + trial_only_cols
 db_hostname = 'atlas'
 our_hostname = socket.gethostname()
 if our_hostname == db_hostname:
@@ -38,15 +63,35 @@ conn = create_engine(url)
 meta = MetaData()
 meta.reflect(bind=conn)
 
-
+# Module level cache.
+_nas_prefix = None
 def nas_prefix():
-    # TODO separate env var for local one? or have that be the default?
-    nas_prefix_key = 'HONG_NAS'
-    if nas_prefix_key in os.environ:
-        nas_prefix = os.environ[nas_prefix_key]
-    else:
-        nas_prefix = '/mnt/nas'
-    return nas_prefix
+    global _nas_prefix
+    if _nas_prefix is None:
+        # TODO separate env var for local one? or have that be the default?
+        nas_prefix_key = 'HONG_NAS'
+        if nas_prefix_key in os.environ:
+            prefix = os.environ[nas_prefix_key]
+        else:
+            prefix = '/mnt/nas'
+        _nas_prefix = prefix
+    return _nas_prefix
+
+
+# TODO (for both below) support a local and a remote one ([optional] local copy
+# for faster repeat analysis)?
+# TODO use env var like kc_analysis currently does for prefix after refactoring
+# (include mb_team in that part and rename from nas_prefix?)
+def raw_data_root():
+    return join(nas_prefix(), 'mb_team/raw_data')
+
+
+def analysis_output_root():
+    return join(nas_prefix(), 'mb_team/analysis_output')
+
+
+def stimfile_root():
+    return join(nas_prefix(), 'mb_team/stimulus_data_files')
 
 
 def matlab_exit_except_hook(exctype, value, traceback):
@@ -295,7 +340,7 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     '''Returns a pandas.DataFrame with data on flies and MB team recordings.
     '''
     gsheet_cache_file = '.gsheet_cache.p'
-    if use_cache and os.path.exists(gsheet_cache_file):
+    if use_cache and exists(gsheet_cache_file):
         print('Loading Google sheet data from cache at {}'.format(
             gsheet_cache_file))
 
@@ -424,7 +469,6 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
 
     df.drop(columns=['thorimage_num','numbering_consistent'], inplace=True)
 
-
     # TODO TODO check for conditions in which we might need to renumber
     # recording num? (dupes / any entered numbers along the way that are
     # inconsistent w/ recording_num results)
@@ -464,6 +508,8 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     flies['date'] = flies['date'].fillna(method='ffill')
     flies.dropna(subset=['date','fly_num'], inplace=True)
 
+    # TODO drop any 'Unnamed: X' columns
+
     # TODO maybe flag to not update database? or just don't?
     # TODO groups all inserts into transactions across tables, and as few as
     # possible (i.e. only do this later)?
@@ -477,11 +523,50 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     return df
 
 
-def merge_odors(df, *varargs):
-    if len(varargs) == 0:
+def merge_gsheet(df, *args, use_cache=False):
+    if len(args) == 0:
+        gsdf = mb_team_gsheet(use_cache=use_cache)
+    elif len(args) == 1:
+        # TODO maybe copy in this case?
+        gsdf = args[0]
+    else:
+        raise ValueError('incorrect number of arguments')
+
+    if 'recording_from' in df.columns:
+        # TODO maybe just merge_recordings w/ df in advance in this case?
+        df = df.rename(columns={'recording_from': 'started_at'})
+    elif 'started_at' not in df.columns:
+        raise ValueError("df needs 'recording_from'/'started_at' in columns")
+
+    gsdf['recording_from'] = pd.NaT
+    for i, row in gsdf.iterrows():
+        date_dir = row.date.strftime('%Y-%m-%d')
+        fly_num = str(int(row.fly_num))
+        thorimage_dir = join(raw_data_root(),
+            date_dir, fly_num, row.thorimage_dir)
+        thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
+
+        try:
+            xml_root = xmlroot(thorimage_xml_path)
+        except FileNotFoundError as e:
+            continue
+
+        gsdf.loc[i, 'recording_from'] = \
+            datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
+
+    # TODO fail if stuff marked attempt_analysis has missing xml files?
+    # or if nothing was found?
+
+    gsdf = gsdf.rename(columns={'date': 'prep_date'})
+
+    return merge_recordings(gsdf, df, verbose=False)
+
+
+def merge_odors(df, *args):
+    if len(args) == 0:
         odors = pd.read_sql('odors', conn)
-    elif len(varargs) == 1:
-        odors = varargs[0]
+    elif len(args) == 1:
+        odors = args[0]
     else:
         raise ValueError('incorrect number of arguments')
 
@@ -508,11 +593,11 @@ def merge_odors(df, *varargs):
     return df
 
 
-def merge_recordings(df, *varargs):
-    if len(varargs) == 0:
+def merge_recordings(df, *args, verbose=True):
+    if len(args) == 0:
         recordings = pd.read_sql('recordings', conn)
-    elif len(varargs) == 1:
-        recordings = varargs[0]
+    elif len(args) == 1:
+        recordings = args[0]
     else:
         raise ValueError('incorrect number of arguments')
 
@@ -735,6 +820,26 @@ def upload_analysis_info(*args) -> None:
     to_sql_with_duplicates(analysis_code, 'analysis_code')
 
 
+def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
+    date_dir = date.strftime('%Y-%m-%d')
+    fly_num = str(fly_num)
+
+    tif_dir = join(analysis_output_root(), date_dir, fly_num, 'tif_stacks')
+
+    nr_tif = join(tif_dir, '{}_nr.tif'.format(thorimage_id))
+    rig_tif = join(tif_dir, '{}_rig.tif'.format(thorimage_id))
+    tif = None
+    if exists(nr_tif):
+        tif = nr_tif
+    elif exists(rig_tif):
+        tif = rig_tif
+
+    if tif is None:
+        raise IOError('No motion corrected TIFs found in {}'.format(tif_dir))
+
+    return tif
+
+
 def get_experiment_xmlroot(directory):
     xml_path = join(directory, 'Experiment.xml')
     return etree.parse(xml_path).getroot()
@@ -774,6 +879,52 @@ def get_thorimage_fps(thorimage_directory):
     """
     xmlroot = get_experiment_xmlroot(thorimage_directory)
     return get_thorimage_fps_xml(xmlroot)
+
+
+def xmlroot(xml_filename):
+    return etree.parse(xml_filename).getroot()
+
+
+def tif2xml_root(filename):
+    """Returns etree root of ThorImage XML settings from TIFF filename.
+    """
+    if filename.startswith(analysis_output_root()):
+        filename = filename.replace(analysis_output_root(), raw_data_root())
+
+    parts = filename.split(sep)
+    thorimage_id = '_'.join(parts[-1].split('_')[:-1])
+
+    xml_fname = sep.join(parts[:-2] + [thorimage_id, 'Experiment.xml'])
+    return xmlroot(xml_fname)
+
+
+# TODO TODO rename this one to make it clear why it's diff from above
+# + how to use it (or just delete one...)
+def fps_from_thor(df):
+    # TODO assert unique first?
+    thorimage_dir = df['thorimage_path'].iat[0]
+    # TODO TODO TODO why is it [3:] again?? does this depend on my current
+    # particular nas_prefix (make it so it does not, if so!)?
+    thorimage_dir = join(nas_prefix(), *thorimage_dir.split('/')[3:])
+    thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
+    xml_root = etree.parse(thorimage_xml_path).getroot()
+    lsm = xml_root.find('LSM').attrib
+    fps = float(lsm['frameRate']) / float(lsm['averageNum'])
+    return fps
+
+
+def cnmf_metadata_from_thor(filename):
+    """Takes TIF filename to key settings from XML at fixed relative position.
+    """
+    xml_root = tif2xml_root(filename)
+    lsm = xml_root.find('LSM').attrib
+    fps = float(lsm['frameRate']) / float(lsm['averageNum'])
+    # "spatial resolution of FOV in pixels per um" "(float, float)"
+    # TODO do they really mean pixel/um, not um/pixel?
+    pixels_per_um = 1 / float(lsm['pixelSizeUM'])
+    dxy = (pixels_per_um, pixels_per_um)
+    # TODO maybe load dims anyway?
+    return {'fr': fps, 'dxy': dxy}
 
 
 def load_thorimage_metadata(thorimage_directory):
@@ -875,7 +1026,7 @@ response_stat_cols = [
     'avg_dff_5s',
     'avg_zchange_5s'
 ]
-def latest_response_stats(*varargs):
+def latest_response_stats(*args):
     """
     """
     index_cols = [
@@ -891,12 +1042,12 @@ def latest_response_stats(*varargs):
     # TODO maybe just get cols db has and exclude from_onset or something?
     # just get all?
     presentation_cols_to_get = index_cols + response_stat_cols
-    if len(varargs) == 0:
+    if len(args) == 0:
         db_presentations = pd.read_sql('presentations', conn,
             columns=(presentation_cols_to_get + ['presentation_id']))
 
-    elif len(varargs) == 1:
-        db_presentations = varargs[0]
+    elif len(args) == 1:
+        db_presentations = args[0]
 
     else:
         raise ValueError('too many arguments. expected 0 or 1')
@@ -988,19 +1139,21 @@ def latest_response_stats(*varargs):
     return presentation_stats_df
 
 
+def n_expected_repeats(df):
+    """Returns expected # repeats given DataFrame w/ repeat_num col.
+    """
+    max_repeat = df.repeat_num.max()
+    return max_repeat + 1
+
+
 def missing_repeats(df, n_repeats=None):
     # TODO n_repeats defalut to 3 or None?
     if n_repeats is None:
         # TODO or should i require input is merged w/ recordings for stimuli
         # data file paths and then just load for n_repeats and stuff?
-        max_repeat = df.repeat_num.max()
-        n_repeats = max_repeat + 1
+        n_repeats = n_expected_repeats(df)
 
-        # Expect repeats to include {0,1,2} for 3 repeat experiments.
-        #if max_repeat != 2:
-    else:
-        max_repeat = n_repeats - 1
-
+    # Expect repeats to include {0,1,2} for 3 repeat experiments.
     expected_repeats = set(range(n_repeats))
 
     repeat_cols = []
@@ -1401,13 +1554,92 @@ def motion_correct_to_tiffs(thorimage_dir, output_dir):
     raise NotImplementedError
 """
 
+def cell_ids(df):
+    if 'cell' in df.index.names:
+        return df.index.get_level_values('cell').unique().to_series()
+    elif 'cell' in df.columns:
+        cids = pd.Series(data=df['cell'].unique(), name='cell')
+        cids.index.name = 'cell'
+        return cids
+    else:
+        raise ValueError("'cell' not in index or columns of DataFrame")
+
 
 def matlabels(df, rowlabel_fn):
     return df.index.to_frame().apply(rowlabel_fn, axis=1)
 
 
+def format_odor_conc(name, log10_conc):
+    if log10_conc is None:
+        return name
+    else:
+        # TODO tex formatting for exponent
+        #return r'{} @ $10^{{'.format(name) + '{:.2f}}}$'.format(log10_conc)
+        return '{} @ $10^{{{:.2f}}}$'.format(name, log10_conc)
+
+
+def format_mixture(*args):
+    log10_c1 = None
+    log10_c2 = None
+    if len(args) == 2:
+        n1, n2 = args
+    elif len(args) == 4:
+        n1, n2, log10_c1, log10_c2 = args
+    elif len(args) == 1:
+        row = args[0]
+        n1 = row['name1']
+        n2 = row['name2']
+        if 'log10_conc_vv1' in row:
+            log10_c1 = row['log10_conc_vv1']
+            log10_c2 = row['log10_conc_vv2']
+    else:
+        raise ValueError('incorrect number of args')
+
+    if n1 == 'paraffin':
+        title = format_odor_conc(n2, log10_c2)
+    elif n2 == 'paraffin':
+        title = format_odor_conc(n1, log10_c1)
+    else:
+        title = '{} + {}'.format(
+            format_odor_conc(n1, log10_c1),
+            format_odor_conc(n2, log10_c2)
+        )
+
+    return title
+
+
+def pair_ordering(comparison_df):
+    """Takes a df w/ name1 & name2 to a dict of their tuples to order int.
+    """
+    # TODO maybe assert only 3 combinations of name1/name2
+    pairs = [(x.name1, x.name2) for x in
+        comparison_df[['name1','name2']].drop_duplicates().itertuples()]
+
+    has_paraffin = [p for p in pairs if 'paraffin' in p]
+    no_pfo = [p for p in pairs if 'paraffin' not in p]
+
+    if len(no_pfo) < 1:
+        raise ValueError('All pairs for this comparison had paraffin.' +
+            ' Analysis error? Incomplete recording?')
+
+    assert len(no_pfo) == 1
+    last = no_pfo[0]
+
+    # Will define the order in which odor pairs will appear, left-to-right,
+    # in subplots.
+    ordering = dict()
+    ordering[last] = 2
+
+    for i, p in enumerate(sorted(has_paraffin,
+        key=lambda x: x[0] if x[1] == 'paraffin' else x[1])):
+
+        ordering[p] = i
+
+    return ordering
+
+
 def matshow(df, title=None, ticklabels=None, colorbar_label=None,
-    group_ticklabels=False, ax=None):
+    group_ticklabels=False, ax=None, fontsize=None):
 
     made_fig = False
     if ax is None:
@@ -1415,7 +1647,9 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
         ax = fig.add_subplot(111)
         made_fig = True
 
-    fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
+    # TODO update this formula to work w/ gui corrs (too big now)
+    if fontsize is None:
+        fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
     # TODO TODO enable again
     # TODO maybe one shared cbar? or fixed range or something?
@@ -1432,6 +1666,8 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
     # TODO automatically only group labels in case where all repeats are
     # adjacent?
     if group_ticklabels:
+        # TODO support ticklabels == None case here...
+        ticklabels = pd.Series(ticklabels)
         n_repeats = int(len(ticklabels) / len(ticklabels.unique()))
         # Assumes order is preserved if labels are grouped at input.
         # May need to calculate some other way if not always true.
@@ -1448,8 +1684,16 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
         ax.set_yticklabels(ticklabels, fontsize=fontsize,
             rotation='horizontal')
         #    rotation='vertical' if group_ticklabels else 'horizontal')
+
+        # TODO nan / None value aren't supported in ticklabels are they?
+        # (couldn't assume len is defined if so)
+        if all([len(x) == 1 for x in ticklabels]):
+            xtickrotation = 'horizontal'
+        else:
+            xtickrotation = 'vertical'
+
         ax.set_xticklabels(ticklabels, fontsize=fontsize,
-            rotation='vertical')
+            rotation=xtickrotation)
         #    rotation='horizontal' if group_ticklabels else 'vertical')
 
         if group_ticklabels:
@@ -1467,4 +1711,632 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
         plt.tight_layout()
         return fig
 
+
+# TODO maybe one fn that puts in matrix format and another in table
+# (since matrix may be sparse...)
+def plot_pair_n(df, *args):
+    """Plots a matrix of odor1 X odor2 w/ counts of flies as entries.
+
+    Args:
+    df (pd.DataFrame): DataFrame with columns:
+        - prep_date
+        - fly_num
+        - thorimage_id
+        - name1
+        - name2
+        Data already collected w/ odor pairs.
+
+    odor_panel (pd.DataFrame): (optional) DataFrame with columns:
+        - name1
+        - name2
+        - reason (maybe make this optional?)
+        The odor pairs experiments are supposed to collect data for.
+    """
+    odor_panel = None
+    if len(args) == 1:
+        odor_panel = args[0]
+    elif len(args) != 0:
+        raise ValueError('incorrect number of arguments')
+    # TODO maybe make df optional and read from database if it's not passed?
+    # TODO a flag to show all stuff marked attempt analysis in gsheet?
+
+    # TODO borrow more of this / call this in part of kc_analysis that made that
+    # table w/ these counts for repeats?
+
+    df = df.drop(
+        index=df[(df.name1 == 'paraffin') | (df.name2 == 'paraffin')].index)
+
+    replicates = df[[
+        'prep_date',
+        'fly_num',
+        'thorimage_id',
+        'comparison',
+        'name1',
+        'name2']].drop_duplicates()
+
+    # TODO do i actually want margins? (would currently count single odors twice
+    # if in multiple comparison... may at least not want that?)
+    # hide margins for now.
+    pair_n = pd.crosstab(replicates.name1, replicates.name2) #, margins=True)
+
+    # Making the rectangular matrix pair_n square
+    # (same indexes on row and column axes)
+    full_pair_n = pair_n.combine_first(pair_n.T).fillna(0.0)
+
+    # TODO TODO TODO maybe use this combine_first thing on odor_panel
+    # and then use those INDICES (but not values, as w/ combine_first)
+    # as the indices for full_pair_n!
+    # (for case when odor panel has pairs not included here)
+
+    # maybe make colorbar have discrete steps?
+
+    # TODO TODO TODO how to indicate which of the pairs we are actually
+    # interested in? grey out the others? white the others? (just set to nan?)
+    # (maybe only use to grey / white out if passed in?)
+    # (+ margins for now)
+
+    # TODO TODO TODO color code text labels by pair selection reason + key
+    # TODO what to do when one thing falls under two reasons though...?
+    # just like a key (or things alongside ticklabels) that has each color
+    # separately? just symbols in text, if that's easier?
+
+    # TODO TODO display actual counts in squares in matshow
+
+    import ipdb; ipdb.set_trace()
+
+
+
+def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
+    """
+    """
+    dims = footprint.shape
+    padded_footprint = np.zeros(tuple(d + 2 for d in dims))
+    padded_footprint[tuple(slice(1,-1) for _ in dims)] = footprint
+    
+    mpl_contour = ax.contour(padded_footprint > 0, [0.5], **kwargs)
+    # TODO which of these is actually > 1 in multiple comps case?
+    # handle that one approp w/ err_on_multiple_comps!
+    assert len(mpl_contour.collections) == 1
+    paths = mpl_contour.collections[0].get_paths()
+    assert len(paths) == 1
+    contour = paths[0].vertices
+
+    # Correct index change caused by padding.
+    return contour - 1
+
+
+def plot_traces(*args, footprints=None, order_by='odors', scale_within='none',
+    n=20, random=False, title=None, response_calls=None, raw=False,
+    smoothed=True, show_footprints=True, show_footprints_alone=False,
+    show_cell_ids=True, show_footprint_with_mask=False, gridspec=None,
+    verbose=True):
+    # TODO TODO be clear on requirements of df and cell_ids in docstring
+    """
+    n (int): (default=20) Number of cells to plot traces for if cell_ids not
+        passed as second positional argument.
+    random (bool): (default=False) Whether the `n` cell ids should be selected
+        randomly. If False, the first `n` cells are used.
+    order_by (str): 'odors' or 'presentation_order'
+    scale_within (str): 'none', 'cell', or 'trial'
+    gridspec (None or matplotlib.gridspec.*): region of a parent figure
+        to draw this plot on.
+    """
+    # TODO make text size and the spacing of everything more invariant to figure
+    # size. i think the default size of this figure ended up being bigger when i
+    # was using it in kc_analysis than it is now in the gui, so it isn't display
+    # well in the gui, but fixing it here might break it in the kc_analysis case
+    if verbose:
+        print('Entering plot_traces...')
+
+    if len(args) == 1:
+        df = args[0]
+        # TODO flag to also subset to responders first?
+        all_cells = cell_ids(df)
+        n = min(n, len(all_cells))
+        if random:
+            # TODO maybe flag to disable seed?
+            cells = all_cells.sample(n=n, random_state=1)
+        else:
+            cells = all_cells[:n]
+
+    elif len(args) == 2:
+        df, cells = args
+
+    else:
+        raise ValueError('must call with either df or df and cells')
+
+    if show_footprints:
+        # or maybe just download (just the required!) footprints from sql?
+        if footprints is None:
+            raise ValueError('must pass footprints kwarg if show_footprints')
+        # decide whether this should be in the preconditions or just done here
+        # (any harm to just do here anyway?)
+        #else:
+        #    footprints = footprints.set_index(recording_cols + ['cell'])
+
+    # TODO TODO TODO fix odor labels as in matrix (this already done?)
+    # (either rotate or use abbreviations so they don't overlap!)
+
+    # TODO check order_by and scale_within are correct
+    assert raw or smoothed
+
+    # TODO maybe automatically show_cells if show_footprints is true,
+    # otherwise don't?
+    # TODO TODO maybe indicate somehow the multiple response criteria
+    # when it is a list (add border & color each half accordingly?)
+
+    extra_cols = 0
+    # TODO which of these cases do i want to support here?
+    if show_footprints:
+        if show_footprints_alone:
+            extra_cols = 2
+        else:
+            extra_cols = 1
+    elif show_footprints_alone:
+        raise NotImplementedError
+
+    # TODO possibility of other column for avg + roi overlays
+    # possible to make it larger, or should i use a layout other than
+    # gridspec? just give it more grid elements?
+    # TODO for combinatorial combinations of flags enabling cols on
+    # right, maybe set index for each of those flags up here
+
+    # TODO could also just could # trials w/ drop_duplicates, for more
+    # generality
+    n_repeats = n_expected_repeats(df)
+    n_trials = n_repeats * 3
+
+    if gridspec is None:
+        # This seems to hang... not sure if it's usable w/ some changes.
+        #fig = plt.figure(constrained_layout=True)
+        fig = plt.figure()
+        gs = fig.add_gridspec(4, 6, hspace=0.4, wspace=0.3)
+        made_fig = True
+    else:
+        fig = gridspec.get_topmost_subplotspec().get_gridspec().figure
+        gs = gridspec.subgridspec(4, 6, hspace=0.4, wspace=0.3)
+        made_fig = False
+
+    if show_footprints:
+        trace_gs_slice = gs[:3,:4]
+    else:
+        trace_gs_slice = gs[:,:]
+
+    # For common X/Y labels
+    bax = fig.add_subplot(trace_gs_slice, frameon=False)
+    # hide tick and tick label of the big axes
+    bax.tick_params(top=False, bottom=False, left=False, right=False,
+        labelcolor='none')
+    bax.grid(False)
+
+    trace_gs = trace_gs_slice.subgridspec(len(cells),
+        n_trials + extra_cols, hspace=0.15, wspace=0.06)
+
+    axs = []
+    for ti in range(trace_gs._nrows):
+        axs.append([])
+        for tj in range(trace_gs._ncols):
+            ax = fig.add_subplot(trace_gs[ti,tj])
+            axs[-1].append(ax)
+    axs = np.array(axs)
+
+    # TODO want all of these behind show_footprints?
+    if show_footprints:
+        # TODO use 2/3 for widgets?
+        # TODO or just text saying which keys to press? (if only
+        # selection mechanism is going to be hover, mouse clicks
+        # wouldn't make sense...)
+
+        avg_ax = fig.add_subplot(gs[:, -2:])
+        # TODO TODO maybe show trial movie beneath this?
+        # (also on hover/click like (trial,cell) data)
+
+    if title is not None:
+        #pad = 40
+        pad = 15
+        # increment pad by 5 for each newline in title?
+        bax.set_title(title, pad=pad)
+
+    bax.set_ylabel('Cell')
+
+    # This pad is to make it not overlap w/ time label on example plot.
+    # Was left to default value for kc_analysis.
+    # TODO negative labelpad work? might get drawn over by axes?
+    labelpad = -10
+    if order_by == 'odors':
+        bax.set_xlabel('Trials ordered by odor', labelpad=labelpad)
+    elif order_by == 'presentation_order':
+        bax.set_xlabel('Trials in presentation order', labelpad=labelpad)
+
+    ordering = pair_ordering(df)
+
+    '''
+    display_start_time = -3.0
+    display_stop_time = 10
+    display_window = df[
+        (comparison_df.from_onset >= display_start_time) &
+        (comparison_df.from_onset <= display_stop_time)]
+    '''
+    display_window = df
+
+    smoothing_window_secs = 1.0
+    fps = fps_from_thor(df)
+    window_size = int(np.round(smoothing_window_secs * fps))
+
+    group_cols = trial_cols + ['order']
+
+    xmargin = 1
+    xmin = display_window.from_onset.min() - xmargin
+    xmax = display_window.from_onset.max() + xmargin
+
+    response_rgb = (0.0, 1.0, 0.2)
+    nonresponse_rgb = (1.0, 0.0, 0.0)
+    response_call_alpha = 0.2
+
+    if scale_within == 'none':
+        ymin = None
+        ymax = None
+
+    cell2contour = dict()
+    cell2rect = dict()
+    cell2text_and_rect = dict()
+
+    avg = None
+    for i, cell_id in enumerate(cells):
+        if verbose:
+            print('Plotting cell {}/{}...'.format(i + 1, len(cells)))
+
+        cell_data = display_window[display_window.cell == cell_id]
+        cell_trials = cell_data.groupby(group_cols, sort=False)[
+            ['from_onset','df_over_f']]
+
+        prep_date = pd.Timestamp(cell_data.prep_date.unique()[0])
+        date_dir = prep_date.strftime('%Y-%m-%d')
+        fly_num = cell_data.fly_num.unique()[0]
+        thorimage_id = cell_data.thorimage_id.unique()[0]
+
+        #assert len(cell_trials) == axs.shape[1]
+
+        if show_footprints:
+            if avg is None:
+                # only uncomment to support dff images and other stuff like that
+                '''
+                try:
+                    # TODO either put in docstring that datetime.datetime is
+                    # required, or cast input date as appropriate
+                    # (does pandas date type support strftime?)
+                    # or just pass date_dir?
+                    # TODO TODO should not use nr if going to end up using the
+                    # rig avg... but maybe lean towards computing the avg in
+                    # that case rather than deferring to rigid?
+                    tif = motion_corrected_tiff_filename(
+                        prep_date, fly_num, thorimage_id)
+                except IOError as e:
+                    if verbose:
+                        print(e)
+                    continue
+
+                # TODO maybe show progress bar / notify on this step
+                if verbose:
+                    print('Loading full movie from {} ...'.format(tif),
+                        end='', flush=True)
+                movie = tifffile.imread(tif)
+                if verbose:
+                    print(' done.')
+                '''
+
+                # TODO modify motion_corrected_tiff_filename to work in this
+                # case too?
+                tif_dir = join(analysis_output_root(), date_dir, str(fly_num),
+                    'tif_stacks')
+                avg_nr_tif = join(tif_dir, 'AVG', 'nonrigid',
+                    'AVG{}_nr.tif'.format(thorimage_id))
+                avg_rig_tif = join(tif_dir, 'AVG', 'rigid',
+                    'AVG{}_rig.tif'.format(thorimage_id))
+
+                avg_tif = None
+                if exists(avg_nr_tif):
+                    avg_tif = avg_nr_tif
+                elif exists(avg_rig_tif):
+                    avg_tif = avg_rig_tif
+
+                if avg_tif is None:
+                    raise IOError(('No average motion corrected TIFs ' +
+                        'found in {}').format(tif_dir))
+
+                avg = tifffile.imread(avg_tif)
+                '''
+                avg = cv2.normalize(avg, None, alpha=0, beta=1,
+                    norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+                '''
+                # TODO find a way to histogram equalize w/o converting
+                # to 8 bit?
+                avg = cv2.normalize(avg, None, alpha=0, beta=255,
+                    norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1)
+                better_constrast = cv2.equalizeHist(avg)
+
+                rgb_avg = color.gray2rgb(better_constrast)
+
+            cell_row = (prep_date, fly_num, thorimage_id, cell_id)
+            footprint_row = footprints.loc[cell_row]
+
+            weights, x_coords, y_coords = \
+                footprint_row[['weights','x_coords','y_coords']]
+
+            footprint = np.array(coo_matrix((weights,
+                (x_coords, y_coords)), shape=avg.shape).todense())
+
+            # TODO maybe some percentile / fixed size about maximum
+            # density?
+            cropped_footprint, ((x_min, x_max), (y_min, y_max)) = \
+                crop_to_nonzero(footprint, margin=6)
+            cell2rect[cell_id] = (x_min, x_max, y_min, y_max)
+
+            cropped_avg = \
+                better_constrast[x_min:x_max + 1, y_min:y_max + 1]
+
+            if show_footprint_with_mask:
+                # TODO figure out how to suppress clipping warning in the case
+                # when it's just because of float imprecision (e.g. 1.0000001
+                # being clipped to 1) maybe just normalize to [0 + epsilon, 1 -
+                # epsilon]?
+                # TODO TODO or just set one channel to be this
+                # footprint?  scale first?
+                cropped_footprint_rgb = \
+                    color.gray2rgb(cropped_footprint)
+                for c in (1,2):
+                    cropped_footprint_rgb[:,:,c] = 0
+                # TODO plot w/ value == 1 to test?
+
+                cropped_footprint_hsv = \
+                    color.rgb2hsv(cropped_footprint_rgb)
+
+                cropped_avg_hsv = \
+                    color.rgb2hsv(color.gray2rgb(cropped_avg))
+
+                # TODO hue already seems to be constant at 0.0 (red?)
+                # so maybe just directly set to red to avoid confusion?
+                cropped_avg_hsv[..., 0] = cropped_footprint_hsv[..., 0]
+
+                alpha = 0.3
+                cropped_avg_hsv[..., 1] = cropped_footprint_hsv[..., 1] * alpha
+
+                composite = color.hsv2rgb(cropped_avg_hsv)
+
+                # TODO TODO not sure this is preserving hue/sat range to
+                # indicate how strong part of filter is
+                # TODO figure out / find some way that would
+                # TODO TODO maybe don't normalize within each ROI? might
+                # screw up stuff relative to histogram equalized
+                # version...
+                # TODO TODO TODO still normalize w/in crop in contour
+                # case?
+                composite = cv2.normalize(composite, None, alpha=0.0,
+                    beta=1.0, norm_type=cv2.NORM_MINMAX,
+                    dtype=cv2.CV_32F)
+
+            else:
+                # TODO could also use something more than this
+                # TODO TODO fix bug here. see 20190402_bug1.txt
+                # TODO TODO where are all zero footprints coming from?
+                cropped_footprint_nonzero = cropped_footprint > 0
+                if not np.any(cropped_footprint_nonzero):
+                    continue
+
+                level = \
+                    cropped_footprint[cropped_footprint_nonzero].min()
+
+            if show_footprints_alone:
+                ax = axs[i,-2]
+                f_ax = axs[i,-1]
+                f_ax.imshow(cropped_footprint, cmap='gray')
+                f_ax.axis('off')
+            else:
+                ax = axs[i,-1]
+
+            if show_footprint_with_mask:
+                ax.imshow(composite)
+            else:
+                ax.imshow(cropped_avg, cmap='gray')
+                # TODO TODO also show any other contours in this rectangular ROI
+                # in a diff color! (copy how gui does this)
+                cell2contour[cell_id] = \
+                    closed_mpl_contours(cropped_footprint, ax, colors='red')
+
+            ax.axis('off')
+
+            text = str(cell_id + 1)
+            h = y_max - y_min
+            w = x_max - x_min
+            rect = patches.Rectangle((y_min, x_min), h, w,
+                linewidth=1.5, edgecolor='b', facecolor='none')
+            cell2text_and_rect[cell_id] = (text, rect)
+
+        if scale_within == 'cell':
+            ymin = None
+            ymax = None
+
+        for n, cell_trial in cell_trials:
+            #(prep_date, fly_num, thorimage_id,
+            (_, _, _, comp, o1, o2, repeat_num, order) = n
+
+            if order_by == 'odors':
+                j = n_repeats * ordering[(o1, o2)] + repeat_num
+
+            elif order_by == 'presentation_order':
+                j = order
+            else:
+                raise ValueError("supported orderings are 'odors' and "+
+                    "'presentation_order'")
+
+            if scale_within == 'trial':
+                ymin = None
+                ymax = None
+
+            ax = axs[i,j]
+            # So that events that get the axes can translate to cell /
+            # trial information.
+            ax.cell_id = cell_id
+            ax.trial_info = n
+
+            # X and Y axis major tick label fontsizes.
+            # Was left to default for kc_analysis.
+            ax.tick_params(labelsize=6)
+
+            trial_times = cell_trial['from_onset']
+            trial_dff = cell_trial['df_over_f']
+
+            if raw:
+                if ymax is None:
+                    ymax = trial_dff.max()
+                    ymin = trial_dff.min()
+                else:
+                    ymax = max(ymax, trial_dff.max())
+                    ymin = min(ymin, trial_dff.min())
+
+                ax.plot(trial_times, trial_dff)
+
+            if smoothed:
+                # TODO kwarg(s) to control smoothing?
+                sdff = smooth(trial_dff, window_len=window_size)
+
+                if ymax is None:
+                    ymax = sdff.max()
+                    ymin = sdff.min()
+                else:
+                    ymax = max(ymax, sdff.max())
+                    ymin = min(ymin, sdff.min())
+
+                ax.plot(trial_times, sdff, color='black')
+
+            # TODO also / separately subsample?
+
+            if response_calls is not None:
+                was_a_response = \
+                    response_calls.loc[(o1, o2, repeat_num, cell_id)]
+
+                if was_a_response:
+                    ax.set_facecolor(response_rgb +
+                        (response_call_alpha,))
+                else:
+                    ax.set_facecolor(nonresponse_rgb +
+                        (response_call_alpha,))
+
+            if i == 0:
+                # TODO TODO group in odors case as w/ matshow
+                if order_by == 'odors':
+                    trial_title = format_mixture({
+                        'name1': o1,
+                        'name2': o2,
+                    })
+                elif order_by == 'presentation_order':
+                    trial_title = format_mixture({
+                        'name1': o1,
+                        'name2': o2
+                    })
+
+                ax.set_title(trial_title, fontsize=6) #, rotation=90)
+                # TODO may also need to do tight_layout here...
+                # it apply to these kinds of titles?
+
+            if i == axs.shape[0] - 1 and j == 0:
+                # want these centered on example plot or across all?
+
+                # I had not specified fontsize for kc_analysis case, so whatever
+                # the default value was probably worked OK there.
+                ax.set_xlabel('Seconds from odor onset', fontsize=6)
+
+                if scale_within == 'none':
+                    scaletext = ''
+                elif scale_within == 'cell':
+                    scaletext = '\nScaled within each cell'
+                elif scale_within == 'trial':
+                    scaletext = '\nScaled within each trial'
+
+                # TODO just change to "% maximum w/in <x>" or something?
+                # Was 70 for kc_analysis case. That's much too high here.
+                #labelpad = 70
+                labelpad = 10
+                ax.set_ylabel(r'$\frac{\Delta F}{F}$' + scaletext,
+                    rotation='horizontal', labelpad=labelpad)
+
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                
+            else:
+                if show_cell_ids and j == len(cell_trials) - 1:
+                    # Indexes as they would be from one. For comparison
+                    # w/ Remy's MATLAB analysis.
+                    # This and default fontsize worked for kc_analysis case,
+                    # not for GUI.
+                    #labelpad = 18
+                    labelpad = 25
+                    ax.set_ylabel(str(cell_id + 1),
+                        rotation='horizontal', labelpad=labelpad, fontsize=5)
+                    ax.yaxis.set_label_position('right')
+                    # TODO put a label somewhere on the plot indicating
+                    # these are cell IDs
+
+                for d in ('top', 'right', 'bottom', 'left'):
+                    ax.spines[d].set_visible(False)
+
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+
+        # TODO change units in this case on ylabel?
+        # (to reflect how it was scaled)
+        if scale_within == 'cell':
+            for r in range(len(cell_trials)):
+                ax = axs[i,r]
+                ax.set_ylim(ymin, ymax)
+
+    if scale_within == 'none':
+        for i in range(len(cells)):
+            for j in range(len(cell_trials)):
+                ax = axs[i,j]
+                ax.set_ylim(ymin, ymax)
+    
+    if show_footprints:
+        fly_title = '{}, fly {}, {}'.format(
+            date_dir, fly_num, thorimage_id)
+
+        # title like 'Recording average fluorescence'?
+        #avg_ax.set_title(fly_title)
+        avg_ax.imshow(rgb_avg)
+        avg_ax.axis('off')
+
+        cell2rect_artists = dict()
+        for cell_id in cells:
+            # TODO TODO fix bug that required this (zero nonzero pixel
+            # in cropped footprint thing...)
+            if cell_id not in cell2text_and_rect:
+                continue
+
+            (text, rect) = cell2text_and_rect[cell_id]
+
+            box = rect.get_bbox()
+            # TODO appropriate font properties? placement still good?
+            # This seemed to work be for (larger?) figures in kc_analysis,
+            # too large + too close to boxes in gui (w/ ~8"x5" gridspec,dpi 100)
+            # TODO set in relation to actual fig size (+ dpi?)
+            #boxlabel_fontsize = 9
+            boxlabel_fontsize = 6
+            text_artist = avg_ax.text(box.xmin, box.ymin - 2, text,
+                color='b', size=boxlabel_fontsize, fontweight='bold')
+            # TODO jitter somehow (w/ arrow pointing to box?) to ensure no
+            # overlap? (this would be ideal, but probably hard to implement)
+            avg_ax.add_patch(rect)
+
+            cell2rect_artists[cell_id] = (text_artist, rect)
+
+    for i in range(len(cells)):
+        for j in range(len(cell_trials)):
+            ax = axs[i,j]
+            ax.set_xlim(xmin, xmax)
+
+    if made_fig:
+        fig.tight_layout()
+        return fig
 

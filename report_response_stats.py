@@ -13,46 +13,6 @@ import seaborn as sns
 import hong2p.util as u
 
 
-# TODO move these to util?
-def format_odor_conc(name, log10_conc):
-    if log10_conc is None:
-        return name
-    else:
-        # TODO tex formatting for exponent
-        #return r'{} @ $10^{{'.format(name) + '{:.2f}}}$'.format(log10_conc)
-        return '{} @ $10^{{{:.2f}}}$'.format(name, log10_conc)
-
-
-def format_mixture(*args):
-    log10_c1 = None
-    log10_c2 = None
-    if len(args) == 2:
-        n1, n2 = args
-    elif len(args) == 4:
-        n1, n2, log10_c1, log10_c2 = args
-    elif len(args) == 1:
-        row = args[0]
-        n1 = row['name1']
-        n2 = row['name2']
-        if 'log10_conc_vv1' in row:
-            log10_c1 = row['log10_conc_vv1']
-            log10_c2 = row['log10_conc_vv2']
-    else:
-        raise ValueError('incorrect number of args')
-
-    if n1 == 'paraffin':
-        title = format_odor_conc(n2, log10_c2)
-    elif n2 == 'paraffin':
-        title = format_odor_conc(n1, log10_c1)
-    else:
-        title = '{} + {}'.format(
-            format_odor_conc(n1, log10_c1),
-            format_odor_conc(n2, log10_c2)
-        )
-
-    return title
-
-
 def main():
     # TODO TODO assert that only one analysis for other index variables?
     # just do it before returning here?
@@ -217,7 +177,7 @@ def main():
         odor_groups = []
 
     for odors, odor_group in odor_groups:
-        title = format_mixture(*odors)
+        title = u.format_mixture(*odors)
         print(title)
         print('n_repeats={}'.format(len(odor_group)))
 
@@ -299,7 +259,7 @@ def main():
         ).value.transform(lambda x: x / x.max())
 
     # TODO maybe kwarg flag to suppress concs even if we do have those columns?
-    sns_df['odor_title'] = sns_df.apply(format_mixture, axis=1)
+    sns_df['odor_title'] = sns_df.apply(u.format_mixture, axis=1)
 
     g = sns.FacetGrid(sns_df, col='stat', hue='odor_title', sharey=False,
         xlim=(date_plot_min, date_plot_max))
