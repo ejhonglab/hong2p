@@ -81,7 +81,8 @@ def md5(fname):
     with open(fname, 'rb') as f:
         for chunk in iter(lambda: f.read(4096), b''):
             hash_md5.update(chunk)
-    return hash_md5.hexdigest() 
+    return hash_md5.hexdigest()
+
 
 # TODO worth allowing selection of a folder?
 # TODO worth saving labels to some kind of file (CSV?) in case database not
@@ -213,6 +214,9 @@ class Segmentation(QWidget):
         self.data_and_ctrl_layout.addWidget(self.data_tree)
         self.data_tree.setFixedWidth(210)
 
+        self.accepted_color = '#7fc97f'
+        self.rejected_color = '#ff4d4d'
+
         for d in self.motion_corrected_tifs:
             x = d.split(sep)
             fname_parts = x[-1].split('_')
@@ -239,26 +243,17 @@ class Segmentation(QWidget):
             # TODO TODO TODO make sure these don't screw up row indexing i'm
             # currently using in open_recording
             # (indexed w/in each node?)
-            for i, r in tif_seg_runs.iterrows():
+            for _, r in tif_seg_runs.iterrows():
                 # TODO TODO TODO right click menu on these things to delete
                 # w/ "are you sure?" followup
                 # (and maybe set canonical? or other input for that?)
-                seg_run_item = QTreeWidgetItem(item)
-                # TODO use the whole row? or just store an index into something
-                # else? maybe store whole tif_seg_runs at parent node?
-                seg_run_item.setData(0, Qt.UserRole, r)
-
-                seg_run_item.setText(0, str(r.run_at)[:16])
-
+                self.add_segrun_widget(item, r)
                 if r.accepted == True:
-                    seg_run_item.setBackground(0, QColor('#7fc97f'))
                     any_accepted = True
-                elif r.accepted == False:
-                    seg_run_item.setBackground(0, QColor('#ff4d4d'))
 
             # TODO maybe color red if at least thing is not accepted?
             if any_accepted:
-                item.setBackground(0, QColor('#7fc97f'))
+                item.setBackground(0, QColor(self.accepted_color))
 
         self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_click)
 
@@ -387,9 +382,10 @@ class Segmentation(QWidget):
         self.cnmf_running = False
         self.params_changed = False
         self.accepted = None
+        self.relabelling_past_segmentation = False
 
         # TODO delete / handle differently
-        self.ACTUALLY_UPLOAD = True
+        self.ACTUALLY_UPLOAD = False
         #
 
 
@@ -711,6 +707,19 @@ class Segmentation(QWidget):
             self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
 
         return cnmf_ctrl_widget
+
+
+    def add_segrun_widget(self, parent, segrun_row) -> None:
+        seg_run_item = QTreeWidgetItem(parent)
+        seg_run_item.setData(0, Qt.UserRole, segrun_row)
+        seg_run_item.setText(0, str(segrun_row.run_at)[:16])
+
+        if segrun_row.accepted == True:
+            seg_run_item.setBackground(0, QColor(self.accepted_color))
+        elif segrun_row.accepted == False:
+            seg_run_item.setBackground(0, QColor(self.rejected_color))
+
+        return seg_run_item
 
 
     def toggle_splitter(self):
@@ -1677,8 +1686,10 @@ class Segmentation(QWidget):
 
     # TODO move core of this to util and just wrap it here
     def upload_segmentation_info(self, accepted: bool) -> None:
-        ########################################################################
         # TODO maybe visually indicate which has been selected already?
+        # TODO TODO check whether row in tree view has been created
+        # / other state indicating whether already in gui
+        # if so, just use update_seg_accepted fn
         run_info = {
             'run_at': [self.run_at],
             'recording_from': self.started_at,
@@ -1711,6 +1722,9 @@ class Segmentation(QWidget):
             # The remainder of the metadata must have already been uploaded,
             # when self.accepted was first set.
             return
+
+        segrun_row = run.reset_index().iloc[0]
+        self.add_segrun_widget(self.current_item, segrun_row)
 
         # TODO nr_code_versions, rig_code_versions (both lists of dicts)
         # TODO ti_code_version (dict)
@@ -1763,11 +1777,51 @@ class Segmentation(QWidget):
             u.to_sql_with_duplicates(self.footprint_df, 'cells')
 
 
+    def update_seg_color(self, segrun_treeitem, accepted) -> None:
+        if accepted:
+            color = self.accepted_color
+        else:
+            color = self.rejected_color
+        segrun_treeitem.setBackground(0, QColor(color))
+
+        # This includes the only case where parents color needs to change
+        # TO accepted.
+        parent = segrun_treeitem.parent()
+        if accepted:
+            parent.setBackground(0, QColor(color))
+        else:
+            any_accepted = False
+            for i in range(parent.childCount()):
+                if parent.child(i).data(0, Qt.UserRole).accepted:
+                    any_accepted = True
+                    break
+            if not any_accepted:
+                parent.setBackground(0, QColor(color))
+
+
+    def update_seg_accepted(self, segrun_treeitem, accepted) -> None:
+        row = segrun_treeitem.data(0, Qt.UserRole)
+        row.accepted = accepted
+
+        # TODO maybe this should be row.run_at?
+        sql = ("UPDATE analysis_runs SET accepted = " +
+            "{} WHERE run_at = '{}'").format(accepted,
+            self.run_at)
+        ret = u.conn.execute(sql)
+
+        self.update_seg_color(segrun_treeitem, accepted)
+
+
     # TODO maybe make all accept / reject buttons gray until current accept /
     # reject finishes running (mostly to avoid having to think about whether not
     # doing so could possibly cause a problem)?
-    def accept_cnmf(self):
+    def accept_cnmf(self) -> None:
         if self.accepted:
+            return
+
+        if self.relabelling_past_segmentation:
+            self.update_seg_accepted(self.current_item, True)
+            self.accepted = True
             return
 
         self.accept_cnmf_btn.setEnabled(False)
@@ -1836,6 +1890,8 @@ class Segmentation(QWidget):
         print('done saving cnmf_state.p', flush=True)
         #
 
+        # TODO TODO TODO why did i need this separate from checking
+        # self.accepted is None???
         if self.uploaded_presentations:
             # Just to skip to end of function.
             presentation_dfs = []
@@ -1895,7 +1951,7 @@ class Segmentation(QWidget):
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
 
-        self.current_item.setBackground(QColor('#7fc97f'))
+        self.current_item.setBackground(0, QColor(self.accepted_color))
         self.accepted = True
         print('accepted')
 
@@ -1903,6 +1959,15 @@ class Segmentation(QWidget):
     def reject_cnmf(self):
         if self.accepted == False:
             return
+
+        if self.relabelling_past_segmentation:
+            self.update_seg_accepted(self.current_item, False)
+            self.accepted = False
+            return
+
+        # TODO TODO instead, add an item to the list for the current experiment,
+        # and color as appropriate!
+        # TODO maybe also re-color parent items if it changes
 
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
@@ -1923,6 +1988,7 @@ class Segmentation(QWidget):
 
     def handle_treeitem_click(self):
         curr_item = self.sender().currentItem()
+        self.current_item = curr_item
         if curr_item.parent() is None:
             self.open_recording(curr_item)
         # TODO check this works for non-toplevel nodes
@@ -1950,6 +2016,8 @@ class Segmentation(QWidget):
 
     def open_segmentation_run(self, item):
         row = item.data(0, Qt.UserRole)
+        self.run_at = row.run_at
+        self.accepted = row.accepted
 
         self.delete_other_param_widgets()
 
@@ -1984,14 +2052,16 @@ class Segmentation(QWidget):
         # TODO need tight_layout?
         self.mpl_canvas.draw()
 
+        self.relabelling_past_segmentation = True
+
         # TODO TODO TODO allow it to be relabeled (w/o all of original upload)
-        # TODO set self.accepted as appropriate
 
         # TODO TODO should probably delete any traces in db if select reject
         # (or maybe just ignore and let other scripts clean orphaned stuff up
         # later? so that we don't have to regenerate traces if we change our
         # mind again and want to label as accepted...)
-
+        self.accept_cnmf_btn.setEnabled(True)
+        self.reject_cnmf_btn.setEnabled(True)
 
 
     # TODO maybe selecting two (/ multiple) analysis runs then right clicking
@@ -2001,6 +2071,8 @@ class Segmentation(QWidget):
 
 
     def open_recording(self, item):
+        self.relabelling_past_segmentation = False
+
         # TODO maybe use setData and data instead?
         idx = self.data_tree.indexOfTopLevelItem(item)
         tiff = self.motion_corrected_tifs[idx]
@@ -2317,7 +2389,6 @@ class Segmentation(QWidget):
         assert self.movie.shape[0] == len(frame_times), \
             '{} != {}'.format(self.movie.shape[0], len(frame_times))
 
-        self.current_item = self.sender().currentItem()
         self.date = date
         self.fly_num = fly_num
         self.thorimage_id = thorimage_id
