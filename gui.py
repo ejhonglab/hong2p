@@ -30,7 +30,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
     QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut,
-    QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem)
+    QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem, QStackedWidget,
+    QFileDialog)
 
 import pyqtgraph as pg
 import tifffile
@@ -203,7 +204,6 @@ class Segmentation(QWidget):
         self.data_and_ctrl_widget.setLayout(self.data_and_ctrl_layout)
         self.data_and_ctrl_layout.setContentsMargins(0, 0, 0, 0)
 
-        #self.list = QListWidget(self)
         # TODO TODO make a refresh button for this widget, which re-reads from
         # db (in case other programs have edited it)
         # TODO get rid of space on left that wasnt there w/ tree widget
@@ -265,11 +265,7 @@ class Segmentation(QWidget):
         # TODO TODO maybe make either just parameters or both params and data
         # explorer collapsible (& display intermediate results horizontally,
         # maybe only in this case?)
-            
-        # TODO or should this get a layout as input?
-        cnmf_ctrl_widget = QWidget(self)
-        self.data_and_ctrl_layout.addWidget(cnmf_ctrl_widget)
-
+        
         # TODO should save cnmf output be a button here or to the right?
         # maybe run should also be to the right?
         # TODO maybe a checkbox to save by default or something?
@@ -283,282 +279,23 @@ class Segmentation(QWidget):
             print('Loading default parameters from {}'.format(
                 self.default_json_params))
 
-            self.params = params.CNMFParams.from_json(self.default_json_params)
+            self.params = \
+                params.CNMFParams.from_json_file(self.default_json_params)
         else:
             self.params = params.CNMFParams()
 
         # TODO TODO copy once here to get params to reset back to in GUI
+        self.cnmf_ctrl_widget = self.make_cnmf_param_widget(self.params,
+            editable=True)
+        self.param_display_widget = None
 
-        param_tabs = QTabWidget(cnmf_ctrl_widget)
-
-        param_dict = self.params.to_dict()
-
-        # Other groups are: motion, online
-        # TODO rename to indicate these are the subset we want visible in gui?
-        cnmf_groups = (
-            'data',
-            'patch_params',
-            'preprocess_params',
-            'init_params',
-            'spatial_params',
-            'temporal_params',
-            'merging',
-            'quality'
-        )
-        dont_show_by_group = defaultdict(set)
-        # TODO get rid of most of this (maybe whole data tab if decay_time
-        # moved to temporal) after loading from thorlabs metadata
-        dont_show_by_group.update({
-            'data': {'fnames','dims'},
-            'merging': {'gSig_range'},
-        })
-
-        seen_types = set()
-        formgen_print = False
-        for i, g in enumerate(cnmf_groups):
-            dont_show = dont_show_by_group[g]
-
-            group_name = g.split('_')[0].title()
-            if group_name == 'Init':
-                group_name = 'Initialization'
-
-            tab = QWidget(param_tabs)
-            param_tabs.addTab(tab, group_name)
-            tab_layout = QVBoxLayout(tab)
-            tab.setLayout(tab_layout)
-
-            group = QWidget(tab)
-            group_layout = QFormLayout(group)
-            group.setLayout(group_layout)
-            tab_layout.addWidget(group)
-
-            if g == 'data':
-                self.data_group_layout = group_layout
-
-            reset_tab = QPushButton('Reset {} Parameters'.format(group_name))
-            reset_tab.setEnabled(False)
-            tab_layout.addWidget(reset_tab)
-            # TODO allow setting defaults (in gui) that will override builtin
-            # cnmf defaults, and persist across sessions
-            # TODO do that w/ another button here?
-
-            # TODO TODO TODO provide a "reset to defaults" option
-            # maybe both within a tab and across all?
-            # TODO maybe also a save all option? (if implementing that way...)
-
-            # TODO TODO should patch / other params have a checkbox to disable
-            # all params (there's a mode where everything is computed w/o
-            # patches, right?)
-
-            # TODO TODO blacklist approp parts of data / other things that can
-            # (and should only) be filled in from thorimage metadata
-
-            if formgen_print:
-                print(g)
-
-            # TODO maybe infer whether params are optional (via type
-            # annotations, docstring, None already, or explicitly specifying)
-            # and then have a checkbox to the side to enable whatever other
-            # input there is?
-            # TODO some mechanism for mutually exclusive groups of parameters
-            # / parameters that force values of others
-            for k, v in param_dict[g].items():
-                if k in dont_show:
-                    # maybe still print or something?
-                    continue
-
-                # CNMF has slightly different key names in the dict and object
-                # representations of a set of params...
-                # TODO maybe fix in CNMF in the future
-                group_key = g.split('_')[0]
-
-                # TODO maybe do this some other way / don't?
-                # TODO make tooltip for each from docstring?
-                # TODO TODO also get next line(s) for tooltip?
-
-                doc_line = None
-                for line in params.CNMFParams.__init__.__doc__.split('\n'):
-                    if k + ':' in line:
-                        doc_line = line.strip()
-                        break
-
-                print_stuff = False
-
-                if doc_line is None:
-                    warnings.warn(('parameter {} not defined in docstring'
-                        ).format(k))
-                    print_stuff = True
-                # TODO also warn about params in docstring but not here
-                # maybe parse params in docstring once first?
-
-                # TODO how to handle stuff w/ None as value?
-                # TODO how to handle stuff whose default is int but can be
-                # float? just change default to float in cnmf?
-
-                # TODO is underscore not displaying correctly? just getting cut
-                # off? fix that? translate explicitely to a qlabel to maybe set
-                # other properties about display?
-
-                seen_types.add(str(type(v)))
-
-                if type(v) is bool:
-                    # TODO tristate in some cases?
-                    w = QCheckBox(group)
-                    w.setChecked(v)
-                    assert not w.isTristate()
-
-                    w.stateChanged.connect(
-                        partial(self.set_boolean, group_key, k))
-
-                elif type(v) is int:
-                    # TODO set step relative to magnitude?
-                    # TODO range?
-                    w = QSpinBox(group)
-
-                    int_min = -1
-                    int_max = 10000
-                    w.setRange(int_min, int_max)
-                    assert v >= int_min and v <= int_max
-                    w.setValue(v)
-
-                    print_stuff = True
-                    w.valueChanged.connect(
-                        partial(self.set_from_spinbox, group_key, k))
-
-                elif type(v) is float:
-                    # TODO set step and decimal relative to default size?
-                    # (1/10%?)
-                    # TODO range?
-                    # TODO maybe assume stuff in [0,1] should stay there?
-                    w = QDoubleSpinBox(group)
-
-                    float_min = -1.
-                    float_max = 10000.
-                    w.setRange(float_min, float_max)
-                    assert v >= float_min and v <= float_max
-                    w.setValue(v)
-
-                    w.valueChanged.connect(
-                        partial(self.set_from_spinbox, group_key, k))
-
-                # TODO TODO if type is list (tuple?) try recursively looking up
-                # types? (or just handle numbers?) -> place in
-                # qwidget->qhboxlayout?
-
-                elif type(v) is str:
-                    # TODO use radio instead?
-                    w = QComboBox(group)
-                    w.addItem(v)
-
-                    # TODO maybe should use regex?
-                    v_opts = ([x.strip(" '") for x in doc_line.split(',')[0
-                        ].split(':')[1].split('|')])
-
-                    if formgen_print:
-                        print('key:', k)
-                        print('parsed options:', v_opts)
-                    assert v in v_opts
-
-                    for vi in v_opts:
-                        if vi == v:
-                            continue
-                        w.addItem(vi)
-
-                    print_stuff = True
-
-                    w.currentIndexChanged[str].connect(
-                        partial(self.set_from_list, group_key, k))
-
-                else:
-                    print_stuff = True
-                    w = QLineEdit(group)
-                    w.setText(repr(v))
-                    # TODO TODO if using eval, use setValidator to set some
-                    # validator that eval call works?
-                    w.editingFinished.connect(
-                        partial(self.set_from_text, group_key, k, w))
-
-                if formgen_print and print_stuff:
-                    print(k, v, type(v))
-                    print(doc_line)
-                    print('')
-
-                group_layout.addRow(k, w)
-
-            if formgen_print:
-                print('')
-
-        if formgen_print:
-            print('Seen types:', seen_types)
-
-        # TODO set tab index to most likely to change? spatial?
-
-        cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
-
-        # TODO TODO how to replace this widget w/ new one if loading serialized
-        # params into totally new QTabWidget??
-        cnmf_ctrl_layout.addWidget(param_tabs)
-
-        cnmf_ctrl_widget.setLayout(cnmf_ctrl_layout)
-
-        # TODO eliminate vertical space between these rows of buttons
-        shared_btns = QWidget(cnmf_ctrl_widget)
-        cnmf_ctrl_layout.addWidget(shared_btns)
-        shared_btn_layout = QVBoxLayout(shared_btns)
-        shared_btns.setLayout(shared_btn_layout)
-        shared_btn_layout.setSpacing(0)
-        shared_btn_layout.setContentsMargins(0, 0, 0, 0)
-        shared_btns.setFixedHeight(80)
-
-        param_btns = QWidget(shared_btns)
-        shared_btn_layout.addWidget(param_btns)
-        param_btns_layout = QHBoxLayout(param_btns)
-        param_btns.setLayout(param_btns_layout)
-        param_btns_layout.setContentsMargins(0, 0, 0, 0)
-
-        other_btns = QWidget(shared_btns)
-        shared_btn_layout.addWidget(other_btns)
-        other_btns_layout = QHBoxLayout(other_btns)
-        other_btns.setLayout(other_btns_layout)
-        other_btns_layout.setContentsMargins(0, 0, 0, 0)
-
-        # TODO also give parent?
-        reset_cnmf_params_btn = QPushButton('Reset All Parameters')
-        reset_cnmf_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(reset_cnmf_params_btn)
-
-        mk_default_params_btn = QPushButton('Make Parameters Default')
-        #mk_default_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(mk_default_params_btn)
-        mk_default_params_btn.clicked.connect(self.save_default_params)
-
-        # TODO support this?
-        # TODO TODO at least make not-yet-implemented stuff unclickable
-        # TODO would need a format for these params... json?
-        load_params_params_btn = QPushButton('Load Parameters From File')
-        load_params_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(load_params_params_btn)
-
-        save_params_btn = QPushButton('Save Parameters To File')
-        save_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(save_params_btn)
-
-        # TODO TODO allow this to be checked while data is loading, and then
-        # just start as soon as data finishes loading
-        self.run_cnmf_btn = QPushButton('Run CNMF')
-        other_btns_layout.addWidget(self.run_cnmf_btn)
-        # Will enable after some data is selected. Can't run CNMF without that.
-        self.run_cnmf_btn.setEnabled(False)
-
-        save_cnmf_output_btn = QPushButton('Save CNMF Output')
-        other_btns_layout.addWidget(save_cnmf_output_btn)
-        save_cnmf_output_btn.setEnabled(False)
-
-        self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
-
+        self.param_widget_stack = QStackedWidget(self)
+        self.param_widget_stack.addWidget(self.cnmf_ctrl_widget)
+        self.data_and_ctrl_layout.addWidget(self.param_widget_stack)
 
         self.display_widget = QWidget(self)
         self.splitter.addWidget(self.display_widget)
+
 
         self.splitter_handle = self.splitter.handle(1)
         self.splitter_bar_layout = QVBoxLayout()
@@ -654,6 +391,326 @@ class Segmentation(QWidget):
         # TODO delete / handle differently
         self.ACTUALLY_UPLOAD = True
         #
+
+
+    def make_cnmf_param_widget(self, cnmf_params, editable=False):
+        """
+        """
+        # TODO get from output (in the one editable case) rather than setting in
+        # here and checking at each start?
+        if editable and hasattr(self, 'data_group_layout'):
+            raise ValueError('can not make two editable widgets')
+
+        # TODO TODO need to make sure that only one editable version can be
+        # created at once
+        # TODO TODO need to make sure that if non-editable are connected to save
+        # param callback, they use the correct data
+        cnmf_ctrl_widget = QWidget(self)
+        param_tabs = QTabWidget(cnmf_ctrl_widget)
+
+        # TODO could maybe take a dict of type (class) -> callback
+        # and then pass self.set_from* fns in. might be tricky.
+        # (to factor this out of class)
+
+        param_json_str = None
+        if type(cnmf_params) is str:
+            param_json_str = cnmf_params
+            cnmf_params = params.CNMFParams.from_json(cnmf_params)
+
+        elif type(cnmf_params) is not params.CNMFParams:
+            raise ValueError('cnmf_params must be of type CNMFParams or str')
+
+        param_dict = cnmf_params.to_dict()
+
+        # Other groups are: motion, online
+        # TODO rename to indicate these are the subset we want visible in gui?
+        cnmf_groups = (
+            'data',
+            'patch_params',
+            'preprocess_params',
+            'init_params',
+            'spatial_params',
+            'temporal_params',
+            'merging',
+            'quality'
+        )
+        dont_show_by_group = defaultdict(set)
+        # TODO get rid of most of this (maybe whole data tab if decay_time
+        # moved to temporal) after loading from thorlabs metadata
+        dont_show_by_group.update({
+            'data': {'fnames','dims'},
+            'merging': {'gSig_range'},
+        })
+
+        seen_types = set()
+        formgen_print = False
+        for i, g in enumerate(cnmf_groups):
+            dont_show = dont_show_by_group[g]
+
+            group_name = g.split('_')[0].title()
+            if group_name == 'Init':
+                group_name = 'Initialization'
+
+            tab = QWidget(param_tabs)
+            param_tabs.addTab(tab, group_name)
+            tab_layout = QVBoxLayout(tab)
+            tab.setLayout(tab_layout)
+
+            group = QWidget(tab)
+            group_layout = QFormLayout(group)
+            group.setLayout(group_layout)
+            tab_layout.addWidget(group)
+
+            if editable:
+                # TODO just get this from output somehow?
+                if g == 'data':
+                    self.data_group_layout = group_layout
+
+                reset_tab = \
+                    QPushButton('Reset {} Parameters'.format(group_name))
+                reset_tab.setEnabled(False)
+                tab_layout.addWidget(reset_tab)
+
+            # TODO TODO should patch / other params have a checkbox to disable
+            # all params (there's a mode where everything is computed w/o
+            # patches, right?)
+
+            # TODO TODO blacklist approp parts of data / other things that can
+            # (and should only) be filled in from thorimage metadata
+
+            if formgen_print:
+                print(g)
+
+            # TODO maybe infer whether params are optional (via type
+            # annotations, docstring, None already, or explicitly specifying)
+            # and then have a checkbox to the side to enable whatever other
+            # input there is?
+            # TODO some mechanism for mutually exclusive groups of parameters
+            # / parameters that force values of others
+            for k, v in param_dict[g].items():
+                if k in dont_show:
+                    # maybe still print or something?
+                    continue
+
+                # CNMF has slightly different key names in the dict and object
+                # representations of a set of params...
+                # TODO maybe fix in CNMF in the future
+                group_key = g.split('_')[0]
+
+                # TODO maybe do this some other way / don't?
+                # TODO make tooltip for each from docstring?
+                # TODO TODO also get next line(s) for tooltip?
+
+                doc_line = None
+                for line in params.CNMFParams.__init__.__doc__.split('\n'):
+                    if k + ':' in line:
+                        doc_line = line.strip()
+                        break
+
+                print_stuff = False
+
+                if doc_line is None:
+                    warnings.warn(('parameter {} not defined in docstring'
+                        ).format(k))
+                    print_stuff = True
+                # TODO also warn about params in docstring but not here
+                # maybe parse params in docstring once first?
+
+                # TODO how to handle stuff w/ None as value?
+                # TODO how to handle stuff whose default is int but can be
+                # float? just change default to float in cnmf?
+
+                # TODO is underscore not displaying correctly? just getting cut
+                # off? fix that? translate explicitely to a qlabel to maybe set
+                # other properties about display?
+
+                seen_types.add(str(type(v)))
+
+                if type(v) is bool:
+                    # TODO tristate in some cases?
+                    w = QCheckBox(group)
+                    w.setChecked(v)
+                    assert not w.isTristate()
+
+                    if editable:
+                        w.stateChanged.connect(
+                            partial(self.set_boolean, group_key, k))
+
+                elif type(v) is int:
+                    # TODO set step relative to magnitude?
+                    # TODO range?
+                    w = QSpinBox(group)
+
+                    int_min = -1
+                    int_max = 10000
+                    w.setRange(int_min, int_max)
+                    assert v >= int_min and v <= int_max
+                    w.setValue(v)
+
+                    print_stuff = True
+
+                    if editable:
+                        w.valueChanged.connect(
+                            partial(self.set_from_spinbox, group_key, k))
+
+                elif type(v) is float:
+                    # TODO set step and decimal relative to default size?
+                    # (1/10%?)
+                    # TODO range?
+                    # TODO maybe assume stuff in [0,1] should stay there?
+                    w = QDoubleSpinBox(group)
+
+                    float_min = -1.
+                    float_max = 10000.
+                    w.setRange(float_min, float_max)
+                    assert v >= float_min and v <= float_max
+                    w.setValue(v)
+
+                    if editable:
+                        w.valueChanged.connect(
+                            partial(self.set_from_spinbox, group_key, k))
+
+                # TODO TODO if type is list (tuple?) try recursively looking up
+                # types? (or just handle numbers?) -> place in
+                # qwidget->qhboxlayout?
+
+                elif type(v) is str:
+                    # TODO use radio instead?
+                    w = QComboBox(group)
+                    w.addItem(v)
+
+                    # TODO maybe should use regex?
+                    v_opts = ([x.strip(" '") for x in doc_line.split(',')[0
+                        ].split(':')[1].split('|')])
+
+                    if formgen_print:
+                        print('key:', k)
+                        print('parsed options:', v_opts)
+                    assert v in v_opts
+
+                    for vi in v_opts:
+                        if vi == v:
+                            continue
+                        w.addItem(vi)
+
+                    print_stuff = True
+
+                    if editable:
+                        w.currentIndexChanged[str].connect(
+                            partial(self.set_from_list, group_key, k))
+
+                else:
+                    print_stuff = True
+                    w = QLineEdit(group)
+                    w.setText(repr(v))
+                    if editable:
+                        # TODO TODO if using eval, use setValidator to set some
+                        # validator that eval call works?
+                        w.editingFinished.connect(
+                            partial(self.set_from_text, group_key, k, w))
+
+                if formgen_print and print_stuff:
+                    print(k, v, type(v))
+                    print(doc_line)
+                    print('')
+
+                if not editable:
+                    w.setEnabled(False)
+
+                group_layout.addRow(k, w)
+
+            if formgen_print:
+                print('')
+
+        if formgen_print:
+            print('Seen types:', seen_types)
+
+        # TODO set tab index to most likely to change? spatial?
+
+        cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
+
+        # TODO TODO how to replace this widget w/ new one if loading serialized
+        # params into totally new QTabWidget??
+        cnmf_ctrl_layout.addWidget(param_tabs)
+
+        # TODO eliminate vertical space between these rows of buttons
+        shared_btns = QWidget(cnmf_ctrl_widget)
+        cnmf_ctrl_layout.addWidget(shared_btns)
+        shared_btn_layout = QVBoxLayout(shared_btns)
+        shared_btns.setLayout(shared_btn_layout)
+        shared_btn_layout.setSpacing(0)
+        shared_btn_layout.setContentsMargins(0, 0, 0, 0)
+        shared_btns.setFixedHeight(80)
+
+        param_btns = QWidget(shared_btns)
+        shared_btn_layout.addWidget(param_btns)
+        param_btns_layout = QHBoxLayout(param_btns)
+        param_btns.setLayout(param_btns_layout)
+        param_btns_layout.setContentsMargins(0, 0, 0, 0)
+
+        if editable:
+            # TODO also give parent?
+            reset_cnmf_params_btn = QPushButton('Reset All Parameters')
+            reset_cnmf_params_btn.setEnabled(False)
+            param_btns_layout.addWidget(reset_cnmf_params_btn)
+
+        mk_default_params_btn = QPushButton('Make Parameters Default')
+        #mk_default_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(mk_default_params_btn)
+        # TODO TODO make this possible in non-editable data case
+        # (probably store alongside self.params and pass extra arg to this fn as
+        # here?)
+        if editable:
+            mk_default_params_btn.clicked.connect(self.save_default_params)
+        else:
+            assert param_json_str is not None
+            # TODO TODO test this case
+            mk_default_params_btn.clicked.connect(
+                partial(self.save_default_params, param_json_str))
+
+        if editable:
+            # TODO support this?
+            load_params_params_btn = QPushButton('Load Parameters From File')
+            load_params_params_btn.setEnabled(False)
+            param_btns_layout.addWidget(load_params_params_btn)
+
+        save_params_btn = QPushButton('Save Parameters To File')
+        if editable:
+            save_params_btn.setEnabled(False)
+        else:
+            assert param_json_str is not None
+            # TODO why didn't lambdas work before again? this case suffer from
+            # the same problem?
+            save_params_btn.clicked.connect(
+                lambda: self.save_json(param_json_str))
+            # this didn't work, seemingly b/c interaction w/ *args
+            # (it'd pass in (False,) for args)
+            #    partial(self.save_json, param_json_str))
+
+        param_btns_layout.addWidget(save_params_btn)
+
+        if editable:
+            other_btns = QWidget(shared_btns)
+            shared_btn_layout.addWidget(other_btns)
+            other_btns_layout = QHBoxLayout(other_btns)
+            other_btns.setLayout(other_btns_layout)
+            other_btns_layout.setContentsMargins(0, 0, 0, 0)
+
+            # TODO TODO allow this to be checked while data is loading, and then
+            # just start as soon as data finishes loading
+            self.run_cnmf_btn = QPushButton('Run CNMF')
+            other_btns_layout.addWidget(self.run_cnmf_btn)
+            # Will enable after some data is selected. Can't run CNMF without
+            # that.
+            self.run_cnmf_btn.setEnabled(False)
+
+            save_cnmf_output_btn = QPushButton('Save CNMF Output')
+            other_btns_layout.addWidget(save_cnmf_output_btn)
+            save_cnmf_output_btn.setEnabled(False)
+
+            self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
+
+        return cnmf_ctrl_widget
 
 
     def toggle_splitter(self):
@@ -832,6 +889,7 @@ class Segmentation(QWidget):
 
         # TODO separate button to cancel? change run-button to cancel?
 
+        # TODO maybe don't do this (yet)?
         self.fig.clear()
 
         # TODO what kind of (if any) limitations are there on the extent to
@@ -1569,12 +1627,48 @@ class Segmentation(QWidget):
                 self.run_cnmf_btn.setEnabled(True)
 
 
-    def save_default_params(self) -> None:
+    # TODO maybe refactor this and save_default_params a little...
+    # if i want to support both json_str and cnmfparams, might make sense to
+    # only have that logic one place
+    def save_json(self, json_str, *args) -> None:
+        """Saves a str to a filename.
+
+        If output_filename is not provided, a dialog will pop up asking user
+        where to save the file.
+        """
+        if len(args) == 0:
+            options = QFileDialog.Options()
+            options |= QFileDialog.DontUseNativeDialog
+            output_filename, _ = QFileDialog.getSaveFileName(self, 'Save to...',
+                '', 'JSON (*.json)', options=options)
+        elif len(args) == 1:
+            output_filename = args[0]
+        else:
+            raise ValueError('incorrect number of arguments')
+
+        # TODO maybe validate json_str first?
+        # TODO maybe nicely format it in the file, so it's more human readable?
+        with open(output_filename, 'w') as f:
+            f.write(json_str)
+
+
+    def save_default_params(self, *args) -> None:
+        """Saves CNMF params to file in JSON format.
+
+        If optional arg is passed, it is assumed to be a string of valid CNMF
+        param JSON and it is saved as-is. Otherwise, CNMFParams.to_json is used
+        on self.params
+        """
         print('Writing new default parameters to {}'.format(
             self.default_json_params))
         # TODO TODO test round trip before terminating w/ success
-        self.params.to_json(self.default_json_params)
-        # TODO maybe use pickle for this?
+        if len(args) == 0:
+            self.params.to_json(self.default_json_params)
+        elif len(args) == 1:
+            json_str = args[0]
+            self.save_json(json_str, self.default_json_params)
+        else:
+            raise ValueError('incorrect number of arguments')
 
 
     # TODO TODO add support for deleting presentations from db if reject
@@ -1836,18 +1930,42 @@ class Segmentation(QWidget):
             self.open_segmentation_run(curr_item)
 
 
+    def delete_other_param_widgets(self) -> None:
+        import sip
+
+        if self.param_display_widget is None:
+            return
+
+        self.param_widget_stack.setCurrentIndex(0)
+        self.param_widget_stack.removeWidget(self.param_display_widget)
+
+        # TODO maybe remove this sip bit... not sure it's necessary
+        sip.delete(self.param_display_widget)
+        # alternative would probably be:
+        # self.param_display_widget.deleteLater()
+        # see: stackoverflow.com/questions/5899826
+
+        self.param_display_widget = None
+
+
     def open_segmentation_run(self, item):
         row = item.data(0, Qt.UserRole)
+
+        self.delete_other_param_widgets()
 
         # TODO possible to implement this w/o interring w/ other state?
         # (so movie can stay loaded, and only change when selecting another
         # experiment, etc) (or should i clear more stuff to be safe?)
 
-        # TODO TODO TODO load parameters into gui form / make all uneditable (+
-        # return to previous state after?)
-        # TODO TODO maybe i need to make a new form (/ modify current),
-        # rather than just trying to set data in current one,
-        # since serialized params may have more / less keys than current set...
+        # TODO delete any existing widgets in stack beyond first
+        self.param_display_widget = self.make_cnmf_param_widget(row.parameters,
+            editable=False)
+
+        self.param_widget_stack.addWidget(self.param_display_widget)
+        self.param_widget_stack.setCurrentIndex(1)
+
+        # TODO switch back and delete as appropriate
+        # (probably at beginning of open_* fns)
 
         # TODO also load correct data params
         # is it a given that param json reflects correct data params????
@@ -1886,6 +2004,8 @@ class Segmentation(QWidget):
         # TODO maybe use setData and data instead?
         idx = self.data_tree.indexOfTopLevelItem(item)
         tiff = self.motion_corrected_tifs[idx]
+
+        self.delete_other_param_widgets()
 
         start = time.time()
 
