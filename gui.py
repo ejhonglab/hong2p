@@ -12,7 +12,6 @@ import warnings
 from collections import defaultdict
 import traceback
 from functools import partial
-import glob
 import hashlib
 import time
 from datetime import datetime
@@ -31,7 +30,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
     QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut,
-    QSplitter, QToolButton)
+    QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem)
 
 import pyqtgraph as pg
 import tifffile
@@ -89,37 +88,6 @@ def md5(fname):
 # TODO alternative to database for input (for metadata mostly)?
 
 # TODO TODO support loading single comparisons from tiffs in util
-
-def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
-    """
-    """
-    motion_corrected_tifs = []
-    for full_date_dir in glob.glob(join(analysis_output_root, '**')):
-        for full_fly_dir in glob.glob(join(full_date_dir, '**')):
-            date_dir = split(full_date_dir)[-1]
-            try:
-                fly_num = int(split(full_fly_dir)[-1])
-
-                fly_used = df.loc[df.attempt_analysis &
-                    (df.date == date_dir) & (df.fly_num == fly_num)]
-
-                used_thorimage_dirs = set(fly_used.thorimage_dir)
-
-                tif_dir = join(full_fly_dir, 'tif_stacks')
-                if exists(tif_dir):
-                    tif_glob = '*.tif' if include_rigid else '*_nr.tif'
-                    fly_tifs = glob.glob(join(tif_dir, tif_glob))
-
-                    used_tifs = [x for x in fly_tifs if '_'.join(
-                        split(x)[-1].split('_')[:-1]) in used_thorimage_dirs]
-
-                    motion_corrected_tifs += used_tifs
-
-            except ValueError:
-                continue
-
-    return motion_corrected_tifs
-        
 
 # TODO why exactly do we need this wrapper again?
 class WorkerSignals(QObject):
@@ -220,38 +188,7 @@ class Segmentation(QWidget):
 
         # TODO move initialization of this thing to another class
         # (DataSelector or something) that is shared?
-        # TODO TODO TODO use glob or something to find all motion corrected tifs
-        # in NAS dir (just show nr?). still display same shorthand for each exp?
-        # still use pandas?
-        '''
-        self.presentations = presentations.set_index(comp_cols)
-        # Needs to be indexed same as items, for open_recording to work.
-        self.recordings = presentations[u.recording_cols].drop_duplicates(
-            ).sort_values(u.recording_cols)
-
-        items = ['/'.join(r.split()[1:])
-            for r in str(self.recordings).split('\n')[1:]]
-        '''
-        self.motion_corrected_tifs = list_motion_corrected_tifs()
-        for d in self.motion_corrected_tifs:
-            print(d)
-
-        # TODO so this isn't used? delete...
-        entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
-            'fly_num, recording_from, analysis FROM presentations', u.conn)
-        # TODO TODO check that the right number of rows are in there, otherwise
-        # drop and re-insert (optionally? since it might take a bit of time to
-        # load CNMF output to check / for database to check)
-
-        # TODO more elegant way to check for row w/ certain values?
-        '''
-        curr_entered = (
-            (entered.prep_date == date) &
-            (entered.fly_num == fly_num) &
-            (entered.recording_from == started_at)
-        )
-        curr_entered = curr_entered.any()
-        '''
+        self.motion_corrected_tifs = u.list_motion_corrected_tifs()
 
         self.splitter = QSplitter(self)
         self.layout = QVBoxLayout(self)
@@ -266,17 +203,20 @@ class Segmentation(QWidget):
         self.data_and_ctrl_widget.setLayout(self.data_and_ctrl_layout)
         self.data_and_ctrl_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.list = QListWidget(self)
-        self.data_and_ctrl_layout.addWidget(self.list)
-        self.list.setFixedWidth(210)
+        #self.list = QListWidget(self)
+        # TODO TODO make a refresh button for this widget, which re-reads from
+        # db (in case other programs have edited it)
+        # TODO get rid of space on left that wasnt there w/ tree widget
+        # TODO get rid of / change top label thing
+        self.data_tree = QTreeWidget(self)
+        self.data_tree.setHeaderHidden(True)
+        self.data_and_ctrl_layout.addWidget(self.data_tree)
+        self.data_tree.setFixedWidth(210)
 
-        # TODO option to hide all rigid stuff / do if non-rigid is there / just
-        # always hide
-        # TODO should i color stuff that has accepted CNMF output, or just hide
-        # it?
         for d in self.motion_corrected_tifs:
             x = d.split(sep)
             fname_parts = x[-1].split('_')
+            # TODO maybe just get rid of last part?
             cor_type = 'rigid' if fname_parts[-1][:-4] == 'rig' else 'non-rigid'
 
             date_str = x[-4]
@@ -284,59 +224,43 @@ class Segmentation(QWidget):
             thorimage_id = '_'.join(fname_parts[:-1])
             item_parts = [date_str, fly_str, thorimage_id, cor_type]
 
-            item = QListWidgetItem('/'.join(item_parts))
+            #item = QListWidgetItem('/'.join(item_parts))
+            # TODO need setText call here?
+            item = QTreeWidgetItem(self.data_tree)
+            # 0 for 0th column
+            item.setText(0, '/'.join(item_parts))
+            self.data_tree.addTopLevelItem(item)
 
-            # TODO if add support for labelling single comparisons, check all
-            # comparisons are added, and only color yellow if not all in db
-            # TODO check whether source video was rigid / non-rigid, if going to
-            # display both types of movies in list?
+            tif_seg_runs = u.list_segmentations(d)
+            if tif_seg_runs is None:
+                continue
 
-            # TODO TODO maybe with the new db layout, it'd be better to check
-            # something else? maybe only color green if there's a canonical
-            # analysis version?
-            # TODO or maybe check whether *any* of the analysis was accepted,
-            # and color green if so?
-            analyzed = (
-                (presentations.prep_date == date_str) &
-                (presentations.fly_num == int(fly_str)) &
-                (presentations.thorimage_id == thorimage_id)
-            ).any()
+            any_accepted = False
+            # TODO TODO TODO make sure these don't screw up row indexing i'm
+            # currently using in open_recording
+            # (indexed w/in each node?)
+            for i, r in tif_seg_runs.iterrows():
+                # TODO TODO TODO right click menu on these things to delete
+                # w/ "are you sure?" followup
+                # (and maybe set canonical? or other input for that?)
+                seg_run_item = QTreeWidgetItem(item)
+                # TODO use the whole row? or just store an index into something
+                # else? maybe store whole tif_seg_runs at parent node?
+                seg_run_item.setData(0, Qt.UserRole, r)
 
-            # TODO TODO TODO will need to change this to something actually
-            # being accepted, w/ new populate_db code that adds stuff to
-            # everything
-            # TODO TODO probably make some kind of QTreeView where child nodes
-            # are analysis runs (colored as accepted or not) and parents are
-            # the motion corrected recording tifs as now
-            if analyzed:
-                # TODO below, get item and set bg color if accepted
-                item.setBackground(QColor('#7fc97f'))
+                seg_run_item.setText(0, str(r.run_at)[:16])
 
-            self.list.addItem(item)
-            # TODO make make tooltip the full path? or show full path somewhere
-            # else?
+                if r.accepted == True:
+                    seg_run_item.setBackground(0, QColor('#7fc97f'))
+                    any_accepted = True
+                elif r.accepted == False:
+                    seg_run_item.setBackground(0, QColor('#ff4d4d'))
 
-        self.list.itemDoubleClicked.connect(self.open_recording)
+            # TODO maybe color red if at least thing is not accepted?
+            if any_accepted:
+                item.setBackground(0, QColor('#7fc97f'))
 
-        # Other groups are: motion, online
-        # TODO worth including patch_params?
-        cnmf_groups = (
-            'data',
-            'patch_params',
-            'preprocess_params',
-            'init_params',
-            'spatial_params',
-            'temporal_params',
-            'merging',
-            'quality'
-        )
-        dont_show_by_group = defaultdict(set)
-        # TODO get rid of most of this (maybe whole data tab if decay_time
-        # moved to temporal) after loading from thorlabs metadata
-        dont_show_by_group.update({
-            'data': {'fnames','dims'}, #'fr','dxy'},
-            'merging': {'gSig_range'},
-        })
+        self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_click)
 
         # TODO TODO maybe make either just parameters or both params and data
         # explorer collapsible (& display intermediate results horizontally,
@@ -345,67 +269,6 @@ class Segmentation(QWidget):
         # TODO or should this get a layout as input?
         cnmf_ctrl_widget = QWidget(self)
         self.data_and_ctrl_layout.addWidget(cnmf_ctrl_widget)
-
-        cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
-        cnmf_ctrl_widget.setLayout(cnmf_ctrl_layout)
-
-        param_tabs = QTabWidget(cnmf_ctrl_widget)
-        cnmf_ctrl_layout.addWidget(param_tabs)
-
-        # TODO eliminate vertical space between these rows of buttons
-        shared_btns = QWidget(cnmf_ctrl_widget)
-        cnmf_ctrl_layout.addWidget(shared_btns)
-        shared_btn_layout = QVBoxLayout(shared_btns)
-        shared_btns.setLayout(shared_btn_layout)
-        shared_btn_layout.setSpacing(0)
-        shared_btn_layout.setContentsMargins(0, 0, 0, 0)
-        shared_btns.setFixedHeight(80)
-
-        param_btns = QWidget(shared_btns)
-        shared_btn_layout.addWidget(param_btns)
-        param_btns_layout = QHBoxLayout(param_btns)
-        param_btns.setLayout(param_btns_layout)
-        param_btns_layout.setContentsMargins(0, 0, 0, 0)
-
-        other_btns = QWidget(shared_btns)
-        shared_btn_layout.addWidget(other_btns)
-        other_btns_layout = QHBoxLayout(other_btns)
-        other_btns.setLayout(other_btns_layout)
-        other_btns_layout.setContentsMargins(0, 0, 0, 0)
-
-        # TODO also give parent?
-        reset_cnmf_params_btn = QPushButton('Reset All Parameters')
-        reset_cnmf_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(reset_cnmf_params_btn)
-
-        mk_default_params_btn = QPushButton('Make Parameters Default')
-        #mk_default_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(mk_default_params_btn)
-        mk_default_params_btn.clicked.connect(self.save_default_params)
-
-        # TODO support this?
-        # TODO TODO at least make not-yet-implemented stuff unclickable
-        # TODO would need a format for these params... json?
-        load_params_params_btn = QPushButton('Load Parameters From File')
-        load_params_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(load_params_params_btn)
-
-        save_params_btn = QPushButton('Save Parameters To File')
-        save_params_btn.setEnabled(False)
-        param_btns_layout.addWidget(save_params_btn)
-
-        # TODO TODO allow this to be checked while data is loading, and then
-        # just start as soon as data finishes loading
-        self.run_cnmf_btn = QPushButton('Run CNMF')
-        other_btns_layout.addWidget(self.run_cnmf_btn)
-        # Will enable after some data is selected. Can't run CNMF without that.
-        self.run_cnmf_btn.setEnabled(False)
-
-        save_cnmf_output_btn = QPushButton('Save CNMF Output')
-        other_btns_layout.addWidget(save_cnmf_output_btn)
-        save_cnmf_output_btn.setEnabled(False)
-
-        self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
 
         # TODO should save cnmf output be a button here or to the right?
         # maybe run should also be to the right?
@@ -426,24 +289,38 @@ class Segmentation(QWidget):
 
         # TODO TODO copy once here to get params to reset back to in GUI
 
+        param_tabs = QTabWidget(cnmf_ctrl_widget)
+
         param_dict = self.params.to_dict()
 
-        n = int(np.ceil(np.sqrt(len(cnmf_groups))))
+        # Other groups are: motion, online
+        # TODO rename to indicate these are the subset we want visible in gui?
+        cnmf_groups = (
+            'data',
+            'patch_params',
+            'preprocess_params',
+            'init_params',
+            'spatial_params',
+            'temporal_params',
+            'merging',
+            'quality'
+        )
+        dont_show_by_group = defaultdict(set)
+        # TODO get rid of most of this (maybe whole data tab if decay_time
+        # moved to temporal) after loading from thorlabs metadata
+        dont_show_by_group.update({
+            'data': {'fnames','dims'},
+            'merging': {'gSig_range'},
+        })
+
         seen_types = set()
         formgen_print = False
         for i, g in enumerate(cnmf_groups):
             dont_show = dont_show_by_group[g]
 
-            y = i % n
-            x = i // n
-
             group_name = g.split('_')[0].title()
             if group_name == 'Init':
                 group_name = 'Initialization'
-
-            # TODO maybe there is no point in having groupbox actually?
-            ##group = QGroupBox(group_name)
-            ##param_layout.addWidget(group, x, y)
 
             tab = QWidget(param_tabs)
             param_tabs.addTab(tab, group_name)
@@ -616,12 +493,77 @@ class Segmentation(QWidget):
 
         # TODO set tab index to most likely to change? spatial?
 
+        cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
+
+        # TODO TODO how to replace this widget w/ new one if loading serialized
+        # params into totally new QTabWidget??
+        cnmf_ctrl_layout.addWidget(param_tabs)
+
+        cnmf_ctrl_widget.setLayout(cnmf_ctrl_layout)
+
+        # TODO eliminate vertical space between these rows of buttons
+        shared_btns = QWidget(cnmf_ctrl_widget)
+        cnmf_ctrl_layout.addWidget(shared_btns)
+        shared_btn_layout = QVBoxLayout(shared_btns)
+        shared_btns.setLayout(shared_btn_layout)
+        shared_btn_layout.setSpacing(0)
+        shared_btn_layout.setContentsMargins(0, 0, 0, 0)
+        shared_btns.setFixedHeight(80)
+
+        param_btns = QWidget(shared_btns)
+        shared_btn_layout.addWidget(param_btns)
+        param_btns_layout = QHBoxLayout(param_btns)
+        param_btns.setLayout(param_btns_layout)
+        param_btns_layout.setContentsMargins(0, 0, 0, 0)
+
+        other_btns = QWidget(shared_btns)
+        shared_btn_layout.addWidget(other_btns)
+        other_btns_layout = QHBoxLayout(other_btns)
+        other_btns.setLayout(other_btns_layout)
+        other_btns_layout.setContentsMargins(0, 0, 0, 0)
+
+        # TODO also give parent?
+        reset_cnmf_params_btn = QPushButton('Reset All Parameters')
+        reset_cnmf_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(reset_cnmf_params_btn)
+
+        mk_default_params_btn = QPushButton('Make Parameters Default')
+        #mk_default_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(mk_default_params_btn)
+        mk_default_params_btn.clicked.connect(self.save_default_params)
+
+        # TODO support this?
+        # TODO TODO at least make not-yet-implemented stuff unclickable
+        # TODO would need a format for these params... json?
+        load_params_params_btn = QPushButton('Load Parameters From File')
+        load_params_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(load_params_params_btn)
+
+        save_params_btn = QPushButton('Save Parameters To File')
+        save_params_btn.setEnabled(False)
+        param_btns_layout.addWidget(save_params_btn)
+
+        # TODO TODO allow this to be checked while data is loading, and then
+        # just start as soon as data finishes loading
+        self.run_cnmf_btn = QPushButton('Run CNMF')
+        other_btns_layout.addWidget(self.run_cnmf_btn)
+        # Will enable after some data is selected. Can't run CNMF without that.
+        self.run_cnmf_btn.setEnabled(False)
+
+        save_cnmf_output_btn = QPushButton('Save CNMF Output')
+        other_btns_layout.addWidget(save_cnmf_output_btn)
+        save_cnmf_output_btn.setEnabled(False)
+
+        self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
+
+
         self.display_widget = QWidget(self)
         self.splitter.addWidget(self.display_widget)
 
         self.splitter_handle = self.splitter.handle(1)
         self.splitter_bar_layout = QVBoxLayout()
         self.splitter_bar_layout.setContentsMargins(0, 0, 0, 0)
+        # TODO make this button a little bigger/taller / easier to click?
         self.splitter_btn = QToolButton(self.splitter_handle)
         self.splitter_btn.clicked.connect(self.toggle_splitter)
         self.splitter_bar_layout.addWidget(self.splitter_btn)
@@ -633,6 +575,7 @@ class Segmentation(QWidget):
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
 
+        # TODO put in some kind of GUI-settable persistent options?
         self.plot_intermediates = False
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
@@ -649,6 +592,9 @@ class Segmentation(QWidget):
         self.fig_w_inches = 7
         self.fig_h_inches = 7
 
+        # TODO at least set horz scroll to center
+        # TODO but maybe always load things zoomed out s.t. everything is
+        # visible (self.current_zoom probably < 1)
         self.scrollable_canvas.setWidget(self.mpl_canvas)
         self.scrollable_canvas.setWidgetResizable(False)
         # This looks for the eventFilter function of this class.
@@ -671,8 +617,6 @@ class Segmentation(QWidget):
         # (break into fn that parses cnmf docstring and another that takes that
         # output and makes the widget)
 
-        # TODO maybe keep these buttons outside of the scroll area?
-        # maybe move save button out of ctrl widget?
         display_btns = QWidget(self.display_widget)
         self.display_layout.addWidget(display_btns)
         display_btns.setFixedHeight(100)
@@ -727,6 +671,19 @@ class Segmentation(QWidget):
             self.splitter_collapsed = True
 
 
+    '''
+    def init_figure(self, *args):
+        """Initializes a 
+        """
+        # If it were possible to change the Figure of a current FigureCanvas
+        # , this would not be necessary, but it doesn't seem that's supported.
+        if len(args) == 0:
+            fig = Figure()
+        else:
+            fig = args[0]
+    '''
+
+
     # TODO delete. for debugging scroll area.
     def szinfo(self) -> None:
         print('FIGURE SIZE:', self.fig.get_size_inches())
@@ -747,7 +704,6 @@ class Segmentation(QWidget):
         # size changes. i feel like i'm missing something.
         # something like adjust size 
         self.mpl_canvas.resize(dpi * fig_w_inches, dpi * fig_h_inches)
-        # TODO can you resize already plotted stuff? need for other calls?
         self.fig_w_inches = fig_w_inches
         self.fig_h_inches = fig_h_inches
         # So that the resize call is correct.
@@ -1870,9 +1826,65 @@ class Segmentation(QWidget):
     # buttons in the gui? (maybe to some invisible cache?)
     # (would need to fix cnmf save (and maybe load too) fn(s))
 
-    def open_recording(self):
-        idx = self.sender().currentRow()
 
+    def handle_treeitem_click(self):
+        curr_item = self.sender().currentItem()
+        if curr_item.parent() is None:
+            self.open_recording(curr_item)
+        # TODO check this works for non-toplevel nodes
+        else:
+            self.open_segmentation_run(curr_item)
+
+
+    def open_segmentation_run(self, item):
+        row = item.data(0, Qt.UserRole)
+
+        # TODO possible to implement this w/o interring w/ other state?
+        # (so movie can stay loaded, and only change when selecting another
+        # experiment, etc) (or should i clear more stuff to be safe?)
+
+        # TODO TODO TODO load parameters into gui form / make all uneditable (+
+        # return to previous state after?)
+        # TODO TODO maybe i need to make a new form (/ modify current),
+        # rather than just trying to set data in current one,
+        # since serialized params may have more / less keys than current set...
+
+        # TODO also load correct data params
+        # is it a given that param json reflects correct data params????
+        # if not, may need to model after open_recording
+
+        # maybe this is not worth it / necessary
+        self.fig.clear()
+
+        self.fig = pickle.load(BytesIO(row.output_fig_mpl))
+        self.mpl_canvas.figure = self.fig
+        self.fig.canvas = self.mpl_canvas
+        fig_w_inches, fig_h_inches = self.fig.get_size_inches()
+        self.set_fig_size(fig_w_inches, fig_h_inches)
+        # TODO test case where canvas was just drawing something larger
+        # (is draw area not fully updated?)
+        # TODO need tight_layout?
+        self.mpl_canvas.draw()
+
+        # TODO TODO TODO allow it to be relabeled (w/o all of original upload)
+        # TODO set self.accepted as appropriate
+
+        # TODO TODO should probably delete any traces in db if select reject
+        # (or maybe just ignore and let other scripts clean orphaned stuff up
+        # later? so that we don't have to regenerate traces if we change our
+        # mind again and want to label as accepted...)
+
+
+
+    # TODO maybe selecting two (/ multiple) analysis runs then right clicking
+    # (or other way to invoke action?) and diffing parameters
+    # TODO maybe also allow showing footprints overlayed or comparing somehow
+    # (in same viewer?)
+
+
+    def open_recording(self, item):
+        # TODO maybe use setData and data instead?
+        idx = self.data_tree.indexOfTopLevelItem(item)
         tiff = self.motion_corrected_tifs[idx]
 
         start = time.time()
@@ -2266,9 +2278,6 @@ class Segmentation(QWidget):
         self.start_frame = None
         self.stop_frame = None
 
-        # want to keep this? (something like it, yes, but maybe replace w/
-        # pyqtgraph video viewer roi, s.t. it can be restricted to a different
-        # ROI if that would help)
         self.fig.clear()
         # TODO maybe add some height for pixel based correlation matrix if i
         # include that
@@ -2277,8 +2286,11 @@ class Segmentation(QWidget):
         self.set_fig_size(fig_w_inches, fig_h_inches)
 
         ax = self.fig.add_subplot(111)
+        # TODO maybe replace w/ pyqtgraph video viewer roi, s.t. it can be
+        # restricted to a different ROI if that would help
         ax.plot(np.mean(self.movie, axis=(1,2)))
         ax.set_title(self.recording_title)
+        self.fig.tight_layout()
         self.mpl_canvas.draw()
 
         self.run_cnmf_btn.setEnabled(True)
@@ -2366,8 +2378,7 @@ class ROIAnnotation(QWidget):
         self.annotation_layout = QVBoxLayout(self.annotation_widget)
         self.annotation_widget.setLayout(self.annotation_layout)
 
-        # TODO any benefit to specifying figsize? what's default?
-        self.fig = Figure() #figsize=(6,2))
+        self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
 
         # TODO allow other numbers of repeats (/ diff layout to stack repeat?)

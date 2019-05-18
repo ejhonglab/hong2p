@@ -34,6 +34,7 @@ use_cached_gsheet = False
 show_inferred_paths = True
 allow_gsheet_to_restrict_blocks = True
 
+fail_on_missing_dir_to_attempt = True
 #only_do_anything_for_analysis = True
 only_do_anything_for_analysis = False
 
@@ -269,25 +270,33 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             get_ti_df = fly_df
 
         for _, row in get_ti_df[['thorimage_dir','thorsync_dir']].iterrows():
-            thorimage_dir = join(full_fly_dir, row['thorimage_dir'])
-            if not os.path.isdir(thorimage_dir):
-                warnings.warn('thorimage_dir {} did not exist for recording ' +
-                    'marked as attempt_analysis.'.format(thorimage_dir))
-                continue
-
             # TODO delete. for debugging.
             if test_recording is not None:
                 if row['thorimage_dir'] != test_recording[2]:
                     continue
             #
 
+            thorimage_dir = join(full_fly_dir, row['thorimage_dir'])
+            if not os.path.isdir(thorimage_dir):
+                err_msg = ('thorimage_dir {} did not exist for recording ' +
+                    'marked as attempt_analysis.').format(thorimage_dir)
+                if fail_on_missing_dir_to_attempt:
+                    raise IOError(err_msg)
+                else:
+                    warnings.warn(err_msg)
+                    continue
+
             # If not always running h5->mat conversion first, will need to check
             # for the mat, rather than just thorsync_dir.
             thorsync_dir = join(full_fly_dir, row['thorsync_dir'])
             if not os.path.isdir(thorsync_dir):
-                warnings.warn('thorsync_dir {} did not exist for recording ' +
-                    'marked as attempt_analysis.'.format(thorsync_dir))
-                continue
+                err_msg = ('thorsync_dir {} did not exist for recording ' +
+                    'marked as attempt_analysis.').format(thorsync_dir)
+                if fail_on_missing_dir_to_attempt:
+                    raise IOError(err_msg)
+                else:
+                    warnings.warn(err_msg)
+                    continue
 
             # TODO maybe check for existance of SyncData<nnn> first, to have
             # option to be less verbose for stuff that doesn't exist here
@@ -374,17 +383,6 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                     input_tif_path, analysis_fly_dir, nargout=2)
 
             except matlab.engine.MatlabExecutionError as e:
-                # TODO check if it is the "Unable to perform assignment
-                # because..." error (as opposed to memory error) ->
-                if len(e.args) >= 1:
-                    err_lines = e.args[0].split('\n')
-                    if len(err_lines) >= 2 and err_lines[-2].startswith(
-                        'Unable to perform assignment because the size'):
-                        # TODO check dims w. tifffile? maybe concat didn't work
-                        # correctly? resave? just load in python?
-                        movie = tifffile.imread(input_tif_path)
-                        print(movie.shape)
-                        import ipdb; ipdb.set_trace()
                 continue
 
             mocorr_code_versions = [matlab_code_version, matlab_caiman_version]

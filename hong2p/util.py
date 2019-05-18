@@ -15,6 +15,7 @@ from types import ModuleType
 from datetime import datetime
 import warnings
 import pprint
+import glob
 
 from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.sql import sqltypes
@@ -335,10 +336,15 @@ def pg_upsert(table, conn, keys, data_iter):
         conn.execute(upsert_stmt)
 
 
+_mb_team_gsheet = None
 def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     natural_odors_only=False):
     '''Returns a pandas.DataFrame with data on flies and MB team recordings.
     '''
+    global _mb_team_gsheet
+    if _mb_team_gsheet is not None:
+        return _mb_team_gsheet
+
     gsheet_cache_file = '.gsheet_cache.p'
     if use_cache and exists(gsheet_cache_file):
         print('Loading Google sheet data from cache at {}'.format(
@@ -516,10 +522,11 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     to_sql_with_duplicates(sheets['fly_preps'].rename(
         columns={'date': 'prep_date'}), 'flies')
 
+    _mb_team_gsheet = df
+
     # TODO handle case where database is empty but gsheet cache still exists
     # (all inserts will probably fail, for lack of being able to reference fly
     # table)
-
     return df
 
 
@@ -839,6 +846,63 @@ def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
 
     return tif
 
+
+def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
+    """List motion corrected TIFFs in conventional directory structure on NAS.
+    """
+    motion_corrected_tifs = []
+    df = mb_team_gsheet()
+    for full_date_dir in sorted(glob.glob(join(analysis_output_root(), '**'))):
+        for full_fly_dir in sorted(glob.glob(join(full_date_dir, '**'))):
+            date_dir = split(full_date_dir)[-1]
+            try:
+                fly_num = int(split(full_fly_dir)[-1])
+
+                fly_used = df.loc[df.attempt_analysis &
+                    (df.date == date_dir) & (df.fly_num == fly_num)]
+
+                used_thorimage_dirs = set(fly_used.thorimage_dir)
+
+                tif_dir = join(full_fly_dir, 'tif_stacks')
+                if exists(tif_dir):
+                    tif_glob = '*.tif' if include_rigid else '*_nr.tif'
+                    fly_tifs = sorted(glob.glob(join(tif_dir, tif_glob)))
+
+                    used_tifs = [x for x in fly_tifs if '_'.join(
+                        split(x)[-1].split('_')[:-1]) in used_thorimage_dirs]
+
+                    motion_corrected_tifs += used_tifs
+
+            except ValueError:
+                continue
+
+    return motion_corrected_tifs
+
+
+def list_segmentations(tif_path):
+    """Returns a DataFrame of segmentation_runs for given motion corrected TIFF.
+    """
+    # TODO could maybe turn these two queries into one (WITH semantics?)
+    analysis_runs = pd.read_sql_query('SELECT * FROM analysis_runs WHERE ' +
+        "input_filename = '{}'".format(tif_path), conn)
+
+    if len(analysis_runs) == 0:
+        return None
+
+    # TODO better way than looping over each of these? move to sql query?
+    analysis_start_times = analysis_runs.run_at.unique()
+    seg_runs = []
+    for run_at in analysis_start_times:
+        seg_runs.append(pd.read_sql_query('SELECT * FROM segmentation_runs ' +
+            "WHERE run_at = '{}'".format(pd.Timestamp(run_at)), conn))
+
+        # TODO maybe merge w/ analysis_code (would have to yield multiple rows
+        # per segmentation run when multiple code versions referenced)
+
+    seg_runs = pd.concat(seg_runs, ignore_index=True)
+
+    return seg_runs.merge(analysis_runs)
+        
 
 def get_experiment_xmlroot(directory):
     xml_path = join(directory, 'Experiment.xml')
@@ -1790,6 +1854,7 @@ def plot_pair_n(df, *args):
         full_pair_n = pair_n.combine_first(pair_n.T).fillna(0.0)
     else:
         # TODO [change odor<n> to / handle] name<n>, to be consistent w/ above
+        # TODO TODO TODO also make this triangular / symmetric
         odor_panel = odor_panel.pivot_table(index='odor_1', columns='odor_2',
             aggfunc=lambda x: True, values='reason')
 
@@ -1797,15 +1862,22 @@ def plot_pair_n(df, *args):
         full_data_index = pair_n.index.union(pair_n.columns)
         assert full_data_index.isin(full_panel_index).all()
         # TODO also check no pairs occur in data that are not in panel
+        # TODO isin-like check for tuples (or other combinations of rows)?
+        # just iterate over both after drop_duplicates?
+
+        full_pair_n = pair_n.reindex(index=full_panel_index
+            ).reindex(columns=full_panel_index)
+        # TODO maybe making symmetric is a matter of setting 0 to nan here?
+        # and maybe setting back to nan at the end if still 0?
+        full_pair_n.update(full_pair_n.T)
+        # TODO full_pair_n.fillna(0, inplace=True)?
 
         import ipdb; ipdb.set_trace()
 
-    # TODO TODO TODO maybe use this combine_first thing on odor_panel
-    # and then use those INDICES (but not values, as w/ combine_first)
-    # as the indices for full_pair_n!
-    # (for case when odor panel has pairs not included here)
-
-    # maybe make colorbar have discrete steps?
+    # TODO TODO TODO make crosstab output actually symmetric, not just square
+    # (or is it always one diagonal that's filled in? if so, really just need
+    # that)
+    assert full_pair_n.equals(full_pair_n.T)
 
     # TODO TODO TODO how to indicate which of the pairs we are actually
     # interested in? grey out the others? white the others? (just set to nan?)
@@ -1818,6 +1890,7 @@ def plot_pair_n(df, *args):
     # separately? just symbols in text, if that's easier?
 
     # TODO TODO display actual counts in squares in matshow
+    # maybe make colorbar have discrete steps?
 
     import ipdb; ipdb.set_trace()
 

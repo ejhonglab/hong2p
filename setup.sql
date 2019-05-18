@@ -259,7 +259,6 @@ CREATE TABLE IF NOT EXISTS segmentation_runs (
     -- deletions, creation, decisions on manual control of iteration #, param
     -- changes along the way, etc) (if i ever support manual input...)
 
-
     PRIMARY KEY(run_at)
 );
 -- TODO maybe move back to analysis_runs table?
