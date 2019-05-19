@@ -531,6 +531,9 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
 
 
 def merge_gsheet(df, *args, use_cache=False):
+    """
+    df must have a column named either 'recording_from' or 'started_at'
+    """
     if len(args) == 0:
         gsdf = mb_team_gsheet(use_cache=use_cache)
     elif len(args) == 1:
@@ -900,6 +903,9 @@ def list_segmentations(tif_path):
         # per segmentation run when multiple code versions referenced)
 
     seg_runs = pd.concat(seg_runs, ignore_index=True)
+
+    if len(seg_runs) == 0:
+        return None
 
     return seg_runs.merge(analysis_runs)
         

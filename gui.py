@@ -24,14 +24,15 @@ import pprint
 import traceback
 
 from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
-    Qt, QEvent)
-from PyQt5.QtGui import QColor, QKeySequence
+    Qt, QEvent, QVariant)
+from PyQt5.QtGui import QColor, QKeySequence, QCursor
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFormLayout, QListWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
     QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut,
     QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem, QStackedWidget,
-    QFileDialog)
+    QFileDialog, QMenu, QMessageBox)
+import sip
 
 import pyqtgraph as pg
 import tifffile
@@ -213,10 +214,13 @@ class Segmentation(QWidget):
         self.data_tree.setHeaderHidden(True)
         self.data_and_ctrl_layout.addWidget(self.data_tree)
         self.data_tree.setFixedWidth(210)
+        self.data_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.data_tree.customContextMenuRequested.connect(self.data_tree_menu)
 
         self.accepted_color = '#7fc97f'
         self.rejected_color = '#ff4d4d'
 
+        global recordings
         for d in self.motion_corrected_tifs:
             x = d.split(sep)
             fname_parts = x[-1].split('_')
@@ -237,30 +241,39 @@ class Segmentation(QWidget):
 
             tif_seg_runs = u.list_segmentations(d)
             if tif_seg_runs is None:
+                # There cannot be a canonical_segmentation is db if 
+                # there are no segmentation runs for this recording.
+                item.setData(0, Qt.UserRole, pd.NaT)
                 continue
 
+            recording_from = tif_seg_runs.recording_from.unique()
+            assert len(recording_from) == 1
+            recording_from = recording_from[0]
+            canonical_segmentation = recordings.set_index('started_at').at[
+                recording_from, 'canonical_segmentation']
+            item.setData(0, Qt.UserRole, canonical_segmentation)
+
+            # TODO maybe replace this any_accepted stuff w/ call to
+            # self.color_recording_node
             any_accepted = False
-            # TODO TODO TODO make sure these don't screw up row indexing i'm
-            # currently using in open_recording
-            # (indexed w/in each node?)
             for _, r in tif_seg_runs.iterrows():
-                # TODO TODO TODO right click menu on these things to delete
-                # w/ "are you sure?" followup
-                # (and maybe set canonical? or other input for that?)
-                self.add_segrun_widget(item, r)
+                segrun = self.add_segrun_widget(item, r)
+
                 if r.accepted == True:
                     any_accepted = True
+                    if r.run_at == canonical_segmentation:
+                        canonical = True
+                    else:
+                        canonical = False
+                    self.mark_canonical(segrun, canonical)
+                else:
+                    self.mark_canonical(segrun, None)
 
-            # TODO maybe color red if at least thing is not accepted?
             if any_accepted:
                 item.setBackground(0, QColor(self.accepted_color))
 
         self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_click)
 
-        # TODO TODO maybe make either just parameters or both params and data
-        # explorer collapsible (& display intermediate results horizontally,
-        # maybe only in this case?)
-        
         # TODO should save cnmf output be a button here or to the right?
         # maybe run should also be to the right?
         # TODO maybe a checkbox to save by default or something?
@@ -382,10 +395,9 @@ class Segmentation(QWidget):
         self.cnmf_running = False
         self.params_changed = False
         self.accepted = None
-        self.relabelling_past_segmentation = False
 
         # TODO delete / handle differently
-        self.ACTUALLY_UPLOAD = False
+        self.ACTUALLY_UPLOAD = True
         #
 
 
@@ -713,6 +725,7 @@ class Segmentation(QWidget):
         seg_run_item = QTreeWidgetItem(parent)
         seg_run_item.setData(0, Qt.UserRole, segrun_row)
         seg_run_item.setText(0, str(segrun_row.run_at)[:16])
+        seg_run_item.setFlags(seg_run_item.flags() ^ Qt.ItemIsUserCheckable)
 
         if segrun_row.accepted == True:
             seg_run_item.setBackground(0, QColor(self.accepted_color))
@@ -737,27 +750,102 @@ class Segmentation(QWidget):
             self.splitter_collapsed = True
 
 
-    '''
-    def init_figure(self, *args):
-        """Initializes a 
-        """
-        # If it were possible to change the Figure of a current FigureCanvas
-        # , this would not be necessary, but it doesn't seem that's supported.
-        if len(args) == 0:
-            fig = Figure()
+    def delete_segrun(self, treenode) -> None:
+        run_at = treenode.data(0, Qt.UserRole).run_at
+
+        # TODO change order of yes / no?
+        confirmation_choice = QMessageBox.question(self, 'Confirm delete',
+            'Remove analysis run from {} from database?'.format(
+            str(run_at)[:16]),
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if confirmation_choice == QMessageBox.Yes:
+            print('Deleting analysis run {} from database'.format(run_at))
+
+            sql = "DELETE FROM analysis_runs WHERE run_at = '{}'".format(run_at)
+            ret = u.conn.execute(sql)
+
+            parent = treenode.parent()
+
+            self.data_tree.removeItemWidget(treenode)
+            # maybe remove this sip bit... not sure it's necessary
+            sip.delete(treenode)
+            # alternative would probably be:
+            # treenode.deleteLater()
+            # see: stackoverflow.com/questions/5899826
+
+            self.color_recording_node(parent)
+
+
+    def color_recording_node(self, treenode) -> None:
+        if treenode.parent() is not None:
+            self.color_recording_node(treenode.parent())
+
+        any_accepted = False
+        for i in range(treenode.childCount()):
+            if treenode.child(i).data(0, Qt.UserRole).accepted:
+                any_accepted = True
+                break
+                
+        # TODO maybe color red if at least one thing is not accepted?
+        if any_accepted:
+            item.setBackground(0, QColor(self.accepted_color))
         else:
-            fig = args[0]
-    '''
+            # TODO test this
+            # got from: stackoverflow.com/questions/37761002
+            item.setData(0, Qt.BackgroundRole, None)
 
 
-    # TODO delete. for debugging scroll area.
-    def szinfo(self) -> None:
-        print('FIGURE SIZE:', self.fig.get_size_inches())
-        print('FIGURE DPI:', self.fig.dpi)
-        # TODO as this grows, will scroll bar appear as necessary?
-        print('FigureCanvas SIZE:', self.mpl_canvas.size())
-        print('QScrollArea SIZE:', self.scrollable_canvas.size())
-    #
+    def mark_canonical(self, treenode, canonical) -> None:
+        if canonical == True:
+            treenode.setCheckState(0, Qt.Checked)
+        elif canonical == False:
+            treenode.setCheckState(0, Qt.Unchecked)
+        elif canonical is None:
+            # For deleting checkbox of something that was once marked accepted
+            # and is now rejected.
+            treenode.setData(0, Qt.CheckStateRole, QVariant())
+
+
+    def make_canonical(self, treenode) -> None:
+        row = treenode.data(0, Qt.UserRole)
+
+        old_canonical = treenode.parent().data(0, Qt.UserRole)
+        if old_canonical == row.run_at:
+            return
+
+        if not pd.isnull(old_canonical):
+            for i in range(parent.childCount()):
+                if parent.child(i).data(0, Qt.UserRole).run_at == old_canonical:
+                    self.mark_canonical(parent.child(i), False)
+                    break
+
+        sql = ("UPDATE recordings SET canonical_segmentation = " +
+            "'{}' WHERE started_at = '{}'").format(row.run_at,
+            row.recording_from)
+        ret = u.conn.execute(sql)
+
+        self.mark_canonical(treenode, True)
+
+
+    def data_tree_menu(self, pos):
+        node = self.data_tree.itemAt(pos)
+
+        if node is None:
+            return
+
+        if node.parent() is not None:
+            menu = QMenu(self)
+            menu.addAction('Delete from database',
+                lambda: self.delete_segrun(node))
+
+            accepted = node.data(0, Qt.UserRole).accepted
+            if accepted:
+                menu.addAction('Make canonical',
+                    lambda: self.make_canonical(node))
+
+            menu.exec_(QCursor.pos())
+        # could put other menu options for top-level nodes in an else here
 
 
     def set_fig_size(self, fig_w_inches, fig_h_inches) -> None:
@@ -1723,9 +1811,6 @@ class Segmentation(QWidget):
             # when self.accepted was first set.
             return
 
-        segrun_row = run.reset_index().iloc[0]
-        self.add_segrun_widget(self.current_item, segrun_row)
-
         # TODO nr_code_versions, rig_code_versions (both lists of dicts)
         # TODO ti_code_version (dict)
         if self.tiff_fname.endswith('_nr.tif'):
@@ -1766,6 +1851,12 @@ class Segmentation(QWidget):
             'run_len_seconds': self.run_len_seconds
         })
         segmentation_run.set_index('run_at', inplace=True)
+
+        # TODO are the reset_index calls necessary?
+        segrun_row = segmentation_run.reset_index().merge(
+            run.reset_index()).iloc[0]
+        self.current_item = \
+            self.add_segrun_widget(self.current_item, segrun_row)
 
         if self.ACTUALLY_UPLOAD:
             segmentation_run.to_sql('segmentation_runs', u.conn,
@@ -1811,6 +1902,13 @@ class Segmentation(QWidget):
 
         self.update_seg_color(segrun_treeitem, accepted)
 
+        if accepted:
+            # Starts out this way
+            canonical = False
+        else:
+            canonical = None
+        self.mark_canonical(segrun_treeitem, canonical)
+
 
     # TODO maybe make all accept / reject buttons gray until current accept /
     # reject finishes running (mostly to avoid having to think about whether not
@@ -1819,7 +1917,7 @@ class Segmentation(QWidget):
         if self.accepted:
             return
 
-        if self.relabelling_past_segmentation:
+        if self.accepted is not None:
             self.update_seg_accepted(self.current_item, True)
             self.accepted = True
             return
@@ -1951,7 +2049,7 @@ class Segmentation(QWidget):
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
 
-        self.current_item.setBackground(0, QColor(self.accepted_color))
+        self.current_item.parent().setBackground(0, QColor(self.accepted_color))
         self.accepted = True
         print('accepted')
 
@@ -1960,14 +2058,10 @@ class Segmentation(QWidget):
         if self.accepted == False:
             return
 
-        if self.relabelling_past_segmentation:
+        if self.accepted is not None:
             self.update_seg_accepted(self.current_item, False)
             self.accepted = False
             return
-
-        # TODO TODO instead, add an item to the list for the current experiment,
-        # and color as appropriate!
-        # TODO maybe also re-color parent items if it changes
 
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
@@ -1997,15 +2091,13 @@ class Segmentation(QWidget):
 
 
     def delete_other_param_widgets(self) -> None:
-        import sip
-
         if self.param_display_widget is None:
             return
 
         self.param_widget_stack.setCurrentIndex(0)
         self.param_widget_stack.removeWidget(self.param_display_widget)
 
-        # TODO maybe remove this sip bit... not sure it's necessary
+        # maybe remove this sip bit... not sure it's necessary
         sip.delete(self.param_display_widget)
         # alternative would probably be:
         # self.param_display_widget.deleteLater()
@@ -2032,9 +2124,6 @@ class Segmentation(QWidget):
         self.param_widget_stack.addWidget(self.param_display_widget)
         self.param_widget_stack.setCurrentIndex(1)
 
-        # TODO switch back and delete as appropriate
-        # (probably at beginning of open_* fns)
-
         # TODO also load correct data params
         # is it a given that param json reflects correct data params????
         # if not, may need to model after open_recording
@@ -2052,10 +2141,6 @@ class Segmentation(QWidget):
         # TODO need tight_layout?
         self.mpl_canvas.draw()
 
-        self.relabelling_past_segmentation = True
-
-        # TODO TODO TODO allow it to be relabeled (w/o all of original upload)
-
         # TODO TODO should probably delete any traces in db if select reject
         # (or maybe just ignore and let other scripts clean orphaned stuff up
         # later? so that we don't have to regenerate traces if we change our
@@ -2071,8 +2156,6 @@ class Segmentation(QWidget):
 
 
     def open_recording(self, item):
-        self.relabelling_past_segmentation = False
-
         # TODO maybe use setData and data instead?
         idx = self.data_tree.indexOfTopLevelItem(item)
         tiff = self.motion_corrected_tifs[idx]
@@ -2152,13 +2235,17 @@ class Segmentation(QWidget):
         # TODO pane to show previous analysis runs of currently selected
         # experiment, or not worth it since maybe only want one accepted per?
 
-        # TODO TODO TODO upload full_frame_avg_trace like in populate_db
+        # TODO need to search db for (at least) canonical_segmentation, if i
+        # want to set state of all this as data
+        # TODO TODO could ignore case where recording wasn't already in db tho
+        # TODO TODO upload full_frame_avg_trace like in populate_db
         self.recordings = pd.DataFrame({
             'started_at': [started_at],
             'thorsync_path': [thorsync_dir],
             'thorimage_path': [thorimage_dir],
-            'stimulus_data_path': [stimulus_data_path]
+            'stimulus_data_path': [stimulus_data_path]#,
             #'full_frame_avg_trace': 
+            #'canonical_segmentation': None
         })
         # TODO at least put behind self.ACTUALLY_UPLOAD?
         # TODO maybe defer this to accepting?
@@ -3044,6 +3131,7 @@ class MainWindow(QMainWindow):
 
 def main():
     global presentations
+    global recordings
     global recordings_meta
     global footprints
     global comp_cols

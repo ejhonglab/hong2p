@@ -18,16 +18,10 @@ CREATE TABLE IF NOT EXISTS people (
 
 
 CREATE TABLE IF NOT EXISTS flies (
-    /* TODO serial? work w/ pandas insert if just not specified? */
-    /*fly smallserial UNIQUE NOT NULL, */
-
     prep_date date NOT NULL,
-    /* The fly's order within the day. */
+    -- The fly's order within the day.
     fly_num smallint NOT NULL,
 
-    /* TODO also load fly_num column from google sheet and use that w/ prep_date
-     * to generate fly PK? */
-    /* TODO appropriate constraints on each of these? */
     indicator text,
     days_old smallint,
     surgeon text,
@@ -132,18 +126,12 @@ CREATE TABLE IF NOT EXISTS code_versions (
 );
 
 
-/* TODO TODO TODO make sure these is enough references between this and other
- * tables, so that output generated from a certain cnmf run can be deleted, and
- * at least expose this in GUI (so people can retroactively select and reject
- * stuff) */
 CREATE TABLE IF NOT EXISTS analysis_runs (
     /* rename to analysis_time? */
     run_at timestamp PRIMARY KEY,
 
     /* TODO option in GUI to add arbitrary repos to track?
        see analysis_code table. */
-    /* TODO bad practice to have any columns w/ duplicate names across stuff
-     * that might ultimately be merged together? */
     recording_from timestamp REFERENCES recordings (started_at) NOT NULL,
     /* TODO TODO maybe only add these to a table that references analysis runs,
        like maybe human_checked_analysis_runs?
@@ -156,8 +144,8 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
        on that portion of the analysis...)
        could also either just set this to true / make nullable and leave null
     */
-    --/*
     -- TODO TODO only check NOT NULL constraint from segmentation_runs table?
+    -- (seems impossible. would probably require diff design.)
     input_filename text NOT NULL,
     input_md5 text NOT NULL,
     input_mtime timestamp NOT NULL,
@@ -177,7 +165,6 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     host_user text NOT NULL,
 
     accepted boolean NOT NULL
-    --*/
 
     /* TODO TODO enforce uniqueness of all git stuff + input + parameters
      * (+ user)?
@@ -236,17 +223,25 @@ CREATE TABLE IF NOT EXISTS human_analysis_runs (
 /* This table will N rows for each analysis run, where N is the number of pieces
  * of software whose versions we are tracking. */
 CREATE TABLE IF NOT EXISTS analysis_code (
-    run_at timestamp REFERENCES analysis_runs (run_at),
+    run_at timestamp REFERENCES analysis_runs (run_at) ON DELETE CASCADE,
+    -- TODO TODO how to get cascade deletes from above to case deletions of
+    -- code_versions.version_id rows that this references?
+    -- TODO or maybe more accurately, how to delete code_versions rows when
+    -- they are no longer referenced? just need separate sql statements?
     version_id integer REFERENCES code_versions (version_id),
     PRIMARY KEY(run_at, version_id)
 );
+ALTER TABLE analysis_code
+DROP CONSTRAINT analysis_code_run_at_fkey,
+ADD CONSTRAINT analysis_code_run_at_fkey
+    FOREIGN KEY (run_at)
+    REFERENCES analysis_runs (run_at)
+    ON DELETE CASCADE;
 
 
 CREATE TABLE IF NOT EXISTS segmentation_runs (
-    -- TODO work to have FK as sole PK? pretty sure that is what i want...
-    run_at timestamp REFERENCES analysis_runs (run_at),
+    run_at timestamp REFERENCES analysis_runs (run_at) ON DELETE CASCADE,
 
-    -- TODO footprints, img (svg? png? what size?) as in fig, serialized fig
     output_fig_png bytea NOT NULL,
     output_fig_svg bytea NOT NULL,
     output_fig_mpl bytea NOT NULL,
@@ -265,6 +260,12 @@ CREATE TABLE IF NOT EXISTS segmentation_runs (
 ALTER TABLE segmentation_runs ADD COLUMN run_len_seconds real;
 -- TODO enforce that there is at least one row in analysis_code referring to
 -- each run?
+ALTER TABLE segmentation_runs
+DROP CONSTRAINT segmentation_runs_run_at_fkey,
+ADD CONSTRAINT segmentation_runs_run_at_fkey
+    FOREIGN KEY (run_at)
+    REFERENCES analysis_runs (run_at)
+    ON DELETE CASCADE;
 
 
 /* TODO TODO TODO but how am i going to indicate which recordings / analysis
@@ -276,7 +277,14 @@ ALTER TABLE segmentation_runs ADD COLUMN run_len_seconds real;
  * refers back to mocorr? */
 ALTER TABLE recordings
     ADD COLUMN canonical_segmentation timestamp
-    REFERENCES segmentation_runs (run_at);
+    REFERENCES segmentation_runs (run_at) ON DELETE SET NULL;
+
+ALTER TABLE recordings
+DROP CONSTRAINT recordings_canonical_segmentation_fkey,
+ADD CONSTRAINT recordings_canonical_segmentation_fkey
+    FOREIGN KEY (canonical_segmentation)
+    REFERENCES segmentation_runs (run_at)
+    ON DELETE SET NULL;
 
 
 /* TODO worth having a separate representation of cells that is indep. calls on
@@ -298,7 +306,8 @@ CREATE TABLE IF NOT EXISTS cells (
        softwares usefulness for parameter exploration though, if i were to
        strictly prevent accepting output of multiple seg runs on same data...
      */
-    segmentation_run timestamp REFERENCES segmentation_runs (run_at) NOT NULL,
+    segmentation_run timestamp NOT NULL REFERENCES segmentation_runs (run_at)
+        ON DELETE CASCADE,
     cell smallint NOT NULL,
 
     /* TODO constraint to check these are all same length? just define a new
@@ -332,6 +341,12 @@ CREATE TABLE IF NOT EXISTS cells (
 
     PRIMARY KEY(recording_from, segmentation_run, cell)
 );
+ALTER TABLE cells
+DROP CONSTRAINT cells_segmentation_run_fkey,
+ADD CONSTRAINT cells_segmentation_run_fkey
+    FOREIGN KEY (segmentation_run)
+    REFERENCES segmentation_runs (run_at)
+    ON DELETE CASCADE;
 
 
 CREATE TABLE IF NOT EXISTS presentations (
@@ -351,7 +366,8 @@ CREATE TABLE IF NOT EXISTS presentations (
     -- I guess a reason to keep it in is that some relatively insignificant
     -- change might still kinda break depedent CNMF output, which we might not
     -- want.
-    analysis timestamp REFERENCES analysis_runs (run_at) NOT NULL,
+    analysis timestamp NOT NULL REFERENCES analysis_runs (run_at)
+        ON DELETE CASCADE,
 
     /* TODO maybe reference an odor pair here? */
     comparison smallint NOT NULL,
@@ -416,8 +432,14 @@ ALTER TABLE presentations
     ADD COLUMN avg_dff_5s real;
 ALTER TABLE presentations
     ADD COLUMN avg_zchange_5s real;
+-- TODO add peak (amplitude) and calculated peak time
 
--- TODO TODO add peak (amplitude) and calculated peak time
+ALTER TABLE presentations 
+DROP CONSTRAINT presentations_analysis_fkey,
+ADD CONSTRAINT presentations_analysis_fkey
+    FOREIGN KEY (analysis)
+    REFERENCES analysis_runs (run_at)
+    ON DELETE CASCADE;
 
 
 /* TODO TODO store automated response calls in this table as well? */
@@ -426,13 +448,16 @@ ALTER TABLE presentations
 CREATE TABLE IF NOT EXISTS responses (
     /* TODO matter whether fk is an ID vs all columns of composite pk in other
      * table, as far as space / speed performance? */
-    presentation_id integer REFERENCES presentations (presentation_id) NOT NULL,
+    presentation_id integer NOT NULL REFERENCES presentations (presentation_id)
+        ON DELETE CASCADE,
 
     /* TODO maybe now use ID for cell rather than this triple? */
     /* Redundant w/ information in presentation_id, but seems unavoidable in
      * order to include FK on cell... */
     recording_from timestamp,
     segmentation_run timestamp,
+    -- TODO do i need to specify ON DELETE CASCADE for this as well?
+    -- (to avoid an error? if so, how to do that for part of composite fk?)
     cell smallint,
 
     df_over_f real[] NOT NULL,
@@ -465,6 +490,13 @@ ALTER TABLE responses
 ALTER TABLE responses
     ADD CONSTRAINT df_over_f_len
     CHECK (cardinality(df_over_f) > 1);
+
+ALTER TABLE responses
+DROP CONSTRAINT responses_presentation_id_fkey,
+ADD CONSTRAINT responses_presentation_id_fkey
+    FOREIGN KEY (presentation_id)
+    REFERENCES  presentations (presentation_id)
+    ON DELETE CASCADE;
 
 /* Would probably speed up inserts, but might be too risky. If db crashes, table
  * contents will probably be deleted. */
