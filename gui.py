@@ -1932,6 +1932,19 @@ class Segmentation(QWidget):
         fig_buff = BytesIO()
         pickle.dump(self.fig, fig_buff)
 
+        # TODO delete. for debugging.
+        print('png_buff nbytes:', png_buff.getbuffer().nbytes)
+        print('svg_buff nbytes:', svg_buff.getbuffer().nbytes)
+        print('fig_buff nbytes:', fig_buff.getbuffer().nbytes)
+        print('png_buff sizeof:', sys.getsizeof(png_buff))
+        print('svg_buff sizeof:', sys.getsizeof(svg_buff))
+        print('fig_buff sizeof:', sys.getsizeof(fig_buff))
+        #
+
+        # TODO TODO failed a few times on this insert, possibly b/c fig size
+        # try inserting one at a time? fallback to saving to nas and including
+        # filepath in another column?
+
         segmentation_run = pd.DataFrame({
             'run_at': [self.run_at],
             'output_fig_png': png_buff.getvalue(),
@@ -3144,8 +3157,6 @@ class MainWindow(QMainWindow):
                 user_select.addItem(nickname)
 
         user_select.setEditable(True)
-        # TODO maybe turn off blinking cursor thing when this box isn't focused?
-        # general display practices when using an editable combobox?
         user_select.currentIndexChanged[str].connect(self.change_user)
         # TODO maybe make this a cache w/ more generic name if i have need to
         # save other settings
@@ -3192,6 +3203,8 @@ class MainWindow(QMainWindow):
         '''
         debug_shortcut = QShortcut(QKeySequence('Ctrl+d'), self)
         debug_shortcut.activated.connect(self.debug_shell)
+
+        self.setFocus()
 
     
     def change_user(self, user):
