@@ -77,6 +77,8 @@ def nas_prefix():
         else:
             prefix = '/mnt/nas'
         _nas_prefix = prefix
+    # TODO TODO err if nothing in nas_prefix, saying which env var to set and
+    # how
     return _nas_prefix
 
 
@@ -1922,7 +1924,7 @@ def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
     return contour - 1
 
 
-def plot_traces(*args, footprints=None, order_by='odors', scale_within='none',
+def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     n=20, random=False, title=None, response_calls=None, raw=False,
     smoothed=True, show_footprints=True, show_footprints_alone=False,
     show_cell_ids=True, show_footprint_with_mask=False, gridspec=None,

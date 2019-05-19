@@ -402,6 +402,10 @@ class Segmentation(QWidget):
         #
 
 
+    # TODO TODO provide facilities to show which differ
+    # from current set of params, at least. maybe between arbitrary selections
+    # of pairs. maybe just color backgrounds of widgets for differing params 
+    # yellow or something (and overlay current value?)
     def make_cnmf_param_widget(self, cnmf_params, editable=False):
         """
         """
@@ -1345,7 +1349,8 @@ class Segmentation(QWidget):
         plot_traces = True
         if plot_traces:
             top_components = True
-            random_components = True
+            # will probably be more meaningful once i can restrict to responders
+            random_components = False
             trace_rows = 2 * sum([top_components, random_components])
             # nrows, ncols
             gs = self.fig.add_gridspec(3 + trace_rows, 1,
@@ -3160,8 +3165,8 @@ def main():
     # TODO TODO matlab stuff that only generated saved output needs to be
     # handled, and it can't work this way.
 
-    # TODO maybe use gitpython to check for remote updates and pull them /
-    # relaunch / fail until user pulls them?
+    # TODO TODO TODO maybe use gitpython to check for remote updates and pull
+    # them / relaunch / fail until user pulls them?
 
     # TODO TODO also deal w/ matlab code versionS somehow...
 
