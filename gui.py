@@ -46,7 +46,7 @@ from matplotlib.backends.backend_qt5agg import (FigureCanvas,
 from matplotlib.figure import Figure
 import matlab.engine
 
-# TODO TODO allow things to fail gracefully if we don't have cnmf.
+# TODO allow things to fail gracefully if we don't have cnmf.
 # either don't display tabs that involve it or display a message indicating it
 # was not found.
 import caiman
@@ -2106,6 +2106,9 @@ class Segmentation(QWidget):
         self.param_display_widget = None
 
 
+    # TODO TODO test case where this or open_recording are triggered
+    # when cnmf is running / postprocessing
+    # (what happens? what should happen? maybe just disable callbacks during?)
     def open_segmentation_run(self, item):
         row = item.data(0, Qt.UserRole)
         self.run_at = row.run_at
@@ -2115,7 +2118,10 @@ class Segmentation(QWidget):
 
         # TODO possible to implement this w/o interring w/ other state?
         # (so movie can stay loaded, and only change when selecting another
-        # experiment, etc) (or should i clear more stuff to be safe?)
+        # experiment, etc)
+        # (now i'm clearing stuff just to be safe)
+        self.cnm = None
+        self.movie = None
 
         # TODO delete any existing widgets in stack beyond first
         self.param_display_widget = self.make_cnmf_param_widget(row.parameters,
