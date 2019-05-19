@@ -320,6 +320,7 @@ class Segmentation(QWidget):
 
         self.display_layout = QVBoxLayout(self.display_widget)
         self.display_widget.setLayout(self.display_layout)
+        self.display_layout.setSpacing(0)
 
         # TODO put in some kind of GUI-settable persistent options?
         self.plot_intermediates = False
@@ -376,6 +377,34 @@ class Segmentation(QWidget):
         self.reject_cnmf_btn = QPushButton('Reject', display_btns)
         display_btns_layout.addWidget(self.reject_cnmf_btn)
         self.reject_cnmf_btn.clicked.connect(self.reject_cnmf)
+        # TODO further decrease space between btns and checkboxes
+        display_btns_layout.setContentsMargins(0, 0, 0, 0)
+
+        display_params = QWidget(self.display_widget)
+        #display_params.setFixedHeight(30)
+        self.display_layout.addWidget(display_params)
+        display_params_layout = QHBoxLayout(display_params)
+        display_params.setLayout(display_params_layout)
+        display_params_layout.setSpacing(0)
+        display_params_layout.setContentsMargins(0, 0, 0, 0)
+
+        # TODO TODO make either display params or them + buttons collapsible
+        # w/ a vertical splitter
+        # TODO TODO also include display params in default param json?
+        # just save automatically but separately?
+        self.plot_corrs_btn = QCheckBox('Correlations', display_params)
+        self.plot_correlations = True
+        self.plot_corrs_btn.setChecked(self.plot_correlations)
+        self.plot_corrs_btn.stateChanged.connect(partial(
+            self.set_boolean, 'plot_correlations'))
+        display_params_layout.addWidget(self.plot_corrs_btn)
+
+        self.plot_traces_btn = QCheckBox('Traces', display_params)
+        self.plot_traces = False
+        self.plot_traces_btn.setChecked(self.plot_traces)
+        self.plot_traces_btn.stateChanged.connect(partial(
+            self.set_boolean, 'plot_traces'))
+        display_params_layout.addWidget(self.plot_traces_btn)
 
         # TODO TODO warn if would run analysis on same data w/ same params as
         # had previously led to a rejection
@@ -406,6 +435,13 @@ class Segmentation(QWidget):
     # from current set of params, at least. maybe between arbitrary selections
     # of pairs. maybe just color backgrounds of widgets for differing params 
     # yellow or something (and overlay current value?)
+    # TODO TODO what happens in case where cnmf changes and a param is now:
+    # 1) missing
+    # 2) added
+    # 3) of a different type
+    #    - changing *_border to tuple broke this, as could still only enter an
+    #      int
+    # any of these cases fail?
     def make_cnmf_param_widget(self, cnmf_params, editable=False):
         """
         """
@@ -547,7 +583,7 @@ class Segmentation(QWidget):
 
                     if editable:
                         w.stateChanged.connect(
-                            partial(self.set_boolean, group_key, k))
+                            partial(self.cnmf_set_boolean, group_key, k))
 
                 elif type(v) is int:
                     # TODO set step relative to magnitude?
@@ -564,7 +600,7 @@ class Segmentation(QWidget):
 
                     if editable:
                         w.valueChanged.connect(
-                            partial(self.set_from_spinbox, group_key, k))
+                            partial(self.cnmf_set_from_spinbox, group_key, k))
 
                 elif type(v) is float:
                     # TODO set step and decimal relative to default size?
@@ -581,7 +617,7 @@ class Segmentation(QWidget):
 
                     if editable:
                         w.valueChanged.connect(
-                            partial(self.set_from_spinbox, group_key, k))
+                            partial(self.cnmf_set_from_spinbox, group_key, k))
 
                 # TODO TODO if type is list (tuple?) try recursively looking up
                 # types? (or just handle numbers?) -> place in
@@ -610,7 +646,7 @@ class Segmentation(QWidget):
 
                     if editable:
                         w.currentIndexChanged[str].connect(
-                            partial(self.set_from_list, group_key, k))
+                            partial(self.cnmf_set_from_list, group_key, k))
 
                 else:
                     print_stuff = True
@@ -620,7 +656,7 @@ class Segmentation(QWidget):
                         # TODO TODO if using eval, use setValidator to set some
                         # validator that eval call works?
                         w.editingFinished.connect(
-                            partial(self.set_from_text, group_key, k, w))
+                            partial(self.cnmf_set_from_text, group_key, k, w))
 
                 if formgen_print and print_stuff:
                     print(k, v, type(v))
@@ -909,6 +945,23 @@ class Segmentation(QWidget):
         return super(Segmentation, self).eventFilter(source, event)
 
 
+    def display_params_editable(self, editable) -> None:
+        self.plot_corrs_btn.setEnabled(editable)
+        self.plot_traces_btn.setEnabled(editable)
+
+
+    def set_boolean(self, key, qt_value) -> None:
+        # TODO share this if.. w/ cnmf_set_boolean somehow?
+        if qt_value == 0:
+            new_value = False
+        elif qt_value == 2:
+            new_value = True
+        else:
+            raise ValueError('unexpected checkbox signal output')
+        # TODO more idiomatic way?
+        setattr(self, key, new_value)
+
+        
     def check_run_btn_enbl(self) -> None:
         self.params_changed = True
         if (not self.cnmf_running and self.movie is not None):
@@ -917,7 +970,7 @@ class Segmentation(QWidget):
 
     # TODO after implementing per-type, see if can be condensed to one function
     # for all types
-    def set_boolean(self, group, key, qt_value) -> None:
+    def cnmf_set_boolean(self, group, key, qt_value) -> None:
         if qt_value == 0:
             new_value = False
         elif qt_value == 2:
@@ -936,7 +989,7 @@ class Segmentation(QWidget):
     # TODO so looks like this can be collapsed w/ list no problem? new name?
     # TODO wrap all these callbacks to enable/disable verbose stuff in one
     # place?
-    def set_from_spinbox(self, group, key, new_value) -> None:
+    def cnmf_set_from_spinbox(self, group, key, new_value) -> None:
         #print('Group:', group, 'Key:', key)
         #print('Old value:', self.params.get(group, key))
         self.params.set(group, {key: new_value})
@@ -945,7 +998,7 @@ class Segmentation(QWidget):
         self.check_run_btn_enbl()
 
 
-    def set_from_list(self, group, key, new_value) -> None:
+    def cnmf_set_from_list(self, group, key, new_value) -> None:
         #print('Group:', group, 'Key:', key)
         #print('Old value:', self.params.get(group, key))
         self.params.set(group, {key: new_value})
@@ -954,7 +1007,7 @@ class Segmentation(QWidget):
         self.check_run_btn_enbl()
 
 
-    def set_from_text(self, group, key, qt_line_edit) -> None:
+    def cnmf_set_from_text(self, group, key, qt_line_edit) -> None:
         if qt_line_edit.isModified():
             new_text = qt_line_edit.text()
             #print('new_text:', new_text)
@@ -986,8 +1039,10 @@ class Segmentation(QWidget):
         # TODO notify user this is happening (and how?)? checkbox to not do
         # this?  and if checkbox is unticked, just store in db w/ accept as
         # null?
+        '''
         if self.accepted is None and self.cnm is not None:
             self.reject_cnmf()
+        '''
 
         # TODO separate button to cancel? change run-button to cancel?
 
@@ -1319,6 +1374,12 @@ class Segmentation(QWidget):
 
         n_footprint_axes = 4 if self.plot_intermediates and not only_init else 1
 
+        self.display_params_editable(False)
+
+        # TODO checkbox for plot_intermediates
+        plot_correlations = self.plot_correlations
+        plot_traces = self.plot_traces
+
         w_inches_footprint_axes = 3
         h_inches_per_footprint_ax = 3
         w_inches_per_corr = 3
@@ -1333,45 +1394,49 @@ class Segmentation(QWidget):
         #h_inches_per_traceplot = 5
         #h_inches_traceplots = h_inches_per_traceplot * 
 
-        fig_w_inches = max(
-            w_inches_footprint_axes,
-            w_inches_corr,
-            w_inches_traceplots
-        )
-        fig_h_inches = (h_inches_footprint_axes + h_inches_corrs +
-            h_inches_traceplots)
+        widths = [w_inches_footprint_axes]
+        heights = [h_inches_footprint_axes]
+        if plot_correlations:
+            widths.append(w_inches_corr)
+            heights.append(h_inches_corrs)
+
+        if plot_traces:
+            widths.append(w_inches_traceplots)
+            heights.append(h_inches_traceplots)
+
+        fig_w_inches = max(widths)
+        fig_h_inches = sum(heights)
 
         self.set_fig_size(fig_w_inches, fig_h_inches)
         # TODO maybe there isn't always too much space between this and first
         # thing, but there is in some cases. avoid if possible.
+        # TODO TODO fix suptitle so it plays nicely w/ tight_layout
+        # or do some other way. right now, in the 1 footprint ax case,
+        # w/ no corrs or traces, suptitle is right on top of plot title!
         self.fig.suptitle(self.recording_title)
 
-        plot_traces = True
+        footprint_rows = 2
+        if plot_correlations:
+            corr_rows = 2
+        else:
+            corr_rows = 0
         if plot_traces:
             top_components = True
             # will probably be more meaningful once i can restrict to responders
             random_components = False
             trace_rows = 2 * sum([top_components, random_components])
-            # nrows, ncols
-            gs = self.fig.add_gridspec(3 + trace_rows, 1,
-                hspace=0.4, wspace=0.05)
-
-            # TODO maybe redo gs... maybe it should be direved from the
-            # h/w_inches stuff? (if everything gets 2/6 why not just 1/3...?)
-            footprint_slice = gs[:2, :]
-            # (end slice is not included, as always, so it's same size as above)
-            corr_slice = gs[2:4, :]
-            # TODO maybe stack each block vertically here, and then make total
-            # rows in gs depend on # of blocks??? (maybe put corrs to the side?)
-            # TODO might make sense to have one grid unit per set of two
-            # subplots, so space for shared title above the two is separate from
-            # space between the two (e.g. the "Top components" thing)
-            all_blocks_trace_gs = gs[4:, :].subgridspec(trace_rows,
-                self.n_blocks, hspace=0.3, wspace=0.15)
         else:
-            gs = self.fig.add_gridspec(3, 1, hspace=0.05, wspace=0.05)
-            footprint_slice = gs[:-2, :]
-            corr_slice = gs[-2:, :]
+            trace_rows = 0
+
+        # TODO set ratio of footprint:corr rows based on n_footprint_axes
+        # (& corr types)
+
+        gs_rows = sum([footprint_rows, corr_rows, trace_rows])
+        gs = self.fig.add_gridspec(gs_rows, 1, hspace=0.4, wspace=0.05)
+
+        # TODO maybe redo gs... maybe it should be derived from the
+        # h/w_inches stuff? (if everything gets 2/6 why not just 1/3...?)
+        footprint_slice = gs[:2, :]
 
         footprint_gs = footprint_slice.subgridspec(
             n_footprint_axes, 1, hspace=0, wspace=0)
@@ -1388,27 +1453,39 @@ class Segmentation(QWidget):
             axs.append(ax)
         contour_axes = np.array(axs)
 
-        # 2 rows: one for correlation matrices ordered as in experiment,
-        # and the other for matrices ordered by odor
-        corr_gs = corr_slice.subgridspec(2, self.n_blocks,
-            hspace=0.4, wspace=0.1)
+        if plot_correlations:
+            # (end slice is not included, as always, so it's same size as above)
+            corr_slice = gs[2:4, :]
+            # 2 rows: one for correlation matrices ordered as in experiment,
+            # and the other for matrices ordered by odor
+            corr_gs = corr_slice.subgridspec(2, self.n_blocks,
+                hspace=0.4, wspace=0.1)
 
-        axs = []
-        for i in range(corr_gs._nrows):
-            axs.append([])
-            for j in range(corr_gs._ncols):
-                # TODO maybe still do this? anyway way to indicate the matrix
-                # intensity scale should be shared (but that's not x or y,
-                # right?)?
-                '''
-                if ax0 is None:
-                    ax = fig.add_subplot(corr_gs[i])
-                else:
-                    ax = fig.add_subplot(corr_gs[i], sharex=ax0, sharey=ax0)
-                '''
-                ax = self.fig.add_subplot(corr_gs[i,j])
-                axs[-1].append(ax)
-        corr_axes = np.array(axs)
+            axs = []
+            for i in range(corr_gs._nrows):
+                axs.append([])
+                for j in range(corr_gs._ncols):
+                    # TODO maybe still do this? anyway way to indicate the
+                    # matrix intensity scale should be shared (but that's not x
+                    # or y, right?)?
+                    '''
+                    if ax0 is None:
+                        ax = fig.add_subplot(corr_gs[i])
+                    else:
+                        ax = fig.add_subplot(corr_gs[i], sharex=ax0, sharey=ax0)
+                    '''
+                    ax = self.fig.add_subplot(corr_gs[i,j])
+                    axs[-1].append(ax)
+            corr_axes = np.array(axs)
+
+        if plot_traces:
+            # TODO maybe stack each block vertically here, and then make total
+            # rows in gs depend on # of blocks??? (maybe put corrs to the side?)
+            # TODO might make sense to have one grid unit per set of two
+            # subplots, so space for shared title above the two is separate from
+            # space between the two (e.g. the "Top components" thing)
+            all_blocks_trace_gs = gs[4:, :].subgridspec(trace_rows,
+                self.n_blocks, hspace=0.3, wspace=0.15)
 
         for i in range(n_footprint_axes):
             contour_ax = contour_axes[i]
@@ -1450,43 +1527,46 @@ class Segmentation(QWidget):
             self.mpl_canvas.draw()
 
         ###################################################################
-        self.get_recording_dfs()
+        if plot_correlations or plot_traces:
+            # TODO TODO TODO do other fns depend on this being called??  and all
+            # of it? (if not all of it, maybe pass a flag to shortcircuit if not
+            # plot_correlations or plot_traces)
+            self.get_recording_dfs()
 
-        # TODO make this configurable in gui / have correlations update
-        # (maybe not alongside CNMF parameters, to avoid confusion?)
-        response_calling_s = 3.0
+            # TODO TODO TODO make this configurable in gui / have correlations
+            # update (maybe not alongside CNMF parameters, to avoid confusion?)
+            response_calling_s = 3.0
 
-        # TODO maybe make this abbreviation making a fn
-        # TODO maybe use abbreviation that won't need a separate table to be
-        # meaningful...
-        # TODO sort s.t. always goes A,B,C in odor corr?
-        # TODO TODO or sort so mixture is always last (or middle?)
-        # TODO TODO only get abbreviations for monomolecular odors and then just
-        # do stuff like "A+B" for the mixture
-        presentations_df = pd.concat(self.presentation_dfs, ignore_index=True)
-        # TODO check again that this also works in case where odors from this
-        # experiment are new (weren't in db before)
-        # (and maybe support some local analysis anyway that doesn't require rt
-        # through the db...)
-        presentations_df = u.merge_odors(presentations_df,
-            self.db_odors.reset_index())
-        # TODO maybe adapt to case where name2 might have only occurence of 
-        # an odor, or name1 might be paraffin.
-        # TODO TODO check this is actually in the order i want across blocks
-        # (idk if name1,name2 are sorted / re-ordered somewhere)
-        name1_unique = presentations_df.name1.unique()
-        name2_unique = presentations_df.name2.unique()
-        assert set(name2_unique) - set(name1_unique) == {'paraffin'}
-        odor2abbrev = {o: chr(ord('A') + i) for i, o in enumerate(name1_unique)}
-        # So that code detecting which combinations of name1+name2 are
-        # monomolecular does not need to change.
-        odor2abbrev['paraffin'] = 'paraffin'
+            # TODO maybe make this abbreviation making a fn
+            # TODO maybe use abbreviation that won't need a separate table to be
+            # meaningful...
+            # TODO sort s.t. always goes A,B,C in odor corr?
+            presentations_df = pd.concat(self.presentation_dfs,
+                ignore_index=True)
+            # TODO check again that this also works in case where odors from
+            # this experiment are new (weren't in db before)
+            # (and maybe support some local analysis anyway that doesn't require
+            # rt through the db...)
+            presentations_df = u.merge_odors(presentations_df,
+                self.db_odors.reset_index())
+            # TODO maybe adapt to case where name2 might have only occurence of 
+            # an odor, or name1 might be paraffin.
+            # TODO TODO check this is actually in the order i want across blocks
+            # (idk if name1,name2 are sorted / re-ordered somewhere)
+            name1_unique = presentations_df.name1.unique()
+            name2_unique = presentations_df.name2.unique()
+            assert set(name2_unique) - set(name1_unique) == {'paraffin'}
+            odor2abbrev = {o: chr(ord('A') + i)
+                for i, o in enumerate(name1_unique)}
+            # So that code detecting which combinations of name1+name2 are
+            # monomolecular does not need to change.
+            odor2abbrev['paraffin'] = 'paraffin'
 
-        # TODO TODO TODO use same abbreviations in plot_traces
-        # (pass them in). or just don't include them at all.
+            block_iter = list(range(self.n_blocks))
+        else:
+            block_iter = []
 
-        # TODO probably handle this some other way. messy...
-        for i in range(self.n_blocks):
+        for i in block_iter:
             # TODO maybe concat and only set whole df as instance variable in
             # get_recording_df? then use just as in kc_analysis all throughout
             # here?
@@ -1503,7 +1583,6 @@ class Segmentation(QWidget):
             ]
             comparison_df = pd.concat(comparison_dfs,
                 ignore_index=True)
-            # TODO set index?
 
             # TODO don't have separate instance variables for presentation_dfs
             # and comparison_dfs if i'm always going to merge here.
@@ -1643,77 +1722,79 @@ class Segmentation(QWidget):
                         order_by='presentation_order', n=n, random=True)
 
             ###################################################################
+            if plot_correlations:
+                # TODO TODO might want to only compute responders/criteria one
+                # place, to avoid inconsistencies (so either move this section
+                # into next loop and aggregate, or index into this stuff from
+                # within that loop?)
+                in_response_window = ((comparison_df.from_onset > 0.0) &
+                    (comparison_df.from_onset <= response_calling_s))
 
-            # TODO TODO might want to only compute responders/criteria one
-            # place, to avoid inconsistencies (so either move this section into
-            # next loop and aggregate, or index into this stuff from within that
-            # loop?)
-            in_response_window = ((comparison_df.from_onset > 0.0) &
-                (comparison_df.from_onset <= response_calling_s))
+                # TODO TODO include from_onset col then compute mean?
+                window_df = comparison_df.loc[in_response_window,
+                    cell_cols + ['order','from_onset','df_over_f']]
 
-            # TODO TODO include from_onset col then compute mean?
-            window_df = comparison_df.loc[in_response_window,
-                cell_cols + ['order','from_onset','df_over_f']]
+                # TODO maybe move this to bottom, around example trace plotting
+                window_by_trial = \
+                    window_df.groupby(cell_cols + ['order'])['df_over_f']
 
-            # TODO maybe move this to bottom, around example trace plotting
-            window_by_trial = \
-                window_df.groupby(cell_cols + ['order'])['df_over_f']
+                window_trial_means = window_by_trial.mean()
+                # TODO rename to 'mean_df_over_f' or something, to avoid
+                # confusion
+                trial_by_cell_means = window_trial_means.to_frame().pivot_table(
+                    index=['name1','name2','repeat_num','order'],
+                    columns='cell', values='df_over_f').T
 
-            window_trial_means = window_by_trial.mean()
-            # TODO rename to 'mean_df_over_f' or something, to avoid confusion
-            trial_by_cell_means = window_trial_means.to_frame().pivot_table(
-                index=['name1','name2','repeat_num','order'],
-                columns='cell', values='df_over_f').T
+                trial_mean_presentation_order = \
+                    trial_by_cell_means.sort_index(axis=1, level='order')
 
-            trial_mean_presentation_order = \
-                trial_by_cell_means.sort_index(axis=1, level='order')
-
-            odor_order_trial_mean_corrs = trial_by_cell_means.corr()
-            presentation_order_trial_mean_corrs = \
-                trial_mean_presentation_order.corr()
-
-
-            presentation_order_ax = corr_axes[0, i]
-
-            ticklabels = u.matlabels(presentation_order_trial_mean_corrs,
-                u.format_mixture)
-
-            # TODO TODO use titles to say which two odors it was
-            u.matshow(presentation_order_trial_mean_corrs,
-                ticklabels=ticklabels,
-                colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
-                    ' correlation'),
-                #title=fly_comparison_title,
-                ax=presentation_order_ax,
-                fontsize=6)
-            self.mpl_canvas.draw()
+                odor_order_trial_mean_corrs = trial_by_cell_means.corr()
+                presentation_order_trial_mean_corrs = \
+                    trial_mean_presentation_order.corr()
 
 
-            odor_order_ax = corr_axes[1, i]
+                corr_cbar_label = (r'Mean response $\frac{\Delta F}{F}$' +
+                        ' correlation')
+                presentation_order_ax = corr_axes[0, i]
 
-            ticklabels = u.matlabels(odor_order_trial_mean_corrs,
-                u.format_mixture)
+                ticklabels = u.matlabels(presentation_order_trial_mean_corrs,
+                    u.format_mixture)
 
-            u.matshow(odor_order_trial_mean_corrs,
-                ticklabels=ticklabels,
-                group_ticklabels=True,
-                colorbar_label=(r'Mean response $\frac{\Delta F}{F}$' +
-                    ' correlation'),
-                #title=fly_comparison_title,
-                ax=odor_order_ax,
-                fontsize=6)
-            self.mpl_canvas.draw()
+                # TODO TODO use titles to say which two odors it was
+                u.matshow(presentation_order_trial_mean_corrs,
+                    ticklabels=ticklabels,
+                    colorbar_label=corr_cbar_label,
+                    #title=fly_comparison_title,
+                    ax=presentation_order_ax,
+                    fontsize=6)
+                self.mpl_canvas.draw()
+
+
+                odor_order_ax = corr_axes[1, i]
+
+                ticklabels = u.matlabels(odor_order_trial_mean_corrs,
+                    u.format_mixture)
+
+                u.matshow(odor_order_trial_mean_corrs,
+                    ticklabels=ticklabels,
+                    group_ticklabels=True,
+                    colorbar_label=corr_cbar_label,
+                    #title=fly_comparison_title,
+                    ax=odor_order_ax,
+                    fontsize=6)
+                self.mpl_canvas.draw()
 
         ###################################################################
-        abbrev2odor = {v: k for k, v in odor2abbrev.items()}
-        print('\nOdor abbreviations:')
-        for k in sorted(abbrev2odor.keys()):
-            if k != 'paraffin':
-                print('{}: {}'.format(k, abbrev2odor[k]))
-        print('')
+        if plot_correlations or plot_traces:
+            abbrev2odor = {v: k for k, v in odor2abbrev.items()}
+            print('\nOdor abbreviations:')
+            for k in sorted(abbrev2odor.keys()):
+                if k != 'paraffin':
+                    print('{}: {}'.format(k, abbrev2odor[k]))
+            print('')
 
         # TODO maybe delete this...
-        self.fig.tight_layout()
+        self.fig.tight_layout()#rect=[0, 0.03, 1, 0.95])
         self.mpl_canvas.draw()
         # TODO maybe allow toggling same pane between avg and movie?
         # or separate pane for movie?
@@ -1721,6 +1802,8 @@ class Segmentation(QWidget):
         # to get intensity sliders? or other widget for that?
         self.accepted = None
         self.cnmf_running = False
+
+        self.display_params_editable(True)
 
         if self.cnm is not None:
             self.accept_cnmf_btn.setEnabled(True)
@@ -2187,6 +2270,7 @@ class Segmentation(QWidget):
 
         self.recording_title = '{}/{}/{}'.format(
             date_dir, fly_num, thorimage_id)
+        print('')
         print(self.recording_title)
 
         # Trying all the operations that need to find files before setting any
