@@ -34,6 +34,7 @@ import matplotlib.patches as patches
 # is just importing this potentially going to interfere w/ gui?
 # put import behind paths that use it?
 import matplotlib.pyplot as plt
+import matlab.engine
 
 
 recording_cols = [

@@ -229,6 +229,7 @@ class Segmentation(QWidget):
 
             date_str = x[-4]
             fly_str = x[-3]
+            # TODO make a fn for this, in case naming convention changes again?
             thorimage_id = '_'.join(fname_parts[:-1])
             item_parts = [date_str, fly_str, thorimage_id, cor_type]
 
@@ -2177,7 +2178,7 @@ class Segmentation(QWidget):
 
         date = datetime.strptime(date_dir, '%Y-%m-%d')
         fly_num = int(fly_dir)
-        thorimage_id = tiff_just_fname[:4]
+        thorimage_id = '_'.join(tiff_just_fname.split('_')[:-1])
 
         self.recording_title = '{}/{}/{}'.format(
             date_dir, fly_num, thorimage_id)
