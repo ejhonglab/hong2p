@@ -35,6 +35,7 @@ import matplotlib.patches as patches
 # put import behind paths that use it?
 import matplotlib.pyplot as plt
 import matlab.engine
+import seaborn as sns
 
 
 recording_cols = [
@@ -361,7 +362,10 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
             sheets = pickle.load(f)
 
     else:
-        with open('google_sheet_link.txt', 'r') as f:
+        # TODO TODO maybe env var pointing to this? or w/ link itself?
+        # TODO maybe just get relative path from __file__ w/ /.. or something?
+        pkg_data_dir = split(split(__file__)[0])[0]
+        with open(join(pkg_data_dir, 'google_sheet_link.txt'), 'r') as f:
             gsheet_link = \
                 f.readline().split('/edit')[0] + '/export?format=csv&gid='
 
@@ -540,6 +544,9 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
 def merge_gsheet(df, *args, use_cache=False):
     """
     df must have a column named either 'recording_from' or 'started_at'
+
+    gsheet rows get this information by finding the right ThorImage
+    Experiment.xml files on the NAS and loading them for this timestamp.
     """
     if len(args) == 0:
         gsdf = mb_team_gsheet(use_cache=use_cache)
@@ -627,6 +634,9 @@ def merge_recordings(df, *args, verbose=True):
 
     df.drop(columns=['started_at'], inplace=True)
 
+    # TODO TODO see notes in kc_analysis about sub-recordings and how that
+    # will now break this in the recordings table
+    # (multiple dirs -> one start time)
     df['thorimage_id'] = df.thorimage_path.apply(lambda x: split(x)[-1])
 
     print(' done')
@@ -1822,7 +1832,7 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
 
 # TODO maybe one fn that puts in matrix format and another in table
 # (since matrix may be sparse...)
-def plot_pair_n(df, *args):
+def plot_pair_n(df, title, *args):
     """Plots a matrix of odor1 X odor2 w/ counts of flies as entries.
 
     Args:
@@ -1840,6 +1850,9 @@ def plot_pair_n(df, *args):
         - reason (maybe make this optional?)
         The odor pairs experiments are supposed to collect data for.
     """
+    # TODO maybe do w/o this...
+    import imgkit
+
     odor_panel = None
     if len(args) == 1:
         odor_panel = args[0]
@@ -1894,7 +1907,21 @@ def plot_pair_n(df, *args):
         full_pair_n.update(full_pair_n.T)
         # TODO full_pair_n.fillna(0, inplace=True)?
 
-        import ipdb; ipdb.set_trace()
+    # TODO TODO delete this hack once i find a nicer way to make the
+    # output of crosstab symmetric
+    for i in range(full_pair_n.shape[0]):
+        for j in range(full_pair_n.shape[1]):
+            a = full_pair_n.iat[i,j]
+            b = full_pair_n.iat[j,i]
+            if a > 0 and (pd.isnull(b) or b == 0):
+                full_pair_n.iat[j,i] = a
+            elif b > 0 and (pd.isnull(a) or a == 0):
+                full_pair_n.iat[i,j] = b
+    # TODO also delete this hack. this assumes that anything set to 0
+    # is not actually a pair in the panel (which should be true right now
+    # but will not always be)
+    full_pair_n.replace(0, np.nan, inplace=True)
+    #
 
     # TODO TODO TODO make crosstab output actually symmetric, not just square
     # (or is it always one diagonal that's filled in? if so, really just need
@@ -1914,8 +1941,14 @@ def plot_pair_n(df, *args):
     # TODO TODO display actual counts in squares in matshow
     # maybe make colorbar have discrete steps?
 
-    import ipdb; ipdb.set_trace()
-
+    full_pair_n.fillna('', inplace=True)
+    cm = sns.light_palette('seagreen', as_cmap=True)
+    # TODO TODO if i'm going to continue using styler + imgkit
+    # at least figure out how to get the cmap to actually work
+    # need some css or something?
+    html = full_pair_n.style.background_gradient(cmap=cm).render()
+    imgkit.from_string(html, '{}.png'.format(title))
+    #import ipdb; ipdb.set_trace()
 
 
 def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
