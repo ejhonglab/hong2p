@@ -280,6 +280,10 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
     if index:
         print('writing to temporary table temp_{}...'.format(table_name))
 
+
+    # TODO TODO TODO race condition on these temp tables? see bug report
+    # from 190520. if race, fix! probably add unique id or something
+
     # TODO figure out how to profile
     new_df.to_sql('temp_' + table_name, conn, if_exists='replace', index=index,
         dtype=dtypes)
