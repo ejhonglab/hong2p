@@ -1042,10 +1042,8 @@ class Segmentation(QWidget):
         # TODO notify user this is happening (and how?)? checkbox to not do
         # this?  and if checkbox is unticked, just store in db w/ accept as
         # null?
-        '''
         if self.accepted is None and self.cnm is not None:
             self.reject_cnmf()
-        '''
 
         # TODO separate button to cancel? change run-button to cancel?
 
