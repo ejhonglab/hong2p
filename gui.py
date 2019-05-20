@@ -819,7 +819,7 @@ class Segmentation(QWidget):
         if not ok_pressed:
             return
 
-        j_from1, ok_pressed = QInputDialog.getInt(self, 'Start block',
+        j_from1, ok_pressed = QInputDialog.getInt(self, 'End block',
             'End block ({}-{}):'.format(i_from1, last_from1),
             value=i_from1, min=i_from1, max=last_from1)
         if not ok_pressed:
@@ -871,6 +871,16 @@ class Segmentation(QWidget):
         copyfile(src_sync_xml, new_sync_xml)
 
         analysis_dir = join(analysis_output_root, date_dir, fly_dir)
+        src_matfile = join(analysis_dir,
+            'cnmf', self.thorimage_id + '_cnmf.mat')
+        linked_matfile = join(analysis_dir,
+            'cnmf', new_thorimage_id + '_cnmf.mat')
+        print('\nSymlinking to MAT file with timing information:')
+        print('from =', src_matfile)
+        print('to =', linked_matfile)
+        # TODO if this will overwrite, check linked doesnt exist
+        os.symlink(src_matfile, linked_matfile)
+
         tiff_path = join(analysis_dir, 'tif_stacks',
             '{}_{}.tif'.format(new_thorimage_id, cor_type))
         print('\nSaving to TIFF {}...'.format(tiff_path), flush=True, end='')
@@ -887,7 +897,10 @@ class Segmentation(QWidget):
         # resolution=(float, float)
         # TODO so is this an old version of tifffile if it seems to say in the
         # docs online that imsave has been renamed to imwrite? upgrade?
-        tifffile.imsave(tiff_path, self.movie[start_frame:end_frame],
+        # TODO i remember typing (end_frame + 1) before 4002e4a commit,
+        # but now it's not here... so did i just accidentally undo, or
+        # did i erroneously add this somewhere it doesn't belong?
+        tifffile.imsave(tiff_path, self.movie[start_frame:(end_frame + 1)],
             imagej=True)
         print(' done.\n')
 
