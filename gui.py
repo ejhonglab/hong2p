@@ -2176,6 +2176,25 @@ class Segmentation(QWidget):
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
 
+        fig_filename = (self.run_at.strftime('%Y%m%d_%H%M_') +
+            self.recording_title.replace('/','_'))
+        fig_path = join(analysis_output_root, 'figs')
+
+        # TODO TODO save the initial traces (+ in future pixel corr plot) as
+        # well, in at least this case, but maybe also just on load?
+        # TODO but at that point, maybe just factor out the plotting and
+        # generate in populate_db?
+        # TODO TODO env var for fig output (might want in one flag directory)
+        # TODO make subdirs if they don't exist
+        # TODO this consistent w/ stuff saved from toolbar in gui?
+        png_path = join(fig_path, 'png', fig_filename + '.png')
+        print('Saving fig to {}'.format(png_path))
+        self.fig.savefig(png_path)
+
+        svg_path = join(fig_path, 'svg', fig_filename + '.svg')
+        print('Saving fig to {}'.format(svg_path))
+        self.fig.savefig(svg_path)
+
         self.upload_segmentation_info(True)
 
         # TODO just calculate metadata outright here?
@@ -2212,8 +2231,9 @@ class Segmentation(QWidget):
         '''
 
         # TODO delete me
-        print('saving CNMF state to cnmf_state.p for debugging', flush=True)
         # intended to use this to find best detrend / extract dff method
+        '''
+        print('saving CNMF state to cnmf_state.p for debugging', flush=True)
         try:
             state = {
                 'Yr': Yr,
@@ -2237,10 +2257,14 @@ class Segmentation(QWidget):
             print(e)
             import ipdb; ipdb.set_trace()
         print('done saving cnmf_state.p', flush=True)
+        '''
         #
 
-        # TODO TODO TODO why did i need this separate from checking
-        # self.accepted is None???
+        # I needed this separate from checking self.accepted is None,
+        # because presentations don't get uploaded when the output is rejected.
+        # TODO related to initial reject->db->new session accept case which is
+        # currently bugged.
+        # TODO TODO TODO traces need to be regenerated in the above case!!
         if self.uploaded_presentations:
             # Just to skip to end of function.
             presentation_dfs = []
