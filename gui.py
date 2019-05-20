@@ -22,6 +22,7 @@ from copy import deepcopy
 from io import BytesIO
 import pprint
 import traceback
+from shutil import copyfile
 
 from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
     Qt, QEvent, QVariant)
@@ -31,7 +32,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
     QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut,
     QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem, QStackedWidget,
-    QFileDialog, QMenu, QMessageBox)
+    QFileDialog, QMenu, QMessageBox, QInputDialog)
 import sip
 
 import pyqtgraph as pg
@@ -213,7 +214,8 @@ class Segmentation(QWidget):
         self.data_tree = QTreeWidget(self)
         self.data_tree.setHeaderHidden(True)
         self.data_and_ctrl_layout.addWidget(self.data_tree)
-        self.data_tree.setFixedWidth(210)
+        # TODO look like i want w/o this? (don't want stuff cut off)
+        self.data_tree.setFixedWidth(240)
         self.data_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.data_tree.customContextMenuRequested.connect(self.data_tree_menu)
 
@@ -231,7 +233,7 @@ class Segmentation(QWidget):
             fly_str = x[-3]
             # TODO make a fn for this, in case naming convention changes again?
             thorimage_id = '_'.join(fname_parts[:-1])
-            item_parts = [date_str, fly_str, thorimage_id, cor_type]
+            item_parts = [date_str, fly_str, thorimage_id]#, cor_type]
 
             #item = QListWidgetItem('/'.join(item_parts))
             # TODO need setText call here?
@@ -417,6 +419,13 @@ class Segmentation(QWidget):
 
         # TODO maybe share this across all widget classes?
         self.threadpool = QThreadPool()
+
+        # TODO TODO maybe implement something like this some other time
+        # (or some way to split recordings as needed to deal w/ memory issues,
+        # etc)
+        # TODO need to be under mainwindow, or this work?
+        self.break_tiff_shortcut = QShortcut(QKeySequence('Ctrl+b'), self)
+        self.break_tiff_shortcut.activated.connect(self.save_tiff_blocks)
 
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
@@ -792,6 +801,106 @@ class Segmentation(QWidget):
             self.last_splitter_sizes = self.splitter.sizes()
             self.splitter.setSizes([0, 1])
             self.splitter_collapsed = True
+
+
+    def save_tiff_blocks(self):
+        if self.movie is None:
+            return
+
+        # TODO reimplement w/ start+end block + new name in same dialog,
+        # rather than one popup for each
+
+        first_from1 = self.first_block + 1
+        last_from1 = self.last_block + 1
+        i_from1, ok_pressed = QInputDialog.getInt(self, 'Start block',
+            'Start block ({}-{}):'.format(first_from1, last_from1),
+            value=first_from1, min=first_from1, max=last_from1)
+        # TODO this check right?
+        if not ok_pressed:
+            return
+
+        j_from1, ok_pressed = QInputDialog.getInt(self, 'Start block',
+            'End block ({}-{}):'.format(i_from1, last_from1),
+            value=i_from1, min=i_from1, max=last_from1)
+        if not ok_pressed:
+            return
+
+        new_first = i_from1 - 1
+        # TODO test indexing on this one is right
+        new_last = j_from1 - 1
+
+        if self.tiff_fname.endswith('_nr.tif'):
+            cor_type = 'nr'
+        elif self.tiff_fname.endswith('_rig.tif'):
+            cor_type = 'rig'
+
+        new_thorimage_id = '{}_{}b{}_from_{}'.format(self.thorimage_id,
+            i_from1, j_from1, cor_type)
+
+        date_dir = self.date.strftime('%Y-%m-%d')
+        fly_dir = str(self.fly_num)
+        new_pathend = join(date_dir, fly_dir, new_thorimage_id)
+        fake_raw_dir = join(raw_data_root, new_pathend)
+        fake_raw_ts_dir = join(raw_data_root, new_pathend + '_sync')
+
+        print('\nMaking directories:')
+        print(fake_raw_dir)
+        print(fake_raw_ts_dir)
+
+        # These calls should err if they exist. test?
+        os.mkdir(fake_raw_dir)
+        os.mkdir(fake_raw_ts_dir)
+
+        src_raw_dir = join(raw_data_root, date_dir, fly_dir, self.thorimage_id)
+
+        image_xml_name = 'Experiment.xml'
+        src_image_xml = join(src_raw_dir, image_xml_name)
+        new_image_xml = join(fake_raw_dir, image_xml_name)
+        print('\nCopying ThorImage XML:\nfrom =', src_image_xml)
+        print('to =', new_image_xml)
+        copyfile(src_image_xml, new_image_xml)
+
+        assert len(self.recordings) == 1
+        # TODO put this def centrally somewhere?
+        ts_xml_name = 'ThorRealTimeDataSettings.xml'
+        src_sync_xml = join(self.recordings.iloc[0].thorsync_path,
+            ts_xml_name)
+        new_sync_xml = join(fake_raw_ts_dir, ts_xml_name)
+        print('\nCopying ThorSync XML:\nfrom =', src_sync_xml)
+        print('to =', new_sync_xml)
+        copyfile(src_sync_xml, new_sync_xml)
+
+        analysis_dir = join(analysis_output_root, date_dir, fly_dir)
+        tiff_path = join(analysis_dir, 'tif_stacks',
+            '{}_{}.tif'.format(new_thorimage_id, cor_type))
+        print('\nSaving to TIFF {}...'.format(tiff_path), flush=True, end='')
+
+        start_frame = self.block_first_frames[new_first]
+        end_frame = self.block_last_frames[new_last]
+        # TODO check this is ~right. maybe assert
+        #print('fraction of frames in subset:',
+        #    (end_frame - start_frame) / self.movie.shape[0])
+
+        # TODO TODO factor out this saving into util and call here
+        # TODO try other metadata as necessary
+        # metadata={'axes': 'TZCYX', 'spacing': 3.1, 'unit': 'um'} for example
+        # resolution=(float, float)
+        # TODO so is this an old version of tifffile if it seems to say in the
+        # docs online that imsave has been renamed to imwrite? upgrade?
+        tifffile.imsave(tiff_path, self.movie[start_frame:end_frame],
+            imagej=True)
+        print(' done.\n')
+
+        print('For Google sheet:')
+        print('thorimage_dir =', new_thorimage_id)
+        print('thorsync_dir =', split(fake_raw_ts_dir)[-1])
+        print('first_block =', i_from1)
+        print('last_block =', j_from1)
+        print('')
+
+        # TODO if for some reason i *do* continue doing it this way, rather than
+        # refactoring sub-recording handling, probably also automate editing the
+        # gsheet and reloading the data_tree
 
 
     def delete_segrun(self, treenode) -> None:
@@ -2578,6 +2687,9 @@ class Segmentation(QWidget):
 
             frame_times = frame_times[:(block_last_frames[-1] + 1)]
 
+        # TODO check odor_onset / offset frames are all w/in bounds
+        # of block frames?
+
         assert len(self.odor_onset_frames) == len(odor_pair_list)
 
         last_frame = block_last_frames[-1]
@@ -2594,6 +2706,15 @@ class Segmentation(QWidget):
         assert self.movie.shape[0] == len(frame_times), \
             '{} != {}'.format(self.movie.shape[0], len(frame_times))
 
+        # TODO probably delete after i come up w/ a better way to handle
+        # splitting movies and analyzing subsets of them.
+        # this is just to get the frame #s to subset tiff in imagej
+        print('Block frames:')
+        for i in range(n_blocks_from_gsheet):
+            print('{}: {} - {}'.format(i,
+                block_first_frames[i], block_last_frames[i]))
+        print('')
+
         self.date = date
         self.fly_num = fly_num
         self.thorimage_id = thorimage_id
@@ -2606,6 +2727,9 @@ class Segmentation(QWidget):
         self.odor2_ids = odor2_ids
         self.frame_times = frame_times
         self.block_first_frames = block_first_frames
+        self.block_last_frames = block_last_frames
+        self.first_block = first_block
+        self.last_block = last_block
 
         self.matfile = mat
 
@@ -3198,7 +3322,6 @@ class MainWindow(QMainWindow):
         # (left, top, right, bottom)
         user_layout.setContentsMargins(10, 0, 10, 0)
         central_layout.setAlignment(self.user_widget, Qt.AlignLeft)
-
 
         # TODO add this back after fixing size policies s.t.
         # buttons aren't cut off at the bottom.
