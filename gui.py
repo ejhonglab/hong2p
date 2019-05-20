@@ -1807,11 +1807,15 @@ class Segmentation(QWidget):
             if plot_traces:
                 n = 20
 
+                # TODO TODO TODO uncomment after fixing footprint issue
+                # causing footprint_row in util to have > 1 row
+                '''
                 # TODO or maybe just set show_footprints to false?
                 footprints = u.merge_recordings(self.footprint_df,
                     self.recordings)
                 footprints = u.merge_gsheet(footprints, df)
                 footprints.set_index(u.recording_cols + ['cell'], inplace=True)
+                '''
 
                 # TODO TODO factor out response calling and also do that here,
                 # so that random subset can be selected from responders, as in
@@ -1828,12 +1832,14 @@ class Segmentation(QWidget):
                     # TODO maybe allow passing movie in to not have to load it
                     # multiple times when plotting traces on same data?
                     # (then just use self.movie)
-                    u.plot_traces(comparison_df, footprints=footprints,
+                    ###u.plot_traces(comparison_df, footprints=footprints,
+                    u.plot_traces(comparison_df, show_footprints=False,
                         gridspec=odor_order_trace_gs, n=n,
                         title='Top components')
 
                     presentation_order_trace_gs = all_blocks_trace_gs[1, i]
-                    u.plot_traces(comparison_df, footprints=footprints,
+                    ###u.plot_traces(comparison_df, footprints=footprints,
+                    u.plot_traces(comparison_df, show_footprints=False,
                         gridspec=presentation_order_trace_gs,
                         order_by='presentation_order', n=n)
 

@@ -2192,8 +2192,23 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             weights, x_coords, y_coords = \
                 footprint_row[['weights','x_coords','y_coords']]
 
-            footprint = np.array(coo_matrix((weights,
-                (x_coords, y_coords)), shape=avg.shape).todense())
+            # TODO delete try / catch. debugging:
+            #   File "./gui.py", line 1833, in get_cnmf_output
+            #    title='Top components')
+            #   File "/home/tom/src/python_2p_analysis/hong2p/util.py", line
+            #   2196, in plot_traces
+            #    (x_coords, y_coords)), shape=avg.shape).todense())
+            #   File
+            #   "/home/tom/anaconda3/envs/caiman/lib/python3.6/site-packages/scipy/sparse/coo.py",
+            #   line 157, in __init__
+            # ValueError: invalid literal for int() with base 10: 'x_coords'
+            try:
+                footprint = np.array(coo_matrix((weights,
+                    (x_coords, y_coords)), shape=avg.shape).todense())
+            except ValueError as e:
+                print(e)
+                import ipdb; ipdb.set_trace()
+            #
 
             # TODO maybe some percentile / fixed size about maximum
             # density?
