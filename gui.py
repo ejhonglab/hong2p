@@ -216,7 +216,7 @@ class Segmentation(QWidget):
         self.data_and_ctrl_layout.addWidget(self.data_tree)
         # TODO look like i want w/o this? (don't want stuff cut off)
         # (it does not. would need to change other size settings)
-        self.data_tree.setFixedWidth(230)
+        self.data_tree.setFixedWidth(240)
         self.data_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.data_tree.customContextMenuRequested.connect(self.data_tree_menu)
 
@@ -845,21 +845,23 @@ class Segmentation(QWidget):
         fake_raw_ts_dir = join(raw_data_root, new_pathend + '_sync')
 
         print('\nMaking directories:')
-        print(fake_raw_dir)
-        print(fake_raw_ts_dir)
+        if not exists(fake_raw_dir):
+            print(fake_raw_dir)
+            os.mkdir(fake_raw_dir)
 
-        # These calls should err if they exist. test?
-        os.mkdir(fake_raw_dir)
-        os.mkdir(fake_raw_ts_dir)
+        if not exists(fake_raw_ts_dir):
+            print(fake_raw_ts_dir)
+            os.mkdir(fake_raw_ts_dir)
 
         src_raw_dir = join(raw_data_root, date_dir, fly_dir, self.thorimage_id)
 
         image_xml_name = 'Experiment.xml'
         src_image_xml = join(src_raw_dir, image_xml_name)
         new_image_xml = join(fake_raw_dir, image_xml_name)
-        print('\nCopying ThorImage XML:\nfrom =', src_image_xml)
-        print('to =', new_image_xml)
-        copyfile(src_image_xml, new_image_xml)
+        if not exists(new_image_xml):
+            print('\nCopying ThorImage XML:\nfrom =', src_image_xml)
+            print('to =', new_image_xml)
+            copyfile(src_image_xml, new_image_xml)
 
         assert len(self.recordings) == 1
         # TODO put this def centrally somewhere?
@@ -867,20 +869,23 @@ class Segmentation(QWidget):
         src_sync_xml = join(self.recordings.iloc[0].thorsync_path,
             ts_xml_name)
         new_sync_xml = join(fake_raw_ts_dir, ts_xml_name)
-        print('\nCopying ThorSync XML:\nfrom =', src_sync_xml)
-        print('to =', new_sync_xml)
-        copyfile(src_sync_xml, new_sync_xml)
+        if not exists(new_sync_xml):
+            print('\nCopying ThorSync XML:\nfrom =', src_sync_xml)
+            print('to =', new_sync_xml)
+            copyfile(src_sync_xml, new_sync_xml)
 
         analysis_dir = join(analysis_output_root, date_dir, fly_dir)
         src_matfile = join(analysis_dir,
             'cnmf', self.thorimage_id + '_cnmf.mat')
         linked_matfile = join(analysis_dir,
             'cnmf', new_thorimage_id + '_cnmf.mat')
-        print('\nSymlinking to MAT file with timing information:')
-        print('from =', src_matfile)
-        print('to =', linked_matfile)
-        # TODO if this will overwrite, check linked doesnt exist
-        os.symlink(src_matfile, linked_matfile)
+        # TODO this check work w/ symlinks?
+        if not exists(linked_matfile):
+            print('\nSymlinking to MAT file with timing information:')
+            print('from =', src_matfile)
+            print('to =', linked_matfile)
+            # TODO if this will overwrite, check linked doesnt exist
+            os.symlink(src_matfile, linked_matfile)
 
         print('\nFor Google sheet:')
         print('thorimage_dir =', new_thorimage_id)
@@ -888,9 +893,9 @@ class Segmentation(QWidget):
         print('first_block =', i_from1)
         print('last_block =', j_from1)
 
+        # TODO share more code between this and avg...
         tiff_path = join(analysis_dir, 'tif_stacks',
             '{}_{}.tif'.format(new_thorimage_id, cor_type))
-        print('\nSaving to TIFF {}...'.format(tiff_path), flush=True, end='')
 
         start_frame = self.block_first_frames[new_first]
         end_frame = self.block_last_frames[new_last]
@@ -907,9 +912,21 @@ class Segmentation(QWidget):
         # TODO i remember typing (end_frame + 1) before 4002e4a commit,
         # but now it's not here... so did i just accidentally undo, or
         # did i erroneously add this somewhere it doesn't belong?
-        tifffile.imsave(tiff_path, self.movie[start_frame:(end_frame + 1)],
-            imagej=True)
-        print(' done.\n')
+        sliced_movie = self.movie[start_frame:(end_frame + 1)]
+        if not exists(tiff_path):
+            print('\nSaving to TIFF {}...'.format(tiff_path), flush=True,
+                end='')
+            tifffile.imsave(tiff_path, sliced_movie, imagej=True)
+            print(' done.\n')
+
+        avg_tiff_path = join(analysis_dir, 'tif_stacks', 'AVG',
+            'nonrigid' if cor_type == 'nr' else 'rigid',
+            'AVG{}_{}.tif'.format(new_thorimage_id, cor_type))
+
+        if not exists(avg_tiff_path):
+            print('\nSaving average TIFF to {}'.format(avg_tiff_path))
+            sliced_movie_avg = np.mean(sliced_movie, axis=0)
+            tifffile.imsave(avg_tiff_path, sliced_movie_avg, imagej=True)
 
         # TODO if for some reason i *do* continue doing it this way, rather than
         # refactoring sub-recording handling, probably also automate editing the
