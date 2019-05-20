@@ -215,7 +215,8 @@ class Segmentation(QWidget):
         self.data_tree.setHeaderHidden(True)
         self.data_and_ctrl_layout.addWidget(self.data_tree)
         # TODO look like i want w/o this? (don't want stuff cut off)
-        self.data_tree.setFixedWidth(240)
+        # (it does not. would need to change other size settings)
+        self.data_tree.setFixedWidth(230)
         self.data_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.data_tree.customContextMenuRequested.connect(self.data_tree_menu)
 
@@ -881,6 +882,12 @@ class Segmentation(QWidget):
         # TODO if this will overwrite, check linked doesnt exist
         os.symlink(src_matfile, linked_matfile)
 
+        print('\nFor Google sheet:')
+        print('thorimage_dir =', new_thorimage_id)
+        print('thorsync_dir =', split(fake_raw_ts_dir)[-1])
+        print('first_block =', i_from1)
+        print('last_block =', j_from1)
+
         tiff_path = join(analysis_dir, 'tif_stacks',
             '{}_{}.tif'.format(new_thorimage_id, cor_type))
         print('\nSaving to TIFF {}...'.format(tiff_path), flush=True, end='')
@@ -904,16 +911,11 @@ class Segmentation(QWidget):
             imagej=True)
         print(' done.\n')
 
-        print('For Google sheet:')
-        print('thorimage_dir =', new_thorimage_id)
-        print('thorsync_dir =', split(fake_raw_ts_dir)[-1])
-        print('first_block =', i_from1)
-        print('last_block =', j_from1)
-        print('')
-
         # TODO if for some reason i *do* continue doing it this way, rather than
         # refactoring sub-recording handling, probably also automate editing the
         # gsheet and reloading the data_tree
+        # TODO TODO also automate breaking into sub-recordings of a max
+        # # frames / blocks
 
 
     def delete_segrun(self, treenode) -> None:
@@ -1554,7 +1556,14 @@ class Segmentation(QWidget):
         # TODO set ratio of footprint:corr rows based on n_footprint_axes
         # (& corr types)
 
-        gs_rows = sum([footprint_rows, corr_rows, trace_rows])
+        if plot_correlations or plot_traces:
+            plot_odor_abbreviation_key = True
+            key_rows = 1
+        else:
+            plot_odor_abbreviation_key = False
+            key_rows = 0
+
+        gs_rows = sum([footprint_rows, corr_rows, trace_rows, key_rows])
         gs = self.fig.add_gridspec(gs_rows, 1, hspace=0.4, wspace=0.05)
 
         # TODO maybe redo gs... maybe it should be derived from the
@@ -1607,8 +1616,11 @@ class Segmentation(QWidget):
             # TODO might make sense to have one grid unit per set of two
             # subplots, so space for shared title above the two is separate from
             # space between the two (e.g. the "Top components" thing)
-            all_blocks_trace_gs = gs[4:, :].subgridspec(trace_rows,
+            all_blocks_trace_gs = gs[4:-1, :].subgridspec(trace_rows,
                 self.n_blocks, hspace=0.3, wspace=0.15)
+
+        if plot_odor_abbreviation_key:
+            abbrev_key_ax = self.fig.add_subplot(gs[-1, :])
 
         for i in range(n_footprint_axes):
             contour_ax = contour_axes[i]
@@ -1655,7 +1667,6 @@ class Segmentation(QWidget):
         self.get_recording_dfs()
 
         if plot_correlations or plot_traces:
-
             # TODO TODO TODO make this configurable in gui / have correlations
             # update (maybe not alongside CNMF parameters, to avoid confusion?)
             response_calling_s = 3.0
@@ -1908,13 +1919,20 @@ class Segmentation(QWidget):
                 self.mpl_canvas.draw()
 
         ###################################################################
-        if plot_correlations or plot_traces:
+        if plot_odor_abbreviation_key:
             abbrev2odor = {v: k for k, v in odor2abbrev.items()}
+            cell_text = []
+            # TODO TODO include concentration in odor column / new column
             print('\nOdor abbreviations:')
             for k in sorted(abbrev2odor.keys()):
                 if k != 'paraffin':
+                    cell_text.append([k, abbrev2odor[k]])
                     print('{}: {}'.format(k, abbrev2odor[k]))
             print('')
+
+            abbrev_key_ax.axis('off')
+            abbrev_key_ax.table(cellText=cell_text, cellLoc='center',
+                colLabels=['Abbreviation', 'Odor'], loc='center', bbox=None)
 
         # TODO maybe delete this...
         self.fig.tight_layout()#rect=[0, 0.03, 1, 0.95])
@@ -2343,6 +2361,13 @@ class Segmentation(QWidget):
     # when cnmf is running / postprocessing
     # (what happens? what should happen? maybe just disable callbacks during?)
     def open_segmentation_run(self, item):
+        # TODO TODO after fixing more properly, delete this.
+        # this is just so the data is not lost (as it would be if 
+        # open_segmentation_run was allowed to complete)
+        if self.cnm is not None and self.accepted is None:
+            print('Select accept/reject before inspecting parameters')
+            return
+        #
         row = item.data(0, Qt.UserRole)
         self.run_at = row.run_at
         self.accepted = row.accepted
