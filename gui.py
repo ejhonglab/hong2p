@@ -1527,11 +1527,11 @@ class Segmentation(QWidget):
             self.mpl_canvas.draw()
 
         ###################################################################
+        # TODO defer this as much as possible
+        # (move later, don't compute traces if not needed for plots / accept)
+        self.get_recording_dfs()
+
         if plot_correlations or plot_traces:
-            # TODO TODO TODO do other fns depend on this being called??  and all
-            # of it? (if not all of it, maybe pass a flag to shortcircuit if not
-            # plot_correlations or plot_traces)
-            self.get_recording_dfs()
 
             # TODO TODO TODO make this configurable in gui / have correlations
             # update (maybe not alongside CNMF parameters, to avoid confusion?)
