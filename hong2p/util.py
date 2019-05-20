@@ -889,8 +889,17 @@ def list_segmentations(tif_path):
     """Returns a DataFrame of segmentation_runs for given motion corrected TIFF.
     """
     # TODO could maybe turn these two queries into one (WITH semantics?)
+    # TODO TODO should maybe trim all prefixes from input_filename before
+    # uploading? unless i want to just figure out path from other variables each
+    # time and use that to match (if NAS_PREFIX is diff, there will be no match)
+    prefix = analysis_output_root()
+    if tif_path.startswith(prefix):
+        tif_path = tif_path[len(prefix):]
+
+    # TODO test this strpos stuff is equivalent to where input_filename = x
+    # in case where prefixes are the same
     analysis_runs = pd.read_sql_query('SELECT * FROM analysis_runs WHERE ' +
-        "input_filename = '{}'".format(tif_path), conn)
+        "strpos(input_filename, '{}') > 0".format(tif_path), conn)
 
     if len(analysis_runs) == 0:
         return None
