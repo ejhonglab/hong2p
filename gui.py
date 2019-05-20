@@ -1963,8 +1963,13 @@ class Segmentation(QWidget):
         # TODO are the reset_index calls necessary?
         segrun_row = segmentation_run.reset_index().merge(
             run.reset_index()).iloc[0]
-        self.current_item = \
-            self.add_segrun_widget(self.current_item, segrun_row)
+
+        # TODO make current_item handling less messy...
+        if self.current_item.parent() is None:
+            rec_node = self.current_item
+        else:
+            rec_node = self.current_item.parent()
+        self.current_item = self.add_segrun_widget(rec_node, segrun_row)
 
         if self.ACTUALLY_UPLOAD:
             segmentation_run.to_sql('segmentation_runs', u.conn,
