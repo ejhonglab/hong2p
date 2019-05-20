@@ -710,7 +710,10 @@ class Segmentation(QWidget):
         # (probably store alongside self.params and pass extra arg to this fn as
         # here?)
         if editable:
-            mk_default_params_btn.clicked.connect(self.save_default_params)
+            # Wrapped with lambda to try to prevent qt from adding some
+            # bool value to the *args.
+            mk_default_params_btn.clicked.connect(lambda:
+                self.save_default_params())
         else:
             assert param_json_str is not None
             # TODO TODO test this case
@@ -1849,6 +1852,9 @@ class Segmentation(QWidget):
             self.default_json_params))
         # TODO TODO test round trip before terminating w/ success
         if len(args) == 0:
+            # TODO TODO why is this path not getting called when invoked from
+            # editable param tab?? it should be
+            # also says first arg (in branch below) is bool...
             self.params.to_json(self.default_json_params)
         elif len(args) == 1:
             json_str = args[0]
