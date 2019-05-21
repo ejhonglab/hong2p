@@ -281,10 +281,6 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
     if index:
         print('writing to temporary table temp_{}...'.format(table_name))
 
-
-    # TODO TODO TODO race condition on these temp tables? see bug report
-    # from 190520. if race, fix! probably add unique id or something
-
     # TODO figure out how to profile
     new_df.to_sql('temp_' + table_name, conn, if_exists='replace', index=index,
         dtype=dtypes)
@@ -1850,6 +1846,7 @@ def plot_pair_n(df, title, *args):
         - reason (maybe make this optional?)
         The odor pairs experiments are supposed to collect data for.
     """
+    # TODO get rid of title arg if i'm just gonna filter by accepted anyway
     # TODO maybe do w/o this...
     import imgkit
 
@@ -1867,6 +1864,10 @@ def plot_pair_n(df, title, *args):
     df = df.drop(
         index=df[(df.name1 == 'paraffin') | (df.name2 == 'paraffin')].index)
 
+    '''
+    # Since recording_from PK means thorimage_ids can clobber each other
+    # thorimage_id may not actually represent which directory the data came from
+    # (although only in the case where a recording has been split)
     replicates = df[[
         'prep_date',
         'fly_num',
@@ -1874,6 +1875,15 @@ def plot_pair_n(df, title, *args):
         'comparison',
         'name1',
         'name2']].drop_duplicates()
+    '''
+
+    accepted_runs = pd.read_sql_query('SELECT run_at, accepted FROM ' +
+        'analysis_runs WHERE accepted', conn)
+    accepted_presentations = df[df.analysis.isin(accepted_runs.run_at)]
+
+    replicates = accepted_presentations[
+        ['prep_date','fly_num','recording_from','name1','name2']
+    ].drop_duplicates()
 
     # TODO do i actually want margins? (would currently count single odors twice
     # if in multiple comparison... may at least not want that?)

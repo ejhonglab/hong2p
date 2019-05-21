@@ -32,7 +32,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget,
     QGroupBox, QPushButton, QLineEdit, QCheckBox, QComboBox, QSpinBox,
     QDoubleSpinBox, QLabel, QListWidgetItem, QScrollArea, QAction, QShortcut,
     QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem, QStackedWidget,
-    QFileDialog, QMenu, QMessageBox, QInputDialog)
+    QFileDialog, QMenu, QMessageBox, QInputDialog, QSizePolicy)
 import sip
 
 import pyqtgraph as pg
@@ -216,7 +216,7 @@ class Segmentation(QWidget):
         self.data_and_ctrl_layout.addWidget(self.data_tree)
         # TODO look like i want w/o this? (don't want stuff cut off)
         # (it does not. would need to change other size settings)
-        self.data_tree.setFixedWidth(240)
+        #self.data_tree.setFixedWidth(240)
         self.data_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.data_tree.customContextMenuRequested.connect(self.data_tree_menu)
 
@@ -275,6 +275,15 @@ class Segmentation(QWidget):
 
             if any_accepted:
                 item.setBackground(0, QColor(self.accepted_color))
+
+        # TODO if this works, also resize on each operation that changes the
+        # contents
+        #self.data_tree.resizeColumnToContents(0)
+        # TODO tweak to actually show all the text of children w/o cutoff off
+        # or extra space (is this a matter of child size policies not being set
+        # correctly?)
+        self.data_tree.setSizePolicy(
+            QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 
         self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_click)
 
@@ -452,6 +461,9 @@ class Segmentation(QWidget):
     #    - changing *_border to tuple broke this, as could still only enter an
     #      int
     # any of these cases fail?
+    # TODO TODO TODO button to make these parameters the current ones
+    # (play nice w/ version changes, i.e. the cases above)
+    # TODO maybe do the above tab-by-tab as well?
     def make_cnmf_param_widget(self, cnmf_params, editable=False):
         """
         """
@@ -727,8 +739,8 @@ class Segmentation(QWidget):
         else:
             assert param_json_str is not None
             # TODO TODO test this case
-            mk_default_params_btn.clicked.connect(
-                partial(self.save_default_params, param_json_str))
+            mk_default_params_btn.clicked.connect(lambda:
+                self.save_default_params(param_json_str))
 
         if editable:
             # TODO support this?
@@ -2078,6 +2090,8 @@ class Segmentation(QWidget):
         else:
             raise NotImplementedError
 
+        # TODO TODO TODO if i'm gonna require this variable, check for it
+        # in open_recording, so there are no surprises
         ti_code_version = u.get_matfile_var(self.matfile, 'ti_code_version')
         mocorr_code_versions = u.get_matfile_var(self.matfile,
             mocorr_version_varname, require=False)
@@ -2090,6 +2104,8 @@ class Segmentation(QWidget):
         if self.ACTUALLY_UPLOAD:
             u.upload_analysis_info(self.run_at, code_versions)
 
+        # TODO TODO zoom to a constant factor (+ redraw) before saving, since
+        # the zoom seems to change the way the figure looks?
         png_buff = BytesIO()
         self.fig.savefig(png_buff, format='png')
         svg_buff = BytesIO()
