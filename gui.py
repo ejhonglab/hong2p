@@ -219,6 +219,8 @@ class Segmentation(QWidget):
         #self.data_tree.setFixedWidth(240)
         self.data_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.data_tree.customContextMenuRequested.connect(self.data_tree_menu)
+        self.current_recording_widget = None
+        self.current_segrun_widget = None
 
         self.accepted_color = '#7fc97f'
         self.rejected_color = '#ff4d4d'
@@ -245,7 +247,7 @@ class Segmentation(QWidget):
 
             tif_seg_runs = u.list_segmentations(d)
             if tif_seg_runs is None:
-                # There cannot be a canonical_segmentation is db if 
+                # There cannot be a canonical_segmentation in db if 
                 # there are no segmentation runs for this recording.
                 item.setData(0, Qt.UserRole, pd.NaT)
                 continue
@@ -334,8 +336,6 @@ class Segmentation(QWidget):
         self.display_widget.setLayout(self.display_layout)
         self.display_layout.setSpacing(0)
 
-        # TODO put in some kind of GUI-settable persistent options?
-        self.plot_intermediates = False
         self.fig = Figure()
         self.mpl_canvas = FigureCanvas(self.fig)
         # TODO this fixed_dpi thing work? let me make things resizable again?
@@ -404,8 +404,16 @@ class Segmentation(QWidget):
         # w/ a vertical splitter
         # TODO TODO also include display params in default param json?
         # just save automatically but separately?
+        self.plot_intermediates_btn = QCheckBox('Intermediate footprints',
+            display_params)
+        self.plot_intermediates = False
+        self.plot_intermediates_btn.setChecked(self.plot_intermediates)
+        self.plot_intermediates_btn.stateChanged.connect(partial(
+            self.set_boolean, 'plot_intermediates'))
+        display_params_layout.addWidget(self.plot_intermediates_btn)
+
         self.plot_corrs_btn = QCheckBox('Correlations', display_params)
-        self.plot_correlations = True
+        self.plot_correlations = False
         self.plot_corrs_btn.setChecked(self.plot_correlations)
         self.plot_corrs_btn.stateChanged.connect(partial(
             self.set_boolean, 'plot_correlations'))
@@ -419,7 +427,7 @@ class Segmentation(QWidget):
         display_params_layout.addWidget(self.plot_traces_btn)
 
         # TODO TODO warn if would run analysis on same data w/ same params as
-        # had previously led to a rejection
+        # had previously led to a rejection (actually just same params period)
 
         # TODO TODO TODO provide the opportunity to compare outputs of sets of
         # parameters, either w/ same displays side by side, or overlayed?
@@ -439,11 +447,14 @@ class Segmentation(QWidget):
 
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
+        self.tiff_fname = None
         self.movie = None
         self.cnm = None
         self.cnmf_running = False
         self.params_changed = False
+        self.run_at = None
         self.accepted = None
+        self.relabeling_db_segrun = False
 
         # TODO delete / handle differently
         self.ACTUALLY_UPLOAD = True
@@ -974,23 +985,31 @@ class Segmentation(QWidget):
             self.color_recording_node(parent)
 
 
-    def color_recording_node(self, treenode) -> None:
-        if treenode.parent() is not None:
-            self.color_recording_node(treenode.parent())
+    def color_segrun_node(self, segrun_treeitem, accepted) -> None:
+        if accepted:
+            color = self.accepted_color
+        else:
+            color = self.rejected_color
+        segrun_treeitem.setBackground(0, QColor(color))
+        self.color_recording_node(segrun_treeitem.parent())
 
+
+    def color_recording_node(self, recording_widget) -> None:
         any_accepted = False
-        for i in range(treenode.childCount()):
-            if treenode.child(i).data(0, Qt.UserRole).accepted:
+        for i in range(recording_widget.childCount()):
+            if recording_widget.child(i).data(0, Qt.UserRole).accepted:
                 any_accepted = True
                 break
                 
         # TODO maybe color red if at least one thing is not accepted?
         if any_accepted:
-            item.setBackground(0, QColor(self.accepted_color))
+            recording_widget.setBackground(0, QColor(self.accepted_color))
         else:
             # TODO test this
             # got from: stackoverflow.com/questions/37761002
-            item.setData(0, Qt.BackgroundRole, None)
+            recording_widget.setBackground(0, QColor(color))
+            # if i want top level nodes to just have original lack of color
+            #recording_widget.setData(0, Qt.BackgroundRole, None)
 
 
     def mark_canonical(self, treenode, canonical) -> None:
@@ -1526,15 +1545,14 @@ class Segmentation(QWidget):
         # TODO TODO use histogram equalized avg image as one option
         img = self.avg
 
-        only_init = self.params_copy.get('patch', 'only_init')
-
-        n_footprint_axes = 4 if self.plot_intermediates and not only_init else 1
-
         self.display_params_editable(False)
 
-        # TODO checkbox for plot_intermediates
+        plot_intermediates = self.plot_intermediates
         plot_correlations = self.plot_correlations
         plot_traces = self.plot_traces
+
+        only_init = self.params_copy.get('patch', 'only_init')
+        n_footprint_axes = 4 if plot_intermediates and not only_init else 1
 
         w_inches_footprint_axes = 3
         h_inches_per_footprint_ax = 3
@@ -1659,7 +1677,7 @@ class Segmentation(QWidget):
 
             # TODO TODO make callbacks for each step and plot as they become
             # available
-            if self.plot_intermediates:
+            if plot_intermediates:
                 # TODO need to correct coordinates b/c slicing? just slice img?
                 # TODO need to transpose or change C/F order or anything?
                 if i == 0:
@@ -1683,7 +1701,7 @@ class Segmentation(QWidget):
                 contour_ax.set_title('Final estimate')
                 A = self.cnm.estimates.A
 
-            elif not self.plot_intermediates and i == 0 and only_init:
+            elif not plot_intermediates and i == 0 and only_init:
                 contour_ax.set_title('Initialization')
                 A = self.cnm.estimates.A
 
@@ -1989,6 +2007,8 @@ class Segmentation(QWidget):
 
             if self.params_changed:
                 self.run_cnmf_btn.setEnabled(True)
+        else:
+            self.run_cnmf_btn.setEnabled(True)
 
 
     # TODO maybe refactor this and save_default_params a little...
@@ -2142,13 +2162,8 @@ class Segmentation(QWidget):
         # TODO are the reset_index calls necessary?
         segrun_row = segmentation_run.reset_index().merge(
             run.reset_index()).iloc[0]
-
-        # TODO make current_item handling less messy...
-        if self.current_item.parent() is None:
-            rec_node = self.current_item
-        else:
-            rec_node = self.current_item.parent()
-        self.current_item = self.add_segrun_widget(rec_node, segrun_row)
+        self.current_segrun_widget = self.add_segrun_widget(
+            self.current_recording_widget, segrun_row)
 
         if self.ACTUALLY_UPLOAD:
             segmentation_run.to_sql('segmentation_runs', u.conn,
@@ -2158,28 +2173,6 @@ class Segmentation(QWidget):
         # (is 3 pixels really reasonable?)
         if self.ACTUALLY_UPLOAD:
             u.to_sql_with_duplicates(self.footprint_df, 'cells')
-
-
-    def update_seg_color(self, segrun_treeitem, accepted) -> None:
-        if accepted:
-            color = self.accepted_color
-        else:
-            color = self.rejected_color
-        segrun_treeitem.setBackground(0, QColor(color))
-
-        # This includes the only case where parents color needs to change
-        # TO accepted.
-        parent = segrun_treeitem.parent()
-        if accepted:
-            parent.setBackground(0, QColor(color))
-        else:
-            any_accepted = False
-            for i in range(parent.childCount()):
-                if parent.child(i).data(0, Qt.UserRole).accepted:
-                    any_accepted = True
-                    break
-            if not any_accepted:
-                parent.setBackground(0, QColor(color))
 
 
     def update_seg_accepted(self, segrun_treeitem, accepted) -> None:
@@ -2192,7 +2185,7 @@ class Segmentation(QWidget):
             self.run_at)
         ret = u.conn.execute(sql)
 
-        self.update_seg_color(segrun_treeitem, accepted)
+        self.color_segrun_node(segrun_treeitem, accepted)
 
         if accepted:
             # Starts out this way
@@ -2210,7 +2203,7 @@ class Segmentation(QWidget):
             return
 
         if self.accepted is not None:
-            self.update_seg_accepted(self.current_item, True)
+            self.update_seg_accepted(self.current_segrun_widget, True)
             self.accepted = True
             return
 
@@ -2369,7 +2362,8 @@ class Segmentation(QWidget):
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
 
-        self.current_item.parent().setBackground(0, QColor(self.accepted_color))
+        self.current_recording_widget.setBackground(
+            0, QColor(self.accepted_color))
         self.accepted = True
         print('accepted')
 
@@ -2379,7 +2373,7 @@ class Segmentation(QWidget):
             return
 
         if self.accepted is not None:
-            self.update_seg_accepted(self.current_item, False)
+            self.update_seg_accepted(self.current_segrun_widget, False)
             self.accepted = False
             return
 
@@ -2402,11 +2396,17 @@ class Segmentation(QWidget):
 
     def handle_treeitem_click(self):
         curr_item = self.sender().currentItem()
-        self.current_item = curr_item
         if curr_item.parent() is None:
+            self.current_recording_widget = curr_item
+            if not (self.current_segrun_widget is not None and
+                self.current_segrun_widget.parent() is curr_item):
+
+                self.current_segrun_widget = None
+
             self.open_recording(curr_item)
-        # TODO check this works for non-toplevel nodes
         else:
+            self.current_recording_widget = curr_item.parent()
+            self.current_segrun_widget = curr_item
             self.open_segmentation_run(curr_item)
 
 
@@ -2429,28 +2429,19 @@ class Segmentation(QWidget):
     # TODO TODO test case where this or open_recording are triggered
     # when cnmf is running / postprocessing
     # (what happens? what should happen? maybe just disable callbacks during?)
-    def open_segmentation_run(self, item):
-        # TODO TODO after fixing more properly, delete this.
-        # this is just so the data is not lost (as it would be if 
-        # open_segmentation_run was allowed to complete)
-        if self.cnm is not None and self.accepted is None:
-            print('Select accept/reject before inspecting parameters')
-            return
-        #
-        row = item.data(0, Qt.UserRole)
+    def open_segmentation_run(self, segrun_widget):
+        if not self.relabeling_db_segrun:
+            self.previous_run_at = self.run_at
+            self.previous_accepted = self.accepted
+
+        self.relabeling_db_segrun = True
+
+        row = segrun_widget.data(0, Qt.UserRole)
         self.run_at = row.run_at
         self.accepted = row.accepted
 
         self.delete_other_param_widgets()
 
-        # TODO possible to implement this w/o interring w/ other state?
-        # (so movie can stay loaded, and only change when selecting another
-        # experiment, etc)
-        # (now i'm clearing stuff just to be safe)
-        self.cnm = None
-        self.movie = None
-
-        # TODO delete any existing widgets in stack beyond first
         self.param_display_widget = self.make_cnmf_param_widget(row.parameters,
             editable=False)
 
@@ -2488,10 +2479,41 @@ class Segmentation(QWidget):
     # (in same viewer?)
 
 
-    def open_recording(self, item):
+    def plot_avg_trace(self):
+        self.fig.clear()
+        # TODO maybe add some height for pixel based correlation matrix if i
+        # include that
+        fig_w_inches = 7
+        fig_h_inches = 7
+        self.set_fig_size(fig_w_inches, fig_h_inches)
+
+        ax = self.fig.add_subplot(111)
+        # TODO maybe replace w/ pyqtgraph video viewer roi, s.t. it can be
+        # restricted to a different ROI if that would help
+        ax.plot(np.mean(self.movie, axis=(1,2)))
+        ax.set_title(self.recording_title)
+        self.fig.tight_layout()
+        self.mpl_canvas.draw()
+
+
+    def open_recording(self, recording_widget):
         # TODO maybe use setData and data instead?
-        idx = self.data_tree.indexOfTopLevelItem(item)
+        idx = self.data_tree.indexOfTopLevelItem(recording_widget)
         tiff = self.motion_corrected_tifs[idx]
+        if self.tiff_fname == tiff:
+            if self.relabeling_db_segrun:
+                self.accepted = self.previous_accepted
+                self.run_at = self.previous_run_at
+
+                if self.accepted is not None:
+                    self.accept_cnmf_btn.setEnabled(True)
+                    self.reject_cnmf_btn.setEnabled(True)
+
+                self.plot_avg_trace()
+
+            self.relabeling_db_segrun = False
+            return
+        self.relabeling_db_segrun = False
 
         self.delete_other_param_widgets()
 
@@ -2506,10 +2528,9 @@ class Segmentation(QWidget):
         fly_num = int(fly_dir)
         thorimage_id = '_'.join(tiff_just_fname.split('_')[:-1])
 
-        self.recording_title = '{}/{}/{}'.format(
-            date_dir, fly_num, thorimage_id)
+        recording_title = '{}/{}/{}'.format(date_dir, fly_num, thorimage_id)
         print('')
-        print(self.recording_title)
+        print(recording_title)
 
         # Trying all the operations that need to find files before setting any
         # instance variables, so that if those fail, we can stay on the current
@@ -2762,6 +2783,7 @@ class Segmentation(QWidget):
         # associated with the new data we load.
         self.cnm = None
 
+        self.recording_title = recording_title
         self.odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
             ).flatten() - 1
         self.odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
@@ -2913,20 +2935,7 @@ class Segmentation(QWidget):
         self.start_frame = None
         self.stop_frame = None
 
-        self.fig.clear()
-        # TODO maybe add some height for pixel based correlation matrix if i
-        # include that
-        fig_w_inches = 7
-        fig_h_inches = 7
-        self.set_fig_size(fig_w_inches, fig_h_inches)
-
-        ax = self.fig.add_subplot(111)
-        # TODO maybe replace w/ pyqtgraph video viewer roi, s.t. it can be
-        # restricted to a different ROI if that would help
-        ax.plot(np.mean(self.movie, axis=(1,2)))
-        ax.set_title(self.recording_title)
-        self.fig.tight_layout()
-        self.mpl_canvas.draw()
+        self.plot_avg_trace()
 
         self.run_cnmf_btn.setEnabled(True)
         self.accept_cnmf_btn.setEnabled(False)
