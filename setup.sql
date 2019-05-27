@@ -384,6 +384,8 @@ CREATE TABLE IF NOT EXISTS presentations (
      * responses table. */
     from_onset double precision[] NOT NULL,
 
+    presentation_accepted boolean,
+
     /* TODO maybe store reference to just driver here then? and then
        either just segmentation or seg + driver in responses?
     */
@@ -440,6 +442,9 @@ ADD CONSTRAINT presentations_analysis_fkey
     FOREIGN KEY (analysis)
     REFERENCES analysis_runs (run_at)
     ON DELETE CASCADE;
+
+ALTER TABLE presentations
+    ADD COLUMN presentation_accepted boolean;
 
 
 /* TODO TODO store automated response calls in this table as well? */

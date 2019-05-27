@@ -211,6 +211,8 @@ class Segmentation(QWidget):
         # db (in case other programs have edited it)
         # TODO get rid of space on left that wasnt there w/ tree widget
         # TODO get rid of / change top label thing
+        # TODO most operations should not minimize nodes that are currently
+        # expanded (some seem to now)
         self.data_tree = QTreeWidget(self)
         self.data_tree.setHeaderHidden(True)
         self.data_and_ctrl_layout.addWidget(self.data_tree)
@@ -223,6 +225,8 @@ class Segmentation(QWidget):
         self.current_segrun_widget = None
 
         self.accepted_color = '#7fc97f'
+        # TODO implement this + propagation up to parent nodes
+        self.partially_accepted_color = '#f9e54a'
         self.rejected_color = '#ff4d4d'
 
         global recordings
@@ -307,12 +311,14 @@ class Segmentation(QWidget):
         else:
             self.params = params.CNMFParams()
 
+        self.param_widget_stack = QStackedWidget(self)
+        self.data_params = dict()
+        ####self.current_param_tab_name = 'Initialization'
         # TODO TODO copy once here to get params to reset back to in GUI
         self.cnmf_ctrl_widget = self.make_cnmf_param_widget(self.params,
             editable=True)
         self.param_display_widget = None
 
-        self.param_widget_stack = QStackedWidget(self)
         self.param_widget_stack.addWidget(self.cnmf_ctrl_widget)
         self.data_and_ctrl_layout.addWidget(self.param_widget_stack)
 
@@ -343,7 +349,10 @@ class Segmentation(QWidget):
         ###self.mpl_canvas.fixed_dpi = 100
         
         # TODO test that zoom doesn't change what is serialized. especially
-        # the png / svgs
+        # the png / svgs (it doesnt clip but does change some relative sizes
+        # / spaces)
+        # TODO maybe a qgraphics(area/view?) would be more responsive / provide
+        # same features + allow dragging?
         self.scrollable_canvas = QScrollArea(self)
         self.current_zoom = 1.0
         self.max_zoom = 5.0
@@ -381,7 +390,17 @@ class Segmentation(QWidget):
         display_btns.setFixedHeight(100)
         display_btns_layout = QHBoxLayout(display_btns)
         display_btns.setLayout(display_btns_layout)
+        # TODO further decrease space between btns and checkboxes
+        display_btns_layout.setContentsMargins(0, 0, 0, 0)
+        display_btns_layout.setSpacing(0)
 
+        self.block_label_btn_widget = display_btns
+        self.block_label_btns = []
+        self.block_label_btn_layout = display_btns_layout
+        self.upload_btn = QPushButton('Upload', display_btns)
+        self.upload_btn.clicked.connect(self.upload_cnmf)
+        self.display_layout.addWidget(self.upload_btn)
+        '''
         self.accept_cnmf_btn = QPushButton('Accept', display_btns)
         display_btns_layout.addWidget(self.accept_cnmf_btn)
         self.accept_cnmf_btn.clicked.connect(self.accept_cnmf)
@@ -389,8 +408,7 @@ class Segmentation(QWidget):
         self.reject_cnmf_btn = QPushButton('Reject', display_btns)
         display_btns_layout.addWidget(self.reject_cnmf_btn)
         self.reject_cnmf_btn.clicked.connect(self.reject_cnmf)
-        # TODO further decrease space between btns and checkboxes
-        display_btns_layout.setContentsMargins(0, 0, 0, 0)
+        '''
 
         display_params = QWidget(self.display_widget)
         #display_params.setFixedHeight(30)
@@ -438,27 +456,46 @@ class Segmentation(QWidget):
         # TODO maybe share this across all widget classes?
         self.threadpool = QThreadPool()
 
-        # TODO TODO maybe implement something like this some other time
-        # (or some way to split recordings as needed to deal w/ memory issues,
-        # etc)
-        # TODO need to be under mainwindow, or this work?
         self.break_tiff_shortcut = QShortcut(QKeySequence('Ctrl+b'), self)
         self.break_tiff_shortcut.activated.connect(self.save_tiff_blocks)
 
+        '''
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
+        self.accepted = None
+        '''
+        # TODO hide upload_btn by default if that's what i'm gonna do upon
+        # opening a recording
+        self.upload_btn.setEnabled(False)
         self.tiff_fname = None
         self.movie = None
         self.cnm = None
         self.cnmf_running = False
         self.params_changed = False
         self.run_at = None
-        self.accepted = None
         self.relabeling_db_segrun = False
 
         # TODO delete / handle differently
         self.ACTUALLY_UPLOAD = True
         #
+
+
+    def update_param_tab_index(self, param_tabs) -> None:
+        si = self.param_widget_stack.currentIndex()
+        if si == -1:
+            # -1 is the initial index, before any is set / widgets are added.
+            # could set initial param tab i want here if i want.
+            # (just set curr_tab_name here and move loop after conditional)
+            pass
+        else:
+            curr_param_tabs = self.param_widget_stack.widget(si).param_tabs
+            curr_tab_name = curr_param_tabs.tabText(
+                curr_param_tabs.currentIndex())
+
+            for i in range(param_tabs.count()):
+                if param_tabs.tabText(i) == curr_tab_name:
+                    param_tabs.setCurrentIndex(i)
+                    break
 
 
     # TODO TODO provide facilities to show which differ
@@ -478,13 +515,6 @@ class Segmentation(QWidget):
     def make_cnmf_param_widget(self, cnmf_params, editable=False):
         """
         """
-        # TODO get from output (in the one editable case) rather than setting in
-        # here and checking at each start?
-        if editable and hasattr(self, 'data_group_layout'):
-            raise ValueError('can not make two editable widgets')
-
-        # TODO TODO need to make sure that only one editable version can be
-        # created at once
         # TODO TODO need to make sure that if non-editable are connected to save
         # param callback, they use the correct data
         cnmf_ctrl_widget = QWidget(self)
@@ -608,13 +638,20 @@ class Segmentation(QWidget):
 
                 seen_types.add(str(type(v)))
 
+                if g == 'data' and k in self.data_params:
+                    v = self.data_params[k]
+                    is_data_param = True
+                else:
+                    is_data_param = False
+
                 if type(v) is bool:
                     # TODO tristate in some cases?
                     w = QCheckBox(group)
+
                     w.setChecked(v)
                     assert not w.isTristate()
 
-                    if editable:
+                    if editable and not is_data_param:
                         w.stateChanged.connect(
                             partial(self.cnmf_set_boolean, group_key, k))
 
@@ -631,7 +668,7 @@ class Segmentation(QWidget):
 
                     print_stuff = True
 
-                    if editable:
+                    if editable and not is_data_param:
                         w.valueChanged.connect(
                             partial(self.cnmf_set_from_spinbox, group_key, k))
 
@@ -648,7 +685,7 @@ class Segmentation(QWidget):
                     assert v >= float_min and v <= float_max
                     w.setValue(v)
 
-                    if editable:
+                    if editable and not is_data_param:
                         w.valueChanged.connect(
                             partial(self.cnmf_set_from_spinbox, group_key, k))
 
@@ -677,7 +714,7 @@ class Segmentation(QWidget):
 
                     print_stuff = True
 
-                    if editable:
+                    if editable and not is_data_param:
                         w.currentIndexChanged[str].connect(
                             partial(self.cnmf_set_from_list, group_key, k))
 
@@ -685,7 +722,7 @@ class Segmentation(QWidget):
                     print_stuff = True
                     w = QLineEdit(group)
                     w.setText(repr(v))
-                    if editable:
+                    if editable and not is_data_param:
                         # TODO TODO if using eval, use setValidator to set some
                         # validator that eval call works?
                         w.editingFinished.connect(
@@ -696,7 +733,7 @@ class Segmentation(QWidget):
                     print(doc_line)
                     print('')
 
-                if not editable:
+                if not editable or is_data_param:
                     w.setEnabled(False)
 
                 group_layout.addRow(k, w)
@@ -707,12 +744,15 @@ class Segmentation(QWidget):
         if formgen_print:
             print('Seen types:', seen_types)
 
-        # TODO set tab index to most likely to change? spatial?
+        # TODO TODO fix segrun -> segrun case. this does not use correct current
+        # tab. may be using current tab for other (editable, idx=0) cnmf widget?
+        self.update_param_tab_index(param_tabs)
+
+        # TODO worth doing this patching or is there already a pretty easy
+        # way to get param_tabs from returned cnmf_ctrl_widget w/ qt stuff?
+        cnmf_ctrl_widget.param_tabs = param_tabs
 
         cnmf_ctrl_layout = QVBoxLayout(cnmf_ctrl_widget)
-
-        # TODO TODO how to replace this widget w/ new one if loading serialized
-        # params into totally new QTabWidget??
         cnmf_ctrl_layout.addWidget(param_tabs)
 
         # TODO eliminate vertical space between these rows of buttons
@@ -736,12 +776,14 @@ class Segmentation(QWidget):
             reset_cnmf_params_btn.setEnabled(False)
             param_btns_layout.addWidget(reset_cnmf_params_btn)
 
+        if not editable:
+            mk_current_params_btn = QPushButton('Use These Parameters')
+            param_btns_layout.addWidget(mk_current_params_btn)
+            mk_current_params_btn.clicked.connect(lambda:
+                self.change_cnmf_params(param_json_str))
+
         mk_default_params_btn = QPushButton('Make Parameters Default')
-        #mk_default_params_btn.setEnabled(False)
         param_btns_layout.addWidget(mk_default_params_btn)
-        # TODO TODO make this possible in non-editable data case
-        # (probably store alongside self.params and pass extra arg to this fn as
-        # here?)
         if editable:
             # Wrapped with lambda to try to prevent qt from adding some
             # bool value to the *args.
@@ -749,15 +791,14 @@ class Segmentation(QWidget):
                 self.save_default_params())
         else:
             assert param_json_str is not None
-            # TODO TODO test this case
             mk_default_params_btn.clicked.connect(lambda:
                 self.save_default_params(param_json_str))
 
         if editable:
             # TODO support this?
-            load_params_params_btn = QPushButton('Load Parameters From File')
-            load_params_params_btn.setEnabled(False)
-            param_btns_layout.addWidget(load_params_params_btn)
+            load_params_btn = QPushButton('Load Parameters From File')
+            load_params_btn.setEnabled(False)
+            param_btns_layout.addWidget(load_params_btn)
 
         save_params_btn = QPushButton('Save Parameters To File')
         if editable:
@@ -796,6 +837,19 @@ class Segmentation(QWidget):
             self.run_cnmf_btn.clicked.connect(self.start_cnmf_worker)
 
         return cnmf_ctrl_widget
+
+
+    # TODO want to fail somewhat gracefully if parameters types/keys are
+    # inconsistent w/ old set though..., so maybe want for success to delete?
+    def change_cnmf_params(self, json_str) -> None:
+        self.param_widget_stack.removeWidget(self.param_display_widget)
+        self.param_widget_stack.removeWidget(self.cnmf_ctrl_widget)
+        sip.delete(self.cnmf_ctrl_widget)
+        self.cnmf_ctrl_widget = self.make_cnmf_param_widget(json_str,
+            editable=True)
+        self.param_widget_stack.addWidget(self.cnmf_ctrl_widget)
+        self.param_widget_stack.addWidget(self.param_display_widget)
+        self.param_widget_stack.setCurrentIndex(0)
 
 
     def add_segrun_widget(self, parent, segrun_row) -> None:
@@ -1205,8 +1259,10 @@ class Segmentation(QWidget):
 
     def start_cnmf_worker(self) -> None:
         self.run_cnmf_btn.setEnabled(False)
+        '''
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
+        '''
 
         # Might consider moving this to end of cnmf call, so judgement can be
         # made while something else is running, but that might be kind of risky.
@@ -1214,8 +1270,11 @@ class Segmentation(QWidget):
         # TODO notify user this is happening (and how?)? checkbox to not do
         # this?  and if checkbox is unticked, just store in db w/ accept as
         # null?
+        # TODO TODO TODO reject all blocks
+        '''
         if self.accepted is None and self.cnm is not None:
             self.reject_cnmf()
+        '''
 
         # TODO separate button to cancel? change run-button to cancel?
 
@@ -1937,41 +1996,34 @@ class Segmentation(QWidget):
                 trial_mean_presentation_order = \
                     trial_by_cell_means.sort_index(axis=1, level='order')
 
+                corr_cbar_label = (r'Mean response $\frac{\Delta F}{F}$' +
+                        ' correlation')
+
                 odor_order_trial_mean_corrs = trial_by_cell_means.corr()
                 presentation_order_trial_mean_corrs = \
                     trial_mean_presentation_order.corr()
 
-
-                corr_cbar_label = (r'Mean response $\frac{\Delta F}{F}$' +
-                        ' correlation')
-                presentation_order_ax = corr_axes[0, i]
-
-                ticklabels = u.matlabels(presentation_order_trial_mean_corrs,
-                    u.format_mixture)
-
-                # TODO TODO use titles to say which two odors it was
-                u.matshow(presentation_order_trial_mean_corrs,
-                    ticklabels=ticklabels,
-                    colorbar_label=corr_cbar_label,
-                    #title=fly_comparison_title,
-                    ax=presentation_order_ax,
-                    fontsize=6)
-                self.mpl_canvas.draw()
-
-
-                odor_order_ax = corr_axes[1, i]
-
+                odor_order_ax = corr_axes[0, i]
                 ticklabels = u.matlabels(odor_order_trial_mean_corrs,
                     u.format_mixture)
-
                 u.matshow(odor_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     group_ticklabels=True,
                     colorbar_label=corr_cbar_label,
-                    #title=fly_comparison_title,
                     ax=odor_order_ax,
                     fontsize=6)
                 self.mpl_canvas.draw()
+
+                presentation_order_ax = corr_axes[1, i]
+                ticklabels = u.matlabels(presentation_order_trial_mean_corrs,
+                    u.format_mixture)
+                u.matshow(presentation_order_trial_mean_corrs,
+                    ticklabels=ticklabels,
+                    colorbar_label=corr_cbar_label,
+                    ax=presentation_order_ax,
+                    fontsize=6)
+                self.mpl_canvas.draw()
+
 
         ###################################################################
         if plot_odor_abbreviation_key:
@@ -1996,14 +2048,19 @@ class Segmentation(QWidget):
         # or separate pane for movie?
         # TODO use some non-movie version of pyqtgraph ImageView for avg,
         # to get intensity sliders? or other widget for that?
-        self.accepted = None
+        for i in range(self.n_blocks):
+            self.accepted[i] = None
+
         self.cnmf_running = False
 
         self.display_params_editable(True)
 
         if self.cnm is not None:
+            '''
             self.accept_cnmf_btn.setEnabled(True)
             self.reject_cnmf_btn.setEnabled(True)
+            '''
+            self.block_label_btn_widget.setEnabled(True)
 
             if self.params_changed:
                 self.run_cnmf_btn.setEnabled(True)
@@ -2063,7 +2120,9 @@ class Segmentation(QWidget):
 
 
     # TODO move core of this to util and just wrap it here
-    def upload_segmentation_info(self, accepted: bool) -> None:
+    # TODO delete any_accepted + delete analysis_runs.accepted in db
+    # move to more granular trial/block accepting
+    def upload_segmentation_info(self, any_accepted: bool) -> None:
         # TODO maybe visually indicate which has been selected already?
         # TODO TODO check whether row in tree view has been created
         # / other state indicating whether already in gui
@@ -2082,7 +2141,7 @@ class Segmentation(QWidget):
             'host': socket.gethostname(),
             'host_user': getpass.getuser()
         }
-        run_info['accepted'] = accepted
+        run_info['accepted'] = any_accepted
         run = pd.DataFrame(run_info)
         run.set_index('run_at', inplace=True)
 
@@ -2096,10 +2155,16 @@ class Segmentation(QWidget):
 
         # TODO worth preventing (attempts to) insert code versions and
         # pairings with analysis_runs, or is that premature optimization?
+        # TODO TODO TODO should this fn be called per block or what?
+        # if called on all blocks, maybe this return should be a continue inside
+        # of a loop?
+        raise NotImplementedError
+        '''
         if self.accepted is not None:
             # The remainder of the metadata must have already been uploaded,
             # when self.accepted was first set.
             return
+        '''
 
         # TODO nr_code_versions, rig_code_versions (both lists of dicts)
         # TODO ti_code_version (dict)
@@ -2169,6 +2234,15 @@ class Segmentation(QWidget):
             segmentation_run.to_sql('segmentation_runs', u.conn,
                 if_exists='append', method=u.pg_upsert)
 
+        # TODO unless i change db to have a canonical analysis version per
+        # blocks/trials, probably want to check analysis version to be set
+        # canonical has at least all the same blocks accepted as the previous
+        # canonical (not really applicable below, but in the case when someone
+        # is manually setting canonical)
+        if (any_accepted and 
+            pd.isnull(self.current_recording_widget.data(0, Qt.UserRole))):
+            self.make_canonical(self.current_segrun_widget)
+
         # TODO filter out footprints less than a certain # of pixels in cnmf?
         # (is 3 pixels really reasonable?)
         if self.ACTUALLY_UPLOAD:
@@ -2207,8 +2281,10 @@ class Segmentation(QWidget):
             self.accepted = True
             return
 
+        '''
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
+        '''
 
         fig_filename = (self.run_at.strftime('%Y%m%d_%H%M_') +
             self.recording_title.replace('/','_'))
@@ -2246,13 +2322,6 @@ class Segmentation(QWidget):
         # computed w/ extract / detrend, and any key changes in arguments, then
         # load that and plot some stuff for troubleshooting
 
-        # TODO to test extract_DF_F, need Yr, A, C, bl
-        # detrend_df_f wants A, b, C, f (YrA=None, but maybe it's used?
-        # in this fn, they call YrA the "residual signals")
-        sliced_movie = self.cnm.get_sliced_movie(self.movie)
-        Yr = self.cnm.get_Yr(sliced_movie)
-        ests = self.cnm.estimates
-
         '''
         try:
             # TODO fix save fn?
@@ -2267,6 +2336,13 @@ class Segmentation(QWidget):
         # TODO delete me
         # intended to use this to find best detrend / extract dff method
         '''
+        # TODO to test extract_DF_F, need Yr, A, C, bl
+        # detrend_df_f wants A, b, C, f (YrA=None, but maybe it's used?
+        # in this fn, they call YrA the "residual signals")
+        sliced_movie = self.cnm.get_sliced_movie(self.movie)
+        Yr = self.cnm.get_Yr(sliced_movie)
+        ests = self.cnm.estimates
+
         print('saving CNMF state to cnmf_state.p for debugging', flush=True)
         try:
             state = {
@@ -2355,13 +2431,12 @@ class Segmentation(QWidget):
 
         self.uploaded_presentations = True
 
-        # TODO TODO mark as canonical if first accepted / most recently
-        # accepted?
-        # (maybe unless there's one explicitly marked as canonical?)
-
+        '''
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
+        '''
 
+        # TODO also allow coloring yellow if only some of blocks are accepted
         self.current_recording_widget.setBackground(
             0, QColor(self.accepted_color))
         self.accepted = True
@@ -2377,16 +2452,104 @@ class Segmentation(QWidget):
             self.accepted = False
             return
 
+        '''
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
+        '''
 
         self.upload_segmentation_info(False)
 
+        '''
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
+        '''
 
         self.accepted = False
         print('rejected')
+
+
+    def color_block_btn(self, block_num, accepted) -> None:
+        if accepted:
+            color = self.accepted_color
+        else:
+            color = self.rejected_color
+        qss = 'background-color: {}'.format(color)
+        self.block_label_btns[block_num].setStyleSheet(qss)
+
+
+    def make_block_labelling_btns(self, *args) -> None:
+        for btn in self.block_label_btns:
+            self.block_label_btn_layout.removeWidget(btn)
+            sip.delete(btn)
+
+        self.block_label_btns = []
+
+        have_accept_states = True
+        any_mismatch = False
+        if len(args) == 0:
+            self.to_be_accepted = []
+            self.accepted = []
+            have_accept_states = False
+
+        elif len(args) == 1:
+            accepted = args[0]
+            to_be_accepted = accepted
+
+        elif len(args) == 2:
+            accepted = args[0]
+            to_be_accepted = args[1]
+            for curr, target in zip(accept_cnmf, to_be_accepted):
+                if curr != target:
+                    any_mismatch = True
+                    break
+
+        else:
+            raise ValueError('wrong number of arguments')
+
+        for i in range(self.n_blocks):
+            block_btn = QPushButton(str(i + 1), self.block_label_btn_widget)
+            block_btn.clicked.connect(partial(self.label_block, i))
+            self.block_label_btn_layout.addWidget(block_btn)
+
+            self.block_label_btns.append(block_btn)
+
+            if have_accept_states:
+                self.color_block_btn(i, to_be_accepted[i])
+            else:
+                self.to_be_accepted.append(None)
+                self.accepted.append(None)
+
+        self.block_label_btn_widget.setEnabled(have_accept_states)
+        self.upload_btn.setEnabled(any_mismatch)
+
+
+    def label_block(self, block_num) -> None:
+        curr_state = self.to_be_accepted[block_num]
+        if curr_state is None or curr_state == False:
+            self.to_be_accepted[block_num] = True
+        elif curr_state == True:
+            self.to_be_accepted[block_num] = False
+        self.color_block_btn(block_num, self.to_be_accepted[block_num])
+
+        # TODO factor into fn? i call this code one other place
+        any_mismatch = False
+        for curr, target in zip(self.accepted, self.to_be_accepted):
+            if curr != target:
+                any_mismatch = True
+                break
+        self.upload_btn.setEnabled(any_mismatch)
+        #
+
+
+    def upload_cnmf(self) -> None:
+
+        # TODO upload common information
+
+
+        # TODO keep track of whether block specific stuff has been uploaded
+        # (the stuff that only gets uploaded on accept)
+        for accepted in self.accepted:
+            pass
 
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
@@ -2430,15 +2593,53 @@ class Segmentation(QWidget):
     # when cnmf is running / postprocessing
     # (what happens? what should happen? maybe just disable callbacks during?)
     def open_segmentation_run(self, segrun_widget):
-        if not self.relabeling_db_segrun:
+        # TODO nothing should happen if trying to open same segrun that's
+        # already open
+        if not self.relabeling_db_segrun and self.movie is not None:
             self.previous_run_at = self.run_at
             self.previous_accepted = self.accepted
+            self.previous_to_be_accepted = self.to_be_accepted
+            self.previous_n_blocks = self.n_blocks
 
         self.relabeling_db_segrun = True
 
         row = segrun_widget.data(0, Qt.UserRole)
         self.run_at = row.run_at
-        self.accepted = row.accepted
+        # TODO TODO TODO if recording was accepted, consider all comparisons as
+        # accepted (fix db w/ a script or just always check for old way of doing
+        # it?)
+        presentations = pd.read_sql_query('SELECT ' +
+            'comparison, presentation_accepted FROM presentations WHERE ' +
+            "analysis = '{}'".format(pd.Timestamp(self.run_at)), u.conn)
+
+        def block_accepted(presentation_df):
+            accepted = presentation_df.presentation_accepted
+            if accepted.any():
+                assert accepted.all()
+                return True
+            else:
+                return False
+
+        self.n_blocks = len(presentations.comparison.unique())
+
+        null_presentation_accepted = \
+            pd.isnull(presentations.presentation_accepted)
+        if null_presentation_accepted.any():
+            assert null_presentation_accepted.all()
+            assert not pd.isnull(row.accepted)
+            if row.accepted:
+                self.accepted = [True] * self.n_blocks
+                self.to_be_accepted = [True] * self.n_blocks
+            else:
+                self.accepted = [False] * self.n_blocks
+                self.to_be_accepted = [False] * self.n_blocks
+        else:
+            # TODO make sure sorted by comparison #. groupby ensure that?
+            accepted = presentations.groupby('comparison').apply(block_accepted)
+            self.accepted = accepted.to_list()
+            self.to_be_accepted = accepted.to_list()
+
+        self.make_block_labelling_btns(self.accepted)
 
         self.delete_other_param_widgets()
 
@@ -2469,8 +2670,10 @@ class Segmentation(QWidget):
         # (or maybe just ignore and let other scripts clean orphaned stuff up
         # later? so that we don't have to regenerate traces if we change our
         # mind again and want to label as accepted...)
+        '''
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
+        '''
 
 
     # TODO maybe selecting two (/ multiple) analysis runs then right clicking
@@ -2502,19 +2705,29 @@ class Segmentation(QWidget):
         tiff = self.motion_corrected_tifs[idx]
         if self.tiff_fname == tiff:
             if self.relabeling_db_segrun:
+                # TODO TODO TODO until i can restore / correctly re-initialize
+                # block label button states, should not support this shortcut
                 self.accepted = self.previous_accepted
+                self.to_be_accepted = self.previous_to_be_accepted
                 self.run_at = self.previous_run_at
+                self.n_blocks = self.previous_n_blocks
 
+                '''
                 if self.accepted is not None:
                     self.accept_cnmf_btn.setEnabled(True)
                     self.reject_cnmf_btn.setEnabled(True)
+                '''
 
                 self.plot_avg_trace()
+
+                self.make_block_labelling_btns(self.accepted,
+                    self.to_be_accepted)
 
             self.relabeling_db_segrun = False
             return
         self.relabeling_db_segrun = False
 
+        self.update_param_tab_index(self.cnmf_ctrl_widget.param_tabs)
         self.delete_other_param_widgets()
 
         start = time.time()
@@ -2578,8 +2791,6 @@ class Segmentation(QWidget):
 
         thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
         xml_root = etree.parse(thorimage_xml_path).getroot()
-
-        data_params = u.cnmf_metadata_from_thor(tiff)
 
         started_at = \
             datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
@@ -2870,15 +3081,10 @@ class Segmentation(QWidget):
 
         self.matfile = mat
 
-        # TODO set param as appropriate / maybe display in non-editable boxes in
-        # data parameters
-        # TODO how to refer to boxes by name, so the right ones can
-        # automatically be set non-editable here?
-        # TODO TODO should params just be set by programmatically changing box
-        # and having that trigger callbacks??? or will that not trigger
-        # callbacks?
-        # TODO TODO rowCount vs count? itemAt seems to work off count
-        # actually...
+        self.data_params = u.cnmf_metadata_from_thor(tiff)
+
+        self.make_block_labelling_btns()
+
         for i in range(self.data_group_layout.count()):
             # TODO TODO does it always alternate qlabel / widget for that label?
             # would that ever break? otherwise, how to get a row, with the label
@@ -2888,10 +3094,10 @@ class Segmentation(QWidget):
                 continue
 
             label = self.data_group_layout.labelForField(item).text()
-            if label not in data_params:
+            if label not in self.data_params:
                 continue
 
-            v = data_params[label]
+            v = self.data_params[label]
 
             # TODO maybe re-enable under some circumstances?
             item.setEnabled(False)
@@ -2938,9 +3144,13 @@ class Segmentation(QWidget):
         self.plot_avg_trace()
 
         self.run_cnmf_btn.setEnabled(True)
+        '''
         self.accept_cnmf_btn.setEnabled(False)
         self.reject_cnmf_btn.setEnabled(False)
         self.accepted = None
+        '''
+        # TODO maybe just move creation of buttons to (successful) end of cnmf
+        # run, and delete this fn entirely?
         self.uploaded_presentations = False
 
 
@@ -3389,15 +3599,13 @@ class MainWindow(QMainWindow):
 
         user_layout = QHBoxLayout(self.user_widget)
         self.user_widget.setLayout(user_layout)
+        # TODO make focus clear when clicked out of / esc (editingFinished?)
+        # TODO confirmation dialog before creating a new user
         user_label = QLabel('User', self.user_widget)
         # TODO maybe attribute on people as to whether to show here or not?
         user_select = QComboBox(self.user_widget)
 
         # TODO something like a <select user> default?
-        # TODO TODO make user persist across restarts of the program
-        # (w/o needing any special actions, i think)
-        # TODO some kind of atexit pickling?
-        # TODO (just add default selection first)
         self.user_cache_file = '.cnmf_gui_user.p'
         self.user = self.load_default_user()
 
@@ -3465,6 +3673,7 @@ class MainWindow(QMainWindow):
     
     def change_user(self, user):
         if user not in self.nicknames:
+            # TODO TODO confirmation dialog?
             pd.DataFrame({'nickname': [user]}).to_sql('people', u.conn,
                 if_exists='append', index=False)
             self.nicknames.add(user)
