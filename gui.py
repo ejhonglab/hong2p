@@ -229,6 +229,9 @@ class Segmentation(QWidget):
         self.rejected_color = '#ff4d4d'
 
         global recordings
+        # TODO TODO make sure segrun nodes are sorted by timestamp
+        # 190529 ~3pm i saw two nodes under 5-02/3/fn_0001_7b8...
+        # in wrong order
         for d in self.motion_corrected_tifs:
             x = d.split(sep)
             fname_parts = x[-1].split('_')
@@ -1001,6 +1004,11 @@ class Segmentation(QWidget):
             self.color_recording_node(parent)
 
 
+    # TODO TODO in some db cleanup script, look for all things where the
+    # analysis is marked as accepted, yet either the presentations or the
+    # responses are missing. prompt for deletion.
+
+
     def add_segrun_widget(self, parent, segrun_row) -> None:
         seg_run_item = QTreeWidgetItem(parent)
         seg_run_item.setData(0, Qt.UserRole, segrun_row)
@@ -1009,19 +1017,7 @@ class Segmentation(QWidget):
 
         # TODO is this really how i want to do it?
         if 'blocks_accepted' not in segrun_row:
-            # TODO delete verbose flag
-            blocks_accepted = u.accepted_blocks(segrun_row.run_at, verbose=True)
-
-            # TODO delete. it seems i might have just screwed something up here
-            # and actually not uploaded original traces? not sure how exactly...
-            # TODO TODO not a precision error comparing the timestamp is it?
-            # (as far as why update_seg_run is getting empty dfs on the stuff it
-            # should be updating in presentations table)
-            '''
-            if segrun_row.run_at == pd.Timestamp('2019-05-20 00:49:42.575343'):
-                import ipdb; ipdb.set_trace()
-            '''
-            #
+            blocks_accepted = u.accepted_blocks(segrun_row.run_at)
             segrun_row['blocks_accepted'] = blocks_accepted
 
             # TODO maybe change things s.t. i can get rid of propagate flag,
@@ -2271,52 +2267,28 @@ class Segmentation(QWidget):
         row.blocks_accepted[block_num] = accepted
         run_at = pd.Timestamp(row.run_at)
 
-        #
-        '''
-        print(accepted)
-        print(run_at)
-        print(self.run_at)
-        print(run_at == self.run_at)
-        print(pd.read_sql_query('SELECT accepted FROM analysis_runs WHERE ' +
-            "run_at = '{}'".format(run_at), u.conn))
         '''
         db_presentations = pd.read_sql_query(
             'SELECT presentation_id, comparison, presentation_accepted FROM' +
             " presentations WHERE analysis = '{}'".format(run_at), u.conn)
-        #
         print(db_presentations)
-        #
+        '''
 
         # TODO maybe this weirdness is a sign i should just always be uploaded
         # (something like) the presentations
+        # TODO maybe just make checks like this, and get rid of
+        # uploaded_block_info stuff?
         if len(db_presentations) == 0 and accepted:
             raise ValueError('can not update presentations that are not in db')
 
-        # TODO TODO TODO assert that this df is not empty
-        # (maybe just do that, and get rid of uploaded_block_info stuff?)
-        '''
-        sql = ("UPDATE analysis_runs SET accepted = " +
-            "{} WHERE run_at = '{}'").format(accepted, run_at)
-        '''
-
-        # TODO TODO TODO comparison should be equal to block_num too
         sql = ("UPDATE presentations SET presentation_accepted = " +
             "{} WHERE analysis = '{}' AND comparison = {}").format(
             accepted, run_at, block_num)
-        print(accepted)
-        print(run_at)
-        print(block_num)
-        print(sql)
-
         ret = u.conn.execute(sql)
-        #
+        '''
         print(pd.read_sql_query('SELECT comparison, presentation_accepted FROM'+
             " presentations WHERE analysis = '{}'".format(run_at), u.conn))
         '''
-        print(pd.read_sql_query('SELECT accepted FROM analysis_runs WHERE ' +
-            "run_at = '{}'".format(run_at), u.conn))
-        '''
-        #
 
         # TODO maybe take out call to color_recording_node here if going to just
         # call once at end of upload anyway? flag to disable?

@@ -964,6 +964,9 @@ def parent_recording_id(tiffname_or_thorimage_id):
 def accepted_blocks(analysis_run_at, verbose=False):
     """
     """
+    if verbose:
+        print('entering accepted_blocks')
+
     analysis_run_at = pd.Timestamp(analysis_run_at)
     presentations = pd.read_sql_query('SELECT presentation_id, ' +
         'comparison, presentation_accepted FROM presentations WHERE ' +
@@ -995,12 +998,13 @@ def accepted_blocks(analysis_run_at, verbose=False):
     assert len(recording) == 1
     recording = recording.iloc[0]
 
+    # TODO delete this if not going to use it to calculate uploaded_block_info
     if len(presentations) > 0:
         presentations_with_responses = pd.read_sql_query('SELECT ' +
             'presentation_id FROM responses WHERE segmentation_run = ' +
             "'{}'".format(analysis_run_at), conn)
         # TODO faster to check isin if this is a set?
-
+    #
 
     # TODO TODO implement some kind of handling of sub-recordings in db
     # and get rid of this hack
@@ -1013,8 +1017,6 @@ def accepted_blocks(analysis_run_at, verbose=False):
 
         if verbose:
             print(input_filename, 'belonged to a sub-recording')
-            print('first_block:', first_block)
-            print('last_block:', last_block)
 
     else:
         if recording.last_block is None or recording.first_block is None:
@@ -1026,15 +1028,13 @@ def accepted_blocks(analysis_run_at, verbose=False):
         last_block = recording.last_block
 
     n_blocks = last_block - first_block + 1
-    if verbose:
-        print('n_blocks:', n_blocks)
     expected_comparisons = list(range(n_blocks))
 
     # TODO delete these prints. for debugging.
     if verbose:
         print('presentations:', presentations)
-        print('presentations.index:', presentations.index)
         print('expected_comparisons:', expected_comparisons)
+        print('all_blocks_accepted:', all_blocks_accepted)
     #
     # TODO TODO TODO check that upload will keep comparison numbered as blocks
     # are, so that missing comparisons numbers can be imputed with False here
@@ -1044,13 +1044,16 @@ def accepted_blocks(analysis_run_at, verbose=False):
     # where not uploaded and some are explicitly marked not accepted, and where
     # all blocks rejected are explicitly so
 
+    if pd.notnull(all_blocks_accepted):
+        fill_value = all_blocks_accepted
+    else:
+        fill_value = False
+
     def block_accepted(presentation_df):
-        # TODO will there ever actually be null values? or index values just
-        # missing from db entirely? (as below)
         null = pd.isnull(presentation_df.presentation_accepted)
         if null.any():
             assert null.all()
-            return False
+            return fill_value
 
         accepted = presentation_df.presentation_accepted
         if accepted.any():
@@ -1059,25 +1062,19 @@ def accepted_blocks(analysis_run_at, verbose=False):
         else:
             return False
 
-    # TODO is this relevant? will there ever actually be null values here, or
-    # will they just be missing?
+    '''
     null_presentation_accepted = \
         pd.isnull(presentations.presentation_accepted)
     if null_presentation_accepted.any():
         if verbose:
             print('at least one presentation was null')
-
         # TODO fix db w/ a script or just always check for old way of doing it?
+        # fixing db would mean translating all analysis_runs.accepted into
+        # presentations.presentation_accepted and then deleting
+        # analysis_runs.accepted column
 
-        # TODO delete try/except
-        #try:
-        #assert null_presentation_accepted.all(), 'not all null'
-        #assert not pd.isnull(all_blocks_accepted),'all_blocks_accepted null'
-        '''
-        except AssertionError as e:
-            print(e)
-            import ipdb; ipdb.set_trace()
-        '''
+        assert null_presentation_accepted.all(), 'not all null'
+        assert not pd.isnull(all_blocks_accepted),'all_blocks_accepted null'
 
         if all_blocks_accepted:
             accepted = [True] * n_blocks
@@ -1086,46 +1083,59 @@ def accepted_blocks(analysis_run_at, verbose=False):
     else:
         if verbose:
             print('no presentations were null')
+    '''
+    # TODO make sure sorted by comparison #. groupby ensure that?
+    accepted = presentations.groupby('comparison'
+        ).agg(block_accepted).presentation_accepted
+    accepted.name = 'comparison_accepted'
+    assert len(accepted.shape) == 1, 'accepted was not a Series'
 
-        # TODO make sure sorted by comparison #. groupby ensure that?
-        # TODO TODO agg working w/ block_accepted fn?
-        # problem w/ apply is mainly that it didn't give back a named column
-        # wasn't sure how to deal with it
-        accepted = presentations.groupby('comparison'
-            ).agg(block_accepted).presentation_accepted
-        accepted.name = 'comparison_accepted'
-        assert len(accepted.shape) == 1, 'accepted was not a Series'
+    if verbose:
+        print('accepted before filling missing values:', accepted)
 
+    if (((accepted == True).any() and all_blocks_accepted == False) or
+        ((accepted == False).any() and all_blocks_accepted)):
+        # TODO maybe just correct db in this case?
+        # (set analysis_run.accepted to null and keep presentation_accepted
+        # if inconsistent / fill them from analysis_run.accepted if missing)
+        #raise ValueError('inconsistent accept labels')
+        warnings.warn('inconsistent accept labels. ' +
+            'nulling analysis_runs.accepted in corresponding row.')
+
+        # TODO TODO test this!
+        sql = ('UPDATE presentations SET presentation_accepted = {} WHERE ' +
+            "analysis = '{}' AND presentation_accepted IS NULL").format(
+            fill_value, analysis_run_at)
+        ret = conn.execute(sql)
+        # TODO if i'm gonna call this multiple times, maybe just factor it into
+        # a fn
+        presentations_after_update = pd.read_sql_query(
+            'SELECT presentation_id, ' +
+            'comparison, presentation_accepted FROM presentations WHERE ' +
+            "analysis = '{}'".format(analysis_run_at), conn,
+            index_col='comparison')
         if verbose:
-            print('accepted before filling missing values:', accepted)
+            print('Presentations after filling w/ all_blocks_accepted:')
+            print(presentations_after_update)
 
-        if (((accepted == True).any() and all_blocks_accepted == False) or
-            ((accepted == False).any() and all_blocks_accepted)):
-            # TODO maybe just correct db in this case?
-            # (set analysis_run.accepted to null and keep presentation_accepted
-            # if inconsistent / fill them from analysis_run.accepted if missing)
-            raise ValueError('inconsistent accept labels')
+        sql = ('UPDATE analysis_runs SET accepted = NULL WHERE run_at = ' +
+            "'{}'").format(analysis_run_at)
+        ret = conn.execute(sql)
 
-        if verbose:
-            print('all_blocks_accepted:', all_blocks_accepted)
+    # TODO TODO TODO are this case + all_blocks_accepted=False case in if
+    # above the only two instances where the block info is not uploaded (or
+    # should be, assuming no accept of non-uploaded experiment)
+    for c in expected_comparisons:
+        if c not in accepted.index:
+            accepted.loc[c] = fill_value
 
-        if pd.notnull(all_blocks_accepted):
-            fill_value = all_blocks_accepted
-        else:
-            fill_value = False
-
-        # TODO TODO TODO are this case + all_blocks_accepted=False case in if
-        # above the only two instances where the block info is not uploaded (or
-        # should be, assuming no accept of non-uploaded experiment)
-        for c in expected_comparisons:
-            if c not in accepted.index:
-                accepted.loc[c] = fill_value
-
-        accepted = accepted.to_list()
+    accepted = accepted.to_list()
 
     # TODO TODO TODO TODO also calculate and return uploaded_block_info
     # based on whether a given block has (all) of it's presentations and
     # responses entries (whether accepted or not)
+    if verbose:
+        print('leaving accepted_blocks\n')
     return accepted
 
 
