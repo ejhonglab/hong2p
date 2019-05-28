@@ -69,7 +69,6 @@ show_inferred_paths = True
 overwrite_older_analysis = True
 
 df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
-#import ipdb; ipdb.set_trace()
 
 rel_to_cnmf_mat = 'cnmf'
 
@@ -253,22 +252,38 @@ class Segmentation(QWidget):
             if tif_seg_runs is None:
                 # There cannot be a canonical_segmentation in db if 
                 # there are no segmentation runs for this recording.
-                item.setData(0, Qt.UserRole, pd.NaT)
+                #####item.setData(0, Qt.UserRole, pd.NaT)
                 continue
 
             recording_from = tif_seg_runs.recording_from.unique()
             assert len(recording_from) == 1
             recording_from = recording_from[0]
+            # TODO TODO TODO fix below
+            # this type of canonical segmentation is actually not useful at all
+            # since i have multiple broken-up-recordings that can collectively
+            # only point to ONE canonical_segmentation, indexed from their
+            # shared recording start time
+            '''
             canonical_segmentation = recordings.set_index('started_at').at[
                 recording_from, 'canonical_segmentation']
             item.setData(0, Qt.UserRole, canonical_segmentation)
+            '''
 
             # TODO maybe replace this any_accepted stuff w/ call to
             # self.color_recording_node
-            any_accepted = False
+            any_all_accepted = False
+            any_partially_accepted = False
             for _, r in tif_seg_runs.iterrows():
                 segrun = self.add_segrun_widget(item, r)
+                blocks_accepted = segrun.data(0, Qt.UserRole).accepted
 
+                if all(blocks_accepted):
+                    any_all_accepted = True
+                    break
+                elif any(blocks_accepted):
+                    any_partially_accepted = True
+
+                '''
                 if r.accepted == True:
                     any_accepted = True
                     if r.run_at == canonical_segmentation:
@@ -278,9 +293,12 @@ class Segmentation(QWidget):
                     self.mark_canonical(segrun, canonical)
                 else:
                     self.mark_canonical(segrun, None)
+                '''
 
-            if any_accepted:
+            if any_all_accepted:
                 item.setBackground(0, QColor(self.accepted_color))
+            elif any_partially_accepted:
+                item.setBackground(0, QColor(self.partially_accepted_color))
 
         # TODO if this works, also resize on each operation that changes the
         # contents
@@ -291,6 +309,8 @@ class Segmentation(QWidget):
         self.data_tree.setSizePolicy(
             QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 
+        # TODO TODO disable this when appropriate (when running cnmf or loading
+        # something else)
         self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_click)
 
         # TODO should save cnmf output be a button here or to the right?
@@ -858,9 +878,14 @@ class Segmentation(QWidget):
         seg_run_item.setText(0, str(segrun_row.run_at)[:16])
         seg_run_item.setFlags(seg_run_item.flags() ^ Qt.ItemIsUserCheckable)
 
-        if segrun_row.accepted == True:
+        blocks_accepted = u.accepted_blocks(segrun_row.run_at)
+        segrun_row.accepted = blocks_accepted
+
+        if all(segrun_row.accepted):
             seg_run_item.setBackground(0, QColor(self.accepted_color))
-        elif segrun_row.accepted == False:
+        elif any(segrun_row.accepted):
+            seg_run_item.setBackground(0, QColor(self.partially_accepted_color))
+        else:
             seg_run_item.setBackground(0, QColor(self.rejected_color))
 
         return seg_run_item
@@ -1049,23 +1074,31 @@ class Segmentation(QWidget):
 
 
     def color_recording_node(self, recording_widget) -> None:
-        any_accepted = False
+        any_all_accepted = False
+        any_partially_accepted = False
         for i in range(recording_widget.childCount()):
-            if recording_widget.child(i).data(0, Qt.UserRole).accepted:
-                any_accepted = True
+            blocks_accepted = recording_widget.child(i).data(0,
+                Qt.UserRole).accepted
+
+            if all(blocks_accepted):
+                any_all_accepted = True
                 break
+            elif any(blocks_accepted):
+                any_partially_accepted = True
                 
-        # TODO maybe color red if at least one thing is not accepted?
         if any_accepted:
             recording_widget.setBackground(0, QColor(self.accepted_color))
+        elif any_partially_accepted:
+            recording_widget.setBackground(0,
+                QColor(self.partially_accepted_color))
         else:
-            # TODO test this
+            recording_widget.setBackground(0, QColor(self.rejected_color))
             # got from: stackoverflow.com/questions/37761002
-            recording_widget.setBackground(0, QColor(color))
             # if i want top level nodes to just have original lack of color
             #recording_widget.setData(0, Qt.BackgroundRole, None)
 
 
+    '''
     def mark_canonical(self, treenode, canonical) -> None:
         if canonical == True:
             treenode.setCheckState(0, Qt.Checked)
@@ -1096,6 +1129,7 @@ class Segmentation(QWidget):
         ret = u.conn.execute(sql)
 
         self.mark_canonical(treenode, True)
+    '''
 
 
     def data_tree_menu(self, pos):
@@ -1109,10 +1143,12 @@ class Segmentation(QWidget):
             menu.addAction('Delete from database',
                 lambda: self.delete_segrun(node))
 
-            accepted = node.data(0, Qt.UserRole).accepted
-            if accepted:
+            '''
+            any_accepted = any(node.data(0, Qt.UserRole).accepted)
+            if any_accepted:
                 menu.addAction('Make canonical',
                     lambda: self.make_canonical(node))
+            '''
 
             menu.exec_(QCursor.pos())
         # could put other menu options for top-level nodes in an else here
@@ -1271,6 +1307,7 @@ class Segmentation(QWidget):
         # this?  and if checkbox is unticked, just store in db w/ accept as
         # null?
         # TODO TODO TODO reject all blocks
+        raise NotImplementedError
         '''
         if self.accepted is None and self.cnm is not None:
             self.reject_cnmf()
@@ -2048,8 +2085,6 @@ class Segmentation(QWidget):
         # or separate pane for movie?
         # TODO use some non-movie version of pyqtgraph ImageView for avg,
         # to get intensity sliders? or other widget for that?
-        for i in range(self.n_blocks):
-            self.accepted[i] = None
 
         self.cnmf_running = False
 
@@ -2120,13 +2155,7 @@ class Segmentation(QWidget):
 
 
     # TODO move core of this to util and just wrap it here
-    # TODO delete any_accepted + delete analysis_runs.accepted in db
-    # move to more granular trial/block accepting
-    def upload_segmentation_info(self, any_accepted: bool) -> None:
-        # TODO maybe visually indicate which has been selected already?
-        # TODO TODO check whether row in tree view has been created
-        # / other state indicating whether already in gui
-        # if so, just use update_seg_accepted fn
+    def upload_segmentation_info(self) -> None:
         run_info = {
             'run_at': [self.run_at],
             'recording_from': self.started_at,
@@ -2141,7 +2170,6 @@ class Segmentation(QWidget):
             'host': socket.gethostname(),
             'host_user': getpass.getuser()
         }
-        run_info['accepted'] = any_accepted
         run = pd.DataFrame(run_info)
         run.set_index('run_at', inplace=True)
 
@@ -2155,16 +2183,6 @@ class Segmentation(QWidget):
 
         # TODO worth preventing (attempts to) insert code versions and
         # pairings with analysis_runs, or is that premature optimization?
-        # TODO TODO TODO should this fn be called per block or what?
-        # if called on all blocks, maybe this return should be a continue inside
-        # of a loop?
-        raise NotImplementedError
-        '''
-        if self.accepted is not None:
-            # The remainder of the metadata must have already been uploaded,
-            # when self.accepted was first set.
-            return
-        '''
 
         # TODO nr_code_versions, rig_code_versions (both lists of dicts)
         # TODO ti_code_version (dict)
@@ -2239,19 +2257,29 @@ class Segmentation(QWidget):
         # canonical has at least all the same blocks accepted as the previous
         # canonical (not really applicable below, but in the case when someone
         # is manually setting canonical)
+        # TODO what to do with this?
+        '''
         if (any_accepted and 
             pd.isnull(self.current_recording_widget.data(0, Qt.UserRole))):
             self.make_canonical(self.current_segrun_widget)
+        '''
 
         # TODO filter out footprints less than a certain # of pixels in cnmf?
         # (is 3 pixels really reasonable?)
         if self.ACTUALLY_UPLOAD:
             u.to_sql_with_duplicates(self.footprint_df, 'cells')
 
+        self.uploaded_common_segrun_info = True
 
-    def update_seg_accepted(self, segrun_treeitem, accepted) -> None:
+
+    def update_seg_accepted(self, segrun_treeitem, block_num, accepted) -> None:
         row = segrun_treeitem.data(0, Qt.UserRole)
-        row.accepted = accepted
+        # TODO TODO TODO update accepted handling to presentation_accepted
+        # figure out what i want to do in partially accepted case
+        # maybe just storing a list of accepted / bool mask of accepted blocks
+        # makes most sense (rather than just an enum / str to indicate partially
+        # accepted)
+        row.accepted[block_num] = accepted
 
         # TODO maybe this should be row.run_at?
         sql = ("UPDATE analysis_runs SET accepted = " +
@@ -2261,132 +2289,25 @@ class Segmentation(QWidget):
 
         self.color_segrun_node(segrun_treeitem, accepted)
 
+        '''
         if accepted:
             # Starts out this way
             canonical = False
         else:
             canonical = None
         self.mark_canonical(segrun_treeitem, canonical)
+        '''
 
 
-    # TODO maybe make all accept / reject buttons gray until current accept /
-    # reject finishes running (mostly to avoid having to think about whether not
-    # doing so could possibly cause a problem)?
-    def accept_cnmf(self) -> None:
-        if self.accepted:
+    def upload_block_info(self, block_num):
+        """Uploads traces and other metadata for block.
+        """
+        if self.uploaded_block_info[block_num]:
             return
 
-        if self.accepted is not None:
-            self.update_seg_accepted(self.current_segrun_widget, True)
-            self.accepted = True
-            return
+        if self.relabeling_db_segrun:
+            raise NotImplementedError('would need to re-run CNMF to get traces')
 
-        '''
-        self.accept_cnmf_btn.setEnabled(False)
-        self.reject_cnmf_btn.setEnabled(False)
-        '''
-
-        fig_filename = (self.run_at.strftime('%Y%m%d_%H%M_') +
-            self.recording_title.replace('/','_'))
-        fig_path = join(analysis_output_root, 'figs')
-
-        # TODO TODO save the initial traces (+ in future pixel corr plot) as
-        # well, in at least this case, but maybe also just on load?
-        # TODO but at that point, maybe just factor out the plotting and
-        # generate in populate_db?
-        # TODO TODO env var for fig output (might want in one flag directory)
-        # TODO make subdirs if they don't exist
-        # TODO this consistent w/ stuff saved from toolbar in gui?
-        png_path = join(fig_path, 'png', fig_filename + '.png')
-        print('Saving fig to {}'.format(png_path))
-        self.fig.savefig(png_path)
-
-        svg_path = join(fig_path, 'svg', fig_filename + '.svg')
-        print('Saving fig to {}'.format(svg_path))
-        self.fig.savefig(svg_path)
-
-        self.upload_segmentation_info(True)
-
-        # TODO just calculate metadata outright here?
-            
-        # TODO TODO save file to nas (particularly so that it can still be there
-        # if database gets wiped out...) (should thus include parameters
-        # [+version?] info)
-
-        # TODO and refresh stuff in validation window s.t. this experiment now
-        # shows up
-
-        # TODO maybe also allow more direct passing of this data to other tab
-
-        # TODO TODO TODO just save a bunch of different versions of the df/f,
-        # computed w/ extract / detrend, and any key changes in arguments, then
-        # load that and plot some stuff for troubleshooting
-
-        '''
-        try:
-            # TODO fix save fn?
-            # TODO test rt ser/deser first?
-            self.cnm.save('dff_debug_cnmf.hdf5')
-        except Exception as e:
-            traceback.print_exc()
-            print(e)
-            import ipdb; ipdb.set_trace()
-        '''
-
-        # TODO delete me
-        # intended to use this to find best detrend / extract dff method
-        '''
-        # TODO to test extract_DF_F, need Yr, A, C, bl
-        # detrend_df_f wants A, b, C, f (YrA=None, but maybe it's used?
-        # in this fn, they call YrA the "residual signals")
-        sliced_movie = self.cnm.get_sliced_movie(self.movie)
-        Yr = self.cnm.get_Yr(sliced_movie)
-        ests = self.cnm.estimates
-
-        print('saving CNMF state to cnmf_state.p for debugging', flush=True)
-        try:
-            state = {
-                'Yr': Yr,
-                'A': ests.A,
-                'C': ests.C,
-                'bl': ests.bl,
-                'b': ests.b,
-                'f': ests.f,
-                'df_over_f': self.df_over_f,
-                # TODO raw_f too? or already included in one of these things?
-                'start_frames': self.start_frames,
-                'stop_frames': self.stop_frames,
-                'date': self.date,
-                'fly_num': self.fly_num,
-                'thorimage_id': self.thorimage_id
-            }
-            with open('cnmf_state.p', 'wb') as f:
-                pickle.dump(state, f)
-        except Exception as e:
-            traceback.print_exc()
-            print(e)
-            import ipdb; ipdb.set_trace()
-        print('done saving cnmf_state.p', flush=True)
-        '''
-        #
-
-        # I needed this separate from checking self.accepted is None,
-        # because presentations don't get uploaded when the output is rejected.
-        # TODO related to initial reject->db->new session accept case which is
-        # currently bugged.
-        # TODO TODO TODO traces need to be regenerated in the above case!!
-        if self.uploaded_presentations:
-            # Just to skip to end of function.
-            presentation_dfs = []
-            comparison_dfs = []
-        else:
-            presentation_dfs = self.presentation_dfs
-            comparison_dfs = self.comparison_dfs
-
-        # TODO could also add some check / cleanup routines for orphaned
-        # rows in presentations table (and maybe some other tables)
-        # maybe share w/ code that checks distinct to decide whether to
-        # load / analyze?
         key_cols = [
             'prep_date',
             'fly_num',
@@ -2399,15 +2320,21 @@ class Segmentation(QWidget):
         ]
 
         if self.ACTUALLY_UPLOAD:
+            presentation_dfs = self.presentation_dfs[
+                (self.presentations_per_block * block_num):
+                (self.presentations_per_block * (block_num + 1))
+            ]
+            comparison_dfs = self.comparison_dfs[
+                (self.presentations_per_block * block_num):
+                (self.presentations_per_block * (block_num + 1))
+            ]
+
             for presentation_df, comparison_df in zip(
                 presentation_dfs, comparison_dfs):
 
                 u.to_sql_with_duplicates(presentation_df.drop(
                     columns='temp_presentation_id'), 'presentations')
 
-                # TODO how exactly is this supposed to work in not
-                # self.ACTUALLY_UPLOAD case anyway? it wouldn't necessarily,
-                # right?
                 db_presentations = pd.read_sql('presentations', u.conn,
                     columns=(key_cols + ['presentation_id']))
 
@@ -2429,27 +2356,16 @@ class Segmentation(QWidget):
                 u.to_sql_with_duplicates(comparison_df.drop(
                     columns='temp_presentation_id'), 'responses')
 
-        self.uploaded_presentations = True
-
-        '''
-        self.accept_cnmf_btn.setEnabled(True)
-        self.reject_cnmf_btn.setEnabled(True)
-        '''
-
-        # TODO also allow coloring yellow if only some of blocks are accepted
-        self.current_recording_widget.setBackground(
-            0, QColor(self.accepted_color))
-        self.accepted = True
-        print('accepted')
+        self.uploaded_block_info[block_num] = True
 
 
-    def reject_cnmf(self):
-        if self.accepted == False:
+    def accept_cnmf(self) -> None:
+        if self.accepted:
             return
 
         if self.accepted is not None:
-            self.update_seg_accepted(self.current_segrun_widget, False)
-            self.accepted = False
+            self.update_seg_accepted(self.current_segrun_widget, True)
+            self.accepted = True
             return
 
         '''
@@ -2457,15 +2373,159 @@ class Segmentation(QWidget):
         self.reject_cnmf_btn.setEnabled(False)
         '''
 
-        self.upload_segmentation_info(False)
+
+        self.upload_segmentation_info()
+
+        #
+
+        # I needed this separate from checking self.accepted is None,
+        # because presentations don't get uploaded when the output is rejected.
+        # TODO related to initial reject->db->new session accept case which is
+        # currently bugged.
+        # TODO TODO TODO traces need to be regenerated in the above case!!
+        if self.uploaded_presentations:
+            # Just to skip to end of function.
+            presentation_dfs = []
+            comparison_dfs = []
+        else:
+            presentation_dfs = self.presentation_dfs
+            comparison_dfs = self.comparison_dfs
+
 
         '''
         self.accept_cnmf_btn.setEnabled(True)
         self.reject_cnmf_btn.setEnabled(True)
         '''
 
-        self.accepted = False
-        print('rejected')
+        self.accepted = True
+        print('accepted')
+
+
+    # TODO maybe make all block / upload buttons gray until current upload
+    # finishes (mostly to avoid having to think about whether not doing so could
+    # possibly cause a problem)?
+    def upload_cnmf(self) -> None:
+        # TODO test
+        if (any(self.to_be_accepted) and
+            all([pd.isnull(x) for x in self.accepted])):
+            # TODO might want to save something that doesn't include rejected
+            # blocks? (or indicate in block which were?)
+
+            fig_filename = (self.run_at.strftime('%Y%m%d_%H%M_') +
+                self.recording_title.replace('/','_'))
+            fig_path = join(analysis_output_root, 'figs')
+
+            # TODO TODO save the initial traces (+ in future pixel corr plot) as
+            # well, in at least this case, but maybe also just on load?
+            # TODO but at that point, maybe just factor out the plotting and
+            # generate in populate_db?
+            # TODO TODO env var for fig output (might want in one flag
+            # directory)
+            # TODO make subdirs if they don't exist
+            # TODO this consistent w/ stuff saved from toolbar in gui?
+            png_path = join(fig_path, 'png', fig_filename + '.png')
+            print('Saving fig to {}'.format(png_path))
+            self.fig.savefig(png_path)
+
+            svg_path = join(fig_path, 'svg', fig_filename + '.svg')
+            print('Saving fig to {}'.format(svg_path))
+            self.fig.savefig(svg_path)
+
+        if not self.uploaded_common_segrun_info:
+            self.upload_segmentation_info()
+
+        # TODO keep track of whether block specific stuff has been uploaded
+        # (the stuff that only gets uploaded on accept)
+        for i, (curr, target) in enumerate(zip(self.accepted,
+            self.to_be_accepted)):
+
+            if curr == target:
+                continue
+
+            if curr is not None:
+                self.update_seg_accepted(self.current_segrun_widget, i, target)
+
+            elif target == True:
+                self.upload_block_info(i)
+                # TODO TODO probably move outside of just accept case
+                # TODO also allow coloring yellow if only some of blocks are
+                # accepted
+                self.current_recording_widget.setBackground(
+                    0, QColor(self.accepted_color))
+
+            # (all of the below comments copied from old accept_cnmf fn)
+            # TODO just calculate metadata outright here?
+                
+            # TODO TODO save file to nas (particularly so that it can still be
+            # there if database gets wiped out...) (should thus include
+            # parameters [+version?] info)
+
+            # TODO and refresh stuff in validation window s.t. this experiment
+            # now shows up
+
+            # TODO maybe also allow more direct passing of this data to other
+            # tab
+
+            # TODO TODO TODO just save a bunch of different versions of the
+            # df/f, computed w/ extract / detrend, and any key changes in
+            # arguments, then load that and plot some stuff for troubleshooting
+
+            '''
+            try:
+                # TODO fix save fn?
+                # TODO test rt ser/deser first?
+                self.cnm.save('dff_debug_cnmf.hdf5')
+            except Exception as e:
+                traceback.print_exc()
+                print(e)
+                import ipdb; ipdb.set_trace()
+            '''
+
+            # TODO delete me
+            # intended to use this to find best detrend / extract dff method
+            '''
+            # TODO to test extract_DF_F, need Yr, A, C, bl
+            # detrend_df_f wants A, b, C, f (YrA=None, but maybe it's used?
+            # in this fn, they call YrA the "residual signals")
+            sliced_movie = self.cnm.get_sliced_movie(self.movie)
+            Yr = self.cnm.get_Yr(sliced_movie)
+            ests = self.cnm.estimates
+
+            print('saving CNMF state to cnmf_state.p for debugging', flush=True)
+            try:
+                state = {
+                    'Yr': Yr,
+                    'A': ests.A,
+                    'C': ests.C,
+                    'bl': ests.bl,
+                    'b': ests.b,
+                    'f': ests.f,
+                    'df_over_f': self.df_over_f,
+                    # TODO raw_f too? or already included in one of these
+                    # things?
+                    'start_frames': self.start_frames,
+                    'stop_frames': self.stop_frames,
+                    'date': self.date,
+                    'fly_num': self.fly_num,
+                    'thorimage_id': self.thorimage_id
+                }
+                with open('cnmf_state.p', 'wb') as f:
+                    pickle.dump(state, f)
+            except Exception as e:
+                traceback.print_exc()
+                print(e)
+                import ipdb; ipdb.set_trace()
+            print('done saving cnmf_state.p', flush=True)
+            '''
+            # TODO could also add some check / cleanup routines for orphaned
+            # rows in presentations table (and maybe some other tables)
+            # maybe share w/ code that checks distinct to decide whether to
+            # load / analyze?
+
+            self.accepted[i] = target
+
+        # TODO TODO color recording / segrun nodes as appropriate
+        # (maybe just recording?)
 
 
     def color_block_btn(self, block_num, accepted) -> None:
@@ -2489,6 +2549,7 @@ class Segmentation(QWidget):
         if len(args) == 0:
             self.to_be_accepted = []
             self.accepted = []
+            self.uploaded_block_info = []
             have_accept_states = False
 
         elif len(args) == 1:
@@ -2506,6 +2567,11 @@ class Segmentation(QWidget):
         else:
             raise ValueError('wrong number of arguments')
 
+        enable_upload = any_mismatch
+        if have_accept_states:
+            if any([pd.isnull(x) for x in to_be_accepted]):
+                enable_upload = False
+
         for i in range(self.n_blocks):
             block_btn = QPushButton(str(i + 1), self.block_label_btn_widget)
             block_btn.clicked.connect(partial(self.label_block, i))
@@ -2515,12 +2581,15 @@ class Segmentation(QWidget):
 
             if have_accept_states:
                 self.color_block_btn(i, to_be_accepted[i])
+                # TODO TODO TODO also want to set any of 
+                # accepted/to_be_accepted/uploaded_block_info here?
             else:
                 self.to_be_accepted.append(None)
                 self.accepted.append(None)
+                self.uploaded_block_info.append(False)
 
         self.block_label_btn_widget.setEnabled(have_accept_states)
-        self.upload_btn.setEnabled(any_mismatch)
+        self.upload_btn.setEnabled(enable_upload)
 
 
     def label_block(self, block_num) -> None:
@@ -2537,19 +2606,13 @@ class Segmentation(QWidget):
             if curr != target:
                 any_mismatch = True
                 break
-        self.upload_btn.setEnabled(any_mismatch)
+
+        enable_upload = any_mismatch
+        if any([pd.isnull(x) for x in self.to_be_accepted]):
+            enable_upload = False
+
+        self.upload_btn.setEnabled(enable_upload)
         #
-
-
-    def upload_cnmf(self) -> None:
-
-        # TODO upload common information
-
-
-        # TODO keep track of whether block specific stuff has been uploaded
-        # (the stuff that only gets uploaded on accept)
-        for accepted in self.accepted:
-            pass
 
 
     # TODO maybe support save / loading cnmf state w/ their save/load fns w/
@@ -2599,45 +2662,22 @@ class Segmentation(QWidget):
             self.previous_run_at = self.run_at
             self.previous_accepted = self.accepted
             self.previous_to_be_accepted = self.to_be_accepted
+            self.previous_uploaded_block_info = self.uploaded_block_info
             self.previous_n_blocks = self.n_blocks
 
         self.relabeling_db_segrun = True
+        self.uploaded_common_segrun_info = True
 
         row = segrun_widget.data(0, Qt.UserRole)
         self.run_at = row.run_at
-        # TODO TODO TODO if recording was accepted, consider all comparisons as
-        # accepted (fix db w/ a script or just always check for old way of doing
-        # it?)
-        presentations = pd.read_sql_query('SELECT ' +
-            'comparison, presentation_accepted FROM presentations WHERE ' +
-            "analysis = '{}'".format(pd.Timestamp(self.run_at)), u.conn)
 
-        def block_accepted(presentation_df):
-            accepted = presentation_df.presentation_accepted
-            if accepted.any():
-                assert accepted.all()
-                return True
-            else:
-                return False
+        self.accepted = u.accepted_blocks(self.run_at)
+        self.n_blocks = len(self.accepted)
 
-        self.n_blocks = len(presentations.comparison.unique())
-
-        null_presentation_accepted = \
-            pd.isnull(presentations.presentation_accepted)
-        if null_presentation_accepted.any():
-            assert null_presentation_accepted.all()
-            assert not pd.isnull(row.accepted)
-            if row.accepted:
-                self.accepted = [True] * self.n_blocks
-                self.to_be_accepted = [True] * self.n_blocks
-            else:
-                self.accepted = [False] * self.n_blocks
-                self.to_be_accepted = [False] * self.n_blocks
-        else:
-            # TODO make sure sorted by comparison #. groupby ensure that?
-            accepted = presentations.groupby('comparison').apply(block_accepted)
-            self.accepted = accepted.to_list()
-            self.to_be_accepted = accepted.to_list()
+        self.to_be_accepted = list(self.accepted)
+        # Assumes that anything that was already accepted has had block info
+        # uploaded. Could be false if I screwed something up before.
+        self.uploaded_block_info = list(self.accepted)
 
         self.make_block_labelling_btns(self.accepted)
 
@@ -2682,7 +2722,10 @@ class Segmentation(QWidget):
     # (in same viewer?)
 
 
-    def plot_avg_trace(self):
+    def plot_avg_trace(self, recalc_trace=True):
+        if recalc_trace:
+            self.full_frame_avg_trace = u.full_frame_avg_trace(self.movie)
+
         self.fig.clear()
         # TODO maybe add some height for pixel based correlation matrix if i
         # include that
@@ -2693,7 +2736,7 @@ class Segmentation(QWidget):
         ax = self.fig.add_subplot(111)
         # TODO maybe replace w/ pyqtgraph video viewer roi, s.t. it can be
         # restricted to a different ROI if that would help
-        ax.plot(np.mean(self.movie, axis=(1,2)))
+        ax.plot(self.full_frame_avg_trace)
         ax.set_title(self.recording_title)
         self.fig.tight_layout()
         self.mpl_canvas.draw()
@@ -2705,10 +2748,9 @@ class Segmentation(QWidget):
         tiff = self.motion_corrected_tifs[idx]
         if self.tiff_fname == tiff:
             if self.relabeling_db_segrun:
-                # TODO TODO TODO until i can restore / correctly re-initialize
-                # block label button states, should not support this shortcut
                 self.accepted = self.previous_accepted
                 self.to_be_accepted = self.previous_to_be_accepted
+                self.uploaded_block_info = self.previous_uploaded_block_info
                 self.run_at = self.previous_run_at
                 self.n_blocks = self.previous_n_blocks
 
@@ -2718,7 +2760,7 @@ class Segmentation(QWidget):
                     self.reject_cnmf_btn.setEnabled(True)
                 '''
 
-                self.plot_avg_trace()
+                self.plot_avg_trace(recalc_trace=False)
 
                 self.make_block_labelling_btns(self.accepted,
                     self.to_be_accepted)
@@ -2767,56 +2809,20 @@ class Segmentation(QWidget):
                             (df.fly_num == fly_num) &
                             (df.thorimage_dir == thorimage_id)]
         recording = recordings.iloc[0]
-
-        stimfile = recording['stimulus_data_file']
-        stimfile_path = join(stimfile_root, stimfile)
-        # TODO also err if not readable
-        if not os.path.exists(stimfile_path):
-            raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
-                stimfile_root))
-
-        with open(stimfile_path, 'rb') as f:
-            data = pickle.load(f)
-
         if recording.project != 'natural_odors':
             warnings.warn('project type {} not supported. skipping.'.format(
                 recording.project))
             return
 
-        raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
-        thorsync_dir = join(raw_fly_dir, recording['thorsync_dir'])
-        thorimage_dir = join(raw_fly_dir, recording['thorimage_dir'])
-        stimulus_data_path = join(stimfile_root,
-                                  recording['stimulus_data_file'])
+        stimfile = recording['stimulus_data_file']
+        stimfile_path = join(stimfile_root, stimfile)
+        # TODO also err if not readable / valid
+        if not exists(stimfile_path):
+            raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
+                stimfile_root))
 
-        thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
-        xml_root = etree.parse(thorimage_xml_path).getroot()
-
-        started_at = \
-            datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
-
-        # TODO see part of populate_db.py in this section to see how data
-        # explorer list elements might be colored to indicate they have already
-        # been run? or just get everything w/ pandas and color all from there?
-        # TODO pane to show previous analysis runs of currently selected
-        # experiment, or not worth it since maybe only want one accepted per?
-
-        # TODO need to search db for (at least) canonical_segmentation, if i
-        # want to set state of all this as data
-        # TODO TODO could ignore case where recording wasn't already in db tho
-        # TODO TODO upload full_frame_avg_trace like in populate_db
-        self.recordings = pd.DataFrame({
-            'started_at': [started_at],
-            'thorsync_path': [thorsync_dir],
-            'thorimage_path': [thorimage_dir],
-            'stimulus_data_path': [stimulus_data_path]#,
-            #'full_frame_avg_trace': 
-            #'canonical_segmentation': None
-        })
-        # TODO at least put behind self.ACTUALLY_UPLOAD?
-        # TODO maybe defer this to accepting?
-        # TODO rename to singular?
-        u.to_sql_with_duplicates(self.recordings, 'recordings')
+        with open(stimfile_path, 'rb') as f:
+            data = pickle.load(f)
 
         n_repeats = int(data['n_repeats'])
 
@@ -2834,11 +2840,55 @@ class Segmentation(QWidget):
         if pd.isnull(recording['last_block']):
             n_full_panel_blocks = \
                 int(len(data['odor_pair_list']) / presentations_per_block)
-
             last_block = n_full_panel_blocks - 1
-
         else:
             last_block = int(recording['last_block']) - 1
+
+        raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
+        thorsync_dir = join(raw_fly_dir, recording['thorsync_dir'])
+        thorimage_dir = join(raw_fly_dir, recording['thorimage_dir'])
+
+        thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
+        xml_root = etree.parse(thorimage_xml_path).getroot()
+        started_at = \
+            datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
+
+        # TODO do something like this if i either move movie loading above here
+        # or recording uploading below movie loading. then take this
+        # out of plot_avg_trace.
+        #self.full_frame_avg_trace = u.full_frame_avg_trace(self.movie)
+
+        # TODO TODO upload full_frame_avg_trace like in populate_db
+        self.recordings = pd.DataFrame({
+            'started_at': [started_at],
+            'thorsync_path': [thorsync_dir],
+            'thorimage_path': [thorimage_dir],
+            'stimulus_data_path': [stimfile_path],
+            'first_block': [first_block],
+            'last_block': [last_block],
+            'n_repeats': [n_repeats],
+            'presentations_per_repeat': [presentations_per_repeat]
+            # TODO but do i want the trace of the full movie or slice?
+            # if full movie, probably should just calculate once, then
+            # slice that for the trace i use here
+            #'full_frame_avg_trace': 
+        })
+        # TODO at least put behind self.ACTUALLY_UPLOAD?
+        # TODO maybe defer this to accepting?
+        # TODO rename to singular?
+        # TODO just completely delete this fn at this point?
+        # TODO TODO TODO also replace other cases that might need to be
+        # updated w/ pg_upsert based solution
+        ####u.to_sql_with_duplicates(self.recordings, 'recordings')
+        self.recordings.set_index('started_at').to_sql('recordings', u.conn,
+            if_exists='append', method=u.pg_upsert)
+
+        db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
+            "started_at = '{}'".format(pd.Timestamp(started_at)), u.conn)
+        db_recording = db_recording[self.recordings.columns]
+
+        assert self.recordings.equals(db_recording)
+
 
         # TODO maybe use subset here too, to be consistent w/ which mixtures get
         # entered...
@@ -3008,6 +3058,9 @@ class Segmentation(QWidget):
         if allow_gsheet_to_restrict_blocks:
             # TODO unit test for case where first_block != 0 and == 0
             # w/ last_block == first_block and > first_block
+            # TODO TODO doesn't this only support dropping blocks at end?
+            # do i assert that first_block is 0 then? probably should...
+            # TODO TODO TODO shouldnt it be first_block:last_block+1?
             block_first_frames = block_first_frames[
                 :(last_block - first_block + 1)]
             block_last_frames = block_last_frames[
@@ -3149,9 +3202,9 @@ class Segmentation(QWidget):
         self.reject_cnmf_btn.setEnabled(False)
         self.accepted = None
         '''
-        # TODO maybe just move creation of buttons to (successful) end of cnmf
-        # run, and delete this fn entirely?
-        self.uploaded_presentations = False
+        # TODO change to list / delete
+        #self.uploaded_presentations = False
+        self.uploaded_common_segrun_info = False
 
 
 class ROIAnnotation(QWidget):

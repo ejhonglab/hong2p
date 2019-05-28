@@ -90,11 +90,29 @@ CREATE TABLE IF NOT EXISTS recordings (
      * */
     thorimage_path text,
     /* TODO maybe require this if it's just going to be the pin/odor info? */
-    stimulus_data_path text
+    stimulus_data_path text,
     /* TODO stimulus code here too? (opt if also aiming to support PID-only)*/
+
+    full_frame_avg_trace real[],
+
+    -- Should match first_block / last_block derived from gsheet
+    first_block smallint,
+    last_block smallint,
+    n_repeats smallint,
+    presentations_per_repeat smallint
 );
 ALTER TABLE recordings
     ADD COLUMN full_frame_avg_trace real[];
+-- TODO maybe make block info NOT NULL, since depend on it now in
+-- util.accepted_blocks...
+ALTER TABLE recordings
+    ADD COLUMN first_block smallint;
+ALTER TABLE recordings
+    ADD COLUMN last_block smallint;
+ALTER TABLE recordings
+    ADD COLUMN n_repeats smallint;
+ALTER TABLE recordings
+    ADD COLUMN presentations_per_repeat smallint;
 
 
 CREATE TABLE IF NOT EXISTS code_versions (
@@ -380,8 +398,10 @@ CREATE TABLE IF NOT EXISTS presentations (
     odor_onset_frame integer NOT NULL,
     odor_offset_frame integer NOT NULL,
 
-    /* Timing information of same dimensions as corresponding cell entries in
-     * responses table. */
+    -- TODO maybe only check this exists if presentation_accepted is True?
+    -- constraint like that possible?
+    -- Timing information of same dimensions as corresponding cell entries in
+    -- responses table.
     from_onset double precision[] NOT NULL,
 
     presentation_accepted boolean,

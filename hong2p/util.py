@@ -16,6 +16,7 @@ from datetime import datetime
 import warnings
 import pprint
 import glob
+import re
 
 from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.sql import sqltypes
@@ -930,7 +931,192 @@ def list_segmentations(tif_path):
         return None
 
     return seg_runs.merge(analysis_runs)
+
+
+shared_subrecording_regex = '.+_\db\d_from_(nr|rig)'
+def is_subrecording(thorimage_id):
+    if re.search(shared_subrecording_regex + '$', thorimage_id):
+        return True
+    else:
+        return False
+
+
+def is_subrecording_tiff(tiff_filename):
+    # TODO technically, nr|rig should be same across two...
+    if re.search(shared_subrecording_regex + '_(nr|rig).tif$', tiff_filename):
+        return True
+    else:
+        return False
         
+
+def accepted_blocks(analysis_run_at):
+    """
+    """
+    analysis_run_at = pd.Timestamp(analysis_run_at)
+    presentations = pd.read_sql_query('SELECT ' +
+        'comparison, presentation_accepted FROM presentations WHERE ' +
+        "analysis = '{}'".format(analysis_run_at), conn,
+        index_col='comparison')
+    # TODO any of stuff below behave differently if index is comparison
+    # (vs. default range index)? groupby('comparison')?
+
+    # TODO just get accepted here and use that rather than other query on this
+    # table below
+    analysis_run = pd.read_sql_query('SELECT input_filename, recording_from' +
+        " FROM analysis_runs WHERE run_at = '{}'".format(analysis_run_at), conn)
+    assert len(analysis_run) == 1
+    analysis_run = analysis_run.iloc[0]
+    recording_from = analysis_run.recording_from
+    input_filename = analysis_run.input_filename
+
+    # TODO TODO make sure block bounds are loaded into db from gui first, if
+    # they changed in the gsheet. otherwise, will be stuck using old values, and
+    # this function will not behave correctly
+    # TODO TODO TODO this has exactly the same problem canonical_segmentation
+    # currently has: only one of each *_block per recording start time =>
+    # sub-recordings will clobber each other. fix!
+    recording = pd.read_sql_query('SELECT thorimage_path, first_block, ' +
+        "last_block FROM recordings WHERE started_at = '{}'".format(
+        recording_from), conn)
+
+    assert len(recording) == 1
+    recording = recording.iloc[0]
+
+    # TODO TODO implement some kind of handling of sub-recordings in db
+    # and get rid of this hack
+    #print(input_filename)
+    if is_subrecording_tiff(input_filename):
+        parts = input_filename.split('_')[-4].split('b')
+
+        first_block = int(parts[0]) - 1
+        last_block = int(parts[1]) - 1
+
+        '''
+        print(input_filename, 'belonged to a sub-recording')
+        print('first_block:', first_block)
+        print('last_block:', last_block)
+        '''
+
+    else:
+        if recording.last_block is None or recording.first_block is None:
+            # TODO maybe generate it in this case?
+            raise ValueError(('no block info in db for recording_from = {} ({})'
+                ).format(recording_from, recording.thorimage_path))
+
+        first_block = recording.first_block
+        last_block = recording.last_block
+
+    n_blocks = last_block - first_block + 1
+    #print('n_blocks:', n_blocks)
+    expected_comparisons = list(range(n_blocks))
+
+    # TODO delete these prints. for debugging.
+    '''
+    print('presentations:', presentations)
+    print('presentations.index:', presentations.index)
+    print('expected_comparisons:', expected_comparisons)
+    '''
+    #
+    # TODO TODO TODO check that upload will keep comparison numbered as blocks
+    # are, so that missing comparisons numbers can be imputed with False here
+    # (well, comparison numbering should probably start w/ 0 at first_block)
+
+    # TODO TODO test cases where not all blocks were uploaded at all, where some
+    # where not uploaded and some are explicitly marked not accepted, and where
+    # all blocks rejected are explicitly so
+
+    def block_accepted(presentation_df):
+        # TODO will there ever actually be null values? or index values just
+        # missing from db entirely? (as below)
+        null = pd.isnull(presentation_df.presentation_accepted)
+        if null.any():
+            assert null.all()
+            return False
+
+        accepted = presentation_df.presentation_accepted
+        if accepted.any():
+            assert accepted.all()
+            return True
+        else:
+            return False
+
+    # TODO is this relevant? will there ever actually be null values here, or
+    # will they just be missing?
+    null_presentation_accepted = \
+        pd.isnull(presentations.presentation_accepted)
+    if null_presentation_accepted.any():
+        assert null_presentation_accepted.all()
+        # TODO fix db w/ a script or just always check for old way of doing it?
+        all_blocks_accepted = pd.read_sql_query('SELECT accepted FROM ' +
+            "analysis_runs WHERE run_at = '{}'".format(analysis_run_at), conn)
+        assert len(all_blocks_accepted) == 1
+        all_blocks_accepted = all_blocks_accepted.iat[0,0]
+        assert not pd.isnull(all_blocks_accepted)
+        if all_blocks_accepted:
+            accepted = [True] * n_blocks
+        else:
+            accepted = [False] * n_blocks
+    else:
+        # TODO make sure sorted by comparison #. groupby ensure that?
+        #accepted = presentations.groupby('comparison').apply(block_accepted)
+        # TODO TODO agg working w/ block_accepted fn?
+        # problem w/ apply is mainly that it didn't give back a named column
+        # wasn't sure how to deal with it
+        accepted = presentations.groupby('comparison').agg(block_accepted
+            ).presentation_accepted
+        accepted.name = 'comparison_accepted'
+        # TODO delete try/except
+        try:
+            assert len(accepted.shape) == 1, 'accepted was not a Series'
+        except AssertionError as e:
+            print(e)
+            import ipdb; ipdb.set_trace()
+        #
+
+        # TODO delete
+        if len(accepted) > 0:
+            print('type(accepted):', type(accepted))
+            print('accepted.index:', accepted.index)
+            print('len(accepted) == {}'.format(len(accepted)))
+            import ipdb; ipdb.set_trace()
+        '''
+        print('type(accepted):', type(accepted))
+        print('accepted.index:', accepted.index)
+        import ipdb; ipdb.set_trace()
+        '''
+        #
+        for c in expected_comparisons:
+            if c not in accepted.index:
+                accepted.loc[c] = False
+
+        # TODO TODO TODO test this case again. it failed last time because
+        # accepted was a dataframe when i was expecting it to be a series
+        # TODO delete try / except
+        try:
+            accepted = accepted.to_list()
+        except AttributeError:
+            import ipdb; ipdb.set_trace()
+        #
+
+    return accepted
+
+
+def print_all_accepted_blocks():
+    """Just for testing behavior of accepted_blocks fn.
+    """
+    analysis_runs = pd.read_sql_query('SELECT run_at FROM segmentation_runs',
+        conn).run_at
+
+    for r in analysis_runs:
+        try:
+            print('{}: {}'.format(r, accepted_blocks(r)))
+        except ValueError as e:
+            print(e)
+            continue
+        #import ipdb; ipdb.set_trace()
+
+    import ipdb; ipdb.set_trace()
+
 
 def get_experiment_xmlroot(directory):
     xml_path = join(directory, 'Experiment.xml')
@@ -1048,6 +1234,12 @@ def read_movie(thorimage_dir):
 
     data = np.reshape(data, (n_frames, x, y))
     return data
+
+
+def full_frame_avg_trace(movie):
+    # TODO handle 2d+t or 3d+t data as well
+    # (axis=(1,2) just works for 2d+t data)
+    return np.mean(movie, axis=(1,2))
 
 
 def crop_to_nonzero(matrix, margin=0):
@@ -1180,6 +1372,8 @@ def latest_response_stats(*args):
             warnings.warn('referenced recording not in analysis_runs!')
             continue
 
+        # TODO TODO TODO switch to using presentations.presentation_accepted
+        raise NotImplementedError
         rec_usable = rec_analysis_runs.accepted.any()
 
         rec_presentations = db_presentations[
@@ -1205,6 +1399,8 @@ def latest_response_stats(*args):
 
             assert len(most_recent_fit.shape) == 1
 
+            # TODO TODO TODO switch to using presentations.presentation_accepted
+            raise NotImplementedError
             most_recent_fit['accepted'] = rec_usable
 
             # TODO TODO TODO clean up older fits on same data?
@@ -1877,6 +2073,8 @@ def plot_pair_n(df, title, *args):
         'name2']].drop_duplicates()
     '''
 
+    # TODO TODO TODO switch to using presentations.presentation_accepted
+    raise NotImplementedError
     accepted_runs = pd.read_sql_query('SELECT run_at, accepted FROM ' +
         'analysis_runs WHERE accepted', conn)
     accepted_presentations = df[df.analysis.isin(accepted_runs.run_at)]

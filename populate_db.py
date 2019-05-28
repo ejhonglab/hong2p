@@ -35,10 +35,8 @@ show_inferred_paths = True
 allow_gsheet_to_restrict_blocks = True
 
 fail_on_missing_dir_to_attempt = True
-#only_do_anything_for_analysis = True
-only_do_anything_for_analysis = False
+only_do_anything_for_analysis = True
 
-'''
 convert_h5 = False
 calc_timing_info = False
 update_timing_info = False
@@ -50,6 +48,7 @@ calc_timing_info = True
 # TODO if this is False, still check that ti_code_version is there
 update_timing_info = False
 motion_correct = True
+'''
 only_motion_correct_for_analysis = True
 
 '''
@@ -59,7 +58,7 @@ ACTUALLY_UPLOAD = True
 '''
 process_time_averages = False
 upload_matlab_cnmf_output = False
-ACTUALLY_UPLOAD = False
+ACTUALLY_UPLOAD = True
 
 # TODO make sure that incomplete entries are not preventing full
 # analysis from being inserted, despite setting of this flag
@@ -68,6 +67,13 @@ ACTUALLY_UPLOAD = False
 #overwrite_older_analysis = True
 overwrite_older_analysis = False
 
+# TODO delete
+# this one had a MATLAB function cannot be evaluated error
+# (but maybe context was important?)
+# (this error didn't seem to repeat when calling just on this...)
+#test_recording = ('2019-04-11', 2, '_002')
+test_recording = None
+#
 ################################################################################
 
 if only_do_anything_for_analysis:
@@ -174,16 +180,6 @@ if not os.path.isdir(stimfile_root):
 
 # TODO make fns that take date + fly_num + cwd then re-use iteration
 # over date / fly_num (if mirrored data layout for raw / analysis)?
-
-# TODO delete
-# assertion fails in w/ get_stiminfo
-#test_recording = ('2019-02-27', 4, '_003')
-# this one had a MATLAB function cannot be evaluated error
-# (but maybe context was important?)
-# (this error didn't seem to repeat when calling just on this...)
-#test_recording = ('2019-04-11', 2, '_002')
-test_recording = None
-#
 
 for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     full_fly_dir = os.path.normpath(full_fly_dir)
@@ -430,8 +426,10 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
     # TODO maybe delete empty folders under analysis? (do in atexit handler)
 
+'''
 if not (upload_matlab_cnmf_output or process_time_averages):
     sys.exit()
+'''
 
 # TODO delete all this stuff after saving full version info as appropriate
 '''
@@ -525,12 +523,22 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         thorimage_id = '_'.join(prefix)
         recording_outcome['thorimage_dir'] = thorimage_id
 
+        skip = False
+        # TODO maybe come up w/ a recording_outcome for these
+        # TODO TODO TODO maybe proceed, but keep track s.t. it isn't done twice
+        # (b/c i might mark parent as not attempt_analysis, so it wouldn't get
+        # reached here...)
+        if u.is_subrecording(thorimage_id):
+            print('skipping sub-recording')
+            skip = True
+
         # get_stiminfo also currently fails on this recording, with an assertion
         # error (4/28)
         # TODO also fix get_stiminfo in this case
-        skip = False
+        '''
         if date_dir == '2019-02-27' and fly_num == 4 and thorimage_id == '_003':
-            skip =True
+            skip = True
+        '''
 
         # TODO delete. for debugging.
         if test_recording is not None:
@@ -598,42 +606,6 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 # recording_outcomes here
                 continue
 
-        recordings = pd.DataFrame({
-            'started_at': [started_at],
-            'thorsync_path': [thorsync_dir],
-            'thorimage_path': [thorimage_dir],
-            'stimulus_data_path': [stimulus_data_path]
-        })
-
-        if process_time_averages:
-            # TODO TODO TODO just load .raw? (or .tif in case of accidentally
-            # having saved an ome tiff)
-            # just for .raw/.tif where raw would be/.tif in separate tif dir
-            tif_path = join(raw_fly_dir, 'tif_stacks', thorimage_id  + '.tif')
-            if not exists(tif_path):
-                print('Raw TIFF {} did not exist!'.format(tif_path))
-                recording_outcome['no_movie'] = True
-                recording_outcomes.append(recording_outcome)
-                continue
-
-            print('Loading TIFF from {}...'.format(tif_path), flush=True,
-                end='')
-            movie = tifffile.imread(tif_path)
-            print(' done.')
-
-            # TODO but maybe want to check consistent wrt both movie and matlab
-            # cnmf output in case where we load both?? (-> don't name either
-            # just n_frames)
-            n_frames = movie.shape[0]
-
-            # TODO would have to include 3 in axis in 3D + T case
-            full_frame_avg_trace = np.mean(movie, axis=(1,2))
-            recordings['full_frame_avg_trace'] = [[float(x) for x in
-                full_frame_avg_trace.astype('float32')]]
-
-        if ACTUALLY_UPLOAD:
-            u.to_sql_with_duplicates(recordings, 'recordings')
-
         stimfile = recording['stimulus_data_file']
         stimfile_path = join(stimfile_root, stimfile)
         # TODO also err if not readable (validate after read)
@@ -665,6 +637,59 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         else:
             last_block = int(recording['last_block']) - 1
+
+        recordings = pd.DataFrame({
+            'started_at': [started_at],
+            'thorsync_path': [thorsync_dir],
+            'thorimage_path': [thorimage_dir],
+            'stimulus_data_path': [stimulus_data_path],
+            'first_block': [first_block],
+            'last_block': [last_block],
+            'n_repeats': [n_repeats],
+            'presentations_per_repeat': [presentations_per_repeat]
+        })
+
+        if process_time_averages:
+            # TODO TODO TODO just load .raw? (or .tif in case of accidentally
+            # having saved an ome tiff)
+            # just for .raw/.tif where raw would be/.tif in separate tif dir
+            tif_path = join(raw_fly_dir, 'tif_stacks', thorimage_id  + '.tif')
+            if not exists(tif_path):
+                print('Raw TIFF {} did not exist!'.format(tif_path))
+                recording_outcome['no_movie'] = True
+                recording_outcomes.append(recording_outcome)
+                continue
+
+            print('Loading TIFF from {}...'.format(tif_path), flush=True,
+                end='')
+            movie = tifffile.imread(tif_path)
+            print(' done.')
+
+            # TODO but maybe want to check consistent wrt both movie and matlab
+            # cnmf output in case where we load both?? (-> don't name either
+            # just n_frames)
+            n_frames = movie.shape[0]
+
+            full_frame_avg_trace = u.full_frame_avg_trace(movie)
+            recordings['full_frame_avg_trace'] = [[float(x) for x in
+                full_frame_avg_trace.astype('float32')]]
+
+        if ACTUALLY_UPLOAD:
+            # TODO just completely delete this fn at this point?
+            # TODO TODO TODO also replace other cases that might need to be
+            # updated w/ pg_upsert based solution. presentations table
+            # especially.
+            ####u.to_sql_with_duplicates(recordings, 'recordings')
+            recordings.set_index('started_at', inplace=True)
+            recordings.to_sql('recordings', u.conn, if_exists='append',
+                method=u.pg_upsert)
+
+            db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
+                "started_at = '{}'".format(pd.Timestamp(started_at)), u.conn,
+                index_col='started_at')
+            db_recording = db_recording[recordings.columns]
+
+            assert recordings.equals(db_recording)
 
         first_presentation = first_block * presentations_per_block
         last_presentation = (last_block + 1) * presentations_per_block - 1
@@ -880,8 +905,6 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         # Since trace is computed on full movie, not the subset we define above.
         last_frame = block_last_frames[-1]
-        full_frame_avg_trace = full_frame_avg_trace[:(last_frame + 1)]
-        assert full_frame_avg_trace.shape[0] == len(frame_times)
 
         assert len(odor_onset_frames) == len(odor_pair_list)
 
@@ -966,6 +989,12 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             n_frames, n_cells = df_over_f.shape
             assert n_cells == n_footprints
 
+        recording_outcomes.append(recording_outcome)
+        # TODO if i want to keep this, remove checks for process_time_averages
+        # after this
+        if not (ACTUALLY_UPLOAD and process_time_averages):
+            continue
+
         # TODO TODO assertion to detect whatever this was talking about...
         # TODO why 474 x 4 + 548 in one case? i thought frame numbers were
         # supposed to be more similar... (w/ np.diff(odor_onset_frames))
@@ -998,9 +1027,9 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO TODO either warn or err if len(start_frames) is !=
         # len(odor_pair_list)
 
-        recording_outcomes.append(recording_outcome)
-        if not ACTUALLY_UPLOAD:
-            continue
+        if process_time_averages:
+            full_frame_avg_trace = full_frame_avg_trace[:(last_frame + 1)]
+            assert full_frame_avg_trace.shape[0] == len(frame_times)
 
         # TODO make this work in not ACTUALLY_UPLOAD case w/o odor1_ids
         # or odor2_ids
