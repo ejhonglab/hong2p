@@ -933,7 +933,9 @@ def list_segmentations(tif_path):
     return seg_runs.merge(analysis_runs)
 
 
-shared_subrecording_regex = '.+_\db\d_from_(nr|rig)'
+# TODO still work w/ parens added around initial .+ ? i want to match the parent
+# id...
+shared_subrecording_regex = '(.+)_\db\d_from_(nr|rig)'
 def is_subrecording(thorimage_id):
     if re.search(shared_subrecording_regex + '$', thorimage_id):
         return True
@@ -947,40 +949,58 @@ def is_subrecording_tiff(tiff_filename):
         return True
     else:
         return False
+
+
+def parent_recording_id(tiffname_or_thorimage_id):
+    """
+    """
+    last_part = split(tiffname_or_thorimage_id)
+    match = re.search(shared_subrecording_regex, tiffname_or_thorimage_id)
+    if match is None:
+        raise ValueError('not a subrecording')
+    import ipdb; ipdb.set_trace()
         
 
-def accepted_blocks(analysis_run_at):
+def accepted_blocks(analysis_run_at, verbose=False):
     """
     """
     analysis_run_at = pd.Timestamp(analysis_run_at)
-    presentations = pd.read_sql_query('SELECT ' +
+    presentations = pd.read_sql_query('SELECT presentation_id, ' +
         'comparison, presentation_accepted FROM presentations WHERE ' +
         "analysis = '{}'".format(analysis_run_at), conn,
         index_col='comparison')
     # TODO any of stuff below behave differently if index is comparison
     # (vs. default range index)? groupby('comparison')?
 
-    # TODO just get accepted here and use that rather than other query on this
-    # table below
-    analysis_run = pd.read_sql_query('SELECT input_filename, recording_from' +
-        " FROM analysis_runs WHERE run_at = '{}'".format(analysis_run_at), conn)
+    analysis_run = pd.read_sql_query('SELECT accepted, input_filename, ' +
+        "recording_from FROM analysis_runs WHERE run_at = '{}'".format(
+        analysis_run_at), conn)
     assert len(analysis_run) == 1
     analysis_run = analysis_run.iloc[0]
     recording_from = analysis_run.recording_from
     input_filename = analysis_run.input_filename
+    all_blocks_accepted = analysis_run.accepted
 
     # TODO TODO make sure block bounds are loaded into db from gui first, if
     # they changed in the gsheet. otherwise, will be stuck using old values, and
     # this function will not behave correctly
-    # TODO TODO TODO this has exactly the same problem canonical_segmentation
+    # TODO TODO this has exactly the same problem canonical_segmentation
     # currently has: only one of each *_block per recording start time =>
     # sub-recordings will clobber each other. fix!
+    # (currently just working around w/ subrecording tif filename hack)
     recording = pd.read_sql_query('SELECT thorimage_path, first_block, ' +
         "last_block FROM recordings WHERE started_at = '{}'".format(
         recording_from), conn)
 
     assert len(recording) == 1
     recording = recording.iloc[0]
+
+    if len(presentations) > 0:
+        presentations_with_responses = pd.read_sql_query('SELECT ' +
+            'presentation_id FROM responses WHERE segmentation_run = ' +
+            "'{}'".format(analysis_run_at), conn)
+        # TODO faster to check isin if this is a set?
+
 
     # TODO TODO implement some kind of handling of sub-recordings in db
     # and get rid of this hack
@@ -991,11 +1011,10 @@ def accepted_blocks(analysis_run_at):
         first_block = int(parts[0]) - 1
         last_block = int(parts[1]) - 1
 
-        '''
-        print(input_filename, 'belonged to a sub-recording')
-        print('first_block:', first_block)
-        print('last_block:', last_block)
-        '''
+        if verbose:
+            print(input_filename, 'belonged to a sub-recording')
+            print('first_block:', first_block)
+            print('last_block:', last_block)
 
     else:
         if recording.last_block is None or recording.first_block is None:
@@ -1007,15 +1026,15 @@ def accepted_blocks(analysis_run_at):
         last_block = recording.last_block
 
     n_blocks = last_block - first_block + 1
-    #print('n_blocks:', n_blocks)
+    if verbose:
+        print('n_blocks:', n_blocks)
     expected_comparisons = list(range(n_blocks))
 
     # TODO delete these prints. for debugging.
-    '''
-    print('presentations:', presentations)
-    print('presentations.index:', presentations.index)
-    print('expected_comparisons:', expected_comparisons)
-    '''
+    if verbose:
+        print('presentations:', presentations)
+        print('presentations.index:', presentations.index)
+        print('expected_comparisons:', expected_comparisons)
     #
     # TODO TODO TODO check that upload will keep comparison numbered as blocks
     # are, so that missing comparisons numbers can be imputed with False here
@@ -1045,59 +1064,68 @@ def accepted_blocks(analysis_run_at):
     null_presentation_accepted = \
         pd.isnull(presentations.presentation_accepted)
     if null_presentation_accepted.any():
-        assert null_presentation_accepted.all()
+        if verbose:
+            print('at least one presentation was null')
+
         # TODO fix db w/ a script or just always check for old way of doing it?
-        all_blocks_accepted = pd.read_sql_query('SELECT accepted FROM ' +
-            "analysis_runs WHERE run_at = '{}'".format(analysis_run_at), conn)
-        assert len(all_blocks_accepted) == 1
-        all_blocks_accepted = all_blocks_accepted.iat[0,0]
-        assert not pd.isnull(all_blocks_accepted)
+
+        # TODO delete try/except
+        #try:
+        #assert null_presentation_accepted.all(), 'not all null'
+        #assert not pd.isnull(all_blocks_accepted),'all_blocks_accepted null'
+        '''
+        except AssertionError as e:
+            print(e)
+            import ipdb; ipdb.set_trace()
+        '''
+
         if all_blocks_accepted:
             accepted = [True] * n_blocks
         else:
             accepted = [False] * n_blocks
     else:
+        if verbose:
+            print('no presentations were null')
+
         # TODO make sure sorted by comparison #. groupby ensure that?
-        #accepted = presentations.groupby('comparison').apply(block_accepted)
         # TODO TODO agg working w/ block_accepted fn?
         # problem w/ apply is mainly that it didn't give back a named column
         # wasn't sure how to deal with it
-        accepted = presentations.groupby('comparison').agg(block_accepted
-            ).presentation_accepted
+        accepted = presentations.groupby('comparison'
+            ).agg(block_accepted).presentation_accepted
         accepted.name = 'comparison_accepted'
-        # TODO delete try/except
-        try:
-            assert len(accepted.shape) == 1, 'accepted was not a Series'
-        except AssertionError as e:
-            print(e)
-            import ipdb; ipdb.set_trace()
-        #
+        assert len(accepted.shape) == 1, 'accepted was not a Series'
 
-        # TODO delete
-        if len(accepted) > 0:
-            print('type(accepted):', type(accepted))
-            print('accepted.index:', accepted.index)
-            print('len(accepted) == {}'.format(len(accepted)))
-            import ipdb; ipdb.set_trace()
-        '''
-        print('type(accepted):', type(accepted))
-        print('accepted.index:', accepted.index)
-        import ipdb; ipdb.set_trace()
-        '''
-        #
+        if verbose:
+            print('accepted before filling missing values:', accepted)
+
+        if (((accepted == True).any() and all_blocks_accepted == False) or
+            ((accepted == False).any() and all_blocks_accepted)):
+            # TODO maybe just correct db in this case?
+            # (set analysis_run.accepted to null and keep presentation_accepted
+            # if inconsistent / fill them from analysis_run.accepted if missing)
+            raise ValueError('inconsistent accept labels')
+
+        if verbose:
+            print('all_blocks_accepted:', all_blocks_accepted)
+
+        if pd.notnull(all_blocks_accepted):
+            fill_value = all_blocks_accepted
+        else:
+            fill_value = False
+
+        # TODO TODO TODO are this case + all_blocks_accepted=False case in if
+        # above the only two instances where the block info is not uploaded (or
+        # should be, assuming no accept of non-uploaded experiment)
         for c in expected_comparisons:
             if c not in accepted.index:
-                accepted.loc[c] = False
+                accepted.loc[c] = fill_value
 
-        # TODO TODO TODO test this case again. it failed last time because
-        # accepted was a dataframe when i was expecting it to be a series
-        # TODO delete try / except
-        try:
-            accepted = accepted.to_list()
-        except AttributeError:
-            import ipdb; ipdb.set_trace()
-        #
+        accepted = accepted.to_list()
 
+    # TODO TODO TODO TODO also calculate and return uploaded_block_info
+    # based on whether a given block has (all) of it's presentations and
+    # responses entries (whether accepted or not)
     return accepted
 
 
@@ -1298,6 +1326,56 @@ def fit_exp_decay(signal, sampling_rate=None, times=None, numerical_scale=1.0):
 
     scale, tau, offset = popt
     return (scale / numerical_scale, tau, offset / numerical_scale), sigmas
+
+
+def latest_analysis():
+    # TODO sql based command to get analysis info for stuff that has its
+    # timestamp in segmentation_runs, to condense these calls to one?
+    seg_runs = pd.read_sql_query('SELECT run_at FROM segmentation_runs',
+        conn).run_at
+
+    analysis_runs = pd.read_sql('analysis_runs', conn)
+
+    print(seg_runs.shape)
+    seg_runs = seg_runs.merge(analysis_runs)
+    print(seg_runs.shape)
+
+    input_tifs = seg_runs.input_filename.unique()
+    for tif in input_tifs:
+        parent_id = parent_recording_id(tif)
+    import ipdb; ipdb.set_trace()
+
+    # TODO find all recordings that have subrecordings. for now, only use
+    # sub-recordings if they are any?
+    
+
+    # TODO at least for the sub-recording case, find latest analysis that refers
+    # to the input tiff from that sub-recording
+
+    # TODO for the non-subrecording case, could probably do the same(?), but
+    # otherwise might find latest analysis referencing recording_from of parent
+
+    return analysis_run_df
+
+def latest_analysis_presentations(analysis_run_df):
+    # TODO TODO TODO TODO when joining stuff from multiple sub-recordings into
+    # one analysis, will need to add first_block to comparison to get a new
+    # comparison that is indexed as it would be without the sub recordings
+    # not sure where best place to do this would be...
+    # TODO TODO TODO maybe just do a migration on the db to fix all comparisons
+    # to not have to be renumbered, and fix gui(+populate_db?) so they don't
+    # restart numbering across sub-recordings that come from same recording?
+    pass
+
+
+def latest_analysis_footprints(analysis_run_df):
+    pass
+
+
+def latest_analysis_traces(analysis_run_df):
+    # TODO TODO TODO copy comparison num resolving strategy from
+    # latest_analysis_presentations
+    pass
     
 
 response_stat_cols = [
