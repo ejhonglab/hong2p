@@ -37,6 +37,7 @@ allow_gsheet_to_restrict_blocks = True
 fail_on_missing_dir_to_attempt = True
 only_do_anything_for_analysis = True
 
+'''
 convert_h5 = False
 calc_timing_info = False
 update_timing_info = False
@@ -47,8 +48,8 @@ calc_timing_info = True
 # If timing info ("ti") already exists in .mat, should we recalculate it?
 # TODO if this is False, still check that ti_code_version is there
 update_timing_info = False
+convert_raw_to_tiffs = True
 motion_correct = True
-'''
 only_motion_correct_for_analysis = True
 
 '''
@@ -340,13 +341,33 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
             print(' done.')
 
-    # TODO loop over thorimage dirs and make tifs from each if they don't exist
-    # TODO TODO what all metadata is important in the tif? need to script imagej
-    # to get most reliable tifs? some python / matlab fn work?
-    '''
-    for thorimage_dir in glob.glob(join(full_fly_dir, '*/')):
-        thorimage_id = split(os.path.normpath(thorimage_dir))[-1]
-    '''
+    tiff_dir = join(full_fly_dir, 'tif_stacks')
+    if convert_raw_to_tiffs:
+        # TODO only do this for stuff we are going to actually motion correct?
+        if not exists(tiff_dir):
+            os.mkdir(tiff_dir)
+
+        for thorimage_dir in glob.glob(join(full_fly_dir, '*/')):
+            if not u.is_thorimage_dir(thorimage_dir):
+                continue
+
+            thorimage_id = split(os.path.normpath(thorimage_dir))[-1]
+            tiff_filename = join(tiff_dir, thorimage_id + '.tif')
+            if exists(tiff_filename):
+                continue
+
+            from_raw = u.read_movie(thorimage_dir)
+            print('Writing TIFF to {}... '.format(tiff_filename), end='',
+                flush=True)
+            u.write_tiff(tiff_filename, from_raw)
+            print('done.')
+
+        # TODO at least delete dir if empty (only if we made it?)
+        try:
+            os.rmdir(tiff_dir)
+        # This catches case where directory is not empty, without deleting.
+        except OSError:
+            pass
 
     # maybe avoid searching for thorimage dirs at all if there are no used 
     # rows for this (date,fly) combo, and only_motion_correct_for_analysis
@@ -357,8 +378,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     # corrected? (or just always keep them separately?)
     if motion_correct:
         # TODO maybe also look w/o underscore, if that's remy's convention
-        for input_tif_path in glob.glob(
-            join(full_fly_dir, 'tif_stacks', '*.tif')):
+        for input_tif_path in glob.glob(join(tiff_dir, '*.tif')):
 
             thorimage_dir = split(input_tif_path)[-1][:-4]
             if only_motion_correct_for_analysis:
@@ -426,10 +446,10 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
     # TODO maybe delete empty folders under analysis? (do in atexit handler)
 
-'''
+# TODO TODO why had i commented this? some reason it should not be this way?
 if not (upload_matlab_cnmf_output or process_time_averages):
     sys.exit()
-'''
+#
 
 # TODO delete all this stuff after saving full version info as appropriate
 '''

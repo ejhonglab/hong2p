@@ -4,7 +4,8 @@ our databases / movies / CNMF output.
 """
 
 import os
-from os.path import join, split, exists, sep
+from os import listdir
+from os.path import join, split, exists, sep, isdir
 import socket
 import pickle
 import atexit
@@ -623,9 +624,10 @@ def merge_recordings(df, *args, verbose=True):
         raise ValueError('incorrect number of arguments')
 
     print('merging with recordings table...', end='')
-
+    len_before = len(df)
     df = df.reset_index(drop=True)
 
+    # TODO explicitly make this a left merge? (want len(df) preserved)
     df = pd.merge(df, recordings,
                   left_on='recording_from', right_on='started_at')
 
@@ -635,7 +637,7 @@ def merge_recordings(df, *args, verbose=True):
     # will now break this in the recordings table
     # (multiple dirs -> one start time)
     df['thorimage_id'] = df.thorimage_path.apply(lambda x: split(x)[-1])
-
+    assert len_before == len(df), 'merging changed input df length'
     print(' done')
     return df
 
@@ -933,6 +935,56 @@ def list_segmentations(tif_path):
     return seg_runs.merge(analysis_runs)
 
 
+# TODO use this in other places that normalize to thorimage_ids
+def tiff_thorimage_id(tiff_filename):
+    # Behavior of os.path.split makes this work even if tiff_filename does not
+    # have any directories in it.
+    return '_'.join(split(tiff_filename)[1].split('_')[:-1])
+
+
+# warn if has SyncData in name but fails this?
+def is_thorsync_dir(d):
+    if not isdir(d):
+        return False
+    
+    files = {f for f in listdir(d)}
+
+    have_settings = False
+    have_h5 = False
+    for f in files:
+        # checking for substring
+        if 'ThorRealTimeDataSettings.xml' in f:
+            have_settings = True
+        if '.h5':
+            have_h5 = True
+
+    return have_h5 and have_settings
+
+
+def is_thorimage_dir(d):
+    if not isdir(d):
+        return False
+    
+    files = {f for f in listdir(d)}
+
+    have_xml = False
+    have_raw = False
+    # TODO support tif output case(s) as well
+    #have_processed_tiff = False
+    for f in files:
+        if f == 'Experiment.xml':
+            have_xml = True
+        elif f == 'Image_0001_0001.raw':
+            have_raw = True
+        #elif f == split(d)[-1] + '_ChanA.tif':
+        #    have_processed_tiff = True
+
+    if have_xml and have_raw:
+        return True
+    else:
+        return False
+
+
 # TODO still work w/ parens added around initial .+ ? i want to match the parent
 # id...
 shared_subrecording_regex = '(.+)_\db\d_from_(nr|rig)'
@@ -951,14 +1003,41 @@ def is_subrecording_tiff(tiff_filename):
         return False
 
 
+def subrecording_tiff_blocks(tiff_filename):
+    """Requires that is_subrecording_tiff(tiff_filename) would return True.
+    """
+    parts = tiff_filename.split('_')[-4].split('b')
+
+    first_block = int(parts[0]) - 1
+    last_block = int(parts[1]) - 1
+
+    return first_block, last_block
+
+
+def subrecording_tiff_blocks_df(series):
+    """
+    series.name must be a TIFF path
+    """
+    if not series.is_subrecording:
+        return None, None
+
+    tiff_filename = series.name
+    first_block, last_block = subrecording_tiff_blocks(tiff_filename)
+    return first_block, last_block
+    '''
+    return {
+        'first_block': first_block,
+        'last_block': last_block
+    }
+    '''
+
+
 def parent_recording_id(tiffname_or_thorimage_id):
-    """
-    """
-    last_part = split(tiffname_or_thorimage_id)
-    match = re.search(shared_subrecording_regex, tiffname_or_thorimage_id)
+    last_part = split(tiffname_or_thorimage_id)[1]
+    match = re.search(shared_subrecording_regex, last_part)
     if match is None:
         raise ValueError('not a subrecording')
-    import ipdb; ipdb.set_trace()
+    return match.group(1)
         
 
 def accepted_blocks(analysis_run_at, verbose=False):
@@ -1010,10 +1089,7 @@ def accepted_blocks(analysis_run_at, verbose=False):
     # and get rid of this hack
     #print(input_filename)
     if is_subrecording_tiff(input_filename):
-        parts = input_filename.split('_')[-4].split('b')
-
-        first_block = int(parts[0]) - 1
-        last_block = int(parts[1]) - 1
+        first_block, last_block = subrecording_tiff_blocks(input_filename)
 
         if verbose:
             print(input_filename, 'belonged to a sub-recording')
@@ -1267,11 +1343,23 @@ def read_movie(thorimage_dir):
     dtype = np.dtype('<u2')
 
     with open(imaging_file, 'rb') as f:
-        # TODO maybe check we actually get enough bytes for n_frames?
         data = np.fromfile(f, dtype=dtype)
+
+    n_frame_pixels = x * y
+    n_frames = len(data) // n_frame_pixels
+    assert len(data) % n_frame_pixels == 0, 'apparent incomplete frames'
 
     data = np.reshape(data, (n_frames, x, y))
     return data
+
+
+def write_tiff(tiff_filename, movie):
+    """Write a tiff loading the same as the TIFFs we create with ImageJ.
+    """
+    # TODO actually make sure any metadata we use is the same
+    # TODO maybe just always do test from test_readraw here?
+    # (or w/ flag to disable the check)
+    tifffile.imsave(tiff_filename, movie)
 
 
 def full_frame_avg_trace(movie):
@@ -1338,54 +1426,162 @@ def fit_exp_decay(signal, sampling_rate=None, times=None, numerical_scale=1.0):
     return (scale / numerical_scale, tau, offset / numerical_scale), sigmas
 
 
-def latest_analysis():
+def latest_analysis(verbose=False):
     # TODO sql based command to get analysis info for stuff that has its
     # timestamp in segmentation_runs, to condense these calls to one?
     seg_runs = pd.read_sql_query('SELECT run_at FROM segmentation_runs',
-        conn).run_at
-
+        conn)
     analysis_runs = pd.read_sql('analysis_runs', conn)
-
-    print(seg_runs.shape)
     seg_runs = seg_runs.merge(analysis_runs)
-    print(seg_runs.shape)
 
+    seg_runs.input_filename = seg_runs.input_filename.apply(lambda t:
+        t.split('mb_team/analysis_output/')[1])
+
+    # TODO TODO change all path handling to be relative to NAS_PREFIX.
+    # don't store absolute paths (or if i must, also store what prefix is?)
     input_tifs = seg_runs.input_filename.unique()
+    has_subrecordings = set()
+    key2tiff = dict()
+    # TODO decide whether i want this to be parent_id or thorimage_id
+    # maybe make a kwarg flag to this fn to switch between them
+    tiff2parent_id = dict()
+    tiff_is_subrecording = dict()
     for tif in input_tifs:
-        parent_id = parent_recording_id(tif)
-    import ipdb; ipdb.set_trace()
+        if verbose:
+            print(tif, end='')
 
-    # TODO find all recordings that have subrecordings. for now, only use
-    # sub-recordings if they are any?
-    
+        date_fly_keypart = '/'.join(tif.split('/')[:2])
+        thorimage_id = tiff_thorimage_id(tif)
+        key = '{}/{}'.format(date_fly_keypart, thorimage_id)
+        # Assuming this is 1:1 for now.
+        key2tiff[key] = tif
+        try:
+            parent_id = parent_recording_id(tif)
+            tiff_is_subrecording[tif] = True
+            parent_key = '{}/{}'.format(date_fly_keypart, parent_id)
+            has_subrecordings.add(parent_key)
+            tiff2parent_id[tif] = parent_id
 
-    # TODO at least for the sub-recording case, find latest analysis that refers
-    # to the input tiff from that sub-recording
+            if verbose:
+                print(' (sub-recording of {})'.format(parent_key))
 
-    # TODO for the non-subrecording case, could probably do the same(?), but
-    # otherwise might find latest analysis referencing recording_from of parent
+        # This is triggered if tif is not a sub-recording.
+        except ValueError:
+            tiff_is_subrecording[tif] = False
+            tiff2parent_id[tif] = thorimage_id
+            if verbose:
+                print('')
 
-    return analysis_run_df
+    nonoverlapping_input_tifs = set(t for k, t in key2tiff.items()
+                                 if k not in has_subrecordings)
+    # set(input_tifs) - nonoverlapping_input_tifs
 
+    # TODO if verbose, maybe also print stuff tossed for having subrecordings
+    # as well as # rows tossed for not being accepted / stuff w/o analysis /
+    # stuff w/o anything accepted
+
+    # TODO between this and the above, make sure to handle (ignore) stuff that
+    # doesn't have any analysis done.
+    seg_runs = seg_runs[seg_runs.input_filename.isin(nonoverlapping_input_tifs)]
+
+    # TODO TODO and if there are disjoint sets of accepted blocks, would ideally
+    # return something indicating which analysis to get which block from?  would
+    # effectively have to search per block/comparison, right?
+    # TODO would ideally find the latest analysis that has the maximal
+    # number of blocks accepted (per input file) (assuming just going to return
+    # one analysis version per tif, rather than potentially a different one for
+    # each block)
+    seg_runs['n_accepted_blocks'] = seg_runs.run_at.apply(lambda r:
+        sum(accepted_blocks(r)))
+    accepted_runs = seg_runs[seg_runs.n_accepted_blocks > 0]
+
+    latest_tif_analyses = accepted_runs.groupby('input_filename'
+        ).run_at.max().to_frame()
+    latest_tif_analyses['is_subrecording'] = \
+        latest_tif_analyses.index.map(tiff_is_subrecording)
+
+    subrec_blocks = latest_tif_analyses.apply(subrecording_tiff_blocks_df,
+        axis=1, result_type='expand')
+    latest_tif_analyses[['first_block','last_block']] = subrec_blocks
+
+    latest_tif_analyses['thorimage_id'] = \
+        latest_tif_analyses.index.map(tiff2parent_id)
+
+    # TODO what format would make the most sense for the output?
+    # which index? just trimmed input_filename? recording_from (+ block /
+    # comparison)? (fly, date, [thorimage_id? recording_from?] (+ block...)
+    # ?
+    return latest_tif_analyses
+
+
+def sql_timestamp_list(df):
+    """
+    df must have a column run_at, that is a pandas Timestamp type
+    """
+    timestamp_list = '({})'.format(', '.join(
+        ["'{}'".format(x) for x in df.run_at]
+    ))
+    return timestamp_list
+
+
+# TODO w/ this or a separate fn using this, print what we have formatted
+# roughly like in data_tree in gui, so that i can check it against the gui
 def latest_analysis_presentations(analysis_run_df):
-    # TODO TODO TODO TODO when joining stuff from multiple sub-recordings into
-    # one analysis, will need to add first_block to comparison to get a new
-    # comparison that is indexed as it would be without the sub recordings
-    # not sure where best place to do this would be...
-    # TODO TODO TODO maybe just do a migration on the db to fix all comparisons
+    # TODO maybe compare time of this to getting all and filtering locally
+    # TODO at least once, compare the results of this to filtering locally
+    # IS NOT DISTINCT FROM should also 
+    presentations = pd.read_sql_query('SELECT * FROM presentations WHERE ' +
+        '(presentation_accepted = TRUE OR presentation_accepted IS NULL) ' +
+        'AND analysis IN ' + sql_timestamp_list(analysis_run_df), conn)
+
+    # TODO TODO maybe just do a migration on the db to fix all comparisons
     # to not have to be renumbered, and fix gui(+populate_db?) so they don't
     # restart numbering across sub-recordings that come from same recording?
-    pass
+
+    # TODO TODO TODO test that this is behaving as expected
+    # - is there only one place where presentatinos.analysis == row.run_at?
+    #   assert that?
+    # - might the sample things ever get incremented twice?
+    for row in analysis_run_df[analysis_run_df.is_subrecording].itertuples():
+        run_presentations = (presentations.analysis == row.run_at)
+        presentations.loc[run_presentations, 'comparison'] = \
+            presentations[run_presentations].comparison + int(row.first_block)
+
+        # TODO check that these rows are also complete / valid
+
+    # TODO use those check fns on these presentations, to make sure they are
+    # full blocks and stuff
+
+    # TODO ultimately, i want all of these latest_* functions to return a
+    # dataframe without an analysis column (still return it, just in case it
+    # becomes necessary later?)
+    # (or at least i want to make sure that the other index columns can uniquely
+    # refer to something, s.t. adding analysis to a drop_duplicates call does
+    # not change the total # of returned de-duplicated rows)
+    # TODO which index cols again?
+
+    return presentations
 
 
 def latest_analysis_footprints(analysis_run_df):
-    pass
+    footprints = pd.read_sql_query(
+        'SELECT * FROM cells WHERE segmentation_run IN ' +
+        sql_timestamp_list(analysis_run_df), conn)
+    return footprints
 
 
-def latest_analysis_traces(analysis_run_df):
-    # TODO TODO TODO copy comparison num resolving strategy from
-    # latest_analysis_presentations
-    pass
+def latest_analysis_traces(df):
+    """
+    Input DataFrame must have a presentation_id column matching that in the db.
+    This way, presentations already filtered to be the latest just get their
+    responses assigned too them.
+    """
+    responses = pd.read_sql_query(
+        'SELECT * FROM responses WHERE presentation_id IN ' +
+        '({})'.format(','.join([str(x) for x in df.presentation_id])), conn)
+    # responses should by larger by a factor of # cells within each analysis run
+    assert len(df) == len(responses.presentation_id.unique())
+    return responses
     
 
 response_stat_cols = [
@@ -1522,8 +1718,14 @@ def n_expected_repeats(df):
     return max_repeat + 1
 
 
+# TODO TODO could now probably switch to using block metadata in recording table
+# (n_repeats should be in there)
 def missing_repeats(df, n_repeats=None):
-    # TODO n_repeats defalut to 3 or None?
+    """
+    Requires at least recording_from, comparison, name1, name2, and repeat_num
+    columns. Can also take prep_date, fly_num, thorimage_id.
+    """
+    # TODO n_repeats default to 3 or None?
     if n_repeats is None:
         # TODO or should i require input is merged w/ recordings for stimuli
         # data file paths and then just load for n_repeats and stuff?
@@ -1583,9 +1785,6 @@ def missing_repeats(df, n_repeats=None):
 
     # TODO should expected # blocks be passed in?
 
-    # TODO TODO TODO are comparisons numbered correctly when i break the full
-    # panel across recordings within a fly flies??????
-    # (shouldn't they not start at 0 on the next recording?)
     return missing_repeats_df
 
 
@@ -1593,6 +1792,9 @@ def have_all_repeats(df, n_repeats=None):
     """
     Returns True if a recording has all blocks gsheet says it has, w/ full
     number of repeats for each. False otherwise.
+
+    Requires at least recording_from, comparison, name1, name2, and repeat_num
+    columns. Can also take prep_date, fly_num, thorimage_id.
     """
     missing_repeats_df = missing_repeats(df, n_repeats=n_repeats)
     if len(missing_repeats_df) == 0:
@@ -1601,9 +1803,11 @@ def have_all_repeats(df, n_repeats=None):
         return False
 
 
-# TODO TODO TODO separately, also check correct # blocks / comparisons per fly
-# (including that comparisons from diff recordings don't overwrite each other)
 def missing_odor_pairs(df):
+    """
+    Requires at least recording_from, comparison, name1, name2 columns.
+    Can also take prep_date, fly_num, thorimage_id.
+    """
     # TODO check that for each comparison, both A, B, and A+B are there
     # (3 combos of name1, name2, or whichever other odor ids)
     comp_cols = []
@@ -1660,6 +1864,11 @@ def missing_odor_pairs(df):
 
 
 def have_full_comparisons(df):
+    """
+    Requires at least recording_from, comparison, name1, name2 columns.
+    Can also take prep_date, fly_num, thorimage_id.
+    """
+    # TODO docstring
     if len(missing_odor_pairs(df)) == 0:
         return True
     else:
@@ -1667,6 +1876,11 @@ def have_full_comparisons(df):
 
 
 def skipped_comparison_nums(df):
+    # TODO doc
+    """
+    Requires at least recording_from and comparison columns.
+    Can also take prep_date, fly_num, and thorimage_id.
+    """
     rec_cols = []
     opt_rec_cols = [
         'prep_date',
@@ -1710,6 +1924,11 @@ def skipped_comparison_nums(df):
 
 
 def no_skipped_comparisons(df):
+    # TODO doc
+    """
+    Requires at least recording_from and comparison columns.
+    Can also take prep_date, fly_num, and thorimage_id.
+    """
     if len(skipped_comparison_nums(df)) == 0:
         return True
     else:
@@ -1878,7 +2097,7 @@ def motion_correct_to_tiffs(thorimage_dir, output_dir):
 
         # save .tif
         M = MC_rigid.M
-        M = uint16(M)  
+        M = uint16(M) 
         tiffoptions.overwrite = true
 
         print(['saving tiff to ' rig_tif])
@@ -2112,7 +2331,7 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
 
 # TODO maybe one fn that puts in matrix format and another in table
 # (since matrix may be sparse...)
-def plot_pair_n(df, title, *args):
+def plot_pair_n(df, *args):
     """Plots a matrix of odor1 X odor2 w/ counts of flies as entries.
 
     Args:
@@ -2130,8 +2349,6 @@ def plot_pair_n(df, title, *args):
         - reason (maybe make this optional?)
         The odor pairs experiments are supposed to collect data for.
     """
-    # TODO get rid of title arg if i'm just gonna filter by accepted anyway
-    # TODO maybe do w/o this...
     import imgkit
 
     odor_panel = None
@@ -2148,26 +2365,11 @@ def plot_pair_n(df, title, *args):
     df = df.drop(
         index=df[(df.name1 == 'paraffin') | (df.name2 == 'paraffin')].index)
 
-    '''
-    # Since recording_from PK means thorimage_ids can clobber each other
-    # thorimage_id may not actually represent which directory the data came from
-    # (although only in the case where a recording has been split)
-    replicates = df[[
-        'prep_date',
-        'fly_num',
-        'thorimage_id',
-        'comparison',
-        'name1',
-        'name2']].drop_duplicates()
-    '''
+    # TODO possible to do at least a partial check w/ n_accepted_blocks sum?
+    # (would have to do outside of this fn. presentations here doesn't have it.
+    # whatever latest_analysis returns might.)
 
-    # TODO TODO TODO switch to using presentations.presentation_accepted
-    raise NotImplementedError
-    accepted_runs = pd.read_sql_query('SELECT run_at, accepted FROM ' +
-        'analysis_runs WHERE accepted', conn)
-    accepted_presentations = df[df.analysis.isin(accepted_runs.run_at)]
-
-    replicates = accepted_presentations[
+    replicates = df[
         ['prep_date','fly_num','recording_from','name1','name2']
     ].drop_duplicates()
 
@@ -2243,8 +2445,7 @@ def plot_pair_n(df, title, *args):
     # at least figure out how to get the cmap to actually work
     # need some css or something?
     html = full_pair_n.style.background_gradient(cmap=cm).render()
-    imgkit.from_string(html, '{}.png'.format(title))
-    #import ipdb; ipdb.set_trace()
+    imgkit.from_string(html, 'natural_odors_pair_n.png')
 
 
 def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
