@@ -72,9 +72,30 @@ df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
 
 rel_to_cnmf_mat = 'cnmf'
 
+# TODO probably just move this info into output of stimuli metadata generator
+# (or maybe just load either-or as-needed)
+# TODO rename to indicate it's for pair experiments
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
-# TODO maybe assert no duplicate names first
-natural_odors_concentrations.set_index('name', inplace=True)
+natural_odors_concentrations.set_index('name', verify_integrity=True,
+    inplace=True)
+
+def split_odor_w_conc(row_or_str):
+    try:
+        odor_w_conc = row_or_str.odor_w_conc
+    except AttributeError:
+        odor_w_conc = row_or_str
+    parts = odor_w_conc.split('@')
+    if len(parts) == 1:
+        log10_conc = 0.0
+    else:
+        log10_conc = float(parts[1])
+    ret = {'name': parts[0], 'log10_conc_vv': log10_conc}
+    try:
+        ret.update(row_or_str.to_dict())
+    # TODO correct except
+    except:
+        pass
+    return pd.Series(ret)
 
 
 def md5(fname):
@@ -351,8 +372,8 @@ class Segmentation(QWidget):
         self.nav_bar.setFixedHeight(80)
         self.display_layout.addWidget(self.nav_bar)
 
-        # TODO TODO TODO maybe make display_widget tabbed, w/ one tab as it
-        # currently is, and the other to control postpressing params (like
+        # TODO TODO maybe make display_widget tabbed, w/ one tab as it
+        # currently is, and the other to control postprocessing params (like
         # response window length for correlations, trace extraction, etc) and
         # update the display on the former tab. should switch back to other tab
         # when pressing update.
@@ -1423,13 +1444,9 @@ class Segmentation(QWidget):
 
         # TODO assert here that all frames add up / approx
 
+        # TODO TODO TODO modify for supermixture (+ more general) case
         # TODO TODO either warn or err if len(start_frames) is !=
-        # len(odor_pair_list)
-
-        odor_id_pairs = [(o1,o2) for o1,o2 in
-            zip(self.odor1_ids, self.odor2_ids)]
-        print('odor_id_pairs:', odor_id_pairs)
-
+        # len(odor_list)
         self.start_frames = start_frames
         self.stop_frames = stop_frames
 
@@ -1439,7 +1456,7 @@ class Segmentation(QWidget):
         for i in range(len(start_frames)):
             if i % self.presentations_per_block == 0:
                 comparison_num += 1
-                repeat_nums = {id_pair: 0 for id_pair in odor_id_pairs}
+                repeat_nums = {id_group: 0 for id_group in self.odor_ids}
 
             # TODO TODO also save to csv/flat binary/hdf5 per (date, fly,
             # thorimage) (probably at most, only when actually accepted.
@@ -1467,10 +1484,14 @@ class Segmentation(QWidget):
                 self.frame_times[start_frame:stop_frame] - onset_time
             assert len(presentation_frametimes) > 1
 
-            odor_pair = odor_id_pairs[i]
-            odor1, odor2 = odor_pair
-            repeat_num = repeat_nums[odor_pair]
-            repeat_nums[odor_pair] = repeat_num + 1
+            curr_odor_ids = self.odor_ids[i]
+            # TODO update if odor ids are ever actually allowed to be arbitrary
+            # len list (and not just forced to be length-2 as they are now, b/c
+            # of the db mixture table design)
+            odor1, odor2 = curr_odor_ids
+            #
+            repeat_num = repeat_nums[curr_odor_ids]
+            repeat_nums[curr_odor_ids] = repeat_num + 1
 
             offset_frame = self.odor_offset_frames[i]
             print('offset_frame:', offset_frame)
@@ -1483,7 +1504,7 @@ class Segmentation(QWidget):
             # TODO share more of this w/ dataframe creation below, unless that
             # table is changed to just reference presentation table
             presentation = pd.DataFrame({
-                # TODO fix hack
+                # TODO fix hack (what was this for again? it really a problem?)
                 'temp_presentation_id': [i],
                 'prep_date': [self.date],
                 'fly_num': self.fly_num,
@@ -2788,11 +2809,7 @@ class Segmentation(QWidget):
         try:
             ti = u.load_mat_timing_information(mat)
         except matlab.engine.MatlabExecutionError as e:
-            # TODO inspect error somehow to see if it's a memory error?
-            # -> continue if so
-            # TODO print to stderr
-            print(e)
-            return
+            raise
 
         recordings = df.loc[(df.date == date) &
                             (df.fly_num == fly_num) &
@@ -2815,9 +2832,26 @@ class Segmentation(QWidget):
 
         n_repeats = int(data['n_repeats'])
 
-        # The 3 is because 3 odors are compared in each repeat for the
-        # natural_odors project.
-        presentations_per_repeat = 3
+        # TODO delete this hack (which is currently just using new pickle
+        # format as a proxy for the experiment being a supermixture experiment)
+        if 'odor_lists' not in data:
+            # The 3 is because 3 odors are compared in each repeat for the
+            # natural_odors project.
+            presentations_per_repeat = 3
+            odor_list = data['odor_pair_list']
+            pair_case = True
+        else:
+            # TODO TODO TODO beware "block" def in arduino / get_stiminfo code
+            # not matching def in randomizer / stimfile code
+            # (scopePin pulses vs. randomization units, depending on settings)
+            presentations_per_repeat = 6
+            odor_list = data['odor_lists']
+            pair_case = False
+
+            # Hardcode to break up into more blocks, to align defs of blocks.
+            # TODO (maybe just for experiments on 2019-07-25 ?) or change block
+            # handling in here? make more flexible?
+            n_repeats = 1
 
         presentations_per_block = n_repeats * presentations_per_repeat
 
@@ -2828,7 +2862,7 @@ class Segmentation(QWidget):
 
         if pd.isnull(recording['last_block']):
             n_full_panel_blocks = \
-                int(len(data['odor_pair_list']) / presentations_per_block)
+                int(len(odor_list) / presentations_per_block)
             last_block = n_full_panel_blocks - 1
         else:
             last_block = int(recording['last_block']) - 1
@@ -2866,7 +2900,7 @@ class Segmentation(QWidget):
         # TODO maybe defer this to accepting?
         # TODO rename to singular?
         # TODO just completely delete this fn at this point?
-        # TODO TODO TODO also replace other cases that might need to be
+        # TODO TODO also replace other cases that might need to be
         # updated w/ pg_upsert based solution
         ####u.to_sql_with_duplicates(self.recordings, 'recordings')
         self.recordings.set_index('started_at').to_sql('recordings', u.conn,
@@ -2875,53 +2909,87 @@ class Segmentation(QWidget):
         db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
             "started_at = '{}'".format(pd.Timestamp(started_at)), u.conn)
         db_recording = db_recording[self.recordings.columns]
-
         assert self.recordings.equals(db_recording)
-
 
         # TODO maybe use subset here too, to be consistent w/ which mixtures get
         # entered...
-        odors = pd.DataFrame({
-            'name': data['odors'],
-            'log10_conc_vv': [0 if x == 'paraffin' else
-                natural_odors_concentrations.at[x,
-                'log10_vial_volume_fraction'] for x in data['odors']]
-        })
+        if pair_case:
+            odors = pd.DataFrame({
+                'name': data['odors'],
+                'log10_conc_vv': [0 if x == 'paraffin' else
+                    natural_odors_concentrations.at[x,
+                    'log10_vial_volume_fraction'] for x in data['odors']]
+            })
+        else:
+            # TODO fix db to represent arbitrary mixtures more generally,
+            # so this hack isn't necessary
+            odors = pd.DataFrame([split_odor_w_conc(x) for x in (data['odors'] +
+                ['no_second_odor'])])
         u.to_sql_with_duplicates(odors, 'odors')
 
         # TODO make unique id before insertion? some way that wouldn't require
         # the IDs, but would create similar tables?
 
         self.db_odors = pd.read_sql('odors', u.conn)
-        # TODO TODO in general, the name alone won't be unique, so use another
-        # strategy
-        self.db_odors.set_index('name', inplace=True)
+        self.db_odors.set_index(['name', 'log10_conc_vv'],
+            verify_integrity=True, inplace=True)
 
         first_presentation = first_block * presentations_per_block
         last_presentation = (last_block + 1) * presentations_per_block - 1
 
-        odor_pair_list = \
-            data['odor_pair_list'][first_presentation:(last_presentation + 1)]
-
-        assert (len(odor_pair_list) %
-            (presentations_per_repeat * n_repeats) == 0)
+        odor_list = odor_list[first_presentation:(last_presentation + 1)]
+        assert (len(odor_list) % (presentations_per_repeat * n_repeats) == 0)
 
         # TODO invert to check
         # TODO is this sql table worth anything if both keys actually need to be
         # referenced later anyway?
 
+        # TODO TODO TODO modify to work w/ any output of cutpaste generator
+        # (arbitrary len lists in odor_lists) (see cutpaste code for similar
+        # problem?)
         # TODO only add as many as there were blocks from thorsync timing info?
-        odor1_ids = [self.db_odors.at[o1,'odor_id'] for o1, _ in odor_pair_list]
-        odor2_ids = [self.db_odors.at[o2,'odor_id'] for _, o2 in odor_pair_list]
+        if pair_case:
+            # TODO this rounding to 5 decimal places always work?
+            o2c = odors.set_index('name', verify_integrity=True
+                ).log10_conc_vv.round(decimals=5)
 
-        # TODO TODO make unique first. only need order for filling in the values
-        # in responses.
-        mixtures = pd.DataFrame({
-            'odor1': odor1_ids,
-            'odor2': odor2_ids
-        })
-        # TODO maybe defer this to accepting...
-        u.to_sql_with_duplicates(mixtures, 'mixtures')
+            odor1_ids = [self.db_odors.at[(o1, o2c[o1]), 'odor_id']
+                for o1, _ in odor_list]
+            odor2_ids = [self.db_odors.at[(o2, o2c[o2]), 'odor_id']
+                for _, o2 in odor_list]
+
+            # TODO make unique first. only need order for filling in the
+            # values in responses. (?)
+            # TODO wait, how is this associated w/ anything else in this run?
+            # is this table even used?
+            mixtures = pd.DataFrame({
+                'odor1': odor1_ids,
+                'odor2': odor2_ids
+            })
+            # TODO maybe defer this to accepting...
+            u.to_sql_with_duplicates(mixtures, 'mixtures')
+
+            # TODO rename to indicate it's for each presentation / stimulus /
+            # trial?
+            odor_ids = list(zip(odor1_ids, odor2_ids))
+        else:
+            #odor_ids = [(self.db_odors.at[tuple(split_odor_w_conc(o)),
+            #    'odor_id'],) for o in odor_list]
+            odor1_ids = [self.db_odors.at[tuple(split_odor_w_conc(o)),
+                'odor_id'] for o in odor_list]
+
+            # TODO fix db to represent arbitrary mixtures more generally,
+            # so this hack isn't necessary
+            no_second_odor_id = self.db_odors.at[
+                ('no_second_odor', 0.0), 'odor_id']
+            odor2_ids = [no_second_odor_id] * len(odor1_ids)
+
+            mixtures = pd.DataFrame({
+                'odor1': odor1_ids,
+                'odor2': odor2_ids
+            })
+            u.to_sql_with_duplicates(mixtures, 'mixtures')
+            odor_ids = list(zip(odor1_ids, odor2_ids))
 
         frame_times = np.array(ti['frame_times']).flatten()
 
@@ -2942,7 +3010,7 @@ class Segmentation(QWidget):
         n_blocks_from_gsheet = last_block - first_block + 1
         n_blocks_from_thorsync = len(block_first_frames)
 
-        assert (len(odor_pair_list) == (last_block - first_block + 1) *
+        assert (len(odor_list) == (last_block - first_block + 1) *
             presentations_per_block)
 
         n_presentations = n_blocks_from_gsheet * presentations_per_block
@@ -2969,8 +3037,15 @@ class Segmentation(QWidget):
                 raise ValueError(err_msg.format('<') + fail_msg)
 
         # TODO maybe factor this printing stuff out?
-        print(('{} comparisons ({{A, B, A+B}} in random order x {} repeats)')
-            .format(n_blocks_from_gsheet, n_repeats))
+        if pair_case:
+            print(('{} comparisons ({{A, B, A+B}} in random order x ' +
+                '{} repeats)') .format(n_blocks_from_gsheet, n_repeats))
+        else:
+            mix_names = {x for x in odor_list if '@' not in x}
+            assert len(mix_names) == 1
+            mix_name = mix_names.pop()
+            print('{} randomized blocks of "{}" and its components'.format(
+                n_blocks_from_gsheet, mix_name))
 
         # TODO maybe print this in tabular form?
         # TODO TODO TODO use abbreviations (defined in one place for all hong
@@ -2981,11 +3056,20 @@ class Segmentation(QWidget):
             cline = '{}: '.format(i)
 
             odor_strings = []
-            for o in odor_pair_list[p_start:p_end]:
-                if o[1] == 'paraffin':
-                    odor_string = o[0]
+            for o in odor_list[p_start:p_end]:
+                # TODO maybe always have odor_list hold str repr?
+                # or unify str repr generation -> don't handle use odor_lists
+                # for str representation in supermixture case?
+                # would also be a good time to unify name + *concentration*
+                # handling
+                if pair_case:
+                    if o[1] == 'paraffin':
+                        odor_string = o[0]
+                    else:
+                        odor_string = ' + '.join(o)
                 else:
-                    odor_string = ' + '.join(o)
+                    odor_string = str(o)
+
                 odor_strings.append(odor_string)
 
             print(cline + ', '.join(odor_strings))
@@ -3072,7 +3156,7 @@ class Segmentation(QWidget):
         # TODO check odor_onset / offset frames are all w/in bounds
         # of block frames?
 
-        assert len(self.odor_onset_frames) == len(odor_pair_list)
+        assert len(self.odor_onset_frames) == len(odor_list)
 
         last_frame = block_last_frames[-1]
 
@@ -3113,8 +3197,7 @@ class Segmentation(QWidget):
         self.n_blocks = n_blocks_from_gsheet
         self.presentations_per_repeat = presentations_per_repeat
         self.presentations_per_block = presentations_per_block 
-        self.odor1_ids = odor1_ids
-        self.odor2_ids = odor2_ids
+        self.odor_ids = odor_ids
         self.frame_times = frame_times
         self.block_first_frames = block_first_frames
         self.block_last_frames = block_last_frames

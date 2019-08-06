@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS flies (
 CREATE TABLE IF NOT EXISTS odors (
     /* TODO maybe use CAS or some other ID instead? */
     name text NOT NULL,
+    /* TODO could assert this is non-positive */
     log10_conc_vv real NOT NULL,
 
     odor_id smallserial UNIQUE NOT NULL,
@@ -61,6 +62,10 @@ CREATE TABLE IF NOT EXISTS mixtures (
    over all odors of recently inserted/generated mixture, and then enforce
    uniqueness on that hash? more SQL / postgres idiomatic way to accomplish
    this?*/
+
+/* TODO see:
+https://dba.stackexchange.com/questions/235291/unique-sets-of-ids-from-table
+for a possible solution */
 
 /* TODO fix implementation and use this rather than above mixture table
 CREATE TABLE IF NOT EXISTS mixtures (

@@ -48,7 +48,11 @@ calc_timing_info = True
 # If timing info ("ti") already exists in .mat, should we recalculate it?
 # TODO if this is False, still check that ti_code_version is there
 update_timing_info = False
-convert_raw_to_tiffs = True
+# This currently doesn't work. TIFF dimensions are the same, as read w/
+# tifffile, but even changing things so the ImageJ metadata is pretty close,
+# the MATLAB readers seem to be different enough s.t. the motion correction
+# produces garbage output.
+convert_raw_to_tiffs = False
 motion_correct = True
 only_motion_correct_for_analysis = True
 
@@ -272,6 +276,8 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                 if row['thorimage_dir'] != test_recording[2]:
                     continue
             #
+            if u.is_subrecording(row['thorimage_dir']):
+                continue
 
             thorimage_dir = join(full_fly_dir, row['thorimage_dir'])
             if not os.path.isdir(thorimage_dir):
@@ -323,7 +329,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                     row['thorsync_dir'], analysis_fly_dir, date_dir, fly_num,
                     update_ti, nargout=1)
 
-                if updated_ti:
+                if exists(matfile) and updated_ti:
                     evil.workspace['ti_code_version'] = curr_ti_code_version 
                     evil.save(matfile, 'ti_code_version', '-append', nargout=0)
 
@@ -344,6 +350,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     tiff_dir = join(full_fly_dir, 'tif_stacks')
     if convert_raw_to_tiffs:
         # TODO only do this for stuff we are going to actually motion correct?
+        # or at least respect only_do_anything_for_analysis...
         if not exists(tiff_dir):
             os.mkdir(tiff_dir)
 
