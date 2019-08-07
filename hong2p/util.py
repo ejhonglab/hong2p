@@ -45,6 +45,8 @@ recording_cols = [
     'fly_num',
     'thorimage_id'
 ]
+# TODO delete / generalize to more than just name1/name2 case (or hack bolted on
+# top of that)? (want to support more than pair experiments)
 # TODO might need to add analysis here (although if i'm using it before upload,
 # it should always be most recent anyway...)
 trial_only_cols = [
@@ -2192,7 +2194,7 @@ def format_mixture(*args):
 
     if n1 == 'paraffin':
         title = format_odor_conc(n2, log10_c2)
-    elif n2 == 'paraffin':
+    elif n2 == 'paraffin' or n2 == 'no_second_odor':
         title = format_odor_conc(n1, log10_c1)
     else:
         title = '{} + {}'.format(
@@ -2203,6 +2205,7 @@ def format_mixture(*args):
     return title
 
 
+# TODO rename to be inclusive of cases other than pairs
 def pair_ordering(comparison_df):
     """Takes a df w/ name1 & name2 to a dict of their tuples to order int.
     """
@@ -2210,25 +2213,47 @@ def pair_ordering(comparison_df):
     pairs = [(x.name1, x.name2) for x in
         comparison_df[['name1','name2']].drop_duplicates().itertuples()]
 
-    has_paraffin = [p for p in pairs if 'paraffin' in p]
-    no_pfo = [p for p in pairs if 'paraffin' not in p]
-
-    if len(no_pfo) < 1:
-        raise ValueError('All pairs for this comparison had paraffin.' +
-            ' Analysis error? Incomplete recording?')
-
-    assert len(no_pfo) == 1
-    last = no_pfo[0]
-
     # Will define the order in which odor pairs will appear, left-to-right,
     # in subplots.
     ordering = dict()
-    ordering[last] = 2
 
-    for i, p in enumerate(sorted(has_paraffin,
-        key=lambda x: x[0] if x[1] == 'paraffin' else x[1])):
+    has_paraffin = [p for p in pairs if 'paraffin' in p]
+    if len(has_paraffin) == 0:
+        assert {x[1] for x in pairs} == {'no_second_odor'}
+        odors = [p[0] for p in pairs]
 
-        ordering[p] = i
+        # TODO TODO also support case where there isn't something we want to
+        # stick at the end like this, for Matt's case
+        last = None
+        for o in odors:
+            lo = o.lower()
+            if 'approx' in lo or 'mix' in lo:
+                if last is None:
+                    last = o
+                else:
+                    raise ValueError('multiple mixtures in odors to order')
+        ordering[(last, 'no_second_odor')] = len(odors) - 1
+        
+        i = 0
+        for o in sorted(odors):
+            if o == last:
+                continue
+            ordering[(o, 'no_second_odor')] = i
+            i += 1
+    else:
+        no_pfo = [p for p in pairs if 'paraffin' not in p]
+        if len(no_pfo) < 1:
+            raise ValueError('All pairs for this comparison had paraffin.' +
+                ' Analysis error? Incomplete recording?')
+
+        assert len(no_pfo) == 1
+        last = no_pfo[0]
+        ordering[last] = 2
+
+        for i, p in enumerate(sorted(has_paraffin,
+            key=lambda x: x[0] if x[1] == 'paraffin' else x[1])):
+
+            ordering[p] = i
 
     return ordering
 
@@ -2362,6 +2387,7 @@ def plot_pair_n(df, *args):
     # TODO borrow more of this / call this in part of kc_analysis that made that
     # table w/ these counts for repeats?
 
+    # TODO also handle no_second_odor
     df = df.drop(
         index=df[(df.name1 == 'paraffin') | (df.name2 == 'paraffin')].index)
 
@@ -2546,7 +2572,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     # TODO could also just could # trials w/ drop_duplicates, for more
     # generality
     n_repeats = n_expected_repeats(df)
-    n_trials = n_repeats * 3
+    n_trials = n_repeats * len(df[['name1','name2']].drop_duplicates())
 
     if gridspec is None:
         # This seems to hang... not sure if it's usable w/ some changes.
@@ -2852,6 +2878,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 ymax = None
 
             ax = axs[i,j]
+
             # So that events that get the axes can translate to cell /
             # trial information.
             ax.cell_id = cell_id

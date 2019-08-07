@@ -1501,6 +1501,11 @@ class Segmentation(QWidget):
             # given to two presentations. check they stay w/in block boundaries.
             # (they don't right now. fix!)
 
+            # TODO delete if there is an earlier check. should fail earlier
+            # anyway.
+            if not self.pair_case:
+                assert repeat_num == 0
+
             # TODO share more of this w/ dataframe creation below, unless that
             # table is changed to just reference presentation table
             presentation = pd.DataFrame({
@@ -1510,10 +1515,13 @@ class Segmentation(QWidget):
                 'fly_num': self.fly_num,
                 'recording_from': self.started_at,
                 'analysis': self.run_at,
-                'comparison': comparison_num,
+                # TODO get rid of this hack after fixing earlier association of
+                # blocks / repeats (or fixing block structure for future
+                # recordings)
+                'comparison': comparison_num if self.pair_case else 0,
                 'odor1': odor1,
                 'odor2': odor2,
-                'repeat_num': repeat_num,
+                'repeat_num': repeat_num if self.pair_case else comparison_num,
                 'odor_onset_frame': direct_onset_frame,
                 'odor_offset_frame': offset_frame,
                 'from_onset': [[float(x) for x in presentation_frametimes]],
@@ -1647,32 +1655,8 @@ class Segmentation(QWidget):
 
         w_inches_footprint_axes = 3
         h_inches_per_footprint_ax = 3
-        w_inches_per_corr = 3
-        h_inches_corrs = 2 * w_inches_per_corr
-        w_inches_per_traceplot = 8
-        h_inches_traceplots = 10
-        
-        w_inches_corr = w_inches_per_corr * self.n_blocks
         h_inches_footprint_axes = h_inches_per_footprint_ax * n_footprint_axes
-        w_inches_traceplots = w_inches_per_traceplot * self.n_blocks
-        # TODO could set this based on whether i want 1 / both orders
-        #h_inches_per_traceplot = 5
-        #h_inches_traceplots = h_inches_per_traceplot * 
 
-        widths = [w_inches_footprint_axes]
-        heights = [h_inches_footprint_axes]
-        if plot_correlations:
-            widths.append(w_inches_corr)
-            heights.append(h_inches_corrs)
-
-        if plot_traces:
-            widths.append(w_inches_traceplots)
-            heights.append(h_inches_traceplots)
-
-        fig_w_inches = max(widths)
-        fig_h_inches = sum(heights)
-
-        self.set_fig_size(fig_w_inches, fig_h_inches)
         # TODO maybe there isn't always too much space between this and first
         # thing, but there is in some cases. avoid if possible.
         # TODO TODO fix suptitle so it plays nicely w/ tight_layout
@@ -1685,6 +1669,7 @@ class Segmentation(QWidget):
             corr_rows = 2
         else:
             corr_rows = 0
+
         if plot_traces:
             top_components = True
             # will probably be more meaningful once i can restrict to responders
@@ -1724,43 +1709,6 @@ class Segmentation(QWidget):
 
             axs.append(ax)
         contour_axes = np.array(axs)
-
-        if plot_correlations:
-            # (end slice is not included, as always, so it's same size as above)
-            corr_slice = gs[2:4, :]
-            # 2 rows: one for correlation matrices ordered as in experiment,
-            # and the other for matrices ordered by odor
-            corr_gs = corr_slice.subgridspec(2, self.n_blocks,
-                hspace=0.4, wspace=0.1)
-
-            axs = []
-            for i in range(corr_gs._nrows):
-                axs.append([])
-                for j in range(corr_gs._ncols):
-                    # TODO maybe still do this? anyway way to indicate the
-                    # matrix intensity scale should be shared (but that's not x
-                    # or y, right?)?
-                    '''
-                    if ax0 is None:
-                        ax = fig.add_subplot(corr_gs[i])
-                    else:
-                        ax = fig.add_subplot(corr_gs[i], sharex=ax0, sharey=ax0)
-                    '''
-                    ax = self.fig.add_subplot(corr_gs[i,j])
-                    axs[-1].append(ax)
-            corr_axes = np.array(axs)
-
-        if plot_traces:
-            # TODO maybe stack each block vertically here, and then make total
-            # rows in gs depend on # of blocks??? (maybe put corrs to the side?)
-            # TODO might make sense to have one grid unit per set of two
-            # subplots, so space for shared title above the two is separate from
-            # space between the two (e.g. the "Top components" thing)
-            all_blocks_trace_gs = gs[4:-1, :].subgridspec(trace_rows,
-                self.n_blocks, hspace=0.3, wspace=0.15)
-
-        if plot_odor_abbreviation_key:
-            abbrev_key_ax = self.fig.add_subplot(gs[-1, :])
 
         for i in range(n_footprint_axes):
             contour_ax = contour_axes[i]
@@ -1806,17 +1754,89 @@ class Segmentation(QWidget):
         # (move later, don't compute traces if not needed for plots / accept)
         self.get_recording_dfs()
 
+        # TODO TODO TODO probably just fix self.n_blocks earlier
+        # in supermixture case
+        if self.pair_case:
+            n_blocks = self.n_blocks
+            presentations_per_block = self.presentations_per_block
+        else:
+            presentations_df = pd.concat(self.presentation_dfs,
+                ignore_index=True)
+            n_blocks = presentations_df.comparison.max() + 1
+            n_repeats = u.n_expected_repeats(presentations_df)
+            n_stim = len(presentations_df[['odor1','odor2']].drop_duplicates())
+            presentations_per_block = n_stim * n_repeats
+
+        w_inches_per_corr = 3
+        h_inches_corrs = 2 * w_inches_per_corr
+        w_inches_per_traceplot = 8
+        h_inches_traceplots = 10
+        w_inches_corr = w_inches_per_corr * n_blocks
+        w_inches_traceplots = w_inches_per_traceplot * n_blocks
+
+        # TODO could set this based on whether i want 1 / both orders
+        #h_inches_per_traceplot = 5
+        #h_inches_traceplots = h_inches_per_traceplot * 
+
+        widths = [w_inches_footprint_axes]
+        heights = [h_inches_footprint_axes]
+        # TODO can you change fig size after plotting?
+        # (right now, calling after footprint stuff)
+        if plot_correlations:
+            widths.append(w_inches_corr)
+            heights.append(h_inches_corrs)
+
+        if plot_traces:
+            widths.append(w_inches_traceplots)
+            heights.append(h_inches_traceplots)
+
+        fig_w_inches = max(widths)
+        fig_h_inches = sum(heights)
+
+        self.set_fig_size(fig_w_inches, fig_h_inches)
+
+        if plot_correlations:
+            # (end slice is not included, as always, so it's same size as above)
+            corr_slice = gs[2:4, :]
+            # 2 rows: one for correlation matrices ordered as in experiment,
+            # and the other for matrices ordered by odor
+            corr_gs = corr_slice.subgridspec(2, n_blocks,
+                hspace=0.4, wspace=0.1)
+
+            axs = []
+            for i in range(corr_gs._nrows):
+                axs.append([])
+                for j in range(corr_gs._ncols):
+                    # TODO maybe still do this? anyway way to indicate the
+                    # matrix intensity scale should be shared (but that's not x
+                    # or y, right?)?
+                    '''
+                    if ax0 is None:
+                        ax = fig.add_subplot(corr_gs[i])
+                    else:
+                        ax = fig.add_subplot(corr_gs[i], sharex=ax0, sharey=ax0)
+                    '''
+                    ax = self.fig.add_subplot(corr_gs[i,j])
+                    axs[-1].append(ax)
+            corr_axes = np.array(axs)
+
+        if plot_traces:
+            # TODO maybe stack each block vertically here, and then make total
+            # rows in gs depend on # of blocks??? (maybe put corrs to the side?)
+            # TODO might make sense to have one grid unit per set of two
+            # subplots, so space for shared title above the two is separate from
+            # space between the two (e.g. the "Top components" thing)
+            all_blocks_trace_gs = gs[4:-1, :].subgridspec(trace_rows,
+                n_blocks, hspace=0.3, wspace=0.15)
+
+        if plot_odor_abbreviation_key:
+            abbrev_key_ax = self.fig.add_subplot(gs[-1, :])
+
         if plot_correlations or plot_traces:
             # TODO TODO TODO make this configurable in gui / have correlations
             # update (maybe not alongside CNMF parameters, to avoid confusion?)
             response_calling_s = 3.0
 
-            # TODO maybe make this abbreviation making a fn
-            # TODO maybe use abbreviation that won't need a separate table to be
-            # meaningful...
-            # TODO sort s.t. always goes A,B,C in odor corr?
-            presentations_df = pd.concat(self.presentation_dfs,
-                ignore_index=True)
             # TODO check again that this also works in case where odors from
             # this experiment are new (weren't in db before)
             # (and maybe support some local analysis anyway that doesn't require
@@ -1829,31 +1849,51 @@ class Segmentation(QWidget):
             # (idk if name1,name2 are sorted / re-ordered somewhere)
             name1_unique = presentations_df.name1.unique()
             name2_unique = presentations_df.name2.unique()
-            assert set(name2_unique) - set(name1_unique) == {'paraffin'}
+            # TODO should fail earlier (rather than having to wait for cnmf
+            # to finish)
+            assert (set(name2_unique) == {'no_second_odor'} or 
+                set(name2_unique) - set(name1_unique) == {'paraffin'})
+
+            # TODO maybe make this abbreviation making a fn
+            # TODO maybe use abbreviation that won't need a separate table to be
+            # meaningful...
             odor2abbrev = {o: chr(ord('A') + i)
                 for i, o in enumerate(name1_unique)}
+            found_mix = False
+            for o in odor2abbrev.keys():
+                lo = o.lower()
+                if 'approx' in lo or 'mix' in lo:
+                    if found_mix:
+                        raise ValueError('only expected one mix per expt')
+                    else:
+                        found_mix = True
+                        odor2abbrev[o] = 'MIX'
+
+            # TODO need to deal w/ no_second_odor in here?
             # So that code detecting which combinations of name1+name2 are
             # monomolecular does not need to change.
             odor2abbrev['paraffin'] = 'paraffin'
+            # just so name2 isn't all NaN for now...
+            odor2abbrev['no_second_odor'] = 'no_second_odor'
 
-            block_iter = list(range(self.n_blocks))
+            block_iter = list(range(n_blocks))
         else:
             block_iter = []
 
         for i in block_iter:
             # TODO maybe concat and only set whole df as instance variable in
             # get_recording_df? then use just as in kc_analysis all throughout
-            # here?
+            # here? (i.e. subset from presentationS_df above...)
             presentation_dfs = self.presentation_dfs[
-                (self.presentations_per_block * i):
-                (self.presentations_per_block * (i + 1))
+                (presentations_per_block * i):
+                (presentations_per_block * (i + 1))
             ]
             presentation_df = pd.concat(presentation_dfs,
                 ignore_index=True)
 
             comparison_dfs = self.comparison_dfs[
-                (self.presentations_per_block * i):
-                (self.presentations_per_block * (i + 1))
+                (presentations_per_block * i):
+                (presentations_per_block * (i + 1))
             ]
             comparison_df = pd.concat(comparison_dfs,
                 ignore_index=True)
@@ -1867,8 +1907,22 @@ class Segmentation(QWidget):
 
             presentation_df = u.merge_odors(presentation_df,
                 self.db_odors.reset_index())
-            presentation_df['name1'] = presentation_df.name1.map(odor2abbrev)
-            presentation_df['name2'] = presentation_df.name2.map(odor2abbrev)
+
+            presentation_df['name1'] = \
+                presentation_df.name1.map(odor2abbrev)
+            presentation_df['name2'] = \
+                presentation_df.name2.map(odor2abbrev)
+            '''
+            if self.pair_case:
+                presentation_df['name1'] = \
+                    presentation_df.name1.map(odor2abbrev)
+                presentation_df['name2'] = \
+                    presentation_df.name2.map(odor2abbrev)
+            else:
+                presentation_df['name'] = \
+                    presentation_df.name1.map(odor2abbrev)
+                # TODO TODO TODO 
+            '''
 
             presentation_df = u.merge_recordings(
                 presentation_df, self.recordings)
@@ -1897,9 +1951,13 @@ class Segmentation(QWidget):
             #print(comparison_df.shape)
             # TODO del presentation_df?
 
+            group_cols = u.trial_cols
+            #if not self.pair_case:
+            #    group_cols = [c for c in group_cols if c != 'name2']
+
             non_array_cols = comparison_df.columns.difference(array_cols)
             cell_response_dfs = []
-            for _, cell_df in comparison_df.groupby(u.trial_cols + ['cell']):
+            for _, cell_df in comparison_df.groupby(group_cols + ['cell']):
                 lens = cell_df[array_cols].apply(lambda x: x.str.len(),
                     axis='columns')
                 # TODO delete try except
@@ -2038,6 +2096,9 @@ class Segmentation(QWidget):
                 odor_order_ax = corr_axes[0, i]
                 ticklabels = u.matlabels(odor_order_trial_mean_corrs,
                     u.format_mixture)
+                # TODO TODO TODO why are there still not multiple repeats in 
+                # supermixture case???
+                import ipdb; ipdb.set_trace()
                 u.matshow(odor_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     group_ticklabels=True,
@@ -2056,7 +2117,6 @@ class Segmentation(QWidget):
                     fontsize=6)
                 self.mpl_canvas.draw()
 
-
         ###################################################################
         if plot_odor_abbreviation_key:
             abbrev2odor = {v: k for k, v in odor2abbrev.items()}
@@ -2064,7 +2124,7 @@ class Segmentation(QWidget):
             # TODO TODO include concentration in odor column / new column
             print('\nOdor abbreviations:')
             for k in sorted(abbrev2odor.keys()):
-                if k != 'paraffin':
+                if k != 'paraffin' and k != 'no_second_odor':
                     cell_text.append([k, abbrev2odor[k]])
                     print('{}: {}'.format(k, abbrev2odor[k]))
             print('')
@@ -2839,14 +2899,14 @@ class Segmentation(QWidget):
             # natural_odors project.
             presentations_per_repeat = 3
             odor_list = data['odor_pair_list']
-            pair_case = True
+            self.pair_case = True
         else:
             # TODO TODO TODO beware "block" def in arduino / get_stiminfo code
             # not matching def in randomizer / stimfile code
             # (scopePin pulses vs. randomization units, depending on settings)
             presentations_per_repeat = 6
             odor_list = data['odor_lists']
-            pair_case = False
+            self.pair_case = False
 
             # Hardcode to break up into more blocks, to align defs of blocks.
             # TODO (maybe just for experiments on 2019-07-25 ?) or change block
@@ -2913,7 +2973,7 @@ class Segmentation(QWidget):
 
         # TODO maybe use subset here too, to be consistent w/ which mixtures get
         # entered...
-        if pair_case:
+        if self.pair_case:
             odors = pd.DataFrame({
                 'name': data['odors'],
                 'log10_conc_vv': [0 if x == 'paraffin' else
@@ -2948,7 +3008,7 @@ class Segmentation(QWidget):
         # (arbitrary len lists in odor_lists) (see cutpaste code for similar
         # problem?)
         # TODO only add as many as there were blocks from thorsync timing info?
-        if pair_case:
+        if self.pair_case:
             # TODO this rounding to 5 decimal places always work?
             o2c = odors.set_index('name', verify_integrity=True
                 ).log10_conc_vv.round(decimals=5)
@@ -3037,7 +3097,7 @@ class Segmentation(QWidget):
                 raise ValueError(err_msg.format('<') + fail_msg)
 
         # TODO maybe factor this printing stuff out?
-        if pair_case:
+        if self.pair_case:
             print(('{} comparisons ({{A, B, A+B}} in random order x ' +
                 '{} repeats)') .format(n_blocks_from_gsheet, n_repeats))
         else:
@@ -3062,7 +3122,7 @@ class Segmentation(QWidget):
                 # for str representation in supermixture case?
                 # would also be a good time to unify name + *concentration*
                 # handling
-                if pair_case:
+                if self.pair_case:
                     if o[1] == 'paraffin':
                         odor_string = o[0]
                     else:
@@ -3193,9 +3253,7 @@ class Segmentation(QWidget):
         self.fly_num = fly_num
         self.thorimage_id = thorimage_id
         self.started_at = started_at
-        self.n_repeats = n_repeats
         self.n_blocks = n_blocks_from_gsheet
-        self.presentations_per_repeat = presentations_per_repeat
         self.presentations_per_block = presentations_per_block 
         self.odor_ids = odor_ids
         self.frame_times = frame_times
