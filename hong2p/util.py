@@ -57,6 +57,15 @@ trial_only_cols = [
 ]
 
 trial_cols = recording_cols + trial_only_cols
+
+odor2abbrev = {
+    'ethyl acetate': 'eta',
+    'ethyl butyrate': 'etb',
+    'isoamyl alcohol': 'iaol',
+    'ethanol': 'etol',
+    'isoamyl acetate': 'iaa'
+}
+
 db_hostname = 'atlas'
 our_hostname = socket.gethostname()
 if our_hostname == db_hostname:

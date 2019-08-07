@@ -1756,6 +1756,7 @@ class Segmentation(QWidget):
 
         # TODO TODO TODO probably just fix self.n_blocks earlier
         # in supermixture case
+        # (so there is only one button for accepting and stuff...)
         if self.pair_case:
             n_blocks = self.n_blocks
             presentations_per_block = self.presentations_per_block
@@ -1857,6 +1858,9 @@ class Segmentation(QWidget):
             # TODO maybe make this abbreviation making a fn
             # TODO maybe use abbreviation that won't need a separate table to be
             # meaningful...
+            # TODO TODO make this not rely on mix being last
+            # (generate from util ordering fn, since that has similar logic?)
+            # TODO TODO actually use u.odor2abbrev if all are found (+ w/ flag?)
             odor2abbrev = {o: chr(ord('A') + i)
                 for i, o in enumerate(name1_unique)}
             found_mix = False
@@ -2096,9 +2100,6 @@ class Segmentation(QWidget):
                 odor_order_ax = corr_axes[0, i]
                 ticklabels = u.matlabels(odor_order_trial_mean_corrs,
                     u.format_mixture)
-                # TODO TODO TODO why are there still not multiple repeats in 
-                # supermixture case???
-                import ipdb; ipdb.set_trace()
                 u.matshow(odor_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     group_ticklabels=True,
@@ -2534,6 +2535,9 @@ class Segmentation(QWidget):
                 import ipdb; ipdb.set_trace()
             '''
 
+            # TODO TODO maybe factor into fn and put behind hotkey / button
+            # to save for inspection at will... (but should i fix cnmf
+            # serialization first?)
             # TODO delete me
             # intended to use this to find best detrend / extract dff method
             '''
