@@ -3287,6 +3287,11 @@ class Segmentation(QWidget):
 
         self.data_params = u.cnmf_metadata_from_thor(tiff)
 
+        # TODO try to get rid of these here? (s.t. only made at end of cnmf run)
+        # was some error in loading either old run or data after loading old
+        # run, as is
+        self.make_block_labelling_btns()
+
         for i in range(self.data_group_layout.count()):
             # TODO TODO does it always alternate qlabel / widget for that label?
             # would that ever break? otherwise, how to get a row, with the label
