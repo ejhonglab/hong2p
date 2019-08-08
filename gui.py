@@ -2162,6 +2162,7 @@ class Segmentation(QWidget):
             # TODO probably disable when running? or is it OK to upload stuff
             # during run? would any state variables have been overwritten?
             self.make_block_labelling_btns()
+            self.block_label_btn_widget.setEnabled(True)
 
             if self.params_changed:
                 self.run_cnmf_btn.setEnabled(True)
@@ -3285,8 +3286,6 @@ class Segmentation(QWidget):
         self.matfile = mat
 
         self.data_params = u.cnmf_metadata_from_thor(tiff)
-
-        self.make_block_labelling_btns()
 
         for i in range(self.data_group_layout.count()):
             # TODO TODO does it always alternate qlabel / widget for that label?
