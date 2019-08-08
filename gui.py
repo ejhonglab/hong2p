@@ -784,6 +784,8 @@ class Segmentation(QWidget):
                 self.save_default_params())
         else:
             assert param_json_str is not None
+            # TODO TODO have this notify + avoid saving if params are already
+            # default (read just before)
             mk_default_params_btn.clicked.connect(lambda:
                 self.save_default_params(param_json_str))
 
@@ -2157,7 +2159,9 @@ class Segmentation(QWidget):
             self.accept_cnmf_btn.setEnabled(True)
             self.reject_cnmf_btn.setEnabled(True)
             '''
-            self.block_label_btn_widget.setEnabled(True)
+            # TODO probably disable when running? or is it OK to upload stuff
+            # during run? would any state variables have been overwritten?
+            self.make_block_labelling_btns()
 
             if self.params_changed:
                 self.run_cnmf_btn.setEnabled(True)
@@ -2821,6 +2825,11 @@ class Segmentation(QWidget):
     # TODO this currently minimizes expanded listwidget item when opened for
     # some reason. i don't want that behavior.
     def open_recording(self, recording_widget):
+        # TODO TODO fix bug where block label btns stay labelled as in last
+        # segrun that was open (seen after opening a recording but not analyzing
+        # it, then switching back to that recording after opening a segrun)
+        # (not an issue when switching to a different recording, it seems)
+
         # TODO maybe use setData and data instead?
         idx = self.data_tree.indexOfTopLevelItem(recording_widget)
         tiff = self.motion_corrected_tifs[idx]
@@ -2842,6 +2851,7 @@ class Segmentation(QWidget):
 
                 self.plot_avg_trace(recalc_trace=False)
 
+                # correct?
                 self.make_block_labelling_btns(self.accepted,
                     self.to_be_accepted)
 
