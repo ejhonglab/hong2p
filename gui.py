@@ -1335,7 +1335,8 @@ class Segmentation(QWidget):
 
 
     def run_cnmf(self) -> None:
-        print('Running CNMF', flush=True)
+        print('Running CNMF ({})'.format(self.format_timestamp(self.run_at)),
+            flush=True)
         # TODO use cm.cluster.setup_cluster?
         # TODO what is the dview that returns as second arg?
 
@@ -1364,6 +1365,8 @@ class Segmentation(QWidget):
         # TODO maybe use fit_file for certain ways of getting here in the gui?
         # TODO check dims / C/F order
 
+        self.plot_intermediates_btn.setEnabled(False)
+        self.plot_intermediates_at_fit = self.plot_intermediates
         try:
             # From CNMF docs, about first arg to fit:
             # "images : mapped np.ndarray of shape (t,x,y[,z])"
@@ -1379,6 +1382,9 @@ class Segmentation(QWidget):
             self.cnm = None
             # TODO was this not actually printing? cnm was none...
             raise
+
+        finally:
+            self.plot_intermediates_btn.setEnabled(True)
 
         # TODO see which parameters are changed?
         if err_if_cnmf_changes_params:
@@ -1646,7 +1652,7 @@ class Segmentation(QWidget):
 
         self.display_params_editable(False)
 
-        plot_intermediates = self.plot_intermediates
+        plot_intermediates = self.plot_intermediates_at_fit
         plot_correlations = self.plot_correlations
         plot_traces = self.plot_traces
 
