@@ -23,6 +23,7 @@ from io import BytesIO
 import pprint
 import traceback
 from shutil import copyfile
+import json
 
 from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
     Qt, QEvent, QVariant)
@@ -546,6 +547,16 @@ class Segmentation(QWidget):
             'data': {'fnames','dims'},
             'merging': {'gSig_range'},
         })
+        hidden_param_json = '.hidden_cnmf_params.json'
+        if exists(hidden_param_json):
+            with open(hidden_param_json, 'r') as f:
+                json_data = json.load(f)
+            for g, ps in json_data.items():
+                dont_show_by_group[g] = dont_show_by_group[g] | set(ps)
+        else:
+            json_data = {g: list(ps) for g, ps in dont_show_by_group.items()}
+            with open(hidden_param_json, 'w') as f:
+                json.dump(json_data, f, indent=2)
 
         seen_types = set()
         formgen_print = False
@@ -3128,9 +3139,13 @@ class Segmentation(QWidget):
             print('{} randomized blocks of "{}" and its components'.format(
                 n_blocks_from_gsheet, mix_name))
 
+        odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
+            ).flatten() - 1
+
         # TODO maybe print this in tabular form?
         # TODO TODO TODO use abbreviations (defined in one place for all hong
         # lab code, ideally)
+        trial = 0
         for i in range(n_blocks_from_gsheet):
             p_start = presentations_per_block * i
             p_end = presentations_per_block * (i + 1)
@@ -3151,6 +3166,8 @@ class Segmentation(QWidget):
                 else:
                     odor_string = str(o)
 
+                odor_string += ' ({})'.format(odor_onset_frames[trial])
+                trial += 1
                 odor_strings.append(odor_string)
 
             print(cline + ', '.join(odor_strings))
@@ -3199,8 +3216,7 @@ class Segmentation(QWidget):
         self.cnm = None
 
         self.recording_title = recording_title
-        self.odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
-            ).flatten() - 1
+        self.odor_onset_frames = odor_onset_frames
         self.odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
             ).flatten() - 1
 

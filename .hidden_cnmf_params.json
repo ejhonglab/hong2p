@@ -1,0 +1,53 @@
+{
+  "data": [
+    "dims",
+    "fnames"
+  ],
+  "patch_params": [
+    "border_pix",
+    "del_duplicates",
+    "in_memory",
+    "n_processes",
+    "nb_patch",
+    "rf",
+    "p_ssub",
+    "p_tsub",
+    "stride"
+  ],
+  "preprocess_params": [
+    "check_nan",
+    "n_pixels_per_process",
+    "pixels",
+    "sn"
+  ],
+  "init_params": [
+    "center_psf",
+    "init_iter",
+    "kernel",
+    "min_corr",
+    "min_pnr",
+    "ring_size_factor",
+    "ssub_B"
+  ],
+  "spatial_params": [
+    "block_size_spat",
+    "n_pixels_per_process",
+    "num_blocks_per_run_spat"
+  ],
+  "temporal_params": [
+    "block_size_temp",
+    "fudge_factor",
+    "memory_efficient",
+    "num_blocks_per_run_temp",
+    "s_min",
+    "verbosity"
+  ],
+  "merging": [
+    "gSig_range"
+  ],
+  "quality": [
+    "use_cnn",
+    "min_cnn_thr",
+    "cnn_lowest"
+  ]
+}
