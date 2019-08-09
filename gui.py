@@ -618,10 +618,20 @@ class Segmentation(QWidget):
                 # TODO TODO also get next line(s) for tooltip?
 
                 doc_line = None
+                desc = ''
+                parse_desc = False
                 for line in params.CNMFParams.__init__.__doc__.split('\n'):
                     if k + ':' in line:
                         doc_line = line.strip()
-                        break
+                        parse_desc = True
+                        continue
+
+                    if parse_desc:
+                        stripped = line.strip()
+                        if stripped == '':
+                            break
+                        else:
+                            desc += stripped
 
                 print_stuff = False
 
@@ -739,6 +749,11 @@ class Segmentation(QWidget):
 
                 if not editable or is_data_param:
                     w.setEnabled(False)
+
+                # TODO sufficient to just have it over w? want to find row and
+                # set whole for that?
+                if desc != '':
+                    w.setToolTip(desc)
 
                 group_layout.addRow(k, w)
 
