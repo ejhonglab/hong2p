@@ -23,6 +23,7 @@ from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.sql import sqltypes
 from sqlalchemy.dialects import postgresql
 import numpy as np
+from numpy.ma import MaskedArray
 import pandas as pd
 import git
 import pkg_resources
@@ -1380,6 +1381,11 @@ def full_frame_avg_trace(movie):
 
 
 def crop_to_nonzero(matrix, margin=0):
+    """
+    Returns a matrix just large enough to contain the non-zero elements of the
+    input, and the bounding box coordinates to embed this matrix in a matrix
+    with indices from (0,0) to the max coordinates in the input matrix.
+    """
     coords = np.argwhere(matrix > 0)
     x_min, y_min = coords.min(axis=0)
     x_max, y_max = coords.max(axis=0)
@@ -1391,6 +1397,17 @@ def crop_to_nonzero(matrix, margin=0):
 
     cropped = matrix[x_min:x_max+1, y_min:y_max+1]
     return cropped, ((x_min, x_max), (y_min, y_max))
+
+
+# TODO better name?
+def db_row2footprint(db_row, shape=None):
+    """Returns dense array w/ footprint from row in cells table.
+    """
+    weights, x_coords, y_coords = db_row[['weights','x_coords','y_coords']]
+    # TODO maybe read shape from db / metadata on disk?
+    footprint = np.array(coo_matrix((weights, (x_coords, y_coords)),
+        shape=shape).todense())
+    return footprint
 
 
 def exp_decay(t, scale, tau, offset):
@@ -2483,21 +2500,89 @@ def plot_pair_n(df, *args):
     imgkit.from_string(html, 'natural_odors_pair_n.png')
 
 
-def closed_mpl_contours(footprint, ax, err_on_multiple_comps=True, **kwargs):
+# TODO test when ax actually is passed in now that I made it a kwarg
+# (also works as optional positional arg, right?)
+def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
     """
+    Args:
+        if_multiple (str): 'take_largest'|'join'|'err'
     """
     dims = footprint.shape
     padded_footprint = np.zeros(tuple(d + 2 for d in dims))
     padded_footprint[tuple(slice(1,-1) for _ in dims)] = footprint
     
+    # TODO delete
+    #fig = plt.figure()
+    #
+    if ax is None:
+        ax = plt.gca()
+
     mpl_contour = ax.contour(padded_footprint > 0, [0.5], **kwargs)
     # TODO which of these is actually > 1 in multiple comps case?
     # handle that one approp w/ err_on_multiple_comps!
     assert len(mpl_contour.collections) == 1
-    paths = mpl_contour.collections[0].get_paths()
-    assert len(paths) == 1
-    contour = paths[0].vertices
 
+    paths = mpl_contour.collections[0].get_paths()
+
+    if len(paths) != 1:
+        if if_multiple == 'err':
+            raise RuntimeError('multiple disconnected paths in one footprint')
+
+        elif if_multiple == 'take_largest':
+            largest_sum = 0
+            largest_idx = 0
+            total_sum = 0
+            for p in range(len(paths)):
+                path = paths[p]
+
+                mask = np.ones_like(footprint, dtype=bool)
+                for x, y in np.ndindex(footprint.shape):
+                    # TODO TODO not sure why this seems to be transposed, but it
+                    # does (make sure i'm not doing something wrong?)
+                    if path.contains_point((y, x)):
+                        mask[x, y] = False
+                # Places where the mask is False are included in the sum.
+                path_sum = MaskedArray(footprint, mask=mask).sum()
+                # TODO maybe check that sum of all path_sums == footprint.sum()?
+                # seemed there were some paths w/ 0 sum... cnmf err?
+                '''
+                print('mask_sum:', (~ mask).sum())
+                print('path_sum:', path_sum)
+                print('regularly masked sum:', footprint[(~ mask)].sum())
+                plt.figure()
+                plt.imshow(mask)
+                plt.figure()
+                plt.imshow(footprint)
+                plt.show()
+                import ipdb; ipdb.set_trace()
+                '''
+                if path_sum > largest_sum:
+                    largest_sum = path_sum
+                    largest_idx = p
+
+                total_sum += path_sum
+            footprint_sum = footprint.sum()
+            print('footprint_sum:', footprint_sum)
+            print('total_sum:', total_sum)
+            print('largest_sum:', largest_sum)
+            # TODO is this only failing when stuff is overlapping?
+            # just merge in that case? (wouldn't even need to dilate or
+            # anything...) (though i guess then the inequality would go the
+            # other way... is it border pixels? just ~dilate by one?)
+            # TODO fix + uncomment
+            ######assert np.isclose(total_sum, footprint_sum)
+            path = paths[largest_idx]
+
+        elif if_multiple == 'join':
+            raise NotImplementedError
+    else:
+        path = paths[0]
+
+    # TODO delete
+    #plt.close(fig)
+    #
+
+    contour = path.vertices
     # Correct index change caused by padding.
     return contour - 1
 
@@ -2758,26 +2843,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             cell_row = (prep_date, fly_num, thorimage_id, cell_id)
             footprint_row = footprints.loc[cell_row]
 
-            weights, x_coords, y_coords = \
-                footprint_row[['weights','x_coords','y_coords']]
-
-            # TODO delete try / catch. debugging:
-            #   File "./gui.py", line 1833, in get_cnmf_output
-            #    title='Top components')
-            #   File "/home/tom/src/python_2p_analysis/hong2p/util.py", line
-            #   2196, in plot_traces
-            #    (x_coords, y_coords)), shape=avg.shape).todense())
-            #   File
-            #   "/home/tom/anaconda3/envs/caiman/lib/python3.6/site-packages/scipy/sparse/coo.py",
-            #   line 157, in __init__
-            # ValueError: invalid literal for int() with base 10: 'x_coords'
-            try:
-                footprint = np.array(coo_matrix((weights,
-                    (x_coords, y_coords)), shape=avg.shape).todense())
-            except ValueError as e:
-                print(e)
-                import ipdb; ipdb.set_trace()
-            #
+            footprint = db_row2footprint(footprint_row, shape=avg.shape)
 
             # TODO maybe some percentile / fixed size about maximum
             # density?

@@ -458,6 +458,9 @@ class Segmentation(QWidget):
         self.break_tiff_shortcut = QShortcut(QKeySequence('Ctrl+b'), self)
         self.break_tiff_shortcut.activated.connect(self.save_tiff_blocks)
 
+        self.save_ijrois_shortcut = QShortcut(QKeySequence('Ctrl+r'), self)
+        self.save_ijrois_shortcut.activated.connect(self.save_ijrois)
+
         # TODO hide upload_btn by default if that's what i'm gonna do upon
         # opening a recording
         self.upload_btn.setEnabled(False)
@@ -750,8 +753,6 @@ class Segmentation(QWidget):
                 if not editable or is_data_param:
                     w.setEnabled(False)
 
-                # TODO sufficient to just have it over w? want to find row and
-                # set whole for that?
                 if desc != '':
                     w.setToolTip(desc)
 
@@ -810,7 +811,7 @@ class Segmentation(QWidget):
                 self.save_default_params())
         else:
             assert param_json_str is not None
-            # TODO TODO have this notify + avoid saving if params are already
+            # TODO have this notify + avoid saving if params are already
             # default (read just before)
             mk_default_params_btn.clicked.connect(lambda:
                 self.save_default_params(param_json_str))
@@ -1017,6 +1018,41 @@ class Segmentation(QWidget):
         # gsheet and reloading the data_tree
         # TODO TODO also automate breaking into sub-recordings of a max
         # # frames / blocks
+
+
+    # TODO TODO TODO TODO also support loading ijrois + calculating downstream
+    # stuff + uploading them to db!
+
+
+    # TODO TODO TODO are we currently loading self.footprint_df when loading old
+    # runs? maybe we should, so that we can output those ROIs too?
+    # (it doesn't look we are loading it, as-is)
+    def save_ijrois(self):
+        """Saves CNMF footprints to ImageJ compatible ROIs.
+        """
+        # TODO should this popup / take a threshold as an arg?
+        self.footprint_df.sort_index(inplace=True)
+        ijrois = []
+        for cell_row in self.footprint_df.iterrows():
+            cell = cell_row[0]
+            # Transpose is necessary so ROIs will end up in ImageJ coords.
+            # TODO this indicate some other problem?
+            footprint = u.db_row2footprint(cell_row[1], shape=frame_shape).T
+            contour = u.closed_mpl_contours(footprint,
+                if_multiple='take_largest')
+
+            # TODO need to subtract one point or something? need to order?
+            # (so as not to duplicate start/end) (seems not to not *fail* as-is
+            # but maybe some things aren't working right...)
+            # TODO maybe also prefix name w/ analysis run timestamp?
+            # or put in roi properties somewhere? other file in zip?
+            # (ij seems to just ignore extensions it doesn't expect?)
+            ijrois.append((str(cell), contour))
+
+        # TODO TODO TODO write to analysis_output somewhere + print
+        # where we are writing it
+        import ipdb; ipdb.set_trace()
+        #ijroi.write_polygon_roi_zip(ijrois, )
 
 
     # TODO move to util
@@ -1414,6 +1450,12 @@ class Segmentation(QWidget):
         finally:
             self.plot_intermediates_btn.setEnabled(True)
 
+        # TODO TODO TODO (actually restrict components to those passing
+        # thresholds)
+        self.cnm.estimates.evaluate_components(self.movie, self.cnm.params)
+        import ipdb; ipdb.set_trace()
+        #
+
         # TODO see which parameters are changed?
         if err_if_cnmf_changes_params:
             assert self.params_copy == self.params, 'CNMF changed params in fit'
@@ -1773,6 +1815,7 @@ class Segmentation(QWidget):
             if i == n_footprint_axes - 1 and not only_init:
                 contour_ax.set_title('Final estimate')
                 A = self.cnm.estimates.A
+                ###import ipdb; ipdb.set_trace()
 
             elif not plot_intermediates and i == 0 and only_init:
                 contour_ax.set_title('Initialization')
@@ -1780,6 +1823,9 @@ class Segmentation(QWidget):
 
             caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
                 display_numbers=False, colors='r', linewidth=1.0)
+            # TODO TODO TODO also call evaluate_components and include that in
+            # Final estimate (maybe w/ a separate subplot to show what gets
+            # filtered?)
 
             self.mpl_canvas.draw()
 
