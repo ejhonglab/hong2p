@@ -1452,11 +1452,28 @@ class Segmentation(QWidget):
 
         # TODO TODO TODO (actually restrict components to those passing
         # thresholds)
-        self.cnm.estimates.evaluate_components(self.movie, self.cnm.params)
-        import ipdb; ipdb.set_trace()
+        #self.cnm.estimates.evaluate_components(self.movie, self.cnm.params)
+        #import ipdb; ipdb.set_trace()
+        #
+
+        # TODO delete this hack after getting cnmf tools for evaluating /
+        # filtering components to actually work...
+        n_pixels = (self.cnm.estimates.A > 0).sum(axis=0)
+
+        min_component_pixels = self.params_copy.get('quality',
+            'min_component_pixels')
+        max_component_pixels = self.params_copy.get('quality',
+            'max_component_pixels')
+
+        keep = ((n_pixels >= min_component_pixels) &
+                (n_pixels <= max_component_pixels))
+        # TODO maybe in the meantime, at least print how many are getting
+        # discarded for each threshold?
+        self.cnm.estimates.A = self.cnm.estimates.A[:, keep]
         #
 
         # TODO see which parameters are changed?
+        # (and is this just a big false negative now?)
         if err_if_cnmf_changes_params:
             assert self.params_copy == self.params, 'CNMF changed params in fit'
 
