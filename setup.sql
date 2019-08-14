@@ -151,6 +151,11 @@ CREATE TABLE IF NOT EXISTS code_versions (
 
 CREATE TABLE IF NOT EXISTS analysis_runs (
     /* rename to analysis_time? */
+    -- If entry describes analysis using ImageJ ROIs, run_at will be the mtime
+    -- of the ROI .zip file.
+    -- TODO might want to use a new field for ijroi file mtime and unique on
+    -- that as well... so that the code can be updated?
+    -- maybe ok to replace old versions then though?
     run_at timestamp PRIMARY KEY,
 
     /* TODO option in GUI to add arbitrary repos to track?
@@ -169,9 +174,9 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     */
     -- TODO TODO only check NOT NULL constraint from segmentation_runs table?
     -- (seems impossible. would probably require diff design.)
-    input_filename text NOT NULL,
-    input_md5 text NOT NULL,
-    input_mtime timestamp NOT NULL,
+    input_filename text,
+    input_md5 text,
+    input_mtime timestamp,
 
     -- Use NULL to indicate from start / to end
     start_frame integer,
@@ -179,15 +184,17 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 
     -- Could use json/jsonb type, but same values, like Infinity, would have to
     -- be handled differently.
-    parameters text NOT NULL,
+    parameters text,
+
+    ijroi_file_path text,
 
     who text REFERENCES people (nickname),
     -- Partially to figure out who ran it if they forgot to select their name.
     -- TODO also check these are at least non-empty
-    host text NOT NULL,
-    host_user text NOT NULL,
+    host text,
+    host_user text,
 
-    accepted boolean NOT NULL
+    accepted boolean
 
     /* TODO TODO enforce uniqueness of all git stuff + input + parameters
      * (+ user)?
@@ -203,6 +210,7 @@ ALTER TABLE analysis_runs ALTER COLUMN parameters DROP NOT NULL;
 ALTER TABLE analysis_runs ALTER COLUMN host DROP NOT NULL;
 ALTER TABLE analysis_runs ALTER COLUMN host_user DROP NOT NULL;
 ALTER TABLE analysis_runs ALTER COLUMN accepted DROP NOT NULL;
+ALTER TABLE analysis_runs ADD COLUMN ijroi_file_path text;
 
 /*
 CREATE TABLE IF NOT EXISTS analysis_run_inputs (

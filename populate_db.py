@@ -987,6 +987,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             footprint_dfs = []
             for cell_num in range(n_footprints):
                 sparse = coo_matrix(footprints[:,:,cell_num])
+                raise NotImplementedError('check row/col below not broken')
                 footprint_dfs.append(pd.DataFrame({
                     'recording_from': [started_at],
                     'cell': [cell_num],
@@ -997,8 +998,12 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                     # function, and allow having numpy arrays (get type info
                     # from combination of that and the database, like in other
                     # cases)
-                    'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
-                    'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                    # TODO TODO TODO TODO i swapped row and col here 8/13 to fix
+                    # some what i think was source of need for extra tranposes.
+                    # check that inputting matlab stuff did not require old
+                    # order.
+                    'x_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                    'y_coords': [[int(x) for x in sparse.col.astype('int16')]],
                     'weights': [[float(x) for x in
                                  sparse.data.astype('float32')]],
                     # TODO TODO generate all required info

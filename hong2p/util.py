@@ -940,11 +940,12 @@ def list_segmentations(tif_path):
         # per segmentation run when multiple code versions referenced)
 
     seg_runs = pd.concat(seg_runs, ignore_index=True)
-
     if len(seg_runs) == 0:
         return None
 
-    return seg_runs.merge(analysis_runs)
+    seg_runs = seg_runs.merge(analysis_runs)
+    seg_runs.sort_values('run_at', inplace=True)
+    return seg_runs
 
 
 # TODO use this in other places that normalize to thorimage_ids
@@ -1404,10 +1405,125 @@ def db_row2footprint(db_row, shape=None):
     """Returns dense array w/ footprint from row in cells table.
     """
     weights, x_coords, y_coords = db_row[['weights','x_coords','y_coords']]
-    # TODO maybe read shape from db / metadata on disk?
+    # TODO maybe read shape from db / metadata on disk? / merging w/ other
+    # tables (possible?)?
     footprint = np.array(coo_matrix((weights, (x_coords, y_coords)),
-        shape=shape).todense())
+        shape=shape).todense()).T
     return footprint
+
+
+def db_footprints2array(df, shape):
+    """Returns footprints in an array of dims (shape + (n_footprints,)).
+    """
+    return np.stack([db_row2footprint(r, shape) for _, r in df.iterrows()],
+        axis=-1)
+
+
+# TODO test w/ mpl / cv2 contours that never see ij to see if transpose is
+# necessary!
+def contour2mask(contour, shape):
+    """Returns a boolean mask True inside contour and False outside.
+    """
+    # TODO any checking of contour necessary for it to be well behaved in
+    # opencv?
+    mask = np.zeros(shape, np.uint8)
+    # TODO draw into a sparse array maybe? or convert after?
+    cv2.drawContours(mask, [contour.astype(np.int32)], 0, 1, -1)
+    # TODO TODO TODO investigate need for this transpose
+    # (imagej contour repr specific? maybe load to contours w/ dims swapped them
+    # call this fn w/o transpose?)
+    # (was it somehow still a product of x_coords / y_coords being swapped in
+    # db?)
+    # not just b/c reshaping to something expecting F order CNMF stuff?
+    # didn't correct time averaging w/in roi also require this?
+    return mask.astype('bool')
+
+
+def ijrois2masks(ijrois, shape, dims_as_cnmf=False):
+    """
+    Transforms ROIs loaded from my ijroi fork to an array full of boolean masks,
+    of dimensions (shape + (n_rois,)).
+    """
+    # TODO maybe index final pandas thing by ijroi name (before .roi prefix)
+    # (or just return np array indexed as CNMF "A" is)
+    masks = [imagej2py_coords(contour2mask(c, shape[::-1])) for _, c in ijrois]
+    masks = np.stack(masks, axis=-1)
+    # (actually, putting off the below for now. just gonna not also reshape this
+    # output as we currently reshape CNMF A before using it for other stuff)
+    if dims_as_cnmf:
+        # TODO check that reshaping is not breaking association to components
+        # (that it is equivalent to repeating reshape w/in each component and
+        # then stacking)
+        # TODO TODO conform shape to cnmf output shape (what's that dim order?)
+        # n_pixels x n_components, w/ n_pixels reshaped from ixj image "in F
+        # order"
+        #import ipdb; ipdb.set_trace()
+        raise NotImplementedError
+    # TODO maybe normalize here?
+    # (and if normalizing, might as well change dtype to match cnmf output?)
+    # and worth casting type to bool, rather than keeping 0/1 uint8 array?
+    return masks
+
+
+def imagej2py_coords(array):
+    """
+    Since ijroi source seems to have Y as first coord and X as second.
+    """
+    return array.T
+
+
+def py2imagej_coords(array):
+    """
+    Since ijroi source seems to have Y as first coord and X as second.
+    """
+    return array.T
+
+
+# TODO TODO probably make a corresponding fn to do the inverse
+# (or is one of these not necessary? in one dir, is order='C' and order
+def footprints_to_flat_cnmf_dims(footprints):
+    """Takes array of (x, y[, z], n_footprints) to (n_pixels, n_footprints).
+
+    There is more than one way this reshaping can be done, and this produces
+    output as CNMF expects it.
+    """
+    frame_pixels = np.prod(footprints.shape[:-1])
+    n_footprints = footprints.shape[-1]
+    # TODO TODO is this supposed to be order='F' or order='C' matter?
+    # wrong setting equivalent to transpose?
+    # what's the appropriate test (make unit?)?
+    return np.reshape(footprints, (frame_pixels, n_footprints), order='F')
+
+
+def extract_traces_boolean_footprints(movie, footprints):
+    """
+    Averages the movie within each boolean mask in footprints
+    to make a matrix of traces (n_frames x n_footprints).
+    """
+    assert footprints.dtype.kind != 'f', 'float footprints are not boolean'
+    assert footprints.max() == 1, 'footprints not boolean'
+    assert footprints.min() == 0, 'footprints not boolean'
+    n_spatial_dims = len(footprints.shape) - 1
+    spatial_dims = tuple(range(n_spatial_dims))
+    assert np.any(footprints, axis=spatial_dims).all(), 'some zero footprints'
+    slices = (slice(None),) * n_spatial_dims
+    n_frames = movie.shape[0]
+    # TODO vectorized way to do this?
+    n_footprints = footprints.shape[-1]
+    traces = np.empty((n_frames, n_footprints)) * np.nan
+    print('extracting traces from boolean masks...', end='', flush=True)
+    for i in range(n_footprints):
+        mask = footprints[slices + (i,)]
+        # TODO compare time of this to sparse matrix dot product?
+        # + time of MaskedArray->mean w/ mask expanded by n_frames?
+
+        # TODO TODO is this correct? check
+        # axis=1 because movie[:, mask] only has two dims (frames x pixels)
+        trace = np.mean(movie[:, mask], axis=1)
+        assert len(trace.shape) == 1 and len(trace) == n_frames
+        traces[:, i] = trace
+    print(' done')
+    return traces
 
 
 def exp_decay(t, scale, tau, offset):
@@ -2535,11 +2651,13 @@ def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
             for p in range(len(paths)):
                 path = paths[p]
 
+                # TODO TODO TODO maybe replace mpl stuff w/ cv2 drawContours?
+                # (or related...) (fn now in here as contour2mask)
                 mask = np.ones_like(footprint, dtype=bool)
                 for x, y in np.ndindex(footprint.shape):
                     # TODO TODO not sure why this seems to be transposed, but it
                     # does (make sure i'm not doing something wrong?)
-                    if path.contains_point((y, x)):
+                    if path.contains_point((x, y)):
                         mask[x, y] = False
                 # Places where the mask is False are included in the sum.
                 path_sum = MaskedArray(footprint, mask=mask).sum()
@@ -2562,6 +2680,7 @@ def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
 
                 total_sum += path_sum
             footprint_sum = footprint.sum()
+            # TODO float formatting / some explanation as to what this is
             print('footprint_sum:', footprint_sum)
             print('total_sum:', total_sum)
             print('largest_sum:', largest_sum)
@@ -2591,7 +2710,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     n=20, random=False, title=None, response_calls=None, raw=False,
     smoothed=True, show_footprints=True, show_footprints_alone=False,
     show_cell_ids=True, show_footprint_with_mask=False, gridspec=None,
-    verbose=True):
+    linewidth=0.25, verbose=True):
     # TODO TODO be clear on requirements of df and cell_ids in docstring
     """
     n (int): (default=20) Number of cells to plot traces for if cell_ids not
@@ -2843,6 +2962,10 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             cell_row = (prep_date, fly_num, thorimage_id, cell_id)
             footprint_row = footprints.loc[cell_row]
 
+            # TODO TODO TODO probably need to tranpose how footprint is handled
+            # downstream (would prefer not to transpose footprint though)
+            # (as i had to switch x_coords and y_coords in db as they were
+            # initially entered swapped)
             footprint = db_row2footprint(footprint_row, shape=avg.shape)
 
             # TODO maybe some percentile / fixed size about maximum
@@ -2974,7 +3097,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                     ymax = max(ymax, trial_dff.max())
                     ymin = min(ymin, trial_dff.min())
 
-                ax.plot(trial_times, trial_dff)
+                ax.plot(trial_times, trial_dff, linewidth=linewidth)
 
             if smoothed:
                 # TODO kwarg(s) to control smoothing?
@@ -2987,7 +3110,9 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                     ymax = max(ymax, sdff.max())
                     ymin = min(ymin, sdff.min())
 
-                ax.plot(trial_times, sdff, color='black')
+                # TODO TODO have plot_traces take kwargs to be passed to
+                # plotting fn + delete separate linewidth
+                ax.plot(trial_times, sdff, color='black', linewidth=linewidth)
 
             # TODO also / separately subsample?
 

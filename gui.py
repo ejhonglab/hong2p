@@ -54,6 +54,8 @@ import matlab.engine
 import caiman
 from caiman.source_extraction.cnmf import params, cnmf
 import caiman.utils.visualization
+# Need functions only in my fork of this.
+import ijroi
 
 import hong2p.util as u
 
@@ -105,6 +107,16 @@ def md5(fname):
         for chunk in iter(lambda: f.read(4096), b''):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+# TODO move to util?
+def format_timestamp(timestamp):
+    return str(pd.Timestamp(timestamp))[:16]
+
+
+def show_mask_union(masks):
+    all_footprints = np.any(masks, axis=-1).astype(np.uint8) * 255
+    cv2.imshow('all_footprints', all_footprints)
 
 
 # TODO worth allowing selection of a folder?
@@ -229,7 +241,7 @@ class Segmentation(QWidget):
         self.data_and_ctrl_layout.setContentsMargins(0, 0, 0, 0)
 
         # TODO TODO make a refresh button for this widget, which re-reads from
-        # db (in case other programs have edited it)
+        # db (in case other programs have edited it) (or just push from db...)
         # TODO get rid of space on left that wasnt there w/ tree widget
         # TODO get rid of / change top label thing
         # TODO most operations should not minimize nodes that are currently
@@ -251,9 +263,16 @@ class Segmentation(QWidget):
         self.rejected_color = '#ff4d4d'
 
         global recordings
+        # TODO TODO anything to be done to speed this loop up? pretty slow...
         # TODO TODO make sure segrun nodes are sorted by timestamp
         # 190529 ~3pm i saw two nodes under 5-02/3/fn_0001_7b8...
         # in wrong order
+        print('populating data browser...', end='', flush=True)
+        # TODO TODO TODO delete. hack to get this to load faster for testing.
+        print('ONLY LOADING 7-25 DATA FOR TESTING')
+        self.motion_corrected_tifs = [t for t in self.motion_corrected_tifs
+            if '7-25' in t]
+        #
         for d in self.motion_corrected_tifs:
             x = d.split(sep)
             fname_parts = x[-1].split('_')
@@ -270,6 +289,9 @@ class Segmentation(QWidget):
             recording_node.setText(0, '/'.join(item_parts))
             self.data_tree.addTopLevelItem(recording_node)
 
+            # TODO TODO TODO try to defer this to opening up the tree item in
+            # data browser / speed this up.
+            # this list_segmentations seems to be the slow step.
             tif_seg_runs = u.list_segmentations(d)
             if tif_seg_runs is None:
                 continue
@@ -278,6 +300,7 @@ class Segmentation(QWidget):
                 self.add_segrun_widget(recording_node, r)
 
             self.color_recording_node(recording_node)
+        print(' done')
 
         # TODO if this works, also resize on each operation that changes the
         # contents
@@ -288,9 +311,10 @@ class Segmentation(QWidget):
         self.data_tree.setSizePolicy(
             QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 
-        # TODO TODO disable this when appropriate (when running cnmf or loading
-        # something else)
-        self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_click)
+        # TODO TODO TODO disable this when appropriate (when running cnmf or
+        # loading something else) (or just return under those conditions in this
+        # callback)
+        self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_dblclick)
 
         # TODO should save cnmf output be a button here or to the right?
         # maybe run should also be to the right?
@@ -304,7 +328,6 @@ class Segmentation(QWidget):
         if exists(self.default_json_params):
             print('Loading default parameters from {}'.format(
                 self.default_json_params))
-
             self.params = \
                 params.CNMFParams.from_json_file(self.default_json_params)
         else:
@@ -323,7 +346,6 @@ class Segmentation(QWidget):
 
         self.display_widget = QWidget(self)
         self.splitter.addWidget(self.display_widget)
-
 
         self.splitter_handle = self.splitter.handle(1)
         self.splitter_bar_layout = QVBoxLayout()
@@ -399,15 +421,6 @@ class Segmentation(QWidget):
         self.upload_btn = QPushButton('Upload', display_btns)
         self.upload_btn.clicked.connect(self.upload_cnmf)
         self.display_layout.addWidget(self.upload_btn)
-        '''
-        self.accept_cnmf_btn = QPushButton('Accept', display_btns)
-        display_btns_layout.addWidget(self.accept_cnmf_btn)
-        self.accept_cnmf_btn.clicked.connect(self.accept_cnmf)
-
-        self.reject_cnmf_btn = QPushButton('Reject', display_btns)
-        display_btns_layout.addWidget(self.reject_cnmf_btn)
-        self.reject_cnmf_btn.clicked.connect(self.reject_cnmf)
-        '''
 
         display_params = QWidget(self.display_widget)
         #display_params.setFixedHeight(30)
@@ -455,11 +468,21 @@ class Segmentation(QWidget):
         # TODO maybe share this across all widget classes?
         self.threadpool = QThreadPool()
 
+        # TODO TODO put all shorcuts in a "tools" menu at least
         self.break_tiff_shortcut = QShortcut(QKeySequence('Ctrl+b'), self)
         self.break_tiff_shortcut.activated.connect(self.save_tiff_blocks)
 
         self.save_ijrois_shortcut = QShortcut(QKeySequence('Ctrl+r'), self)
         self.save_ijrois_shortcut.activated.connect(self.save_ijrois)
+        # TODO TODO maybe store some id (hash?) of generated sets of ROIs, and
+        # offer to load any ROI sets in the path that don't match one of these
+        # IDs? (without the hash, since i'm currently using mtime for run_at,
+        # could just check mtimes)
+
+        self.load_ijrois_shortcut = QShortcut(QKeySequence('Ctrl+f'), self)
+        self.load_ijrois_shortcut.activated.connect(self.load_ijrois)
+
+        # TODO shortcut to save cnmf state
 
         # TODO hide upload_btn by default if that's what i'm gonna do upon
         # opening a recording
@@ -467,10 +490,14 @@ class Segmentation(QWidget):
         self.tiff_fname = None
         self.movie = None
         self.cnm = None
-        self.cnmf_running = False
+        self.processing = False
         self.params_changed = False
         self.run_at = None
         self.relabeling_db_segrun = False
+        self.ijroi_file_path = None
+        self.orig_cnmf_footprints = None
+
+        self.footprint_df = None
 
         # TODO delete / handle differently
         self.ACTUALLY_UPLOAD = True
@@ -694,6 +721,8 @@ class Segmentation(QWidget):
                     # (1/10%?)
                     # TODO range?
                     # TODO maybe assume stuff in [0,1] should stay there?
+                    # TODO TODO harcode range for some? or is the precision for
+                    # something like nrgthr OK to apply to all?
                     w = QDoubleSpinBox(group)
 
                     float_min = -1.
@@ -701,6 +730,12 @@ class Segmentation(QWidget):
                     w.setRange(float_min, float_max)
                     assert v >= float_min and v <= float_max
                     w.setValue(v)
+
+                    # Maybe set this per-parameter (leave default of 2 and add
+                    # more for parameters that require it, like nrgthr)?
+                    # TODO as per warning in qt5 docs, check that min/max/value
+                    # have not changed (or set this first? that ok?)
+                    w.setDecimals(4)
 
                     if editable and not is_data_param:
                         w.valueChanged.connect(
@@ -846,6 +881,11 @@ class Segmentation(QWidget):
 
             # TODO TODO allow this to be checked while data is loading, and then
             # just start as soon as data finishes loading
+            # TODO at this point, should i also just make another button for
+            # loading ImageJ ROIs? should there even be something of a param
+            # widget in that case (for controlling things like detrending...
+            # idk) though maybe things i'd want those parameters are things i'd
+            # want in all cases. maybe none specific to ijroi case...
             self.run_cnmf_btn = QPushButton('Run CNMF')
             other_btns_layout.addWidget(self.run_cnmf_btn)
             # Will enable after some data is selected. Can't run CNMF without
@@ -1002,7 +1042,7 @@ class Segmentation(QWidget):
             print('\nSaving to TIFF {}...'.format(tiff_path), flush=True,
                 end='')
             tifffile.imsave(tiff_path, sliced_movie, imagej=True)
-            print(' done.\n')
+            print(' done\n')
 
         avg_tiff_path = join(analysis_dir, 'tif_stacks', 'AVG',
             'nonrigid' if cor_type == 'nr' else 'rigid',
@@ -1020,26 +1060,57 @@ class Segmentation(QWidget):
         # # frames / blocks
 
 
-    # TODO TODO TODO TODO also support loading ijrois + calculating downstream
-    # stuff + uploading them to db!
-
-
-    # TODO TODO TODO are we currently loading self.footprint_df when loading old
-    # runs? maybe we should, so that we can output those ROIs too?
-    # (it doesn't look we are loading it, as-is)
     def save_ijrois(self):
         """Saves CNMF footprints to ImageJ compatible ROIs.
         """
+        if self.footprint_df is None:
+            print('No footprints loaded. Run CNMF or load a run.')
+            return
+
+        if self.ijroi_file_path is not None:
+            assert self.parameter_json is None
+            print(('Current footprints were loaded from ImageJ output. '
+                'Writing ImageJ ROIs not supported in this case.'))
+            return
+
+        row = self.current_segrun_widget.data(0, Qt.UserRole)
+        tiff = row.input_filename
+        xy, z, _ = u.get_thorimage_dims_xml(u.tif2xml_root(tiff))
+        if z is None:
+            frame_shape = xy
+        else:
+            frame_shape = xy + (z,)
+
         # TODO should this popup / take a threshold as an arg?
+        # (to threshold float CNMF components)
         self.footprint_df.sort_index(inplace=True)
         ijrois = []
+        # Just since, as-is, closed_mpl_contours will use current MPL ax,
+        # and pyqt5 will apparently make a new figure and show it when this call
+        # is done.
+        # TODO don't have plt... cant do this. can i get plt? how to
+        # close?!?
+        #fig = plt.figure()
+        fig = Figure()
         for cell_row in self.footprint_df.iterrows():
             cell = cell_row[0]
-            # Transpose is necessary so ROIs will end up in ImageJ coords.
             # TODO this indicate some other problem?
-            footprint = u.db_row2footprint(cell_row[1], shape=frame_shape).T
-            contour = u.closed_mpl_contours(footprint,
-                if_multiple='take_largest')
+            footprint = u.db_row2footprint(cell_row[1], shape=frame_shape)
+            # Looking at ijroi source code, it seems Y coordinate is first in
+            # input / output arrays.
+            footprint = u.py2imagej_coords(footprint)
+
+            # TODO TODO maybe change this to using cv2 findContours or something
+            # TODO make this always verbose when it's applying whatever
+            # (take_largest, in this case) if_multiple strategy
+            # this doesn't effectively transpose stuff, does it?
+
+            # TODO it kinda seems like i need to dilate the roi to the int
+            # boundary, to get them to overlap w/ cnmf util plots...
+            # (adding 0.5 to contour before casting seemed to produce a similar
+            # problem in opposite direction)
+            ij_contour = (u.closed_mpl_contours(footprint,
+                if_multiple='take_largest')).astype(np.int16)
 
             # TODO need to subtract one point or something? need to order?
             # (so as not to duplicate start/end) (seems not to not *fail* as-is
@@ -1047,17 +1118,197 @@ class Segmentation(QWidget):
             # TODO maybe also prefix name w/ analysis run timestamp?
             # or put in roi properties somewhere? other file in zip?
             # (ij seems to just ignore extensions it doesn't expect?)
-            ijrois.append((str(cell), contour))
+            # TODO maybe use subpixel resolution settings in ijroi to get it to
+            # save exactly as same rois, rather than truncated?
+            ijrois.append((str(cell) + '.roi', ij_contour))
+        del fig
+        #plt.close(fig)
+        #import ipdb; ipdb.set_trace()
 
-        # TODO TODO TODO write to analysis_output somewhere + print
-        # where we are writing it
-        import ipdb; ipdb.set_trace()
-        #ijroi.write_polygon_roi_zip(ijrois, )
+        # TODO delete.
+        #self.before_ijroi_cycle = u.ijrois2masks(ijrois, frame_shape)
+        #
+
+        tiff_dir = split(tiff)[0]
+        thorimage_id = u.tiff_thorimage_id(tiff)
+        roi_filename = (thorimage_id + self.run_at.strftime('_%Y%m%d_%H%M%S') +
+            '_ijroi.zip')
+        roi_filepath = join(tiff_dir, roi_filename)
+
+        print('Writing ImageJ ROIs to {}'.format(roi_filepath))
+        ijroi.write_polygon_roi_zip(ijrois, roi_filepath)
 
 
-    # TODO move to util
-    def format_timestamp(self, timestamp):
-        return str(pd.Timestamp(timestamp))[:16]
+    def load_ijrois(self):
+        """Load ImageJ compatible ROIs and calculates same things calculated
+        using CNMF output. Loads to db.
+        """
+        if self.movie is None:
+            print('Load a movie before loading ImageJ ROIs.')
+            return
+
+        old_plot_intermediates_val = self.plot_intermediates
+        self.plot_intermediates_btn.setChecked(False)
+        restore_false = False
+        if not (self.plot_correlations or self.plot_traces):
+            restore_false = True
+            self.plot_corrs_btn.setChecked(True)
+            self.plot_traces_btn.setChecked(True)
+
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+
+        # TODO restrict *.zip files shown to those also following some naming
+        # convention (to indicate it's for the currently loaded TIFF, and not a
+        # TIFF from some other experiment on the same fly)?
+        # maybe checkbox / diff option to show all?
+
+        curr_tiff_dir = split(self.tiff_fname)[0]
+        ijroiset_filename, _ = QFileDialog.getOpenFileName(self,
+            'Select ImageJ ROI zip...', curr_tiff_dir, 'ImageJ ROIs (*.zip)',
+            options=options)
+
+        if len(ijroiset_filename) == 0:
+            print('No ImageJ ROI zipfile selected.')
+            return
+
+        ijroi_cnmf_run = None
+        fname = split(ijroiset_filename)[-1]
+        parts = fname.split('_')
+        if len(parts) >= 3:
+            date_str = '_'.join(parts[-3:-1])
+            try:
+                ijroi_cnmf_run = datetime.strptime(date_str,
+                    '%Y%m%d_%H%M%S')
+            except ValueError:
+                pass
+
+        frame_shape = self.movie.shape[1:]
+        self.orig_cnmf_footprints = None
+        if ijroi_cnmf_run is not None:
+            full_timestamps = pd.read_sql_query('''SELECT run_at FROM
+                segmentation_runs WHERE date_trunc('second', run_at) = '{}'
+            '''.format(pd.Timestamp(ijroi_cnmf_run)), u.conn).run_at
+            assert len(full_timestamps) <= 1
+
+            if len(full_timestamps) == 1:
+                ijroi_cnmf_run = full_timestamps[0]
+                orig_cnmf_footprints = pd.read_sql_query('''
+                    SELECT * FROM cells WHERE segmentation_run = '{}'
+                    '''.format(pd.Timestamp(ijroi_cnmf_run)),
+                    u.conn, index_col='cell')
+
+                if len(orig_cnmf_footprints) == 0:
+                    warnings.warn(('No footprints found in db for CNMF run {}'
+                        ).format(format_timestamp(ijroi_cnmf_run)))
+                else:
+                    self.orig_cnmf_footprints = \
+                        u.db_footprints2array(orig_cnmf_footprints, frame_shape)
+            else:
+                warnings.warn('Segmentation run {} not found in db'.format(
+                    format_timestamp(ijroi_cnmf_run)))
+
+        # TODO display a note about ij params if loading ijroi analysis from db
+        # TODO TODO make it so output side of qsplitter gets bigger when this
+        # happens, rather than having data browser grow.
+        self.param_widget_stack.hide()
+        # TODO maybe no point in disabling this button, if widget containing it
+        # is going to be hidden...
+        self.run_cnmf_btn.setEnabled(False)
+        self.plot_intermediates_btn.setEnabled(False)
+        self.processing = True
+        self.fig.clear()
+        self.ijroi_file_path = ijroiset_filename
+        ijroiset_mtime = datetime.fromtimestamp(getmtime(ijroiset_filename))
+        # TODO see notes in setup.sql. (may) want to use another field for
+        # ijroiset mtime.
+        self.run_at = ijroiset_mtime
+        self.parameter_json = None
+        self.run_len_seconds = None
+        self.cnm = None
+
+        print('Using ImageJ ROIs from {}'.format(self.ijroi_file_path))
+        print('Last modified at {}'.format(format_timestamp(self.run_at)))
+
+        ijrois = ijroi.read_roi_zip(ijroiset_filename)
+
+        # TODO remove duplicate points in the thing that generates the contours
+        # (mpl code) / use diff code to generate them. no point always storing
+        # this extra stuff if cv2 doesn't need it...
+
+        self.footprints = u.ijrois2masks(ijrois, frame_shape)
+        if self.orig_cnmf_footprints is not None:
+            assert self.footprints.shape == self.orig_cnmf_footprints.shape
+
+        # TODO delete
+        #'''
+        show_mask_union(self.footprints)
+        avg = np.mean(self.movie, axis=0)
+        avg = avg - np.min(avg)
+        avg = avg / np.max(avg)
+        cv2.imshow('avg', avg)
+        #'''
+
+        # TODO try plotting cv2 drawContours for all against input
+        # contours? (cnmf or stuff passed through ij? former i guess...)
+
+        # TODO superimpose on avg or something before calculating everything
+        # (separate user action to confirm)?
+
+        self.raw_f = u.extract_traces_boolean_footprints(self.movie,
+            self.footprints)
+
+        # TODO TODO TODO TODO maybe also detrend to some extent? rolling median
+        # or something? per-block (if so, defer?)
+        # rather than deferring, maybe have some option to always zero the
+        # baseline df_over_f (per block / per trial) (and maybe zero not exactly
+        # right up to beginning, assuming there might be some black frames
+        # somewhere, if we don't have parameters to throw those out.
+        # or just don't design for that case...)
+        # TODO need to diff in a way that preserves dimensions? NaN OK?
+        # impute? (they are the same size in CMNF output, right? and no NaN?)
+        # TODO TODO TODO TODO probably smooth raw_f and df before calculating
+        # dff?
+        df = np.diff(self.raw_f, axis=0)
+        last_df_values = np.expand_dims(df[-1, :], 0)
+        df = np.concatenate((df, last_df_values))
+        self.df_over_f = df / self.raw_f
+        del df
+
+        # TODO delete
+        with open('test_ijroi_extraction.p', 'wb') as f:
+            data = {
+                'raw_f': self.raw_f,
+                'dff': self.df_over_f,
+                'footprints': self.footprints,
+                'ijrois': ijrois,
+                'tiff': self.tiff_fname
+            }
+            pickle.dump(data, f)
+        #
+
+        # TODO may need to deal w/ run_at or something there? time taken?
+        # (either of those in db?)
+        self.plot_intermediates_at_fit = False
+        # TODO maybe another check box as to whether to load original cnmf
+        # footprints? (or just always do it?)
+        self.process_segmentation_output()
+
+        # TODO TODO TODO TODO need to enable upload (+ make sure it works...)
+
+        # TODO TODO TODO ultimately, sanity check trace extraction by comparing
+        # cnmf output to stuff from cycling those same cnmf footprints to ijrois
+        # and back (w/o modification)
+        self.plot_intermediates_btn.setEnabled(True)
+        self.param_widget_stack.show()
+
+        self.plot_intermediates_btn.setChecked(old_plot_intermediates_val)
+        if restore_false:
+            self.plot_corrs_btn.setChecked(False)
+            self.plot_traces_btn.setChecked(False)
+
+        # TODO TODO visually indicate in data browser if a segrun node comes
+        # from ijrois (bold / italics? pre/suffix? diff color? diff section)
 
 
     def delete_segrun(self, treenode) -> None:
@@ -1066,7 +1317,7 @@ class Segmentation(QWidget):
         # TODO change order of yes / no?
         confirmation_choice = QMessageBox.question(self, 'Confirm delete',
             'Remove analysis run from {} from database?'.format(
-            self.format_timestamp(run_at)),
+            format_timestamp(run_at)),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
         if confirmation_choice == QMessageBox.Yes:
@@ -1097,7 +1348,7 @@ class Segmentation(QWidget):
     def add_segrun_widget(self, parent, segrun_row) -> None:
         seg_run_item = QTreeWidgetItem(parent)
         seg_run_item.setData(0, Qt.UserRole, segrun_row)
-        seg_run_item.setText(0, self.format_timestamp(segrun_row.run_at))
+        seg_run_item.setText(0, format_timestamp(segrun_row.run_at))
         seg_run_item.setFlags(seg_run_item.flags() ^ Qt.ItemIsUserCheckable)
 
         # TODO is this really how i want to do it?
@@ -1282,10 +1533,10 @@ class Segmentation(QWidget):
         # TODO more idiomatic way?
         setattr(self, key, new_value)
 
-        
+    
     def check_run_btn_enbl(self) -> None:
         self.params_changed = True
-        if (not self.cnmf_running and self.movie is not None):
+        if (not self.processing and self.movie is not None):
             self.run_cnmf_btn.setEnabled(True)
 
 
@@ -1349,12 +1600,10 @@ class Segmentation(QWidget):
             self.check_run_btn_enbl()
 
 
+    # TODO consolidate w/ run_cnmf? (or break most stuff set here into another
+    # fn also called in load_ijrois case?)
     def start_cnmf_worker(self) -> None:
         self.run_cnmf_btn.setEnabled(False)
-        '''
-        self.accept_cnmf_btn.setEnabled(False)
-        self.reject_cnmf_btn.setEnabled(False)
-        '''
 
         # Might consider moving this to end of cnmf call, so judgement can be
         # made while something else is running, but that might be kind of risky.
@@ -1371,6 +1620,8 @@ class Segmentation(QWidget):
         # TODO separate button to cancel? change run-button to cancel?
 
         # TODO maybe don't do this (yet)?
+        # TODO TODO need to call show / update or something? it doesn't seem to
+        # be doing this... (test)?
         self.fig.clear()
 
         # TODO what kind of (if any) limitations are there on the extent to
@@ -1382,25 +1633,29 @@ class Segmentation(QWidget):
         worker = Worker(self.run_cnmf)
         # TODO so how does it know to pass one arg in this case?
         # (as opposed to cnmf_done case)
-        worker.signals.result.connect(self.get_cnmf_output)
+        worker.signals.result.connect(self.process_segmentation_output)
         # TODO TODO implement. may require allowing callbacks to be passed into
         # cnmf code to report progress?
-        ####worker.signals.progress.connect(self.progress_fn)
+        #worker.signals.progress.connect(self.progress_fn)
 
         self.parameter_json = self.params.to_json()
-        # TODO make names of these more similar
-        self.cnmf_start = time.time()
-        self.run_at = datetime.fromtimestamp(self.cnmf_start)
+        self.ijroi_file_path = None
+        self.cnmf_start_seconds = time.time()
+        self.run_at = datetime.fromtimestamp(self.cnmf_start_seconds)
 
         self.params_changed = False
-        self.cnmf_running = True
+        self.processing = True
 
         self.threadpool.start(worker)
 
 
     def run_cnmf(self) -> None:
-        print('Running CNMF ({})'.format(self.format_timestamp(self.run_at)),
+        print('Running CNMF ({})'.format(format_timestamp(self.run_at)),
             flush=True)
+        # TODO TODO TODO if i'm going to null self.cnm in imagej thing, should
+        # also probably null any ijroi related instance variables here
+        # (more important too, as those may be directly uploaded)
+
         # TODO use cm.cluster.setup_cluster?
         # TODO what is the dview that returns as second arg?
 
@@ -1465,10 +1720,31 @@ class Segmentation(QWidget):
         max_component_pixels = self.params_copy.get('quality',
             'max_component_pixels')
 
-        keep = ((n_pixels >= min_component_pixels) &
-                (n_pixels <= max_component_pixels))
-        # TODO maybe in the meantime, at least print how many are getting
-        # discarded for each threshold?
+        big_enough = (n_pixels >= min_component_pixels)
+        small_enough = (n_pixels <= max_component_pixels)
+        keep = (big_enough & small_enough)
+
+        n_too_small = (~ big_enough).sum()
+        if n_too_small > 0:
+            print('Tossing {} components that had less than {} pixels'.format(
+                n_too_small, min_component_pixels))
+        else:
+            print('No components had less than minimum {} pixels'.format(
+                min_component_pixels))
+
+        n_too_big = (~ small_enough).sum()
+        if n_too_big > 0:
+            print(('Tossing {} components that had more than {} pixels'
+                ).format(n_too_big, max_component_pixels))
+        else:
+            print('No components had more than maximum {} pixels'.format(
+                max_component_pixels))
+
+        # TODO TODO TODO renumber components within the remaining ones!!!
+        import ipdb; ipdb.set_trace()
+        # Could use CNMF select_components for this, but it seems poorly
+        # implemented, and I'm not sure I want to be able to restore components
+        # anyway.
         self.cnm.estimates.A = self.cnm.estimates.A[:, keep]
         #
 
@@ -1479,26 +1755,37 @@ class Segmentation(QWidget):
 
         # TODO maybe have a widget that shows the text output from cnmf?
 
+        # TODO TODO TODO w/ python version of cnmf, as i'm using it, do i need
+        # to explicitly order components to get same ordering as in matlab ver?
+        # (yes, it seems so. seems evaluate_components as it least one thing
+        # that does this, and that's not working for me at the moment)
 
-    # TODO TODO actually provide a way to only initialize cnmf, to test out
-    # various initialization procedures (though only_init arg doesn't actually
-    # seem to accomplish this correctly)
-    def get_recording_dfs(self) -> None:
-        """
-        Sets:
-        - self.df_over_f
-        - self.start_frames
-        - self.stop_frames
-        - self.presentation_dfs (list # trials long)
-        - self.comparison_dfs (list # trials long)
-        - self.footprint_df
-        """
+        # TODO do all footprints stuff w/o converting to full array?
+        # x,y,n_footprints
+        self.footprints = self.cnm.estimates.A.toarray()
+        # Assuming equal number of pixels along both dimensions.
+        pixels_per_side = int(np.sqrt(self.footprints.shape[0]))
+        n_footprints = footprints.shape[-1]
+        # TODO actually, is this correct? (i.e. if calculating my own
+        # projections of the movie onto these footprints, would i get similar
+        # results / do the movie and footprint coords match up? or is it only
+        # a function of how i'm plotting things that it matches up, and indexing
+        # as normal they do not?)
+        # TODO TODO TODO maybe now this will need to be changed, since i've
+        # untransposed x_coords and y_coords in the db?
+        self.footprints = np.reshape(self.footprints,
+            (pixels_per_side, pixels_per_side, n_footprints))
+
         # TODO could maybe compute my own df/f from this if i'm worried...
         # frame number, cell -> value
-        raw_f = self.cnm.estimates.C.T
+        # TODO TODO TODO and how is raw_f diff from extract_... -> diff
+        # (shouldn't it be exactly the same? just calc that way, rather than
+        # extract_... or whatever?)
+        self.raw_f = self.cnm.estimates.C.T
 
         # TODO TODO TODO to copy what Remy's matlab script does, need to detrend
-        # within each "block"
+        # within each "block" (probably want w/in trial, even?)
+        # (in which case, might need to mix this and logic in get_recording_dfs)
         if self.cnm.estimates.F_dff is None:
             # quantileMin=8, frames_window=500, flag_auto=True, use_fast=False,
             # (a, b, C, f, YrA)
@@ -1508,6 +1795,27 @@ class Segmentation(QWidget):
 
         self.df_over_f = self.cnm.estimates.F_dff.T
 
+        self.run_len_seconds = time.time() - self.cnmf_start_seconds
+        print('CNMF took {:.1f}s'.format(self.run_len_seconds))
+
+
+    # TODO TODO actually provide a way to only initialize cnmf, to test out
+    # various initialization procedures (though only_init arg doesn't actually
+    # seem to accomplish this correctly)
+    def get_recording_dfs(self) -> None:
+        """
+        Requires:
+        - self.raw_f
+        - self.df_over_f
+        - self.footprints
+
+        Sets:
+        - self.start_frames
+        - self.stop_frames
+        - self.presentation_dfs (list # trials long)
+        - self.comparison_dfs (list # trials long)
+        - self.footprint_df
+        """
         # TODO why 474 x 4 + 548 in one case? i thought frame numbers were
         # supposed to be more similar... (w/ np.diff(odor_onset_frames))
         first_onset_frame_offset = \
@@ -1517,6 +1825,7 @@ class Segmentation(QWidget):
         # would have to pass footprints back / read from sql / read # from sql
         ##assert n_cells == n_footprints
 
+        # TODO rename to be clear about what these are the start/stop of
         start_frames = np.append(0,
             self.odor_onset_frames[1:] - first_onset_frame_offset)
         stop_frames = np.append(
@@ -1533,11 +1842,9 @@ class Segmentation(QWidget):
         print(sum(lens))
         print(n_frames)
         # TODO TODO TODO should i assert that all lens are the same????
-        # (it seems analysis code requires this...)
 
         # TODO assert here that all frames add up / approx
 
-        # TODO TODO TODO modify for supermixture (+ more general) case
         # TODO TODO either warn or err if len(start_frames) is !=
         # len(odor_list)
         self.start_frames = start_frames
@@ -1618,6 +1925,7 @@ class Segmentation(QWidget):
                 'odor_onset_frame': direct_onset_frame,
                 'odor_offset_frame': offset_frame,
                 'from_onset': [[float(x) for x in presentation_frametimes]],
+                # TODO TODO is this still true?
                 # They start as True, since the way I'm doing it now, they
                 # aren't uploaded otherwise. Once in db, this can be changed to
                 # False.
@@ -1635,9 +1943,8 @@ class Segmentation(QWidget):
 
             '''
             presentation_dff = self.df_over_f[start_frame:stop_frame, :]
-            presentation_raw_f = raw_f[start_frame:stop_frame, :]
+            presentation_raw_f = self.raw_f[start_frame:stop_frame, :]
             '''
-
             # TODO TODO TODO fix / delete hack!!
             # TODO probably just need to more correctly calculate stop_frame?
             # (or could also try expanding frametimes to include that...)
@@ -1645,7 +1952,7 @@ class Segmentation(QWidget):
             # TODO TODO why didn't this fix it!?!?!? (did it?)
             stop_frame = start_frame + actual_frametimes_slice_len
             presentation_dff = self.df_over_f[start_frame:stop_frame, :]
-            presentation_raw_f = raw_f[start_frame:stop_frame, :]
+            presentation_raw_f = self.raw_f[start_frame:stop_frame, :]
 
             # TODO TODO TODO if these all start off as the same length,
             # what ultimately compresses the frame times to len 680?
@@ -1654,9 +1961,6 @@ class Segmentation(QWidget):
             print(presentation_frametimes.shape)
             print(presentation_raw_f.shape)
             print(presentation_dff.shape)
-
-            ############import ipdb; ipdb.set_trace()
-            #
 
             # Assumes that cells are indexed same here as in footprints.
             cell_dfs = []
@@ -1686,20 +1990,12 @@ class Segmentation(QWidget):
 
             print('Done processing presentation {}'.format(i))
 
-        # TODO TODO do all footprints stuff w/o converting to full array!
-        # x,y,n_footprints
-        footprints = self.cnm.estimates.A.toarray()
-
-        # Assuming equal number along both dimensions.
-        pixels_per_side = int(np.sqrt(footprints.shape[0]))
-        n_footprints = footprints.shape[1]
-
-        footprints = np.reshape(footprints,
-            (pixels_per_side, pixels_per_side, n_footprints))
-        
+        n_footprints = self.footprints.shape[-1]
         footprint_dfs = []
         for cell_num in range(n_footprints):
-            sparse = coo_matrix(footprints[:,:,cell_num])
+            # TODO could use tuple of slice objects to accomodate arbitrary dims
+            # here (x,y,Z). change all places like this.
+            sparse = coo_matrix(self.footprints[:,:,cell_num])
             footprint_dfs.append(pd.DataFrame({
                 'recording_from': [self.started_at],
                 'segmentation_run': [self.run_at],
@@ -1710,32 +2006,108 @@ class Segmentation(QWidget):
                 # TODO just move appropriate casting to my to_sql function,
                 # and allow having numpy arrays (get type info from combination
                 # of that and the database, like in other cases)
-                'x_coords': [[int(x) for x in sparse.col.astype('int16')]],
-                'y_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                # TODO TODO TODO TODO was sparse.col for x_* and sparse.row for
+                # y_*. I think this was why I needed to tranpose footprints
+                # sometimes. fix everywhere.
+                'x_coords': [[int(x) for x in sparse.row.astype('int16')]],
+                'y_coords': [[int(x) for x in sparse.col.astype('int16')]],
                 'weights': [[float(x) for x in sparse.data.astype('float32')]]
             }))
         self.footprint_df = pd.concat(footprint_dfs, ignore_index=True)
 
 
-    # TODO some kind of test option / w/ test data for this part that doesn't
-    # require actually running cnmf
-    # TODO rename to "process_..." or something?
-    # TODO make this fn not block gui? did cnmf_done not block gui? maybe that's
-    # a reason to keep it? or put most of this stuff in the worker?
-    def get_cnmf_output(self) -> None:
-        # TODO TODO TODO w/ python version of cnmf, as i'm using it, do i need
-        # to explicitly order components to get same ordering as in matlab ver?
-
-        self.run_len_seconds = time.time() - self.cnmf_start
-        print('CNMF took {:.1f}s'.format(self.run_len_seconds))
-        # TODO maybe time this too? (probably don't store in db tho)
-        # at temporarily, to see which parts are taking so long...
-        print('Processing the output...')
-
+    def plot_footprints(self, contour_axes, plot_intermediates, only_init):
         # TODO TODO allow toggling between type of background image shown
         # (radio / combobox for avg, snr, etc? "local correlations"?)
         # TODO TODO use histogram equalized avg image as one option
         img = self.avg
+
+        n_footprint_axes = len(contour_axes)
+        for i in range(n_footprint_axes):
+            contour_ax = contour_axes[i]
+            contour_ax.axis('off')
+
+            # TODO TODO make callbacks for each step and plot as they become
+            # available
+            # TODO might also be nice to get self.cnm out of here, if possible.
+            # maybe have some std interface for fitting fns to output
+            # intermediate graphical debugging info?
+            if plot_intermediates:
+                if i == 0:
+                    # TODO why are title's not working? need axis='on'?
+                    # just turn off other parts of axis?
+                    contour_ax.set_title('Initialization')
+                    A = self.cnm.A_init
+                elif i == 1:
+                    # TODO TODO also plot the values of these for other
+                    # iterations, if available?
+                    contour_ax.set_title('After spatial update')
+                    A = self.cnm.A_spatial_update_k[0]
+                elif i == 2:
+                    contour_ax.set_title('After merging')
+                    A = self.cnm.A_after_merge_k[0]
+                #elif i == 3:
+                #    A = self.cnm.A_spatial_refinement_k[0]
+
+            if self.ijroi_file_path is not None:
+                assert self.parameter_json is None
+                A = u.footprints_to_flat_cnmf_dims(self.footprints)
+                
+                # TODO delete
+                '''
+                try:
+                    bA = u.footprints_to_flat_cnmf_dims(self.before_ijroi_cycle)
+                    caiman.utils.visualization.plot_contours(bA, img,
+                        ax=contour_ax, display_numbers=False, colors='y',
+                        linewidth=1.5)
+                except AttributeError:
+                    pass
+                '''
+                #
+                if self.orig_cnmf_footprints is not None:
+                    orig_A = u.footprints_to_flat_cnmf_dims(
+                        self.orig_cnmf_footprints)
+
+                    caiman.utils.visualization.plot_contours(orig_A, img,
+                        ax=contour_ax, display_numbers=False, colors='g',
+                        linewidth=1.0)
+            else:
+                A = self.cnm.estimates.A
+
+            # TODO maybe show self.cnm.A_spatial_refinement_k[0] too in
+            # plot_intermediates case? should be same though (though maybe one
+            # is put back in original, non-sliced, coordinates?)
+            if i == n_footprint_axes - 1 and not only_init:
+                if self.ijroi_file_path is not None:
+                    title = 'ImageJ ROIs from {}'.format(
+                        split(self.ijroi_file_path)[-1])
+                else:
+                    title = 'Final estimate'
+                contour_ax.set_title(title)
+
+            elif not plot_intermediates and i == 0 and only_init:
+                contour_ax.set_title('Initialization')
+
+            caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
+                display_numbers=False, colors='r', linewidth=1.0)
+            # TODO TODO TODO also call evaluate_components and include that in
+            # Final estimate (maybe w/ a separate subplot to show what gets
+            # filtered?)
+
+            self.mpl_canvas.draw()
+
+
+    # TODO some kind of test option / w/ test data for this part that doesn't
+    # require actually running cnmf
+    # TODO make this fn not block gui? did cnmf_done not block gui? maybe that's
+    # a reason to keep it? or put most of this stuff in the worker?
+    def process_segmentation_output(self) -> None:
+        # TODO list which instance variables are required / which are set
+        """
+        """
+        # TODO maybe time this too? (probably don't store in db tho)
+        # at temporarily, to see which parts are taking so long...
+        print('Processing the output...')
 
         self.display_params_editable(False)
 
@@ -1743,7 +2115,12 @@ class Segmentation(QWidget):
         plot_correlations = self.plot_correlations
         plot_traces = self.plot_traces
 
-        only_init = self.params_copy.get('patch', 'only_init')
+        if self.ijroi_file_path is not None:
+            assert self.parameter_json is None
+            only_init = False
+        else:
+            only_init = self.params_copy.get('patch', 'only_init')
+
         n_footprint_axes = 4 if plot_intermediates and not only_init else 1
 
         w_inches_footprint_axes = 3
@@ -1801,50 +2178,9 @@ class Segmentation(QWidget):
                     sharex=ax0, sharey=ax0)
 
             axs.append(ax)
+
         contour_axes = np.array(axs)
-
-        for i in range(n_footprint_axes):
-            contour_ax = contour_axes[i]
-            contour_ax.axis('off')
-
-            # TODO TODO make callbacks for each step and plot as they become
-            # available
-            if plot_intermediates:
-                # TODO need to correct coordinates b/c slicing? just slice img?
-                # TODO need to transpose or change C/F order or anything?
-                if i == 0:
-                    # TODO why are title's not working? need axis='on'?
-                    # just turn off other parts of axis?
-                    contour_ax.set_title('Initialization')
-                    A = self.cnm.A_init
-                elif i == 1:
-                    contour_ax.set_title('After spatial update')
-                    A = self.cnm.A_spatial_update_k[0]
-                elif i == 2:
-                    contour_ax.set_title('After merging')
-                    A = self.cnm.A_after_merge_k[0]
-                #elif i == 3:
-                #    A = self.cnm.A_spatial_refinement_k[0]
-
-            # TODO maybe show self.cnm.A_spatial_refinement_k[0] too in
-            # plot_intermediates case? should be same though (though maybe one
-            # is put back in original, non-sliced, coordinates?)
-            if i == n_footprint_axes - 1 and not only_init:
-                contour_ax.set_title('Final estimate')
-                A = self.cnm.estimates.A
-                ###import ipdb; ipdb.set_trace()
-
-            elif not plot_intermediates and i == 0 and only_init:
-                contour_ax.set_title('Initialization')
-                A = self.cnm.estimates.A
-
-            caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
-                display_numbers=False, colors='r', linewidth=1.0)
-            # TODO TODO TODO also call evaluate_components and include that in
-            # Final estimate (maybe w/ a separate subplot to show what gets
-            # filtered?)
-
-            self.mpl_canvas.draw()
+        self.plot_footprints(contour_axes, plot_intermediates, only_init)
 
         ###################################################################
         # TODO defer this as much as possible
@@ -2013,17 +2349,6 @@ class Segmentation(QWidget):
                 presentation_df.name1.map(odor2abbrev)
             presentation_df['name2'] = \
                 presentation_df.name2.map(odor2abbrev)
-            '''
-            if self.pair_case:
-                presentation_df['name1'] = \
-                    presentation_df.name1.map(odor2abbrev)
-                presentation_df['name2'] = \
-                    presentation_df.name2.map(odor2abbrev)
-            else:
-                presentation_df['name'] = \
-                    presentation_df.name1.map(odor2abbrev)
-                # TODO TODO TODO 
-            '''
 
             presentation_df = u.merge_recordings(
                 presentation_df, self.recordings)
@@ -2056,6 +2381,7 @@ class Segmentation(QWidget):
             #if not self.pair_case:
             #    group_cols = [c for c in group_cols if c != 'name2']
 
+            print('expanding array elements...', end='', flush=True)
             non_array_cols = comparison_df.columns.difference(array_cols)
             cell_response_dfs = []
             for _, cell_df in comparison_df.groupby(group_cols + ['cell']):
@@ -2089,6 +2415,7 @@ class Segmentation(QWidget):
 
             comparison_df = pd.concat(cell_response_dfs)
             comparison_df.reset_index(inplace=True) 
+            print(' done', flush=True)
 
             frame2order = {f: o for o,f in
                 enumerate(sorted(comparison_df.odor_onset_frame.unique()))}
@@ -2162,6 +2489,7 @@ class Segmentation(QWidget):
 
             ###################################################################
             if plot_correlations:
+                print('plotting correlations...', end='', flush=True)
                 # TODO TODO might want to only compute responders/criteria one
                 # place, to avoid inconsistencies (so either move this section
                 # into next loop and aggregate, or index into this stuff from
@@ -2215,6 +2543,8 @@ class Segmentation(QWidget):
                     fontsize=6)
                 self.mpl_canvas.draw()
 
+                print(' done', flush=True)
+
         ###################################################################
         if plot_odor_abbreviation_key:
             abbrev2odor = {v: k for k, v in odor2abbrev.items()}
@@ -2239,15 +2569,12 @@ class Segmentation(QWidget):
         # TODO use some non-movie version of pyqtgraph ImageView for avg,
         # to get intensity sliders? or other widget for that?
 
-        self.cnmf_running = False
+        self.processing = False
 
         self.display_params_editable(True)
 
+        # TODO TODO TODO TODO be inclusive of ijroi case here
         if self.cnm is not None:
-            '''
-            self.accept_cnmf_btn.setEnabled(True)
-            self.reject_cnmf_btn.setEnabled(True)
-            '''
             # TODO probably disable when running? or is it OK to upload stuff
             # during run? would any state variables have been overwritten?
             self.make_block_labelling_btns()
@@ -2316,11 +2643,12 @@ class Segmentation(QWidget):
             'run_at': [self.run_at],
             'recording_from': self.started_at,
             'input_filename': self.tiff_fname,
-            'input_md5': self.tiff_md5,
+            #'input_md5': self.tiff_md5,
             'input_mtime': self.tiff_mtime,
             'start_frame': self.start_frame,
             'stop_frame': self.stop_frame,
             'parameters': self.parameter_json,
+            'ijroi_file_path': self.ijroi_file_path,
             # TODO maybe share data / data browser similarly?
             'who': self.main_window.user,
             'host': socket.gethostname(),
@@ -2355,7 +2683,12 @@ class Segmentation(QWidget):
         mocorr_code_versions = u.get_matfile_var(self.matfile,
             mocorr_version_varname, require=False)
 
-        code_versions = (common_code_versions + ti_code_version +
+        code_versions = [this_code_version]
+        if self.parameter_json is not None:
+            code_versions.append(caiman_code_version)
+        else:
+            assert self.ijroi_file_path is not None
+        code_versions = (code_versions + ti_code_version +
             mocorr_code_versions)
 
         # TODO maybe impute missing mocorr version in some cases?
@@ -2547,6 +2880,9 @@ class Segmentation(QWidget):
     # TODO maybe make all block / upload buttons gray until current upload
     # finishes (mostly to avoid having to think about whether not doing so could
     # possibly cause a problem)?
+    # TODO TODO TODO rename from upload_cnmf to be inclusive of ijroi case
+    # TODO prompt to confirm whenever any operation (including exiting)
+    # would not lose current traces before they have been uploaded
     def upload_cnmf(self) -> None:
         # TODO test
         if (any(self.to_be_accepted) and
@@ -2624,6 +2960,9 @@ class Segmentation(QWidget):
             # computed w/ extract / detrend, and any key changes in arguments,
             # then load that and plot some stuff for troubleshooting
 
+            # TODO move / delete. trying to restrict CNMF specific stuff to
+            # run_cnmf now, so that other segmentation / trace extraction can be
+            # used (like ijroi stuff)
             '''
             try:
                 # TODO fix save fn?
@@ -2634,7 +2973,6 @@ class Segmentation(QWidget):
                 print(e)
                 import ipdb; ipdb.set_trace()
             '''
-
             # TODO TODO maybe factor into fn and put behind hotkey / button
             # to save for inspection at will... (but should i fix cnmf
             # serialization first?)
@@ -2775,7 +3113,7 @@ class Segmentation(QWidget):
     # (would need to fix cnmf save (and maybe load too) fn(s))
 
 
-    def handle_treeitem_click(self):
+    def handle_treeitem_dblclick(self):
         curr_item = self.sender().currentItem()
         if curr_item.parent() is None:
             self.current_recording_widget = curr_item
@@ -2807,6 +3145,8 @@ class Segmentation(QWidget):
         self.param_display_widget = None
 
 
+    # TODO possible to speed this up a little? maybe precompute things / don't
+    # request as much data?
     # TODO TODO test case where this or open_recording are triggered
     # when cnmf is running / postprocessing
     # (what happens? what should happen? maybe just disable callbacks during?)
@@ -2821,14 +3161,15 @@ class Segmentation(QWidget):
                 self.uploaded_common_segrun_info
             self.previous_uploaded_block_info = self.uploaded_block_info
             self.previous_n_blocks = self.n_blocks
+            self.previous_footprint_df = self.footprint_df
 
         self.relabeling_db_segrun = True
         self.uploaded_common_segrun_info = True
 
         row = segrun_widget.data(0, Qt.UserRole)
         self.run_at = row.run_at
-
-        print('\nCNMF run from: {}'.format(self.format_timestamp(self.run_at)))
+        # TODO rename to "ImageJ ROIs from" in that case
+        print('\nCNMF run from {}'.format(format_timestamp(self.run_at)))
 
         # TODO for debugging. probably delete
         # TODO TODO also print whether analysis run was accepted or not
@@ -2836,10 +3177,21 @@ class Segmentation(QWidget):
             'SELECT presentation_id, comparison, presentation_accepted FROM' +
             " presentations WHERE analysis = '{}'".format(
             pd.Timestamp(self.run_at)), u.conn)
-        print('Presentations in db for this segmentation run:')
-        print(db_presentations)
+        if len(db_presentations) > 0:
+            print('Presentations in db for this segmentation run:')
+            print(db_presentations)
+        else:
+            print('No presentations in db for this segmentation run.')
         print('')
         #
+
+        # Since this is being non-None currently indicates self.footprint_df
+        # coming from ImageJ ROIs in save_ijrois...
+        self.ijroi_file_path = None
+        self.footprint_df = pd.read_sql_query('''SELECT * FROM cells
+            WHERE segmentation_run = '{}' '''.format(pd.Timestamp(self.run_at)),
+            u.conn, index_col='cell')
+        assert len(self.footprint_df) > 0
 
         self.accepted = u.accepted_blocks(self.run_at)
         self.n_blocks = len(self.accepted)
@@ -2850,22 +3202,27 @@ class Segmentation(QWidget):
         self.uploaded_block_info = list(self.accepted)
 
         self.make_block_labelling_btns(self.accepted)
-
         self.delete_other_param_widgets()
-
         self.param_display_widget = self.make_cnmf_param_widget(row.parameters,
             editable=False)
 
+        # TODO maybe make another widget on the stack to display notification we
+        # are using ijroi stuff + info about it? or just hide?
         self.param_widget_stack.addWidget(self.param_display_widget)
         self.param_widget_stack.setCurrentIndex(1)
 
         # TODO also load correct data params
         # is it a given that param json reflects correct data params????
         # if not, may need to model after open_recording
-
-        # maybe this is not worth it / necessary
-        self.fig.clear()
-
+        
+        # TODO if clear was taking a lot of time here, and can just make a new
+        # one, why not do that for each time i plot? like for the trace, etc?
+        # memory leak or something? mpl internals get screwed up?
+        #print('plotting...', end='', flush=True)
+        # TODO anything possible to make deserializing plots quicker?
+        # (with complicated ones, can take ~5s)
+        # maybe decrease # points in timeseries? could be excessive now
+        t0 = time.time()
         self.fig = pickle.load(BytesIO(row.output_fig_mpl))
         self.mpl_canvas.figure = self.fig
         self.fig.canvas = self.mpl_canvas
@@ -2873,17 +3230,13 @@ class Segmentation(QWidget):
         self.set_fig_size(fig_w_inches, fig_h_inches)
         # TODO test case where canvas was just drawing something larger
         # (is draw area not fully updated?)
-        # TODO need tight_layout?
         self.mpl_canvas.draw()
+        #print(' done ({:.2f}s)'.format(time.time() - t0), flush=True)
 
         # TODO TODO should probably delete any traces in db if select reject
         # (or maybe just ignore and let other scripts clean orphaned stuff up
         # later? so that we don't have to regenerate traces if we change our
         # mind again and want to label as accepted...)
-        '''
-        self.accept_cnmf_btn.setEnabled(True)
-        self.reject_cnmf_btn.setEnabled(True)
-        '''
 
 
     # TODO maybe selecting two (/ multiple) analysis runs then right clicking
@@ -2896,6 +3249,9 @@ class Segmentation(QWidget):
         if recalc_trace:
             self.full_frame_avg_trace = u.full_frame_avg_trace(self.movie)
 
+        # TODO TODO maybe make a new fig / do something other than clearing it
+        # clearing seems to take a while sometimes (timing steps in
+        # back-to-back open_seg... calls)
         self.fig.clear()
         # TODO maybe add some height for pixel based correlation matrix if i
         # include that
@@ -2912,6 +3268,8 @@ class Segmentation(QWidget):
         self.mpl_canvas.draw()
 
 
+    # TODO TODO TODO load last edited movie as soon as gui finishes loading
+    # (or at least have a setting that can enable this)
     # TODO this currently minimizes expanded listwidget item when opened for
     # some reason. i don't want that behavior.
     def open_recording(self, recording_widget):
@@ -2923,6 +3281,8 @@ class Segmentation(QWidget):
         # TODO maybe use setData and data instead?
         idx = self.data_tree.indexOfTopLevelItem(recording_widget)
         tiff = self.motion_corrected_tifs[idx]
+        # TODO TODO still want to switch view back to movie view in this case
+        # (the avg trace and all). i think it's returning prematurely...
         if self.tiff_fname == tiff:
             if self.relabeling_db_segrun:
                 self.accepted = self.previous_accepted
@@ -2932,12 +3292,7 @@ class Segmentation(QWidget):
                 self.uploaded_block_info = self.previous_uploaded_block_info
                 self.run_at = self.previous_run_at
                 self.n_blocks = self.previous_n_blocks
-
-                '''
-                if self.accepted is not None:
-                    self.accept_cnmf_btn.setEnabled(True)
-                    self.reject_cnmf_btn.setEnabled(True)
-                '''
+                self.footprint_df = self.previous_footprint_df
 
                 self.plot_avg_trace(recalc_trace=False)
 
@@ -2947,6 +3302,7 @@ class Segmentation(QWidget):
 
             self.relabeling_db_segrun = False
             return
+
         self.relabeling_db_segrun = False
 
         self.update_param_tab_index(self.cnmf_ctrl_widget.param_tabs)
@@ -3281,7 +3637,7 @@ class Segmentation(QWidget):
             movie = tifffile.imread(tiff).astype('float32')
         '''
         end = time.time()
-        print(' done.')
+        print(' done')
         print('Loading TIFF took {:.3f} seconds'.format(end - start))
 
         # TODO maybe just load a range of movie (if not all blocks/frames used)?
@@ -3377,6 +3733,8 @@ class Segmentation(QWidget):
         self.first_block = first_block
         self.last_block = last_block
 
+        self.footprint_df = None
+
         self.matfile = mat
 
         self.data_params = u.cnmf_metadata_from_thor(tiff)
@@ -3429,6 +3787,8 @@ class Segmentation(QWidget):
         self.avg = np.mean(self.movie, axis=0)
         self.tiff_fname = tiff
 
+        # put behind a flag or something?
+        '''
         start = time.time()
         # TODO maybe md5 array in memory, to not have to load twice?
         # (though for most formats it probably won't be the same... maybe none)
@@ -3436,6 +3796,7 @@ class Segmentation(QWidget):
         self.tiff_md5 = md5(tiff)
         end = time.time()
         print('Hashing TIFF took {:.3f} seconds'.format(end - start))
+        '''
 
         self.tiff_mtime = datetime.fromtimestamp(getmtime(tiff))
 
@@ -3617,9 +3978,9 @@ class ROIAnnotation(QWidget):
         # TODO if not just going to load just comparison, keep movie loaded if
         # clicking other comparisons / until run out of memory
         # TODO just load part of movie for this comparison
-        print('Loading TIFF {}...'.format(tiff), end='')
+        print('Loading TIFF {}...'.format(tiff), end='', flush=True)
         self.movie = tifffile.imread(tiff)
-        print(' done.')
+        print(' done')
 
         # Assumes all data between these frames is part of this comparison.
         self.first_frame = self.metadata.odor_onset_frame.min()
@@ -3871,10 +4232,7 @@ class ROIAnnotation(QWidget):
         # TODO combine w/ current cell/comparison info and...
         # TODO TODO insert values into database
         
-
     # TODO TODO TODO hotkeys / buttons for labelling
-
-    # TODO TODO if doing cnmf in this gui, save output directly to database
 
 
 # TODO TODO maybe make a "response calling" tab that does what my response
@@ -3933,7 +4291,10 @@ class MainWindow(QMainWindow):
         # TODO maybe an earlier tab for motion correction or something at some
         # point?
         self.mc_tab = MotionCorrection(self)
+        print('initializing segmentation tab...', flush=True) #, end='')
         self.seg_tab = Segmentation(self)
+        #print(' done')
+        print('done')
         self.validation_tab = ROIAnnotation(self)
 
         # TODO factor add + windowTitle bit to fn?
@@ -3994,6 +4355,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.save_default_user()
+        # TODO cause problems? alt? (does at least seem to work if there are cv2
+        # windows)
+        cv2.destroyAllWindows()
 
 
     def debug_shell(self):
@@ -4011,14 +4375,15 @@ def main():
     # matlab "ti" (timing info) output from Remy's cnmf MAT files
     # (but maybe h5py worked in that case?)
     global evil
-    global common_code_versions
+    global caiman_code_version
+    global this_code_version
 
     # Calling this first to minimize chances of code diverging.
     # TODO might be better to do before some imports... some of the imports are
     # kinda slow
     # TODO will __file__ still work if i get to the point of installing this
     # package w/ pip?
-    common_code_versions = [u.version_info(m,
+    caiman_code_version, this_code_version = [u.version_info(m,
         used_for='extracting footprints and traces')
         for m in [caiman, __file__]]
 
@@ -4032,11 +4397,11 @@ def main():
 
     # TODO maybe rename all of these w/ db_ prefix or something, to
     # differentiate from non-global versions in segmentation tab code
-    print('reading odors from postgres...', end='')
+    print('reading odors from postgres...', end='', flush=True)
     odors = pd.read_sql('odors', u.conn)
     print(' done')
 
-    print('reading presentations from postgres...', end='')
+    print('reading presentations from postgres...', end='', flush=True)
     presentations = pd.read_sql('presentations', u.conn)
     print(' done')
 
@@ -4068,7 +4433,9 @@ def main():
 
     comp_cols = u.recording_cols + ['comparison']
 
+    print('starting MATLAB engine...', end='', flush=True)
     evil = u.matlab_engine()
+    print(' done')
 
     # TODO convention re: this vs setWindowTitle? latter not available if making
     # a window out of a widget?
