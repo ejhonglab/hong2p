@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+
+import glob
+
+import numpy as np
+#from scipy.optimize import minimize
+import pandas as pd
+import matplotlib.pyplot as plt
+#import matplotlib as mpl
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import seaborn as sns
+
+import hong2p.util as u
+
+
+trial_matrices = False
+odor_matrices = False
+fit_matrices = False
+odor_and_fit_matrices = True
+
+
+# Desired
+key = {
+    'etb': 'A',
+    'eta': 'B',
+    'iaa': 'C',
+    'iaol': 'D',
+    'etoh': 'E',
+    #
+    '1o3ol': 'A',
+    'fur': 'B',
+    'va': 'C',
+    'ms': 'D',
+    '2h': 'E'
+}
+key_corrs = {
+    '4': {
+        'A': key['eta'],
+        'B': key['etb'],
+        'C': key['iaol'],
+        'D': key['etoh'],
+        'E': key['iaa'],
+        'MIX': 'MIX'
+    },
+    '5': {
+        'A': key['va'],
+        'C': key['ms'],
+        'D': key['fur'],
+        'E': key['2h'],
+        'F': key['1o3ol'],
+        'MIX': 'MIX'
+    },
+    '7': {
+        'A': key['fur'],
+        'B': key['1o3ol'],
+        'C': key['ms'],
+        'D': key['va'],
+        'F': key['2h'],
+        'MIX': 'MIX'
+    },
+    '8': {
+        'A': key['iaa'],
+        'C': key['eta'],
+        'D': key['etoh'],
+        'E': key['etb'],
+        'F': key['iaol'],
+        'MIX': 'MIX'
+    }
+}
+
+
+# TODO maybe just use u.matshow? or does that do enough extra stuff that it
+# would be hard to get it to just do what i want in this linearity-checking
+# case?
+# TODO factor this functionality into u.matshow if i end up using that
+def matshow(ax, data, as_row=False, **kwargs):
+    if len(data.shape) == 1:
+        if as_row:
+            ax_idx = 0
+        else:
+            ax_idx = -1
+        data = np.expand_dims(data, -1)
+    return ax.matshow(data, **kwargs)
+
+
+def component_sum_error(weights, components, mix):
+    component_sum = (weights * components.T).sum(axis=1)
+    return np.linalg.norm(component_sum - mix)**2
+
+
+cell_cols = ['name1','name2','repeat_num','cell']
+response_calling_s = 5.0
+dfs = []
+for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
+    df = pd.read_pickle(df_pickle)
+
+    corrected = False
+    for n, corr in key_corrs.items():
+        if df_pickle.endswith('_00{}.p'.format(n)):
+            df.name1 = df.name1.map(corr)
+            assert not pd.isnull(df.name1).any()
+            corrected = True
+            break
+    assert corrected
+
+    in_response_window = ((df.from_onset > 0.0) &
+                          (df.from_onset <= response_calling_s))
+
+    window_df = df.loc[in_response_window,
+        cell_cols + ['order','from_onset','df_over_f']]
+    window_by_trial = window_df.groupby(cell_cols + ['order'])['df_over_f']
+
+    stat = 'max'
+    if stat == 'max':
+        window_trial_stats = window_by_trial.max()
+    elif stat == 'mean':
+        window_trial_stats = window_by_trial.mean()
+
+    responsiveness = window_trial_stats.groupby('cell').mean()
+    cellssorted = responsiveness.sort_values(ascending=False)
+
+    top_n = 100
+    order = cellssorted.index
+
+    trial_by_cell_stats = window_trial_stats.to_frame().pivot_table(
+        index=['name1','name2','repeat_num','order'],
+        columns='cell', values='df_over_f')
+
+    trial_by_cell_stats.sort_index(level='name1', sort_remaining=False,
+        inplace=True)
+
+    title = '/'.join([x for x in df_pickle[:-2].split('_')[-4:] if len(x) > 0])
+    fname = title.replace('/','_')
+
+    if trial_matrices:
+        # TODO TODO check these are the same (should be)
+        trial_by_cell_stats_top = trial_by_cell_stats.loc[:, order[:top_n]]
+        #trial_by_cell_stats = trial_by_cell_stats.loc[:, cellssorted.index]
+        #trial_by_cell_stats_top = trial_by_cell_stats.iloc[:, :top_n]
+
+        cbar_label = stat.title() + r' response $\frac{\Delta F}{F}$'
+
+        odor_labels = u.matlabels(trial_by_cell_stats_top, u.format_mixture)
+        # TODO fix x/y in this fn... seems T required
+        f1 = u.matshow(trial_by_cell_stats_top.T, xticklabels=odor_labels,
+            group_ticklabels=True, colorbar_label=cbar_label, fontsize=6,
+            title=title)
+        ax = plt.gca()
+        ax.set_aspect(0.1)
+        f1.savefig('f1_' + fname + '.png')
+        f1.savefig('f1_' + fname + '.svg')
+
+    odor_cell_stats = trial_by_cell_stats.groupby('name1').mean()
+    # TODO TODO factor linearity checking in kc_analysis to use this,
+    # since A+B there is pretty much a subset of this case
+    # (-> hong2p.util, both use that?)
+
+    component_names = [x for x in odor_cell_stats.index if x != 'MIX'] 
+    # TODO also do on traces as in kc_analysis?
+    # or at least per-trial rather than per-mean?
+    mix = odor_cell_stats.loc['MIX']
+
+    components = odor_cell_stats.loc[component_names]
+    component_sum = components.sum()
+    assert mix.shape == component_sum.shape
+
+    mix_norm = np.linalg.norm(mix)
+    component_sum_norm = np.linalg.norm(component_sum)
+
+    scaled_sum = (mix_norm / component_sum_norm) * component_sum
+    scaled_sum_norm = np.linalg.norm(scaled_sum)
+    assert np.isclose(scaled_sum_norm, mix_norm), '{} != {}'.format(
+        scaled_sum_norm, mix_norm)
+
+    scaled_sum_mix_diff = mix - scaled_sum
+    '''
+    a = np.stack([a_traces.values.flatten(), b_traces.values.flatten()]
+        ).T
+    b = ab_traces.values.flatten()
+    '''
+    # A: of dimensions (M, N)
+    # B: of dimensions (M,)
+    a = components.T
+    b = mix
+    try:
+        # TODO worth also contraining coeffs to sum to 1 or something?
+        # / be non-neg? and how?
+        coeffs, residuals, rank, svs = np.linalg.lstsq(a, b, rcond=None)
+        # TODO any meaning to svs? worth checking anything about that or rank?
+    except np.linalg.LinAlgError as e:
+        raise
+
+    # TODO TODO maybe print (or even include on plot?)
+    # the coefficients?
+    weighted_sum = (coeffs * a).sum(axis=1)
+    weighted_mix_diff = mix - weighted_sum
+    assert np.isclose(residuals[0], np.linalg.norm(mix - weighted_sum)**2)
+    assert np.isclose(residuals[0],
+        component_sum_error(coeffs, components, mix))
+
+    # Just since we'd expect the model w/ more parameters to do better,
+    # given it's actually optimizing what we want.
+    assert (np.linalg.norm(weighted_mix_diff) <
+            np.linalg.norm(scaled_sum_mix_diff)), 'lstsq did no better'
+
+    # This was to check that lstsq was doing what I wanted (and it seems to be),
+    # but it could also be used to introduce constraints.
+    '''
+    x0 = coeffs.copy()
+    res0 = minimize(component_sum_error, x0, args=(components, mix))
+    x0 = np.ones(components.shape[0]) / components.shape[0]
+    res1 = minimize(component_sum_error, x0, args=(components, mix))
+    '''
+
+    if fit_matrices:
+        diff_fig, diff_axs = plt.subplots(2, 2, sharex=True, sharey=True)
+        ax = diff_axs[0, 0]
+
+        #aspect_one_col = 0.05 #0.1
+        aspect_one_col = 'auto'
+        title_rotation = 0 #90
+        # TODO delete after figuring out spacing
+        titles = False
+        #
+
+        matshow(ax, scaled_sum[order[:top_n]], aspect=aspect_one_col)
+        #ax.matshow(scaled_sum, vmin=vmin, vmax=vmax,
+        #           extent=[xmin,xmax,ymin,ymax], aspect='auto')
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+        #
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        #
+        if titles:
+            ax.set_title('Scaled sum of monomolecular responses',
+                rotation=title_rotation)
+
+        ax = diff_axs[0, 1]
+        # TODO TODO appropriate vmin / vmax here?
+        # [-1, 1] or maybe [-1.5, 1.5] would seem to work ok..?
+        # TODO share a colorbar between the two difference plots?
+        # (if fixed range, would seem reasonable)
+        mat = matshow(ax, scaled_sum_mix_diff[order[:top_n]],
+            aspect=aspect_one_col, cmap='coolwarm')
+        #mat = matshow(ax, scaled_sum_mix_diff, extent=[xmin,xmax,ymin,ymax],
+        #    aspect='auto', cmap='coolwarm')
+        # TODO only one colorbar allowed or something? why this not seem to be
+        # working?
+        diff_fig.colorbar(mat, ax=ax)
+
+        if titles:
+            ax.set_title('Mixture response - scaled sum',
+                rotation=title_rotation)
+        # TODO probably change from responder_traces... fn? use u.matshow?
+        #ax.set_xlabel(responder_traces.columns.name)
+        #ax.set_ylabel(responder_traces.index.name)
+        ax.yaxis.set_ticks_position('right')
+        ax.xaxis.set_ticks_position('bottom')
+        #
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        #
+
+        ax = diff_axs[1, 0]
+        #matshow(ax, weighted_sum, vmin=vmin, vmax=vmax,
+        #    extent=[xmin,xmax,ymin,ymax], aspect='auto')
+        matshow(ax, weighted_sum[order[:top_n]], aspect=aspect_one_col)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        #
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        #
+        if titles:
+            ax.set_title('Weighted sum', rotation=title_rotation)
+
+        ax = diff_axs[1, 1]
+        #mat2 = matshow(ax, weighted_mix_diff, extent=[xmin,xmax,ymin,ymax],
+        #    aspect='auto', cmap='coolwarm')
+        mat2 = matshow(ax, weighted_mix_diff[order[:top_n]],
+            aspect=aspect_one_col, cmap='coolwarm')
+        diff_fig.colorbar(mat2, ax=ax)
+
+        if titles:
+            ax.set_title('Mixture response - weighted sum',
+                rotation=title_rotation)
+        #ax.set_xlabel(responder_traces.columns.name)
+        #ax.set_ylabel(responder_traces.index.name)
+        ax.yaxis.set_ticks_position('right')
+        ax.xaxis.set_ticks_position('bottom')
+        #
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        #
+
+        diff_fig.subplots_adjust(wspace=0)
+        #diff_fig.tight_layout(rect=[0, 0, 1, 0.9])
+        '''
+        diff_fig_path = join(figure_output_dir,
+            '{}_{}{}_pair{}_diff.{}'.format(date_dir, fly_num,
+            thorimage_id, comparison_num, plot_format))
+        # TODO put into a factored savefig fn
+        # Should be true if fig is being created in a new directory.
+        assert not exists(diff_fig_path)
+
+        diff_fig.savefig(diff_fig_path)
+        '''
+
+    cbar_label = 'Mean ' + stat + r' response $\frac{\Delta F}{F}$'
+    odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
+    odor_labels = u.matlabels(odor_cell_stats_top, u.format_mixture)
+
+    if odor_matrices:
+        # TODO TODO modify u.matshow to take a fn (x/y)labelfn? to generate
+        # str labels from row/col indices
+        f2 = u.matshow(odor_cell_stats_top.T, xticklabels=odor_labels,
+            colorbar_label=cbar_label, fontsize=6, title=title)
+        ax = plt.gca()
+        ax.set_aspect(0.1)
+        f2.savefig('f2_' + fname + '.png')
+        f2.savefig('f2_' + fname + '.svg')
+
+    if odor_and_fit_matrices:
+        # Without explicitly specifying, figsize came out to (6.4, 4.8).
+        # can't make width small enough s.t. space between subplots goes away
+        # though...
+        f3, f3_axs = plt.subplots(1, 2, figsize=(10, 20), gridspec_kw={
+            'wspace': 0,
+            # assuming only output of imshow filled ax, this would seem to
+            # be correct, but the column in the right axes seemed to small...
+            #'width_ratios': [1, 1 / (len(odor_cell_stats.index.unique()) + 1)]
+            # this might not be **exactly** right either, but pretty close
+            'width_ratios': [1, 1 / len(odor_cell_stats.index.unique())]
+        })
+        cells_odors_and_fit = odor_cell_stats_top.T.copy()
+        fit_name = 'WEIGHTED SUM'
+        cells_odors_and_fit[fit_name] = weighted_sum[order[:top_n]]
+        labels = [x for x in odor_labels] + [fit_name]
+        ax = f3_axs[0]
+
+        xtickrotation = 'horizontal'
+        fontsize = 9
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('left', size='5%', pad=0.5)
+        '''
+        abox = ax.get_position()
+        width = abox.width * 0.05
+        pad = 0.02
+        cax = f3.add_axes([abox.xmin - width - pad, abox.ymin,
+            width, abox.height]) 
+        '''
+
+        im = u.matshow(cells_odors_and_fit, xticklabels=labels,
+            xtickrotation=xtickrotation, fontsize=fontsize,
+            title=title, ax=f3_axs[0])
+        # TODO is this just the default anyway?
+        ax.set_aspect('auto')
+
+        #cb = f3.colorbar(im, ax=ax)
+        # TODO a problem that ax isn't passed in as it would be the usual way?
+        # that create some useful association?
+        # (this constructor doesn't seem to support an ax kwarg)
+        #cb = mpl.colorbar.ColorbarBase(im)
+        f3.colorbar(im, cax=cax)
+        cax.yaxis.set_ticks_position('left')
+        cax.yaxis.set_label_position('left')
+        cax.set_ylabel(cbar_label)
+
+        ax = f3_axs[1]
+        cax2 = matshow(ax, weighted_mix_diff[order[:top_n]], cmap='coolwarm',#)
+            aspect='auto')
+
+        # TODO move to right if i want to keep the y ticks
+        ax.set_yticks([])
+        ax.set_xticks([0])
+        ax.set_xticklabels(['MIX - SUM'], fontsize=fontsize,
+            rotation=xtickrotation)
+        ax.tick_params(bottom=False)
+
+        # TODO maybe make this colorbar's height equal to previous (=axes)
+        f3.colorbar(cax2, ax=ax)
+        # TODO label for this cbar
+
+        f3.savefig('f3_' + fname + '.png')
+        f3.savefig('f3_' + fname + '.svg')
+
+    plt.show()
+    import sys; sys.exit()
+    #import ipdb; ipdb.set_trace()
+
+    # TODO another flag for this part
+    for odor in odor_cell_stats.index:
+        # TODO maybe put all sort orders in one plot as subplots?
+        order = odor_cell_stats.loc[odor, :].sort_values(ascending=False).index
+        odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
+
+        sort_odor_labels = [o + ' (sorted)' if o == odor else o
+            for o in odor_labels]
+
+        fs = u.matshow(odor_cell_stats_top.T, xticklabels=sort_odor_labels,
+            colorbar_label=cbar_label, fontsize=6, title=title)
+        ax = plt.gca()
+        ax.set_aspect(0.1)
+        ss = '_{}_sorted'.format(odor)
+        fs.savefig('f2_' + fname + ss + '.png')
+        fs.savefig('f2_' + fname + ss + '.svg')
+
+plt.show()
+
+
+# TODO TODO are there any / how many cells responding to our weakest odors
+# (especially ethanol)?
+
+#df = pd.concat(dfs, ignore_index=True)
+#import ipdb; ipdb.set_trace()

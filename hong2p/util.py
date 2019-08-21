@@ -1272,9 +1272,12 @@ def get_thorimage_fps_xml(xmlroot):
     """
     lsm_attribs = xmlroot.find('LSM').attrib
     raw_fps = float(lsm_attribs['frameRate'])
-    # TODO what does averageMode = 1 mean? always like that?
-    # 
-    n_averaged_frames = int(lsm_attribs['averageNum'])
+    # TODO is this correct handling of averageMode?
+    average_mode = int(lsm_attribs['averageMode'])
+    if average_mode == 0:
+        n_averaged_frames = 1
+    else:
+        n_averaged_frames = int(lsm_attribs['averageNum'])
     saved_fps = raw_fps / n_averaged_frames
     return saved_fps
 
@@ -1311,10 +1314,7 @@ def fps_from_thor(df):
     # TODO TODO TODO why is it [3:] again?? does this depend on my current
     # particular nas_prefix (make it so it does not, if so!)?
     thorimage_dir = join(nas_prefix(), *thorimage_dir.split('/')[3:])
-    thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
-    xml_root = etree.parse(thorimage_xml_path).getroot()
-    lsm = xml_root.find('LSM').attrib
-    fps = float(lsm['frameRate']) / float(lsm['averageNum'])
+    fps = get_thorimage_fps(thorimage_dir)
     return fps
 
 
@@ -1322,11 +1322,10 @@ def cnmf_metadata_from_thor(filename):
     """Takes TIF filename to key settings from XML at fixed relative position.
     """
     xml_root = tif2xml_root(filename)
-    lsm = xml_root.find('LSM').attrib
-    fps = float(lsm['frameRate']) / float(lsm['averageNum'])
+    fps = get_thorimage_fps_xml(xml_root)
     # "spatial resolution of FOV in pixels per um" "(float, float)"
     # TODO do they really mean pixel/um, not um/pixel?
-    pixels_per_um = 1 / float(lsm['pixelSizeUM'])
+    pixels_per_um = 1 / float(xml_root.find('LSM').attrib['pixelSizeUM'])
     dxy = (pixels_per_um, pixels_per_um)
     # TODO maybe load dims anyway?
     return {'fr': fps, 'dxy': dxy}
@@ -2140,7 +2139,6 @@ def smooth(x, window_len=11, window='hanning'):
     NOTE: length(output) != length(input), to correct this: return
     y[(window_len/2-1):-(window_len/2)] instead of just y.
     """
-
     if x.ndim != 1:
         raise ValueError("smooth only accepts 1 dimension arrays.")
 
@@ -2170,7 +2168,6 @@ def smooth(x, window_len=11, window='hanning'):
     # not sure what to change above to get this to work...
 
     y = np.convolve(w/w.sum(), x, mode='same')
-
     return y
 
 
@@ -2327,16 +2324,20 @@ def format_mixture(*args):
     elif len(args) == 1:
         row = args[0]
         n1 = row['name1']
-        n2 = row['name2']
+        try:
+            n2 = row['name2']
+        except KeyError:
+            n2 = None
         if 'log10_conc_vv1' in row:
             log10_c1 = row['log10_conc_vv1']
-            log10_c2 = row['log10_conc_vv2']
+            if n2 is not None:
+                log10_c2 = row['log10_conc_vv2']
     else:
         raise ValueError('incorrect number of args')
 
     if n1 == 'paraffin':
         title = format_odor_conc(n2, log10_c2)
-    elif n2 == 'paraffin' or n2 == 'no_second_odor':
+    elif n2 == 'paraffin' or n2 == 'no_second_odor' or n2 is None:
         title = format_odor_conc(n1, log10_c1)
     else:
         title = '{} + {}'.format(
@@ -2400,8 +2401,9 @@ def pair_ordering(comparison_df):
     return ordering
 
 
-def matshow(df, title=None, ticklabels=None, colorbar_label=None,
-    group_ticklabels=False, ax=None, fontsize=None):
+def matshow(df, title=None, ticklabels=None, xticklabels=None,
+    yticklabels=None, xtickrotation=None, colorbar_label=None,
+    group_ticklabels=False, ax=None, fontsize=None, fontweight=None):
     # TODO shouldn't this get ticklabels from matrix if nothing else?
     # maybe at least in the case when both columns and row indices are all just
     # one level of strings?
@@ -2416,20 +2418,24 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
         return (len(index.shape) == 1 and
             all(index.map(lambda x: type(x) is str)))
 
-    if ticklabels is None:
-        if one_level_str_index(df.columns):
-            xticklabels = df.columns
+    if (xticklabels is None) and (yticklabels is None):
+        if ticklabels is None:
+            if one_level_str_index(df.columns):
+                xticklabels = df.columns
+            else:
+                xticklabels = None
+            if one_level_str_index(df.index):
+                yticklabels = df.index
+            else:
+                yticklabels = None
         else:
-            xticklabels = None
-        if one_level_str_index(df.index):
-            yticklabels = df.index
-        else:
-            yticklabels = None
+            assert df.shape[0] == df.shape[1]
+            # TODO maybe also assert indices are actually equal?
+            xticklabels = ticklabels
+            yticklabels = ticklabels
     else:
-        assert df.shape[0] == df.shape[1]
-        # TODO maybe also assert indices are actually equal?
-        xticklabels = ticklabels
-        yticklabels = ticklabels
+        # TODO delete this hack
+        pass
 
     # TODO update this formula to work w/ gui corrs (too big now)
     if fontsize is None:
@@ -2445,6 +2451,10 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
         if colorbar_label is not None:
             # rotation=270?
             cbar.ax.set_ylabel(colorbar_label)
+
+        # TODO possible to provide facilities for colorbar in case when ax is
+        # passed in? pass in another ax for colorbar? or just as easy to handle
+        # outside in that case (probably)?
 
     def grouped_labels_info(labels):
         if not group_ticklabels or labels is None:
@@ -2469,31 +2479,50 @@ def matshow(df, title=None, ticklabels=None, colorbar_label=None,
     xticklabels, xstep, xoffset = grouped_labels_info(xticklabels)
     yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
 
+    # TODO delete
+    print('xticklabels:', xticklabels)
+    print('yticklabels:', yticklabels)
+    #
+
     if xticklabels is not None:
         # TODO nan / None value aren't supported in ticklabels are they?
         # (couldn't assume len is defined if so)
-        if all([len(x) == 1 for x in xticklabels]):
-            xtickrotation = 'horizontal'
-        else:
-            xtickrotation = 'vertical'
+        if xtickrotation is None:
+            if all([len(x) == 1 for x in xticklabels]):
+                xtickrotation = 'horizontal'
+            else:
+                xtickrotation = 'vertical'
 
         ax.set_xticklabels(xticklabels, fontsize=fontsize,
-            rotation=xtickrotation)
+            fontweight=fontweight, rotation=xtickrotation)
         #    rotation='horizontal' if group_ticklabels else 'vertical')
         ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
 
     if yticklabels is not None:
         ax.set_yticklabels(yticklabels, fontsize=fontsize,
-            rotation='horizontal')
+            fontweight=fontweight, rotation='horizontal')
         #    rotation='vertical' if group_ticklabels else 'horizontal')
         ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
 
+    # TODO test this doesn't change rotation if we just set rotation above
+
+    # this doesn't seem like it will work, since it seems to clear the default
+    # ticklabels that there actually were...
+    #ax.set_yticklabels(ax.get_yticklabels(), fontsize=fontsize,
+    #    fontweight=fontweight)
+
+    # didn't seem to do what i was expecting
+    #ax.spines['bottom'].set_visible(False)
+    ax.tick_params(bottom=False)
+
     if title is not None:
-        ax.set_xlabel(title)
+        ax.set_xlabel(title, fontsize=(fontsize + 1.5), labelpad=12)
 
     if made_fig:
         plt.tight_layout()
         return fig
+    else:
+        return cax
 
 
 # TODO maybe one fn that puts in matrix format and another in table
@@ -2710,7 +2739,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     n=20, random=False, title=None, response_calls=None, raw=False,
     smoothed=True, show_footprints=True, show_footprints_alone=False,
     show_cell_ids=True, show_footprint_with_mask=False, gridspec=None,
-    linewidth=0.25, verbose=True):
+    linewidth=0.5, verbose=True):
     # TODO TODO be clear on requirements of df and cell_ids in docstring
     """
     n (int): (default=20) Number of cells to plot traces for if cell_ids not
@@ -2721,6 +2750,8 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     scale_within (str): 'none', 'cell', or 'trial'
     gridspec (None or matplotlib.gridspec.*): region of a parent figure
         to draw this plot on.
+    linewidth (float): 0.25 seemed ok on CNMF data, but too small w/ clean
+    traces.
     """
     # TODO make text size and the spacing of everything more invariant to figure
     # size. i think the default size of this figure ended up being bigger when i

@@ -8,3 +8,5 @@ google_sheet_link.txt
 *.txt
 .eggs/
 *.egg-info/
+*.svg
+*.png
