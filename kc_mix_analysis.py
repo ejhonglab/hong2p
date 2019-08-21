@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import os
+from os.path import exists, join
 import glob
 
 import numpy as np
@@ -20,6 +22,7 @@ odor_and_fit_matrices = True
 
 
 # Desired
+'''
 key = {
     'etb': 'A',
     'eta': 'B',
@@ -33,6 +36,21 @@ key = {
     'ms': 'D',
     '2h': 'E'
 }
+'''
+key = {
+    'etb': 'etb',
+    'eta': 'eta',
+    'iaa': 'iaa',
+    'iaol': 'iaol',
+    'etoh': 'etoh',
+    #
+    '1o3ol': '1o3ol',
+    'fur': 'fur',
+    'va': 'va',
+    'ms': 'ms',
+    '2h': '2h'
+}
+
 key_corrs = {
     '4': {
         'A': key['eta'],
@@ -67,7 +85,31 @@ key_corrs = {
         'MIX': 'MIX'
     }
 }
+# TODO consolidate this w/ above somehow? (change keycorrs to A -> odor and
+# figure this out from values in each of those, then regen keycorrs as-is now
+# by looking up values)
+expt2mix = {
+    '4': 'kiwi',
+    '5': 'control 1',
+    '7': 'control 1',
+    '8': 'kiwi'
+}
+mix2odor_order = {
+    'kiwi': ['etb', 'eta', 'iaa', 'iaol', 'etoh'],
+    'control 1': ['1o3ol', 'fur', 'va', 'ms', '2h']
+}
 
+fig_dir = 'mix_figs'
+if not exists(fig_dir):
+    os.mkdir(fig_dir)
+
+png_dir = join(fig_dir, 'png')
+if not exists(png_dir):
+    os.mkdir(png_dir)
+
+svg_dir = join(fig_dir, 'svg')
+if not exists(svg_dir):
+    os.mkdir(svg_dir)
 
 # TODO maybe just use u.matshow? or does that do enough extra stuff that it
 # would be hard to get it to just do what i want in this linearity-checking
@@ -88,6 +130,64 @@ def component_sum_error(weights, components, mix):
     return np.linalg.norm(component_sum - mix)**2
 
 
+def odor_and_fit_plot(odor_cell_stats, weighted_sum, ordered_cells, fname,
+    title, odor_labels, cbar_label):
+
+    f3, f3_axs = plt.subplots(1, 2, figsize=(10, 20), gridspec_kw={
+        'wspace': 0,
+        # assuming only output of imshow filled ax, this would seem to
+        # be correct, but the column in the right axes seemed to small...
+        #'width_ratios': [1, 1 / (len(odor_cell_stats.index.unique()) + 1)]
+        # this might not be **exactly** right either, but pretty close
+        'width_ratios': [1, 1 / len(odor_cell_stats.index.unique())]
+    })
+    cells_odors_and_fit = odor_cell_stats.loc[:, ordered_cells].T.copy()
+    fit_name = 'WEIGHTED SUM'
+    cells_odors_and_fit[fit_name] = weighted_sum[ordered_cells]
+    labels = [x for x in odor_labels] + [fit_name]
+    ax = f3_axs[0]
+
+    xtickrotation = 'horizontal'
+    fontsize = 8
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('left', size='3%', pad=0.5)
+
+    im = u.matshow(cells_odors_and_fit, xticklabels=labels,
+        xtickrotation=xtickrotation, fontsize=fontsize,
+        title=title, ax=f3_axs[0])
+    # Default is 'equal'
+    ax.set_aspect('auto')
+
+    f3.colorbar(im, cax=cax)
+    cax.yaxis.set_ticks_position('left')
+    cax.yaxis.set_label_position('left')
+    cax.set_ylabel(cbar_label)
+
+    ax = f3_axs[1]
+    divider = make_axes_locatable(ax)
+    cax2 = divider.append_axes('right', size='20%', pad=0.08)
+
+    mix = odor_cell_stats.loc['MIX']
+    weighted_mix_diff = mix - weighted_sum
+    im2 = matshow(ax, weighted_mix_diff[ordered_cells], cmap='coolwarm',
+        aspect='auto')
+
+    # move to right if i want to keep the y ticks
+    ax.set_yticks([])
+    ax.set_xticks([0])
+    ax.set_xticklabels(['MIX - SUM'], fontsize=fontsize,
+        rotation=xtickrotation)
+    ax.tick_params(bottom=False)
+
+    f3.colorbar(im2, cax=cax2)
+    diff_cbar_label = r'$\frac{\Delta F}{F}$ difference'
+    cax2.set_ylabel(diff_cbar_label)
+
+    f3.savefig(join(fig_dir, 'png', 'odorandfit_' + fname + '.png'))
+    f3.savefig(join(fig_dir, 'svg', 'odorandfit_' + fname + '.svg'))
+
+
 cell_cols = ['name1','name2','repeat_num','cell']
 response_calling_s = 5.0
 dfs = []
@@ -100,8 +200,14 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
             df.name1 = df.name1.map(corr)
             assert not pd.isnull(df.name1).any()
             corrected = True
+            prefix = expt2mix[n]
             break
     assert corrected
+    
+    odor_order = mix2odor_order[prefix] + ['MIX']
+    title = '/'.join([x for x in df_pickle[:-2].split('_')[-4:] if len(x) > 0])
+    fname = prefix.replace(' ','') + '_' + title.replace('/','_')
+    title = prefix.title() + ': ' + title
 
     in_response_window = ((df.from_onset > 0.0) &
                           (df.from_onset <= response_calling_s))
@@ -126,17 +232,14 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
         index=['name1','name2','repeat_num','order'],
         columns='cell', values='df_over_f')
 
-    trial_by_cell_stats.sort_index(level='name1', sort_remaining=False,
-        inplace=True)
-
-    title = '/'.join([x for x in df_pickle[:-2].split('_')[-4:] if len(x) > 0])
-    fname = title.replace('/','_')
+    # TODO maybe also add support for single letter abbrev case
+    # (as was handled w/ commented sort stuff below)
+    trial_by_cell_stats = trial_by_cell_stats.reindex(odor_order, level='name1')
+    #trial_by_cell_stats.sort_index(level='name1', sort_remaining=False,
+    #    inplace=True)
 
     if trial_matrices:
-        # TODO TODO check these are the same (should be)
         trial_by_cell_stats_top = trial_by_cell_stats.loc[:, order[:top_n]]
-        #trial_by_cell_stats = trial_by_cell_stats.loc[:, cellssorted.index]
-        #trial_by_cell_stats_top = trial_by_cell_stats.iloc[:, :top_n]
 
         cbar_label = stat.title() + r' response $\frac{\Delta F}{F}$'
 
@@ -147,8 +250,8 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
             title=title)
         ax = plt.gca()
         ax.set_aspect(0.1)
-        f1.savefig('f1_' + fname + '.png')
-        f1.savefig('f1_' + fname + '.svg')
+        f1.savefig(join(fig_dir, 'png', 'trials_' + fname + '.png'))
+        f1.savefig(join(fig_dir, 'svg', 'trials_' + fname + '.svg'))
 
     odor_cell_stats = trial_by_cell_stats.groupby('name1').mean()
     # TODO TODO factor linearity checking in kc_analysis to use this,
@@ -173,11 +276,6 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
         scaled_sum_norm, mix_norm)
 
     scaled_sum_mix_diff = mix - scaled_sum
-    '''
-    a = np.stack([a_traces.values.flatten(), b_traces.values.flatten()]
-        ).T
-    b = ab_traces.values.flatten()
-    '''
     # A: of dimensions (M, N)
     # B: of dimensions (M,)
     a = components.T
@@ -190,8 +288,7 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
     except np.linalg.LinAlgError as e:
         raise
 
-    # TODO TODO maybe print (or even include on plot?)
-    # the coefficients?
+    # TODO maybe print the coefficients (or include on plot?)?
     weighted_sum = (coeffs * a).sum(axis=1)
     weighted_mix_diff = mix - weighted_sum
     assert np.isclose(residuals[0], np.linalg.norm(mix - weighted_sum)**2)
@@ -246,8 +343,7 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
             aspect=aspect_one_col, cmap='coolwarm')
         #mat = matshow(ax, scaled_sum_mix_diff, extent=[xmin,xmax,ymin,ymax],
         #    aspect='auto', cmap='coolwarm')
-        # TODO only one colorbar allowed or something? why this not seem to be
-        # working?
+        # TODO why this not seem to be working?
         diff_fig.colorbar(mat, ax=ax)
 
         if titles:
@@ -298,13 +394,7 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
         diff_fig.subplots_adjust(wspace=0)
         #diff_fig.tight_layout(rect=[0, 0, 1, 0.9])
         '''
-        diff_fig_path = join(figure_output_dir,
-            '{}_{}{}_pair{}_diff.{}'.format(date_dir, fly_num,
-            thorimage_id, comparison_num, plot_format))
-        # TODO put into a factored savefig fn
-        # Should be true if fig is being created in a new directory.
-        assert not exists(diff_fig_path)
-
+        diff_fig_path = 
         diff_fig.savefig(diff_fig_path)
         '''
 
@@ -319,94 +409,36 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
             colorbar_label=cbar_label, fontsize=6, title=title)
         ax = plt.gca()
         ax.set_aspect(0.1)
-        f2.savefig('f2_' + fname + '.png')
-        f2.savefig('f2_' + fname + '.svg')
+        f2.savefig(join(fig_dir, 'png', 'avg_' + fname + '.png'))
+        f2.savefig(join(fig_dir, 'svg', 'avg_' + fname + '.svg'))
 
     if odor_and_fit_matrices:
-        # Without explicitly specifying, figsize came out to (6.4, 4.8).
-        # can't make width small enough s.t. space between subplots goes away
-        # though...
-        f3, f3_axs = plt.subplots(1, 2, figsize=(10, 20), gridspec_kw={
-            'wspace': 0,
-            # assuming only output of imshow filled ax, this would seem to
-            # be correct, but the column in the right axes seemed to small...
-            #'width_ratios': [1, 1 / (len(odor_cell_stats.index.unique()) + 1)]
-            # this might not be **exactly** right either, but pretty close
-            'width_ratios': [1, 1 / len(odor_cell_stats.index.unique())]
-        })
-        cells_odors_and_fit = odor_cell_stats_top.T.copy()
-        fit_name = 'WEIGHTED SUM'
-        cells_odors_and_fit[fit_name] = weighted_sum[order[:top_n]]
-        labels = [x for x in odor_labels] + [fit_name]
-        ax = f3_axs[0]
+        odor_and_fit_plot(odor_cell_stats, weighted_sum, order[:top_n], fname,
+            title, odor_labels, cbar_label)
 
-        xtickrotation = 'horizontal'
-        fontsize = 9
-
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes('left', size='5%', pad=0.5)
-        '''
-        abox = ax.get_position()
-        width = abox.width * 0.05
-        pad = 0.02
-        cax = f3.add_axes([abox.xmin - width - pad, abox.ymin,
-            width, abox.height]) 
-        '''
-
-        im = u.matshow(cells_odors_and_fit, xticklabels=labels,
-            xtickrotation=xtickrotation, fontsize=fontsize,
-            title=title, ax=f3_axs[0])
-        # TODO is this just the default anyway?
-        ax.set_aspect('auto')
-
-        #cb = f3.colorbar(im, ax=ax)
-        # TODO a problem that ax isn't passed in as it would be the usual way?
-        # that create some useful association?
-        # (this constructor doesn't seem to support an ax kwarg)
-        #cb = mpl.colorbar.ColorbarBase(im)
-        f3.colorbar(im, cax=cax)
-        cax.yaxis.set_ticks_position('left')
-        cax.yaxis.set_label_position('left')
-        cax.set_ylabel(cbar_label)
-
-        ax = f3_axs[1]
-        cax2 = matshow(ax, weighted_mix_diff[order[:top_n]], cmap='coolwarm',#)
-            aspect='auto')
-
-        # TODO move to right if i want to keep the y ticks
-        ax.set_yticks([])
-        ax.set_xticks([0])
-        ax.set_xticklabels(['MIX - SUM'], fontsize=fontsize,
-            rotation=xtickrotation)
-        ax.tick_params(bottom=False)
-
-        # TODO maybe make this colorbar's height equal to previous (=axes)
-        f3.colorbar(cax2, ax=ax)
-        # TODO label for this cbar
-
-        f3.savefig('f3_' + fname + '.png')
-        f3.savefig('f3_' + fname + '.svg')
-
-    plt.show()
-    import sys; sys.exit()
-    #import ipdb; ipdb.set_trace()
-
-    # TODO another flag for this part
+    # TODO another flag for this part?
     for odor in odor_cell_stats.index:
         # TODO maybe put all sort orders in one plot as subplots?
         order = odor_cell_stats.loc[odor, :].sort_values(ascending=False).index
-        odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
-
         sort_odor_labels = [o + ' (sorted)' if o == odor else o
             for o in odor_labels]
-
-        fs = u.matshow(odor_cell_stats_top.T, xticklabels=sort_odor_labels,
-            colorbar_label=cbar_label, fontsize=6, title=title)
-        ax = plt.gca()
-        ax.set_aspect(0.1)
         ss = '_{}_sorted'.format(odor)
-        fs.savefig('f2_' + fname + ss + '.png')
-        fs.savefig('f2_' + fname + ss + '.svg')
+
+        if odor_matrices:
+            odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
+            fs = u.matshow(odor_cell_stats_top.T, xticklabels=sort_odor_labels,
+                colorbar_label=cbar_label, fontsize=6, title=title)
+            ax = plt.gca()
+            ax.set_aspect(0.1)
+            fs.savefig(join(fig_dir, 'png', 'avg_' + fname + ss + '.png'))
+            fs.savefig(join(fig_dir, 'svg', 'avg_' + fname + ss + '.svg'))
+
+        if odor_and_fit_matrices:
+            odor_and_fit_plot(odor_cell_stats, weighted_sum, order[:top_n],
+                fname + ss, title, sort_odor_labels, cbar_label)
+
+    plt.show()
+    import sys; sys.exit()
 
 plt.show()
 

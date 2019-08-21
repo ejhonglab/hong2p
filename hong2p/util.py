@@ -2479,11 +2479,6 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     xticklabels, xstep, xoffset = grouped_labels_info(xticklabels)
     yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
 
-    # TODO delete
-    print('xticklabels:', xticklabels)
-    print('yticklabels:', yticklabels)
-    #
-
     if xticklabels is not None:
         # TODO nan / None value aren't supported in ticklabels are they?
         # (couldn't assume len is defined if so)
