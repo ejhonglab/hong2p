@@ -244,9 +244,6 @@ class Segmentation(QWidget):
         # TODO TODO make a refresh button for this widget, which re-reads from
         # db (in case other programs have edited it) (or just push from db...)
         # TODO get rid of space on left that wasnt there w/ tree widget
-        # TODO get rid of / change top label thing
-        # TODO most operations should not minimize nodes that are currently
-        # expanded (some seem to now)
         self.data_tree = QTreeWidget(self)
         self.data_tree.setHeaderHidden(True)
         self.data_and_ctrl_layout.addWidget(self.data_tree)
@@ -255,25 +252,16 @@ class Segmentation(QWidget):
         #self.data_tree.setFixedWidth(240)
         self.data_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.data_tree.customContextMenuRequested.connect(self.data_tree_menu)
+        self.data_tree.setExpandsOnDoubleClick(False)
         self.current_recording_widget = None
         self.current_segrun_widget = None
 
         self.accepted_color = '#7fc97f'
-        # TODO implement this + propagation up to parent nodes
         self.partially_accepted_color = '#f9e54a'
         self.rejected_color = '#ff4d4d'
 
         global recordings
-        # TODO TODO anything to be done to speed this loop up? pretty slow...
-        # TODO TODO make sure segrun nodes are sorted by timestamp
-        # 190529 ~3pm i saw two nodes under 5-02/3/fn_0001_7b8...
-        # in wrong order
         print('populating data browser...', end='', flush=True)
-        # TODO TODO TODO delete. hack to get this to load faster for testing.
-        print('ONLY LOADING 7-25 DATA FOR TESTING')
-        self.motion_corrected_tifs = [t for t in self.motion_corrected_tifs
-            if '7-25' in t]
-        #
         for d in self.motion_corrected_tifs:
             x = d.split(sep)
             fname_parts = x[-1].split('_')
@@ -290,9 +278,9 @@ class Segmentation(QWidget):
             recording_node.setText(0, '/'.join(item_parts))
             self.data_tree.addTopLevelItem(recording_node)
 
-            # TODO TODO TODO try to defer this to opening up the tree item in
-            # data browser / speed this up.
-            # this list_segmentations seems to be the slow step.
+            # Delete if this seems OK. Deferring to expansion since
+            # list_segmentations is currently a slow step.
+            '''
             tif_seg_runs = u.list_segmentations(d)
             if tif_seg_runs is None:
                 continue
@@ -301,6 +289,17 @@ class Segmentation(QWidget):
                 self.add_segrun_widget(recording_node, r)
 
             self.color_recording_node(recording_node)
+            '''
+            # TODO TODO some way to color that is faster than call to
+            # list_segmentations? (so can do it before loading)
+            # TODO TODO TODO also try to find whether there are any segruns
+            # to populate in a cheaper way than actually listing them, so we can
+            # only show the expansion symbol when there are children
+            recording_node.setChildIndicatorPolicy(
+                QTreeWidgetItem.ShowIndicator)
+
+            recording_node.setData(0, Qt.UserRole, False)
+
         print(' done')
 
         # TODO if this works, also resize on each operation that changes the
@@ -316,6 +315,8 @@ class Segmentation(QWidget):
         # loading something else) (or just return under those conditions in this
         # callback)
         self.data_tree.itemDoubleClicked.connect(self.handle_treeitem_dblclick)
+
+        self.data_tree.itemExpanded.connect(self.handle_treeitem_expand)
 
         # TODO should save cnmf output be a button here or to the right?
         # maybe run should also be to the right?
@@ -1420,6 +1421,7 @@ class Segmentation(QWidget):
                 QColor(self.partially_accepted_color))
         else:
             recording_widget.setBackground(0, QColor(self.rejected_color))
+            # TODO maybe at least color this way when no children?
             # got from: stackoverflow.com/questions/37761002
             # if i want top level nodes to just have original lack of color
             #recording_widget.setData(0, Qt.BackgroundRole, None)
@@ -3211,7 +3213,12 @@ class Segmentation(QWidget):
     # (would need to fix cnmf save (and maybe load too) fn(s))
 
 
+    # TODO replace self.sender().currentItem() w/ extra args as in expand
+    # handling below?
     def handle_treeitem_dblclick(self):
+        # TODO would this still work if enabling multi selection of top level
+        # stuff, for hiding / whatever?
+        # (like so.com/questions/6925011 )
         curr_item = self.sender().currentItem()
         if curr_item.parent() is None:
             self.current_recording_widget = curr_item
@@ -3225,6 +3232,32 @@ class Segmentation(QWidget):
             self.current_recording_widget = curr_item.parent()
             self.current_segrun_widget = curr_item
             self.open_segmentation_run(curr_item)
+
+
+    def handle_treeitem_expand(self, recording_node):
+        assert recording_node.parent() is None
+        idx = self.data_tree.indexOfTopLevelItem(recording_node)
+        tiff = self.motion_corrected_tifs[idx]
+
+        seg_runs_loaded = recording_node.data(0, Qt.UserRole)
+        if seg_runs_loaded:
+            return
+        tif_seg_runs = u.list_segmentations(tiff)
+        recording_node.setData(0, Qt.UserRole, True)
+
+        if tif_seg_runs is None:
+            # TODO delete this if i find a cheap way to find whether there ARE
+            # segmentation runs to be loaded, and use that to set the correct
+            # child indicator initially
+            recording_node.setChildIndicatorPolicy(
+                QTreeWidgetItem.DontShowIndicatorWhenChildless)
+            #
+            return
+
+        for _, r in tif_seg_runs.iterrows():
+            self.add_segrun_widget(recording_node, r)
+
+        self.color_recording_node(recording_node)
 
 
     def delete_other_param_widgets(self) -> None:
@@ -3387,8 +3420,6 @@ class Segmentation(QWidget):
 
     # TODO TODO TODO load last edited movie as soon as gui finishes loading
     # (or at least have a setting that can enable this)
-    # TODO this currently minimizes expanded listwidget item when opened for
-    # some reason. i don't want that behavior.
     def open_recording(self, recording_widget):
         # TODO TODO fix bug where block label btns stay labelled as in last
         # segrun that was open (seen after opening a recording but not analyzing
@@ -3448,11 +3479,7 @@ class Segmentation(QWidget):
         ########################################################################
 
         mat = join(analysis_dir, rel_to_cnmf_mat, thorimage_id + '_cnmf.mat')
-
-        try:
-            ti = u.load_mat_timing_information(mat)
-        except matlab.engine.MatlabExecutionError as e:
-            raise
+        ti = u.load_mat_timing_information(mat)
 
         recordings = df.loc[(df.date == date) &
                             (df.fly_num == fly_num) &
@@ -3466,6 +3493,9 @@ class Segmentation(QWidget):
         raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
         # TODO TODO TODO also store (the contents of this) in db
         metadata_file = join(raw_fly_dir, thorimage_id + '_metadata.yaml')
+        # TODO another var specifying number of frames that has *already* been
+        # cropped out of raw tiff (start/end), to resolve any descrepencies wrt 
+        # thorsync data
         metadata = {
             'drop_first_n_frames': 0
         }
@@ -3503,11 +3533,13 @@ class Segmentation(QWidget):
             odor_list = data['odor_pair_list']
             self.pair_case = True
         else:
+            n_expected_real_blocks = 3
+            odor_list = data['odor_lists']
             # because of "block" def in arduino / get_stiminfo code
             # not matching def in randomizer / stimfile code
             # (scopePin pulses vs. randomization units, depending on settings)
-            presentations_per_repeat = 6
-            odor_list = data['odor_lists']
+            presentations_per_repeat = len(odor_list) // n_expected_real_blocks
+            assert len(odor_list) % n_expected_real_blocks == 0
             self.pair_case = False
 
             # Hardcode to break up into more blocks, to align defs of blocks.
@@ -4445,7 +4477,6 @@ class MainWindow(QMainWindow):
         user_layout = QHBoxLayout(self.user_widget)
         self.user_widget.setLayout(user_layout)
         # TODO make focus clear when clicked out of / esc (editingFinished?)
-        # TODO confirmation dialog before creating a new user
         user_label = QLabel('User', self.user_widget)
         # TODO maybe attribute on people as to whether to show here or not?
         user_select = QComboBox(self.user_widget)
@@ -4521,7 +4552,6 @@ class MainWindow(QMainWindow):
     
     def change_user(self, user):
         if user not in self.nicknames:
-            # TODO TODO confirmation dialog?
             pd.DataFrame({'nickname': [user]}).to_sql('people', u.conn,
                 if_exists='append', index=False)
             self.nicknames.add(user)
@@ -4563,7 +4593,6 @@ def main():
     # TODO try to eliminate matlab requirement here. currently just to read
     # matlab "ti" (timing info) output from Remy's cnmf MAT files
     # (but maybe h5py worked in that case?)
-    global evil
     global caiman_code_version
     global this_code_version
 
@@ -4623,7 +4652,7 @@ def main():
     comp_cols = u.recording_cols + ['comparison']
 
     print('starting MATLAB engine...', end='', flush=True)
-    evil = u.matlab_engine()
+    u.matlab_engine()
     print(' done')
 
     # TODO convention re: this vs setWindowTitle? latter not available if making

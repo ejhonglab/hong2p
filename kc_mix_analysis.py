@@ -424,6 +424,9 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
             for o in odor_labels]
         ss = '_{}_sorted'.format(odor)
 
+        # TODO TODO TODO here and in plots that also have fits, show (in
+        # general, nearest?  est? scalar magnitude of one of these?) eag + in
+        # roi / full frame MB fluorescence under each column?
         if odor_matrices:
             odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
             fs = u.matshow(odor_cell_stats_top.T, xticklabels=sort_odor_labels,
@@ -437,14 +440,10 @@ for df_pickle in glob.glob('/mnt/nas/mb_team/analysis_output/20190815*.p'):
             odor_and_fit_plot(odor_cell_stats, weighted_sum, order[:top_n],
                 fname + ss, title, sort_odor_labels, cbar_label)
 
-    plt.show()
-    import sys; sys.exit()
+    #plt.show()
+    #import sys; sys.exit()
 
 plt.show()
-
-
-# TODO TODO are there any / how many cells responding to our weakest odors
-# (especially ethanol)?
 
 #df = pd.concat(dfs, ignore_index=True)
 #import ipdb; ipdb.set_trace()

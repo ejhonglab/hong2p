@@ -123,6 +123,8 @@ def matlab_exit_except_hook(exctype, value, traceback):
     sys.__excepthook__(exctype, value, traceback)
 
 
+# TODO maybe rename to init_matlab and return nothing, to be more clear that
+# other fns here are using it behind the scenes?
 def matlab_engine():
     """
     Gets an instance of MATLAB engine w/ correct paths for Remy's single plane
