@@ -728,6 +728,18 @@ def diff_dataframes(df1, df2):
                             index=changed.index)
 
 
+def first_group(df, group_cols):
+    """Returns key tuple and df of first group, grouping df on group_cols.
+
+    Just for ease of interactively testing out functions on DataFrames of a
+    groupby.
+    """
+    gb = df.groupby(group_cols)
+    first_group_tuple = list(gb.groups.keys())[0]
+    gdf = gb.get_group(first_group_tuple)
+    return first_group_tuple, gdf
+
+
 def git_hash(repo_file):
     repo = git.Repo(repo_file, search_parent_directories=True)
     current_hash = repo.head.object.hexsha

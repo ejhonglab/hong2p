@@ -94,7 +94,7 @@ def split_odor_w_conc(row_or_str):
         log10_conc = 0.0
     else:
         log10_conc = float(parts[1])
-    ret = {'name': parts[0], 'log10_conc_vv': log10_conc}
+    ret = {'name': parts[0].strip(), 'log10_conc_vv': log10_conc}
     try:
         ret.update(row_or_str.to_dict())
     # TODO correct except
@@ -2423,6 +2423,12 @@ class Segmentation(QWidget):
             presentation_df = u.merge_odors(presentation_df,
                 self.db_odors.reset_index())
 
+            # TODO maybe only abbreviate at end? this approach break upload to
+            # database? maybe redo so abbrev only happens before plot?
+            # (may want a consistent order across experiments anyway)
+            presentation_df['original_name1'] = presentation_df.name1.copy()
+            presentation_df['original_name2'] = presentation_df.name2.copy()
+
             presentation_df['name1'] = \
                 presentation_df.name1.map(odor2abbrev)
             presentation_df['name2'] = \
@@ -2512,7 +2518,9 @@ class Segmentation(QWidget):
             # just need to hold onto a ref to comparison_df)
             df_filename = (self.run_at.strftime('%Y%m%d_%H%M_') +
                 self.recording_title.replace('/','_') + '.p')
-            df_filename = join(analysis_output_root, df_filename)
+            df_filename = join(analysis_output_root, 'trace_pickles',
+                df_filename)
+
             print('writing dataframe to {}...'.format(df_filename), end='',
                 flush=True)
             comparison_df.to_pickle(df_filename)
@@ -2541,7 +2549,13 @@ class Segmentation(QWidget):
                 window_trial_means = window_by_trial.mean()
 
             if plot_traces:
+                # TODO TODO make this configurable in the gui (may also want
+                # default of ~30)
                 n = 20
+
+                # TODO TODO TODO plot (at least option for, but prob also
+                # default) top cells per odor + provide visual demarcation as to
+                # which cells are for which odor
 
                 # TODO TODO TODO uncomment after fixing footprint issue
                 # causing footprint_row in util to have > 1 row
@@ -3616,6 +3630,8 @@ class Segmentation(QWidget):
         else:
             # TODO fix db to represent arbitrary mixtures more generally,
             # so this hack isn't necessary
+            # TODO TODO fix entries already in db w/ trailing / leading
+            # whitespace (split_odor_w_conc didn't used to strip returned name)
             odors = pd.DataFrame([split_odor_w_conc(x) for x in (data['odors'] +
                 ['no_second_odor'])])
         u.to_sql_with_duplicates(odors, 'odors')
