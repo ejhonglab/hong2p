@@ -356,6 +356,118 @@ def pg_upsert(table, conn, keys, data_iter):
         conn.execute(upsert_stmt)
 
 
+_odor_inventory_gsheet = None
+def odor_inventory_gsheet(use_cache=False):
+    '''Returns a DataFrame with data odor inventory data from Google sheet.
+    '''
+    import chemutils
+    global _odor_inventory_gsheet
+    if _odor_inventory_gsheet is not None:
+        return _odor_inventory_gsheet
+
+    gsheet_cache_file = '.odor_inventory_gsheet_cache.p'
+    if use_cache and exists(gsheet_cache_file):
+        print('Loading odor inventory sheet data from cache at {}'.format(
+            gsheet_cache_file))
+        # TODO use pandas interface (if not factoring out whole gsheet reading
+        # thing)
+        with open(gsheet_cache_file, 'rb') as f:
+            df = pickle.load(f)
+    else:
+        pkg_data_dir = split(split(__file__)[0])[0]
+        with open(
+            join(pkg_data_dir, 'odor_inventory_sheet_link.txt'), 'r') as f:
+
+            gsheet_link = \
+                f.readline().split('/edit')[0] + '/export?format=csv&gid='
+
+        gid = '0'
+        df = pd.read_csv(gsheet_link + gid)
+
+        df.dropna(how='all', inplace=True)
+
+        # TODO use pandas interface (if not factoring out whole gsheet reading
+        # thing)
+        with open(gsheet_cache_file, 'wb') as f:
+            pickle.dump(df, f)
+
+    df.drop(columns=['Quantity', 'Recieved', 'Purity', 'Aliquots', 'Notes'],
+        inplace=True)
+
+    df.rename(columns={
+        'Chemical': 'name',
+        'CAS #': 'cas',
+        'Ionization potential (eV)': 'ionization_v',
+        'Abbreviation': 'abbrev',
+        'InChI Key': 'inchikey'
+    }, inplace=True)
+    df.rename(columns=lambda s: s.lower().replace(' ','_'), inplace=True)
+
+    # TODO probably just strip all string entries in df?
+    df.abbrev = df.abbrev.apply(lambda s: s.strip() if pd.notnull(s) else s)
+
+    df['original_name'] = df.name.copy()
+
+    df.name = df.name.apply(chemutils.normalize_name)
+
+    df = chemutils.convert(df, to_type='inchi', allow_nan=False, verbose=False)
+
+    # TODO could copy name to original_name and normalize ids (+ name)
+    # as in natural_odors/odors.py
+    # but may want to preserve
+
+    _odor_inventory_gsheet = df
+    return df
+
+
+def inchi2abbrev_dict(df, allow_orphan_abbrevs=False):
+    abbrev_notnull = df.abbrev.notnull()
+    abbrevs_without_inchi = abbrev_notnull & df.inchi.isnull()
+    if abbrevs_without_inchi.any():
+        print('Abbreviations without inchi:')
+        print(df[abbrevs_without_inchi])
+        print('')
+        if not allow_orphan_abbrevs:
+            raise ValueError('all abbreviations must have inchi')
+
+    return dict(zip(df.inchi[abbrev_notnull], df.abbrev[abbrev_notnull]))
+
+
+# TODO maybe factor this + odor inventory loading into chemutils?
+_inchi2abbrev = None
+def odor2abbrev(odor_name, *args, allow_orphan_abbrevs=False):
+    import chemutils
+    global _inchi2abbrev
+
+    if len(args) == 1:
+        inchi2abbrev = args[0]
+
+    elif len(args) == 0:
+        if _inchi2abbrev is None:
+            if _odor_inventory_gsheet is None:
+                raise ValueError('must call odor_inventory_gsheet before ' +
+                    'calling odor2abbrev, unless you pass explicit ' +
+                    'inchi2abbrev second argument to odor2abbrev')
+
+            _inchi2abbrev = inchi2abbrev_dict(_odor_inventory_gsheet,
+                allow_orphan_abbrevs=allow_orphan_abbrevs)
+
+        inchi2abbrev = _inchi2abbrev
+
+    inchi = chemutils.convert(odor_name, from_type='name')
+    if pd.isnull(inchi):
+        print('could not find inchi for odor {}!'.format(odor_name))
+        return inchi
+
+    if pd.isnull(inchi):
+        return inchi
+
+    if inchi not in inchi2abbrev:
+        return None
+
+    return inchi2abbrev[inchi]
+
+
 _mb_team_gsheet = None
 def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     natural_odors_only=False):
@@ -367,7 +479,7 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
 
     gsheet_cache_file = '.gsheet_cache.p'
     if use_cache and exists(gsheet_cache_file):
-        print('Loading Google sheet data from cache at {}'.format(
+        print('Loading MB team sheet data from cache at {}'.format(
             gsheet_cache_file))
 
         with open(gsheet_cache_file, 'rb') as f:
@@ -377,7 +489,7 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
         # TODO TODO maybe env var pointing to this? or w/ link itself?
         # TODO maybe just get relative path from __file__ w/ /.. or something?
         pkg_data_dir = split(split(__file__)[0])[0]
-        with open(join(pkg_data_dir, 'google_sheet_link.txt'), 'r') as f:
+        with open(join(pkg_data_dir, 'mb_team_sheet_link.txt'), 'r') as f:
             gsheet_link = \
                 f.readline().split('/edit')[0] + '/export?format=csv&gid='
 

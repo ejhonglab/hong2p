@@ -1,5 +1,5 @@
 test_data/
-google_sheet_link.txt
+*_sheet_link.txt
 .gsheet_cache.p
 *.backup
 .cnmf_gui_user.p
