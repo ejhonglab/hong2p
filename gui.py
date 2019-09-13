@@ -24,6 +24,7 @@ import pprint
 import traceback
 from shutil import copyfile
 import json
+import glob
 
 from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QThreadPool, QRunnable,
     Qt, QEvent, QVariant)
@@ -61,6 +62,8 @@ import ijroi
 
 import hong2p.util as u
 
+
+conn = u.get_db_conn()
 
 # Maybe rename. It's these cols once already in a recording + comparison.
 cell_cols = ['name1','name2','repeat_num','cell']
@@ -1149,6 +1152,40 @@ class Segmentation(QWidget):
             print('Load a movie before loading ImageJ ROIs.')
             return
 
+        curr_tiff_dir = split(self.tiff_fname)[0]
+        # TODO check that *.zip glob still matches in case where it is the empty
+        # string (fix if it doesn't)
+        possible_ijroi_files = glob.glob(join(curr_tiff_dir,
+            self.thorimage_id + '*.zip'))
+
+        ijroiset_filename = None
+        if len(possible_ijroi_files) == 1:
+            ijroiset_filename = possible_ijroi_files[0]
+
+            confirmation_choice = QMessageBox.question(self, 'Confirm ROI file',
+                'Use ImageJ ROIs in {}?'.format(ijroiset_filename),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+            if confirmation_choice != QMessageBox.Yes:
+                ijroiset_filename = None
+
+        if ijroiset_filename is None:
+            options = QFileDialog.Options()
+            options |= QFileDialog.DontUseNativeDialog
+
+            # TODO restrict *.zip files shown to those also following some
+            # naming convention (to indicate it's for the currently loaded TIFF,
+            # and not a TIFF from some other experiment on the same fly)?
+            # maybe checkbox / diff option to show all?
+
+            ijroiset_filename, _ = QFileDialog.getOpenFileName(self,
+                'Select ImageJ ROI zip...', curr_tiff_dir,
+                'ImageJ ROIs (*.zip)', options=options)
+
+            if len(ijroiset_filename) == 0:
+                print('No ImageJ ROI zipfile selected.')
+                return
+
         old_plot_intermediates_val = self.plot_intermediates
         self.plot_intermediates_btn.setChecked(False)
         restore_false = False
@@ -1156,23 +1193,6 @@ class Segmentation(QWidget):
             restore_false = True
             self.plot_corrs_btn.setChecked(True)
             self.plot_traces_btn.setChecked(True)
-
-        options = QFileDialog.Options()
-        options |= QFileDialog.DontUseNativeDialog
-
-        # TODO restrict *.zip files shown to those also following some naming
-        # convention (to indicate it's for the currently loaded TIFF, and not a
-        # TIFF from some other experiment on the same fly)?
-        # maybe checkbox / diff option to show all?
-
-        curr_tiff_dir = split(self.tiff_fname)[0]
-        ijroiset_filename, _ = QFileDialog.getOpenFileName(self,
-            'Select ImageJ ROI zip...', curr_tiff_dir, 'ImageJ ROIs (*.zip)',
-            options=options)
-
-        if len(ijroiset_filename) == 0:
-            print('No ImageJ ROI zipfile selected.')
-            return
 
         ijroi_cnmf_run = None
         fname = split(ijroiset_filename)[-1]
@@ -1190,7 +1210,7 @@ class Segmentation(QWidget):
         if ijroi_cnmf_run is not None:
             full_timestamps = pd.read_sql_query('''SELECT run_at FROM
                 segmentation_runs WHERE date_trunc('second', run_at) = '{}'
-            '''.format(pd.Timestamp(ijroi_cnmf_run)), u.conn).run_at
+            '''.format(pd.Timestamp(ijroi_cnmf_run)), conn).run_at
             assert len(full_timestamps) <= 1
 
             if len(full_timestamps) == 1:
@@ -1198,7 +1218,7 @@ class Segmentation(QWidget):
                 orig_cnmf_footprints = pd.read_sql_query('''
                     SELECT * FROM cells WHERE segmentation_run = '{}'
                     '''.format(pd.Timestamp(ijroi_cnmf_run)),
-                    u.conn, index_col='cell')
+                    conn, index_col='cell')
 
                 if len(orig_cnmf_footprints) == 0:
                     warnings.warn(('No footprints found in db for CNMF run {}'
@@ -1333,7 +1353,6 @@ class Segmentation(QWidget):
     def delete_segrun(self, treenode) -> None:
         run_at = treenode.data(0, Qt.UserRole).run_at
 
-        # TODO change order of yes / no?
         confirmation_choice = QMessageBox.question(self, 'Confirm delete',
             'Remove analysis run from {} from database?'.format(
             format_timestamp(run_at)),
@@ -1345,7 +1364,7 @@ class Segmentation(QWidget):
             print('Deleting analysis run {} from database'.format(run_at))
 
             sql = "DELETE FROM analysis_runs WHERE run_at = '{}'".format(run_at)
-            ret = u.conn.execute(sql)
+            ret = conn.execute(sql)
 
             parent = treenode.parent()
 
@@ -1455,7 +1474,7 @@ class Segmentation(QWidget):
         sql = ("UPDATE recordings SET canonical_segmentation = " +
             "'{}' WHERE started_at = '{}'").format(row.run_at,
             row.recording_from)
-        ret = u.conn.execute(sql)
+        ret = conn.execute(sql)
 
         self.mark_canonical(treenode, True)
     '''
@@ -2366,24 +2385,37 @@ class Segmentation(QWidget):
             assert (set(name2_unique) == {'no_second_odor'} or 
                 set(name2_unique) - set(name1_unique) == {'paraffin'})
 
-            # TODO maybe make this abbreviation making a fn
-            # TODO maybe use abbreviation that won't need a separate table to be
-            # meaningful...
-            # TODO TODO make this not rely on mix being last
-            # (generate from util ordering fn, since that has similar logic?)
-            # TODO TODO actually use u.odor2abbrev if all are found (+ w/ flag?)
-            odor2abbrev = {o: chr(ord('A') + i)
-                for i, o in enumerate(name1_unique)}
-            found_mix = False
-            for o in odor2abbrev.keys():
-                lo = o.lower()
-                if 'approx' in lo or 'mix' in lo:
-                    if found_mix:
-                        raise ValueError('only expected one mix per expt')
-                    else:
-                        found_mix = True
-                        odor2abbrev[o] = 'MIX'
+            # TODO factor these flags out to be user configurable
+            single_letter_abbrevs = False
+            abbrev_in_presentation_order = True
+            plot_in_presentation_order = True
 
+            if not plot_in_presentation_order:
+                # TODO would need to look up fixed desired order, as in
+                # kc_mix_analysis, to support this
+                raise NotImplementedError
+
+            if single_letter_abbrevs:
+                if not abbrev_in_presentation_order:
+                    # TODO would (again) need to look up fixed desired order, as
+                    # in kc_mix_analysis, to support this
+                    raise NotImplementedError
+            else:
+                if abbrev_in_presentation_order:
+                    warnings.warn('abbrev_in_presentation_order can only ' +
+                        'be False if not using single_letter_abbrevs')
+
+            if not abbrev_in_presentation_order:
+                # TODO would (again) need to look up fixed desired order, as
+                # in kc_mix_analysis, to support this
+                raise NotImplementedError
+                # (could implement other order by just reorder name1_unique)
+
+            odor2abbrev = u.odor2abbrev_dict(name1_unique,
+                single_letter_abbrevs=single_letter_abbrevs)
+
+            # TODO rewrite later stuff to avoid need for this.
+            # it just adds a bit of confusion at this point.
             # TODO need to deal w/ no_second_odor in here?
             # So that code detecting which combinations of name1+name2 are
             # monomolecular does not need to change.
@@ -2772,7 +2804,7 @@ class Segmentation(QWidget):
         # TODO test that result is same w/ or w/o method in case where row did
         # not exist, and that read shows insert worked in w/ method case
         if self.ACTUALLY_UPLOAD:
-            run.to_sql('analysis_runs', u.conn, if_exists='append',
+            run.to_sql('analysis_runs', conn, if_exists='append',
                 method=u.pg_upsert)
 
         # TODO worth preventing (attempts to) insert code versions and
@@ -2852,7 +2884,7 @@ class Segmentation(QWidget):
             self.current_recording_widget, segrun_row)
 
         if self.ACTUALLY_UPLOAD:
-            segmentation_run.to_sql('segmentation_runs', u.conn,
+            segmentation_run.to_sql('segmentation_runs', conn,
                 if_exists='append', method=u.pg_upsert)
 
         # TODO unless i change db to have a canonical analysis version per
@@ -2895,7 +2927,7 @@ class Segmentation(QWidget):
         '''
         db_presentations = pd.read_sql_query(
             'SELECT presentation_id, comparison, presentation_accepted FROM' +
-            " presentations WHERE analysis = '{}'".format(run_at), u.conn)
+            " presentations WHERE analysis = '{}'".format(run_at), conn)
         print(db_presentations)
         '''
 
@@ -2909,10 +2941,10 @@ class Segmentation(QWidget):
         sql = ("UPDATE presentations SET presentation_accepted = " +
             "{} WHERE analysis = '{}' AND comparison = {}").format(
             accepted, run_at, block_num)
-        ret = u.conn.execute(sql)
+        ret = conn.execute(sql)
         '''
         print(pd.read_sql_query('SELECT comparison, presentation_accepted FROM'+
-            " presentations WHERE analysis = '{}'".format(run_at), u.conn))
+            " presentations WHERE analysis = '{}'".format(run_at), conn))
         '''
 
         # TODO maybe take out call to color_recording_node here if going to just
@@ -2963,7 +2995,7 @@ class Segmentation(QWidget):
                 u.to_sql_with_duplicates(presentation_df.drop(
                     columns='temp_presentation_id'), 'presentations')
 
-                db_presentations = pd.read_sql('presentations', u.conn,
+                db_presentations = pd.read_sql('presentations', conn,
                     columns=(key_cols + ['presentation_id']))
 
                 presentation_ids = (db_presentations[key_cols] ==
@@ -3321,7 +3353,7 @@ class Segmentation(QWidget):
         db_presentations = pd.read_sql_query(
             'SELECT presentation_id, comparison, presentation_accepted FROM' +
             " presentations WHERE analysis = '{}'".format(
-            pd.Timestamp(self.run_at)), u.conn)
+            pd.Timestamp(self.run_at)), conn)
         if len(db_presentations) > 0:
             print('Presentations in db for this segmentation run:')
             print(db_presentations)
@@ -3335,7 +3367,7 @@ class Segmentation(QWidget):
         self.ijroi_file_path = None
         self.footprint_df = pd.read_sql_query('''SELECT * FROM cells
             WHERE segmentation_run = '{}' '''.format(pd.Timestamp(self.run_at)),
-            u.conn, index_col='cell')
+            conn, index_col='cell')
         assert len(self.footprint_df) > 0
 
         self.accepted = u.accepted_blocks(self.run_at)
@@ -3610,11 +3642,11 @@ class Segmentation(QWidget):
         # TODO TODO also replace other cases that might need to be
         # updated w/ pg_upsert based solution
         ####u.to_sql_with_duplicates(self.recordings, 'recordings')
-        self.recordings.set_index('started_at').to_sql('recordings', u.conn,
+        self.recordings.set_index('started_at').to_sql('recordings', conn,
             if_exists='append', method=u.pg_upsert)
 
         db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
-            "started_at = '{}'".format(pd.Timestamp(started_at)), u.conn)
+            "started_at = '{}'".format(pd.Timestamp(started_at)), conn)
         db_recording = db_recording[self.recordings.columns]
         assert self.recordings.equals(db_recording)
 
@@ -3639,7 +3671,7 @@ class Segmentation(QWidget):
         # TODO make unique id before insertion? some way that wouldn't require
         # the IDs, but would create similar tables?
 
-        self.db_odors = pd.read_sql('odors', u.conn)
+        self.db_odors = pd.read_sql('odors', conn)
         self.db_odors.set_index(['name', 'log10_conc_vv'],
             verify_integrity=True, inplace=True)
 
@@ -4501,10 +4533,10 @@ class MainWindow(QMainWindow):
         self.user_cache_file = '.cnmf_gui_user.p'
         self.user = self.load_default_user()
 
-        self.nicknames = set(pd.read_sql('people', u.conn)['nickname'])
+        self.nicknames = set(pd.read_sql('people', conn)['nickname'])
         if self.user is not None:
             pd.DataFrame({'nickname': [self.user]}).set_index('nickname'
-                ).to_sql('people', u.conn, if_exists='append',
+                ).to_sql('people', conn, if_exists='append',
                 method=u.pg_upsert)
 
             user_select.addItem(self.user)
@@ -4568,7 +4600,7 @@ class MainWindow(QMainWindow):
     
     def change_user(self, user):
         if user not in self.nicknames:
-            pd.DataFrame({'nickname': [user]}).to_sql('people', u.conn,
+            pd.DataFrame({'nickname': [user]}).to_sql('people', conn,
                 if_exists='append', index=False)
             self.nicknames.add(user)
         self.user = user
@@ -4632,11 +4664,11 @@ def main():
     # TODO maybe rename all of these w/ db_ prefix or something, to
     # differentiate from non-global versions in segmentation tab code
     print('reading odors from postgres...', end='', flush=True)
-    odors = pd.read_sql('odors', u.conn)
+    odors = pd.read_sql('odors', conn)
     print(' done')
 
     print('reading presentations from postgres...', end='', flush=True)
-    presentations = pd.read_sql('presentations', u.conn)
+    presentations = pd.read_sql('presentations', conn)
     print(' done')
 
     presentations['from_onset'] = presentations.from_onset.apply(
@@ -4646,7 +4678,7 @@ def main():
 
     # TODO change sql for recordings table to use thorimage dir + date + fly
     # as index?
-    recordings = pd.read_sql('recordings', u.conn)
+    recordings = pd.read_sql('recordings', conn)
 
     presentations = u.merge_recordings(presentations, recordings)
 
@@ -4661,7 +4693,7 @@ def main():
     ]
     recordings_meta = presentations[rec_meta_cols].drop_duplicates()
 
-    footprints = pd.read_sql('cells', u.conn)
+    footprints = pd.read_sql('cells', conn)
     footprints = footprints.merge(recordings_meta, on='recording_from')
     footprints.set_index(u.recording_cols, inplace=True)
 

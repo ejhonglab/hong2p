@@ -14,6 +14,8 @@ import hong2p.util as u
 
 
 def main():
+    conn = u.get_db_conn()
+
     # TODO TODO assert that only one analysis for other index variables?
     # just do it before returning here?
     response_stats = u.latest_response_stats()
@@ -42,10 +44,10 @@ def main():
         'repeat_num' 
     ]
     presentation_cols_to_get = index_cols + u.response_stat_cols
-    db_presentations = pd.read_sql('presentations', u.conn, 
+    db_presentations = pd.read_sql('presentations', conn, 
     	columns=(presentation_cols_to_get + ['presentation_id'])) 
 
-    db_analysis_runs = pd.read_sql('analysis_runs', u.conn)
+    db_analysis_runs = pd.read_sql('analysis_runs', conn)
     #db_analysis_runs.set_index(['recording_from', 'run_at'], inplace=True)
 
     ar = set(db_analysis_runs.recording_from.unique())

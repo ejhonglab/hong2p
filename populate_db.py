@@ -84,6 +84,8 @@ test_recording = None
 if only_do_anything_for_analysis:
     only_motion_correct_for_analysis = True
 
+conn = u.get_db_conn()
+
 # TODO TODO implement some kind of queue (or just lock files on NAS?) so
 # multiple instantiations can work in parallel
 
@@ -605,7 +607,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         if upload_matlab_cnmf_output:
             # TODO check this whole section after analysis refactoring...
             entered = pd.read_sql_query('SELECT DISTINCT prep_date, ' +
-                'fly_num, recording_from, analysis FROM presentations', u.conn)
+                'fly_num, recording_from, analysis FROM presentations', conn)
             # TODO TODO check that the right number of rows are in there,
             # otherwise drop and re-insert (optionally? since it might take a
             # bit of time to load CNMF output to check / for database to check)
@@ -708,11 +710,11 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # especially.
             ####u.to_sql_with_duplicates(recordings, 'recordings')
             recordings.set_index('started_at', inplace=True)
-            recordings.to_sql('recordings', u.conn, if_exists='append',
+            recordings.to_sql('recordings', conn, if_exists='append',
                 method=u.pg_upsert)
 
             db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
-                "started_at = '{}'".format(pd.Timestamp(started_at)), u.conn,
+                "started_at = '{}'".format(pd.Timestamp(started_at)), conn,
                 index_col='started_at')
             db_recording = db_recording[recordings.columns]
 
@@ -742,7 +744,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # TODO make unique id before insertion? some way that wouldn't
             # require the IDs, but would create similar tables?
 
-            db_odors = pd.read_sql('odors', u.conn)
+            db_odors = pd.read_sql('odors', conn)
             # TODO TODO in general, the name alone won't be unique, so use
             # another strategy
             db_odors.set_index('name', inplace=True)
@@ -1235,7 +1237,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 # use to_sql w/ pg_upsert?
                 u.to_sql_with_duplicates(presentation, 'presentations')
 
-            db_presentations = pd.read_sql('presentations', u.conn)
+            db_presentations = pd.read_sql('presentations', conn)
 
             # maybe share w/ code that checks distinct to decide whether to
             # load / analyze?
@@ -1294,7 +1296,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 '''
                 new_db_presentations = pd.read_sql_query('SELECT DISTINCT ' +
                     'prep_date, fly_num, recording_from, comparison FROM' +
-                    'presentations', u.conn)
+                    'presentations', conn)
 
                 print(new_db_presentations)
                 print(len(new_db_presentations))

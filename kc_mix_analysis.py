@@ -30,77 +30,6 @@ avg_traces = True
 #test = False
 test = True
 
-odor2abbrev = {
-    'pfo': 'pfo',
-
-    'etb': 'etb',
-    'eta': 'eta',
-    'iaa': 'iaa',
-    'iaol': 'iaol',
-    'etoh': 'etoh',
-    
-    '1o3ol': '1o3ol',
-    'fur': 'fur',
-    'va': 'va',
-    'ms': 'ms',
-    '2h': '2h',
-    
-    'ethyl butyrate': 'etb',
-    'ethyl acetate': 'eta',
-    'isoamyl acetate': 'iaa',
-    'isoamyl alcohol': 'iaol',
-    'ethanol': 'etoh',
-    'kiwi approx.': 'mix',
-    'd3 kiwi': 'kiwi',
-    
-    '1o3ol': '1o3ol',
-    'furfural': 'fur',
-    'valeric acid': 'va',
-    'methyl salicylate': 'ms',
-    '2-heptanone': '2h',
-    'control mix 1': 'mix',
-    'control mix 2': 'mix'
-}
-
-key_corrs = {
-    '4': {
-        'A': odor2abbrev['eta'],
-        'B': odor2abbrev['etb'],
-        'C': odor2abbrev['iaol'],
-        'D': odor2abbrev['etoh'],
-        'E': odor2abbrev['iaa'],
-        'MIX': 'mix'
-    },
-    '5': {
-        'A': odor2abbrev['va'],
-        'C': odor2abbrev['ms'],
-        'D': odor2abbrev['fur'],
-        'E': odor2abbrev['2h'],
-        'F': odor2abbrev['1o3ol'],
-        'MIX': 'mix'
-    },
-    '7': {
-        'A': odor2abbrev['fur'],
-        'B': odor2abbrev['1o3ol'],
-        'C': odor2abbrev['ms'],
-        'D': odor2abbrev['va'],
-        'F': odor2abbrev['2h'],
-        'MIX': 'mix'
-    },
-    '8': {
-        'A': odor2abbrev['iaa'],
-        'C': odor2abbrev['eta'],
-        'D': odor2abbrev['etoh'],
-        'E': odor2abbrev['etb'],
-        'F': odor2abbrev['iaol'],
-        'MIX': 'mix'
-    }
-}
-odor_set2order = {
-    'kiwi': ['pfo', 'etb', 'eta', 'iaa', 'iaol', 'etoh', 'kiwi', 'mix'],
-    'control': ['pfo', '1o3ol', 'fur', 'va', 'ms', '2h', 'mix']
-}
-
 fig_dir = 'mix_figs'
 if not exists(fig_dir):
     os.mkdir(fig_dir)
@@ -225,7 +154,12 @@ for df_pickle in pickles:
     # something else?)
     df = pd.read_pickle(df_pickle)
 
+    assert 'original_name1' in df.columns
+    df.name1 = df.original_name1.map(
+        lambda o: u.odor2abbrev(o, use_gsheet=True))
+
     # TODO delete
+    '''
     if 'original_name1' in df.columns:
         df.name1 = df.original_name1.map(odor2abbrev)
 
@@ -241,13 +175,10 @@ for df_pickle in pickles:
                 corrected = True
                 break
         assert corrected
-
-    if 'etb' in df.name1.unique():
-        odor_set = 'kiwi'
-    else:
-        odor_set = 'control'
-    odor_order = [o for o in odor_set2order[odor_set] if o in df.name1.unique()]
-    prefix = odor_set
+    '''
+    prefix = u.df_to_odorset_name(df)
+    odor_order = [u.odor2abbrev(o, use_gsheet=True)
+        for o in u.df_to_odor_order(df)]
     
     title = '/'.join([x for x in df_pickle[:-2].split('_')[-4:] if len(x) > 0])
     fname = prefix.replace(' ','') + '_' + title.replace('/','_')
