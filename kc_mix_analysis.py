@@ -155,8 +155,7 @@ for df_pickle in pickles:
     df = pd.read_pickle(df_pickle)
 
     assert 'original_name1' in df.columns
-    df.name1 = df.original_name1.map(
-        lambda o: u.odor2abbrev(o, use_gsheet=True))
+    df.name1 = df.original_name1.map(u.odor2abbrev)
 
     # TODO delete
     '''
@@ -177,8 +176,7 @@ for df_pickle in pickles:
         assert corrected
     '''
     prefix = u.df_to_odorset_name(df)
-    odor_order = [u.odor2abbrev(o, use_gsheet=True)
-        for o in u.df_to_odor_order(df)]
+    odor_order = [u.odor2abbrev(o) for o in u.df_to_odor_order(df)]
     
     title = '/'.join([x for x in df_pickle[:-2].split('_')[-4:] if len(x) > 0])
     fname = prefix.replace(' ','') + '_' + title.replace('/','_')

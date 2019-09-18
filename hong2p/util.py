@@ -371,7 +371,7 @@ def pg_upsert(table, conn, keys, data_iter):
 
 
 _odor_inventory_gsheet = None
-def odor_inventory_gsheet(use_cache=False):
+def odor_inventory_gsheet(use_cache=False, verbose=False):
     '''Returns a DataFrame with data odor inventory data from Google sheet.
     '''
     import chemutils
@@ -424,7 +424,8 @@ def odor_inventory_gsheet(use_cache=False):
 
     df.name = df.name.apply(chemutils.normalize_name)
 
-    df = chemutils.convert(df, to_type='inchi', allow_nan=False, verbose=False)
+    df = chemutils.convert(df, to_type='inchi', allow_nan=False,
+        verbose=verbose, report_conflicts=False)
 
     # TODO could copy name to original_name and normalize ids (+ name)
     # as in natural_odors/odors.py
@@ -456,7 +457,7 @@ hardcoded_not_to_abbrev = {
 }
 # TODO maybe factor this + odor inventory loading into chemutils?
 _inchi2abbrev = None
-def odor2abbrev(odor_name, *args, use_gsheet=False, allow_orphan_abbrevs=False,
+def odor2abbrev(odor_name, *args, allow_orphan_abbrevs=False,
     skip=set(), **kwargs):
     """
     Uses abbreviation column in odor inventory gsheet to lookup abbreviation for
@@ -482,20 +483,18 @@ def odor2abbrev(odor_name, *args, use_gsheet=False, allow_orphan_abbrevs=False,
     elif len(args) == 0:
         if _inchi2abbrev is None:
             if _odor_inventory_gsheet is None:
-                if not use_gsheet:
-                    raise ValueError('must call odor_inventory_gsheet before ' +
-                        'calling odor2abbrev, unless you pass explicit ' +
-                        'inchi2abbrev second argument to odor2abbrev or set ' +
-                        'use_gsheet to True')
-                else:
-                    odor_inventory_gsheet(**kwargs)
+                odor_inventory_gsheet(**kwargs)
 
             _inchi2abbrev = inchi2abbrev_dict(_odor_inventory_gsheet,
                 allow_orphan_abbrevs=allow_orphan_abbrevs)
 
         inchi2abbrev = _inchi2abbrev
 
-    inchi = chemutils.convert(odor_name, from_type='name')
+    verbose = False
+    if 'verbose' in kwargs:
+        verbose = kwargs['verbose']
+
+    inchi = chemutils.convert(odor_name, from_type='name', verbose=verbose)
     if pd.isnull(inchi):
         print('could not find inchi for odor {}!'.format(odor_name))
         return inchi
@@ -541,7 +540,7 @@ def odor2abbrev_dict(odors, single_letter_abbrevs=True):
                 o2a[o] = chr(ord('A') + i)
                 i += 1
             else:
-                abbrev = odor2abbrev(o, use_gsheet=True)
+                abbrev = odor2abbrev(o)
                 if abbrev is None:
                     # TODO make sure this prints for each odor,
                     # rather than somehow getting surpressed
