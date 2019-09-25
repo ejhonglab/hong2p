@@ -59,6 +59,7 @@ from caiman.source_extraction.cnmf import params, cnmf
 import caiman.utils.visualization
 # Need functions only in my fork of this.
 import ijroi
+import chemutils as cu
 
 import hong2p.util as u
 
@@ -2411,7 +2412,7 @@ class Segmentation(QWidget):
                 raise NotImplementedError
                 # (could implement other order by just reorder name1_unique)
 
-            odor2abbrev = u.odor2abbrev_dict(name1_unique,
+            odor2abbrev = cu.odor2abbrev_dict(name1_unique,
                 single_letter_abbrevs=single_letter_abbrevs)
 
             # TODO rewrite later stuff to avoid need for this.
