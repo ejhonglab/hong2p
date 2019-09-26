@@ -2535,15 +2535,6 @@ def pair_ordering(comparison_df):
     return ordering
 
 
-# TODO use this in kc_mix_analysis
-def odor_is_mix(odor_name):
-    """Returns True if odor is the mixture in my complex mix expts, else False.
-    For ordering odors in plots.
-    """
-    lo = odor_name.lower()
-    return 'approx' in lo or 'mix' in lo
-
-
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
     yticklabels=None, xtickrotation=None, colorbar_label=None,
     group_ticklabels=False, ax=None, fontsize=None, fontweight=None):
