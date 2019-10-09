@@ -5,7 +5,7 @@ our databases / movies / CNMF output.
 
 import os
 from os import listdir
-from os.path import join, split, exists, sep, isdir
+from os.path import join, split, exists, sep, isdir, normpath, getmtime
 import socket
 import pickle
 import atexit
@@ -43,6 +43,8 @@ trial_only_cols = [
     'repeat_num'
 ]
 trial_cols = recording_cols + trial_only_cols
+
+date_fmt_str = '%Y-%m-%d'
 
 db_hostname = 'atlas'
 
@@ -84,39 +86,63 @@ def __getattr__(name):
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 '''
 
-
+data_root_name = 'mb_team'
 
 # Module level cache.
-_nas_prefix = None
-def nas_prefix():
-    global _nas_prefix
-    if _nas_prefix is None:
+_data_root = None
+def data_root():
+    global _data_root
+    if _data_root is None:
         # TODO separate env var for local one? or have that be the default?
-        nas_prefix_key = 'HONG_NAS'
-        if nas_prefix_key in os.environ:
-            prefix = os.environ[nas_prefix_key]
+        data_root_key = 'HONG_2P_DATA'
+
+        if data_root_key in os.environ:
+            data_root = os.environ[data_root_key]
         else:
-            prefix = '/mnt/nas'
-        _nas_prefix = prefix
-    # TODO TODO err if nothing in nas_prefix, saying which env var to set and
-    # how
-    return _nas_prefix
+            nas_prefix_key = 'HONG_NAS'
+            if nas_prefix_key in os.environ:
+                prefix = os.environ['HONG_NAS']
+            else:
+                prefix = '/mnt/nas'
+
+            data_root = join(prefix, data_root_name)
+        _data_root = data_root
+    # TODO err if nothing in data_root, saying which env var to set and how
+    return _data_root
 
 
 # TODO (for both below) support a local and a remote one ([optional] local copy
 # for faster repeat analysis)?
 # TODO use env var like kc_analysis currently does for prefix after refactoring
-# (include mb_team in that part and rename from nas_prefix?)
+# (include mb_team in that part and rename from data_root?)
 def raw_data_root():
-    return join(nas_prefix(), 'mb_team/raw_data')
+    return join(data_root(), 'raw_data')
 
 
 def analysis_output_root():
-    return join(nas_prefix(), 'mb_team/analysis_output')
+    return join(data_root(), 'analysis_output')
 
 
 def stimfile_root():
-    return join(nas_prefix(), 'mb_team/stimulus_data_files')
+    return join(data_root(), 'stimulus_data_files')
+
+
+def _fly_dir(date, fly):
+    if not type(date) is str:
+        date = date.strftime(date_fmt_str)
+
+    if not type(fly) is str:
+        fly = str(int(fly))
+
+    return join(date, fly)
+
+
+def raw_fly_dir(date, fly):
+    return join(raw_data_root(), _fly_dir(date, fly))
+
+
+def analysis_fly_dir(date, fly):
+    return join(analysis_output_root(), _fly_dir(date, fly))
 
 
 def matlab_exit_except_hook(exctype, value, traceback):
@@ -156,7 +182,8 @@ def matlab_engine():
     for root, dirs, _ in os.walk(userpath, topdown=True):
         dirs[:] = [d for d in dirs if (not d.startswith('.') and
             not d.startswith('@') and not d.startswith('+') and
-            d not in exclude_from_matlab_path)]
+            d not in exclude_from_matlab_path and 
+            d != 'private')]
 
         evil.addpath(root)
 
@@ -419,6 +446,29 @@ def df_to_odor_order(df):
         df.original_name1.unique()]
 
 
+def old_fmt_thorimage_num(x):
+    if pd.isnull(x) or not (x[0] == '_' and len(x) == 4):
+        return np.nan
+    try:
+        n = int(x[1:])
+        return n
+    except ValueError:
+        return np.nan
+
+
+def new_fmt_thorimage_num(x):
+    parts = x.split('_')
+    if len(parts) == 1:
+        return 0
+    else:
+        return int(x[-1])
+
+
+def thorsync_num(x):
+    prefix = 'SyncData'
+    return int(x[len(prefix):])
+
+
 _mb_team_gsheet = None
 def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     natural_odors_only=False):
@@ -460,7 +510,12 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
             if 'date' in df.columns:
                 df['date'] = pd.to_datetime(df['date'])
 
-            # TODO complain if there are any missing fly_nums
+            df.drop(columns=[c for c in df.columns
+                if c.startswith('Unnamed: ')], inplace=True)
+
+            if 'fly_num' in df.columns:
+                last_with_fly_num = df.fly_num.notnull()[::-1].idxmax()
+                df.drop(df.iloc[(last_with_fly_num + 1):].index, inplace=True)
 
             sheets[df_name] = df
 
@@ -473,12 +528,26 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
         sheets['recordings'].dropna(how='all', subset=na_cols, inplace=True)
 
         with open(gsheet_cache_file, 'wb') as f:
-            pickle.dump(sheets, f)
+            pickle.dump(sheets, f) 
 
     # TODO maybe make df some merge of the three sheets?
     df = sheets['recordings']
 
-    df[['date','fly_num']] = df[['date','fly_num']].fillna(method='ffill')
+    # TODO TODO maybe flag to disable path inference / rethink how it should
+    # interact w/ timestamp based correspondence between thorsync/image and
+    # mapping that to the recordings in the gsheet
+    # TODO should inference that reads the metadata happen in this fn?
+    # maybe yes, but still factor it out and just call here?
+
+    # TODO maybe start by not filling in fully-empty groups / flagging
+    # them for later -> preferring to infer those from local files ->
+    # then inferring fully-empty groups from default numbering as before
+
+    keys = ['date', 'fly_num']
+    # These should happen before rows start being dropped, because the dropped
+    # rows might have the information needed to ffill.
+    df[keys] = df[keys].fillna(method='ffill')
+    df['stimulus_data_file'] = df['stimulus_data_file'].fillna(method='ffill')
 
     df.raw_data_discarded = df.raw_data_discarded.fillna(False)
     # TODO say when this happens?
@@ -491,15 +560,91 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     df.raw_data_lost = df.raw_data_lost.fillna(False)
     df.drop(df[df.raw_data_lost].index, inplace=True)
 
-    keys = ['date', 'fly_num']
-    df['recording_num'] = df.groupby(keys).cumcount() + 1
-    # Since otherwise cumcount seems to be zero for stuff without a group...
-    # (i.e. w/ one of the keys null)
-    df.loc[pd.isnull(df[keys]).any(axis=1), 'recording_num'] = np.nan
+    # TODO as per note below, any thorimage/thorsync dirs entered in spreadsheet
+    # should probably cause warning/err if either of above rejection reason
+    # is checked
 
-    df['stimulus_data_file'] = df['stimulus_data_file'].fillna(method='ffill')
-    # TODO delete hack after dealing w/ remy's conventions (some of which were
-    # breaking the code assuming my conventions)
+    # This happens after data is dropped for the above two reasons, because
+    # generally those mistakes do not consume any of our sequential filenames.
+    # They should not have files associated with them, and the Google sheet
+    # information on them is just for tracking problems / efficiency.
+    df['recording_num'] = df.groupby(keys).cumcount() + 1
+    # cumcount output will not be exactly what i want in this case
+    assert not pd.isnull(df[keys]).any(axis=1).any(), 'see old fix filling nan'
+
+    if show_inferred_paths:
+        missing_thorimage = pd.isnull(df.thorimage_dir)
+        missing_thorsync = pd.isnull(df.thorsync_dir)
+
+    prep_checking = 'n/a (prep checking)'
+    my_project = 'natural_odors'
+    # Leaving this commented for now cause it might actually break things
+    # on days where we did experiments for multiple people.
+    '''
+    projects = (my_project, prep_checking)
+    df.drop(df[(~ df.project.isin(projects))].index,
+        inplace=True)
+    '''
+
+    # TODO delete after debugging
+    df_before_thorinf = df.copy()
+    #
+
+    check_and_set = []
+    for gn, gdf in df.groupby(keys):
+        if not (gdf.project == my_project).any():
+            continue
+
+        if gdf[['thorimage_dir','thorsync_dir']].isnull().all(axis=None):
+            fly_dir = raw_fly_dir(*gn)
+            if not exists(fly_dir):
+                continue
+
+            #print('\n' + fly_dir)
+            try:
+                image_and_sync_pairs = pair_thor_subdirs(fly_dir)
+                #print('pairs:')
+                #pprint.pprint(image_and_sync_pairs)
+            except ValueError as e:
+                print(e)
+                print('pairing ambiguity! could not pair.')
+                continue
+
+            # could maybe try to sort things into "prep checking" / real
+            # experiment based on time length or something (and maybe try
+            # to fall back to just pairing w/ real experiments? and extending
+            # condition below to # real experiments in gdf)
+            nm = len(image_and_sync_pairs)
+            ng = len(gdf)
+            if nm < ng:
+                #print('more rows for (date, fly) pair than matched outputs'
+                #    f' ({nm} < {ng})')
+                continue
+
+            all_group_in_old_dir_fmt = True
+            group_tids = []
+            group_tsds = []
+            for tid, tsd in image_and_sync_pairs:
+                tid = split(tid)[-1]
+                if pd.isnull(old_fmt_thorimage_num(tid)):
+                    #print(f'{tid} not in old format')
+                    all_group_in_old_dir_fmt = False
+
+                group_tids.append(tid)
+                group_tsds.append(split(tsd)[-1])
+
+            # Not immediately setting df in this case, so that I can check
+            # these results against the old way of doing things.
+            if all_group_in_old_dir_fmt:
+                #print('all in old dir format')
+                check_and_set.append((gn, gdf.index, group_tids, group_tsds))
+            else:
+                #print('filling in b/c not (all) in old dir format')
+                # TODO is it ok to modify df used to create groupby while
+                # iterating over groupby?
+                df.loc[gdf.index, 'thorimage_dir'] = group_tids
+                df.loc[gdf.index, 'thorsync_dir'] = group_tsds
+
     df.drop(df[df.project != 'natural_odors'].index, inplace=True)
 
     # TODO TODO implement option to (at least) also keep prep checking that
@@ -507,20 +652,10 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     # (so that i can get all that ethyl acetate data for use as a reference
     # odor)
 
-    if show_inferred_paths:
-        missing_thorimage = pd.isnull(df.thorimage_dir)
-        missing_thorsync = pd.isnull(df.thorsync_dir)
+    # TODO display stuff inferred from files separately from stuff inferred
+    # from combination of gsheet info and convention
 
-    def thorimage_num(x):
-        if pd.isnull(x) or not (x[0] == '_' and len(x) == 4):
-            return np.nan
-        try:
-            n = int(x[1:])
-            return n
-        except ValueError:
-            return np.nan
-        
-    df['thorimage_num'] = df.thorimage_dir.apply(thorimage_num)
+    df['thorimage_num'] = df.thorimage_dir.apply(old_fmt_thorimage_num)
     df['numbering_consistent'] = \
         pd.isnull(df.thorimage_num) | (df.thorimage_num == df.recording_num)
 
@@ -531,10 +666,11 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     gkeys = keys + ['thorimage_dir','thorsync_dir','thorimage_num',
                     'recording_num','numbering_consistent']
     for name, group_df in df.groupby(keys):
+        # TODO maybe refactor above so case 3 collapses into case 1?
         '''
-        # case 1: all consistent
-        # case 2: not all consistent, but all thorimage_dir filled in
-        # case 3: not all consistent, but just because thorimage_dir was null
+        Case 1: all consistent
+        Case 2: not all consistent, but all thorimage_dir filled in
+        Case 3: not all consistent, but just because thorimage_dir was null
         '''
         #print(group_df[gkeys])
 
@@ -557,8 +693,11 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
 
     df.thorsync_dir.fillna(df.thorimage_num.apply(lambda x:
         np.nan if pd.isnull(x) else 'SyncData{:03d}'.format(int(x))),
-        inplace=True)
+        inplace=True
+    )
 
+    # Leaving recording_num because it might be prettier to use that for
+    # IDs in figure than whatever Thor output directory naming convention.
     df.drop(columns=['thorimage_num','numbering_consistent'], inplace=True)
 
     # TODO TODO check for conditions in which we might need to renumber
@@ -568,24 +707,47 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     # _ and is not just 3 digits after that?
     # (see what format other stuff from day is?)
     df.thorimage_dir.fillna(df.recording_num.apply(lambda x:
-        np.nan if pd.isnull(x) else '_{:03d}'.format(int(x))), inplace=True)
-
+        np.nan if pd.isnull(x) else '_{:03d}'.format(int(x))), inplace=True
+    )
     df.thorsync_dir.fillna(df.recording_num.apply(lambda x:
         np.nan if pd.isnull(x) else 'SyncData{:03d}'.format(int(x))),
-        inplace=True)
+        inplace=True
+    )
+
+    for gn, gidx, gtids, gtsds in check_and_set:
+        # Since some stuff may have been dropped (prep checking stuff, etc).
+        still_in_idx = gidx.isin(df.index)
+        # No group w/ files on NAS should have been dropped completely.
+        assert still_in_idx.sum() > 0, f'group {gn} dropped completely'
+
+        gidx = gidx[still_in_idx]
+        gtids = np.array(gtids)[still_in_idx]
+        gtsds = np.array(gtsds)[still_in_idx]
+
+        from_gsheet = df.loc[gidx, ['thorimage_dir', 'thorsync_dir']]
+        from_thor = [gtids, gtsds]
+        consistent = (from_gsheet == from_thor).all(axis=None)
+        if not consistent:
+            print('Inconsistency between path infererence methods!')
+            print(dict(zip(keys, gn)))
+            print('Derived from Google sheet:')
+            print(from_gsheet.T.to_string(header=False))
+            print('From matching Thor output files:')
+            print(pd.DataFrame(dict(zip(from_gsheet.columns, from_thor))
+                ).T.to_string(header=False))
+            print('')
+            raise AssertionError('inconsistent rankings w/ old format')
 
     if show_inferred_paths:
-        cols = ['date','fly_num','thorimage_dir','thorsync_dir']
+        cols = keys + ['thorimage_dir','thorsync_dir']
         print('Inferred ThorImage directories:')
         print(df.loc[missing_thorimage, cols])
         print('\nInferred ThorSync directories:')
         print(df.loc[missing_thorsync, cols])
         print('')
 
-    keys = ['date','fly_num']
     duped_thorimage = df.duplicated(subset=keys + ['thorimage_dir'], keep=False)
     duped_thorsync = df.duplicated(subset=keys + ['thorsync_dir'], keep=False)
-
     try:
         assert not duped_thorimage.any()
         assert not duped_thorsync.any()
@@ -600,13 +762,12 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     flies['date'] = flies['date'].fillna(method='ffill')
     flies.dropna(subset=['date','fly_num'], inplace=True)
 
-    # TODO drop any 'Unnamed: X' columns
-
     # TODO maybe flag to not update database? or just don't?
     # TODO groups all inserts into transactions across tables, and as few as
     # possible (i.e. only do this later)?
-    to_sql_with_duplicates(sheets['fly_preps'].rename(
-        columns={'date': 'prep_date'}), 'flies')
+    to_sql_with_duplicates(flies.rename(
+        columns={'date': 'prep_date'}), 'flies'
+    )
 
     _mb_team_gsheet = df
 
@@ -639,7 +800,7 @@ def merge_gsheet(df, *args, use_cache=False):
 
     gsdf['recording_from'] = pd.NaT
     for i, row in gsdf.iterrows():
-        date_dir = row.date.strftime('%Y-%m-%d')
+        date_dir = row.date.strftime(date_fmt_str)
         fly_num = str(int(row.fly_num))
         thorimage_dir = join(raw_data_root(),
             date_dir, fly_num, row.thorimage_dir)
@@ -650,8 +811,7 @@ def merge_gsheet(df, *args, use_cache=False):
         except FileNotFoundError as e:
             continue
 
-        gsdf.loc[i, 'recording_from'] = \
-            datetime.fromtimestamp(float(xml_root.find('Date').attrib['uTime']))
+        gsdf.loc[i, 'recording_from'] = get_thorimage_time_xml(xml_root)
 
     # TODO fail if stuff marked attempt_analysis has missing xml files?
     # or if nothing was found?
@@ -956,7 +1116,7 @@ def upload_analysis_info(*args) -> None:
 
 
 def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
-    date_dir = date.strftime('%Y-%m-%d')
+    date_dir = date.strftime(date_fmt_str)
     fly_num = str(fly_num)
 
     tif_dir = join(analysis_output_root(), date_dir, fly_num, 'tif_stacks')
@@ -1056,8 +1216,7 @@ def tiff_thorimage_id(tiff_filename):
     return '_'.join(split(tiff_filename)[1].split('_')[:-1])
 
 
-# warn if has SyncData in name but fails this?
-def is_thorsync_dir(d):
+def is_thorsync_dir(d, verbose=False):
     if not isdir(d):
         return False
     
@@ -1072,10 +1231,14 @@ def is_thorsync_dir(d):
         if '.h5':
             have_h5 = True
 
+    if verbose:
+        print('have_settings:', have_settings)
+        print('have_h5:', have_h5)
+
     return have_h5 and have_settings
 
 
-def is_thorimage_dir(d):
+def is_thorimage_dir(d, verbose=False):
     if not isdir(d):
         return False
     
@@ -1093,10 +1256,272 @@ def is_thorimage_dir(d):
         #elif f == split(d)[-1] + '_ChanA.tif':
         #    have_processed_tiff = True
 
+    if verbose:
+        print('have_xml:', have_xml)
+        print('have_raw:', have_raw)
+        if have_xml and not have_raw:
+            print('all dir contents:')
+            pprint.pprint(files)
+
     if have_xml and have_raw:
         return True
     else:
         return False
+
+
+def _filtered_subdirs(parent_dir, filter_funcs, exclusive=True, verbose=False):
+    """Takes dir and indicator func(s) to subdirs satisfying them.
+
+    Output is a flat list of directories if filter_funcs is a function.
+
+    If it is a list of funcs, output has the same length, with each element
+    a list of satisfying directories.
+    """
+    parent_dir = normpath(parent_dir)
+
+    try:
+        _ = iter(filter_funcs)
+    except TypeError:
+        filter_funcs = [filter_funcs]
+
+    # [[]] * len(filter_funcs) was the inital way I tried this, but the inner
+    # lists all end up referring to the same object.
+    all_filtered_subdirs = []
+    for _ in range(len(filter_funcs)):
+        all_filtered_subdirs.append([])
+
+    for d in glob.glob(f'{parent_dir}{sep}*{sep}'):
+        if verbose:
+            print(d)
+
+        for fn, filtered_subdirs in zip(filter_funcs, all_filtered_subdirs):
+            if verbose:
+                print(fn.__name__)
+
+            if verbose:
+                try:
+                    val = fn(d, verbose=True)
+                except TypeError:
+                    val = fn(d)
+            else:
+                val = fn(d)
+
+            if verbose:
+                print(val)
+
+            if val:
+                filtered_subdirs.append(d[:-1])
+                if exclusive:
+                    break
+
+        if verbose:
+            print('')
+
+    if len(filter_funcs) == 1:
+        all_filtered_subdirs = all_filtered_subdirs[0]
+
+    return all_filtered_subdirs
+
+
+def thorimage_subdirs(parent_dir):
+    return _filtered_subdirs(parent_dir, is_thorimage_dir)
+
+
+def thorsync_subdirs(parent_dir):
+    return _filtered_subdirs(parent_dir, is_thorsync_dir)
+
+
+def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
+    use_ranking=True, check_against_naming_conv=True, verbose=False):
+    """
+    Takes lists (not necessarily same len) of dirs, and returns a list of
+    lits of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
+
+    Raises ValueError if two dirs of one type match to the same one of the
+    other, but just returns shorter list of pairs if some matches can not be
+    made.
+    """
+    if use_ranking:
+        if len(thorimage_dirs) != len(thorsync_dirs):
+            raise ValueError('can only pair with ranking when equal # dirs')
+
+    thorimage_times = {d: get_thorimage_time(d, use_mtime=use_mtime)
+        for d in thorimage_dirs}
+
+    thorsync_times = {d: get_thorsync_time(d) for d in thorsync_dirs}
+
+    thorimage_dirs = np.array(
+        sorted(thorimage_dirs, key=lambda x: thorimage_times[x])
+    )
+    thorsync_dirs = np.array(
+        sorted(thorsync_dirs, key=lambda x: thorsync_times[x])
+    )
+
+    if use_ranking:
+        pairs = list(zip(thorimage_dirs, thorsync_dirs))
+    else:
+        from scipy.optimize import linear_sum_assignment
+
+        # TODO maybe call scipy func on pandas obj w/ dirs as labels?
+        costs = np.empty((len(thorimage_dirs), len(thorsync_dirs))) * np.nan
+        for i, tid in enumerate(thorimage_dirs):
+            ti_time = thorimage_times[tid]
+            if verbose:
+                print('tid:', tid)
+                print('ti_time:', ti_time)
+
+            for j, tsd in enumerate(thorsync_dirs):
+                ts_time = thorsync_times[tsd]
+
+                cost = (ts_time - ti_time).total_seconds()
+
+                if verbose:
+                    print(' tsd:', tsd)
+                    print('  ts_time:', ts_time)
+                    print('  cost (ts - ti):', cost)
+
+                # Since ts time should be larger, but only if comparing XML TI
+                # time w/ TS mtime (which gets changed as XML seems to be
+                # written as experiment is finishing / in progress).
+                if use_mtime:
+                    cost = abs(cost)
+
+                elif cost < 0:
+                    # TODO will probably just need to make this a large const
+                    # inf seems to make the scipy imp fail. some imp it works
+                    # with?
+                    #cost = np.inf
+                    cost = 1e7
+
+                costs[i,j] = cost
+
+            if verbose:
+                print('')
+
+        ti_idx, ts_idx = linear_sum_assignment(costs)
+        print(costs)
+        print(ti_idx)
+        print(ts_idx)
+        pairs = list(zip(thorimage_dirs[ti_idx], thorsync_dirs[ts_idx]))
+
+    # TODO TODO or just return these (flag to do so?)?
+    if check_against_naming_conv:
+        ti_last_parts = [split(tid)[-1] for tid, _ in pairs]
+
+        thorimage_nums = []
+        not_all_old_fmt = False
+        for tp in ti_last_parts:
+            num = old_fmt_thorimage_num(tp)
+            if pd.isnull(num):
+                not_all_old_fmt = True
+                break
+            thorimage_nums.append(num)
+
+        if not_all_old_fmt:
+            try:
+                thorimage_nums = [new_fmt_thorimage_num(d)
+                    for d in ti_last_parts]
+            except ValueError as e:
+                # (changing error type so it isn't caught, w/ other ValueErrors)
+                raise AssertionError(str(e))
+
+        if len(thorimage_nums) > len(set(thorimage_nums)):
+            raise AssertionError('thorimage nums were not unique')
+
+        thorsync_nums = [thorsync_num(split(tsd)[-1]) for _, tsd in pairs]
+
+        # Ranking rather than straight comparison in case there is an offset.
+        ti_rankings = np.argsort(thorimage_nums)
+        ts_rankings = np.argsort(thorsync_nums)
+        if not np.array_equal(ti_rankings, ts_rankings):
+            raise AssertionError('time based rankings inconsistent w/ '
+                'file name convention rankings')
+        # TODO maybe also re-order pairs by these rankings? or by their own,
+        # to also include case where not check_against... ?
+
+        return pairs
+
+    """
+    thorimage_times = {d: get_thorimage_time(d) for d in thorimage_dirs}
+    thorsync_times = {d: get_thorsync_time(d) for d in thorsync_dirs}
+
+    image_and_sync_pairs = []
+    matched_dirs = set()
+    # TODO make sure this order is going the way i want
+    for tid in sorted(thorimage_dirs, key=lambda x: thorimage_times[x]):
+        ti_time = thorimage_times[tid]
+        if verbose:
+            print('tid:', tid)
+            print('ti_time:', ti_time)
+
+        # Seems ThorImage time (from TI XML) is always before ThorSync time
+        # (from mtime of TS XML), so going to look for closest mtime.
+        # TODO could also warn / fail if closest ti mtime to ts mtime
+        # is inconsistent? or just use that?
+        # TODO or just use numbers in names? or default to that / warn/fail if
+        # not consistent?
+
+        # TODO TODO would need to modify this alg to handle many cases
+        # where there are mismatched #'s of recordings
+        # (first tid will get the tsd, even if another tid is closer)
+        # scipy.optimize.linear_sum_assignment looks interesting, but
+        # not sure it can handle 
+
+        min_positive_td = None
+        closest_tsd = None
+        for tsd in thorsync_dirs:
+            ts_time = thorsync_times[tsd]
+            td = (ts_time - ti_time).total_seconds()
+
+            if verbose:
+                print(' tsd:', tsd)
+                print('  ts_time:', ts_time)
+                print('  td (ts - ti):', td)
+
+            # Since ts_time should be larger.
+            if td < 0:
+                continue
+
+            if min_positive_td is None or td < min_positive_td:
+                min_positive_td = td
+                closest_tsd = tsd
+
+            '''
+            # didn't seem to work at all for newer output ~10/2019
+            if abs(td) < time_mismatch_cutoff_s:
+                if tid in matched_dirs or tsd in matched_dirs:
+                    raise ValueError(f'either {tid} or {tsd} was already '
+                        f'matched. existing pairs:\n{matched_dirs}')
+
+                image_and_sync_pairs.append((tid, tsd))
+                matched_dirs.add(tid)
+                matched_dirs.add(tsd)
+            '''
+
+            matched_dirs.add(tid)
+            matched_dirs.add(tsd)
+
+        if verbose:
+            print('')
+
+    return image_and_sync_pairs
+    """
+
+
+def pair_thor_subdirs(parent_dir, verbose=False):
+    """
+    Raises ValueError when pair_thor_dirs does.
+    """
+    thorimage_dirs, thorsync_dirs = _filtered_subdirs(parent_dir,
+        (is_thorimage_dir, is_thorsync_dir), verbose=False #verbose
+    )
+    if verbose:
+        print('thorimage_dirs:')
+        pprint.pprint(thorimage_dirs)
+        print('thorsync_dirs:')
+        pprint.pprint(thorsync_dirs)
+
+    return pair_thor_dirs(thorimage_dirs, thorsync_dirs, verbose=True)
 
 
 # TODO still work w/ parens added around initial .+ ? i want to match the parent
@@ -1354,9 +1779,49 @@ def print_all_accepted_blocks():
     import ipdb; ipdb.set_trace()
 
 
-def get_experiment_xmlroot(directory):
-    xml_path = join(directory, 'Experiment.xml')
+def xmlroot(xml_path):
     return etree.parse(xml_path).getroot()
+
+
+def get_thorimage_xmlroot(thorimage_dir):
+    xml_path = join(thorimage_dir, 'Experiment.xml')
+    return xmlroot(xml_path)
+
+
+def get_thorimage_time_xml(xml):
+    date_ele = xml.find('Date')
+    from_date = datetime.strptime(date_ele.attrib['date'], '%m/%d/%Y %H:%M:%S')
+    from_utime = datetime.fromtimestamp(float(date_ele.attrib['uTime']))
+    assert (from_date - from_utime).total_seconds() < 1
+    return from_utime
+
+
+def get_thorimage_time(thorimage_dir, use_mtime=False):
+    xml_path = join(thorimage_dir, 'Experiment.xml')
+
+    # TODO delete. for debugging matching.
+    '''
+    xml = xmlroot(xml_path)
+    print(thorimage_dir)
+    print(get_thorimage_time_xml(xml))
+    print(datetime.fromtimestamp(getmtime(xml_path)))
+    print('')
+    '''
+    #
+    if not use_mtime:
+        xml = xmlroot(xml_path)
+        return get_thorimage_time_xml(xml)
+    else:
+        return datetime.fromtimestamp(getmtime(xml_path))
+
+
+def get_thorsync_time(thorsync_dir):
+    """Returns modification time of ThorSync XML.
+
+    Not perfect, but it doesn't seem any ThorSync outputs have timestamps.
+    """
+    syncxml = join(thorsync_dir, 'ThorRealTimeDataSettings.xml')
+    return datetime.fromtimestamp(getmtime(syncxml))
 
 
 def get_thorimage_dims_xml(xmlroot):
@@ -1394,12 +1859,8 @@ def get_thorimage_fps_xml(xmlroot):
 def get_thorimage_fps(thorimage_directory):
     """
     """
-    xmlroot = get_experiment_xmlroot(thorimage_directory)
+    xmlroot = get_thorimage_xmlroot(thorimage_directory)
     return get_thorimage_fps_xml(xmlroot)
-
-
-def xmlroot(xml_filename):
-    return etree.parse(xml_filename).getroot()
 
 
 def tif2xml_root(filename):
@@ -1418,11 +1879,18 @@ def tif2xml_root(filename):
 # TODO TODO rename this one to make it clear why it's diff from above
 # + how to use it (or just delete one...)
 def fps_from_thor(df):
+    """Takes a DataFrame and returns fps from ThorImage XML.
+    
+    df must have a thorimage_dir column (that can be either a relative or
+    absolute path, as long as it's under raw_data_root)
+
+    Only the path in the first row is used.
+    """
     # TODO assert unique first?
     thorimage_dir = df['thorimage_path'].iat[0]
-    # TODO TODO TODO why is it [3:] again?? does this depend on my current
-    # particular nas_prefix (make it so it does not, if so!)?
-    thorimage_dir = join(nas_prefix(), *thorimage_dir.split('/')[3:])
+    # TODO maybe factor into something that ensures path has a certain prefix
+    # that maybe also validates right # parts?
+    thorimage_dir = join(raw_data_root(), *thorimage_dir.split('/')[-3:])
     fps = get_thorimage_fps(thorimage_dir)
     return fps
 
@@ -1443,7 +1911,7 @@ def cnmf_metadata_from_thor(filename):
 def load_thorimage_metadata(thorimage_directory):
     """
     """
-    xml = get_experiment_xmlroot(thorimage_directory)
+    xml = get_thorimage_xmlroot(thorimage_directory)
 
     fps = get_thorimage_fps_xml(xml)
     xy, z, c = get_thorimage_dims_xml(xml)
@@ -1478,10 +1946,29 @@ def write_tiff(tiff_filename, movie):
     """Write a tiff loading the same as the TIFFs we create with ImageJ.
     """
     import tifffile
+
+    dtype = movie.dtype
+    if not (dtype.itemsize == 2 and
+        np.issubdtype(dtype, np.unsignedinteger)):
+
+        raise ValueError('movie must have uint16 dtype')
+
+    if dtype.byteorder == '|':
+        raise ValueError('movie must have explicit endianness')
+
+    # If little-endian, convert to big-endian before saving TIFF, almost
+    # exclusively for the benefit of MATLAB imread_big, which doesn't seem
+    # able to discern the byteorder.
+    if (dtype.byteorder == '<' or
+        (dtype.byteorder == '=' and sys.byteorder == 'little')):
+        movie = movie.byteswap().newbyteorder()
+    else:
+        assert dtype.byteorder == '>'
+    
     # TODO actually make sure any metadata we use is the same
     # TODO maybe just always do test from test_readraw here?
     # (or w/ flag to disable the check)
-    tifffile.imsave(tiff_filename, movie)
+    tifffile.imsave(tiff_filename, movie, imagej=True)
 
 
 def full_frame_avg_trace(movie):
@@ -3059,7 +3546,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             ['from_onset','df_over_f']]
 
         prep_date = pd.Timestamp(cell_data.prep_date.unique()[0])
-        date_dir = prep_date.strftime('%Y-%m-%d')
+        date_dir = prep_date.strftime(date_fmt_str)
         fly_num = cell_data.fly_num.unique()[0]
         thorimage_id = cell_data.thorimage_id.unique()[0]
 

@@ -48,11 +48,7 @@ calc_timing_info = True
 # If timing info ("ti") already exists in .mat, should we recalculate it?
 # TODO if this is False, still check that ti_code_version is there
 update_timing_info = False
-# This currently doesn't work. TIFF dimensions are the same, as read w/
-# tifffile, but even changing things so the ImageJ metadata is pretty close,
-# the MATLAB readers seem to be different enough s.t. the motion correction
-# produces garbage output.
-convert_raw_to_tiffs = False
+convert_raw_to_tiffs = True
 motion_correct = True
 only_motion_correct_for_analysis = True
 
@@ -131,8 +127,6 @@ curr_ti_code_version = copy.deepcopy(matlab_code_version)
 curr_ti_code_version['used_for'] = 'calculating timing information'
 matlab_code_version['used_for'] = 'driving motion correction'
 
-# TODO fn to convert raw output to tifs (that are compat w/ current ij tifs)
-
 df = u.mb_team_gsheet(
     use_cache=use_cached_gsheet,
     show_inferred_paths=show_inferred_paths
@@ -151,7 +145,7 @@ df = u.mb_team_gsheet(
 # TODO print stuff w/ attempt_analysis checked w/o either data in database or
 # analysis output on disk (or just latter)
 
-# TODO move these paths to config file...
+# TODO move these paths to config file / envvar (+ defaults in util?)
 raw_data_root = '/mnt/nas/mb_team/raw_data'
 analysis_output_root = '/mnt/nas/mb_team/analysis_output'
 
