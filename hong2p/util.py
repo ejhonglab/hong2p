@@ -141,6 +141,10 @@ def raw_fly_dir(date, fly):
     return join(raw_data_root(), _fly_dir(date, fly))
 
 
+def thorimage_dir(date, fly, thorimage_id):
+    return join(raw_fly_dir(date, fly), thorimage_id)
+
+
 def analysis_fly_dir(date, fly):
     return join(analysis_output_root(), _fly_dir(date, fly))
 
@@ -546,15 +550,26 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     keys = ['date', 'fly_num']
     # These should happen before rows start being dropped, because the dropped
     # rows might have the information needed to ffill.
-    df[keys] = df[keys].fillna(method='ffill')
+    # This should NOT ffill a fly_past a change in date.
+
+    # Assuming that if date changes, even if fly_nums keep going up, that was
+    # intentional.
+    df.date = df.date.fillna(method='ffill')
+    df.fly_num = df.groupby('date')['fly_num'].apply(
+        lambda x: x.ffill().bfill()
+    )
+    # This will only apply to groups (dates) where there are ONLY missing
+    # fly_nums, given filling logic above.
+    df.dropna(subset=['fly_num'], inplace=True)
+    assert not df.date.isnull().any()
+
     df['stimulus_data_file'] = df['stimulus_data_file'].fillna(method='ffill')
 
     df.raw_data_discarded = df.raw_data_discarded.fillna(False)
     # TODO say when this happens?
     df.drop(df[df.raw_data_discarded].index, inplace=True)
 
-    # TODO TODO warn / fail if 'attempt_analysis' and either discard / lost is
-    # checked
+    # TODO TODO warn if 'attempt_analysis' and either discard / lost is checked
 
     # Not sure where there were any NaN here anyway...
     df.raw_data_lost = df.raw_data_lost.fillna(False)
@@ -569,8 +584,6 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     # They should not have files associated with them, and the Google sheet
     # information on them is just for tracking problems / efficiency.
     df['recording_num'] = df.groupby(keys).cumcount() + 1
-    # cumcount output will not be exactly what i want in this case
-    assert not pd.isnull(df[keys]).any(axis=1).any(), 'see old fix filling nan'
 
     if show_inferred_paths:
         missing_thorimage = pd.isnull(df.thorimage_dir)
@@ -578,17 +591,6 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
 
     prep_checking = 'n/a (prep checking)'
     my_project = 'natural_odors'
-    # Leaving this commented for now cause it might actually break things
-    # on days where we did experiments for multiple people.
-    '''
-    projects = (my_project, prep_checking)
-    df.drop(df[(~ df.project.isin(projects))].index,
-        inplace=True)
-    '''
-
-    # TODO delete after debugging
-    df_before_thorinf = df.copy()
-    #
 
     check_and_set = []
     for gn, gdf in df.groupby(keys):
@@ -606,8 +608,8 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
                 #print('pairs:')
                 #pprint.pprint(image_and_sync_pairs)
             except ValueError as e:
-                print(e)
-                print('pairing ambiguity! could not pair.')
+                print('could not pair thor dirs automatically!')
+                print(f'({e})')
                 continue
 
             # could maybe try to sort things into "prep checking" / real
@@ -807,7 +809,7 @@ def merge_gsheet(df, *args, use_cache=False):
         thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
 
         try:
-            xml_root = xmlroot(thorimage_xml_path)
+            xml_root = _xmlroot(thorimage_xml_path)
         except FileNotFoundError as e:
             continue
 
@@ -972,6 +974,8 @@ def first_group(df, group_cols):
 
 
 def git_hash(repo_file):
+    """Takes any file in a git directory and returns current hash.
+    """
     import git
     repo = git.Repo(repo_file, search_parent_directories=True)
     current_hash = repo.head.object.hexsha
@@ -982,7 +986,8 @@ def git_hash(repo_file):
 # don't want to assume we have an online (backed up) record of git repo when we
 # don't...
 def version_info(module_or_path, used_for=''):
-    """Takes module or string path to file in Git repo.
+    """Takes module or string path to file in Git repo to a dict with version
+    information (with keys and values the database will accept).
     """
     import git
     import pkg_resources
@@ -1116,11 +1121,10 @@ def upload_analysis_info(*args) -> None:
 
 
 def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
-    date_dir = date.strftime(date_fmt_str)
-    fly_num = str(fly_num)
-
-    tif_dir = join(analysis_output_root(), date_dir, fly_num, 'tif_stacks')
-
+    """Takes vars identifying recording to the name of a motion corrected TIFF
+    for it. Non-rigid preferred over rigid. Relies on naming convention.
+    """
+    tif_dir = join(analysis_fly_dir(date, fly_num), 'tif_stacks')
     nr_tif = join(tif_dir, '{}_nr.tif'.format(thorimage_id))
     rig_tif = join(tif_dir, '{}_rig.tif'.format(thorimage_id))
     tif = None
@@ -1133,6 +1137,33 @@ def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
         raise IOError('No motion corrected TIFs found in {}'.format(tif_dir))
 
     return tif
+
+
+# TODO use this in other places that normalize to thorimage_ids
+def tiff_thorimage_id(tiff_filename):
+    """
+    Takes a path to a TIFF and returns ID to identify recording within
+    (date, fly). Relies on naming convention.
+    """
+    # Behavior of os.path.split makes this work even if tiff_filename does not
+    # have any directories in it.
+    return '_'.join(split(tiff_filename[:-len('.tif')])[1].split('_')[:2])
+
+
+def tiff_filename2keys(tiff_filename):
+    """Takes TIFF filename to pd.Series w/ 'date','fly_num','thorimage_id' keys.
+
+    TIFF must be placed and named according to convention, because the
+    date and fly_num are taken from names of some of the containing directories.
+    """
+    parts = tiff_filename.split(sep)[-4:]
+    date = pd.Timestamp(datetime.strptime(parts[0], date_fmt_str))
+    fly_num = int(parts[1])
+    # parts[2] will be 'tif_stacks'
+    thorimage_id = tiff_thorimage_id(tiff_filename)
+    return pd.Series({
+        'date': date, 'fly_num': fly_num, 'thorimage_id': thorimage_id
+    })
 
 
 def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
@@ -1209,14 +1240,9 @@ def list_segmentations(tif_path):
     return seg_runs
 
 
-# TODO use this in other places that normalize to thorimage_ids
-def tiff_thorimage_id(tiff_filename):
-    # Behavior of os.path.split makes this work even if tiff_filename does not
-    # have any directories in it.
-    return '_'.join(split(tiff_filename)[1].split('_')[:-1])
-
-
 def is_thorsync_dir(d, verbose=False):
+    """True if dir has expected ThorSync outputs, False otherwise.
+    """
     if not isdir(d):
         return False
     
@@ -1239,6 +1265,10 @@ def is_thorsync_dir(d, verbose=False):
 
 
 def is_thorimage_dir(d, verbose=False):
+    """True if dir has expected ThorImage outputs, False otherwise.
+
+    Looks for .raw not any TIFFs now.
+    """
     if not isdir(d):
         return False
     
@@ -1324,10 +1354,17 @@ def _filtered_subdirs(parent_dir, filter_funcs, exclusive=True, verbose=False):
 
 
 def thorimage_subdirs(parent_dir):
+    """
+    Returns a list of any immediate child directories of `parent_dir` that have
+    all expected ThorImage outputs.
+    """
     return _filtered_subdirs(parent_dir, is_thorimage_dir)
 
 
 def thorsync_subdirs(parent_dir):
+    """Returns a list of any immediate child directories of `parent_dir`
+    that have all expected ThorSync outputs.
+    """
     return _filtered_subdirs(parent_dir, is_thorsync_dir)
 
 
@@ -1528,6 +1565,10 @@ def pair_thor_subdirs(parent_dir, verbose=False):
 # id...
 shared_subrecording_regex = '(.+)_\db\d_from_(nr|rig)'
 def is_subrecording(thorimage_id):
+    """
+    Returns whether a recording id matches my GUIs naming convention for the
+    "sub-recordings" it can create.
+    """
     if re.search(shared_subrecording_regex + '$', thorimage_id):
         return True
     else:
@@ -1535,6 +1576,10 @@ def is_subrecording(thorimage_id):
 
 
 def is_subrecording_tiff(tiff_filename):
+    """
+    Takes a TIFF filename to whether it matches the GUI's naming convention for
+    the "sub-recordings" it can create.
+    """
     # TODO technically, nr|rig should be same across two...
     if re.search(shared_subrecording_regex + '_(nr|rig).tif$', tiff_filename):
         return True
@@ -1543,7 +1588,11 @@ def is_subrecording_tiff(tiff_filename):
 
 
 def subrecording_tiff_blocks(tiff_filename):
-    """Requires that is_subrecording_tiff(tiff_filename) would return True.
+    """Returns tuple of int (start, stop) block numbers subrecording contains.
+
+    Block numbers start at 0.
+
+    Requires that is_subrecording_tiff(tiff_filename) would return True.
     """
     parts = tiff_filename.split('_')[-4].split('b')
 
@@ -1554,9 +1603,13 @@ def subrecording_tiff_blocks(tiff_filename):
 
 
 def subrecording_tiff_blocks_df(series):
+    """Takes a series w/ TIFF name in series.name to (start, stop) block nums.
+
+    (series.name must be a TIFF path)
+
+    Same behavior as `subrecording_tiff_blocks`.
     """
-    series.name must be a TIFF path
-    """
+    # TODO maybe fail in this case?
     if not series.is_subrecording:
         return None, None
 
@@ -1572,6 +1625,10 @@ def subrecording_tiff_blocks_df(series):
 
 
 def parent_recording_id(tiffname_or_thorimage_id):
+    """Returns recording id for recording subrecording was derived from.
+
+    Input can be a TIFF filename or recording id.
+    """
     last_part = split(tiffname_or_thorimage_id)[1]
     match = re.search(shared_subrecording_regex, last_part)
     if match is None:
@@ -1779,16 +1836,30 @@ def print_all_accepted_blocks():
     import ipdb; ipdb.set_trace()
 
 
-def xmlroot(xml_path):
+def _xmlroot(xml_path):
     return etree.parse(xml_path).getroot()
 
 
+# TODO maybe rename to exclude get_ prefix, to be consistent w/
+# thorimage_dir(...) and others above?
+def get_thorimage_xml_path(thorimage_dir):
+    """Takes ThorImage output dir to path to its XML output.
+    """
+    return join(thorimage_dir, 'Experiment.xml')
+
+
 def get_thorimage_xmlroot(thorimage_dir):
-    xml_path = join(thorimage_dir, 'Experiment.xml')
-    return xmlroot(xml_path)
+    """Takes ThorImage output dir to object w/ XML data.
+    """
+    xml_path = get_thorimage_xml_path(thorimage_dir)
+    return _xmlroot(xml_path)
 
 
 def get_thorimage_time_xml(xml):
+    """Takes etree XML root object to recording start time.
+
+    XML object should be as returned by `get_thorimage_xmlroot`.
+    """
     date_ele = xml.find('Date')
     from_date = datetime.strptime(date_ele.attrib['date'], '%m/%d/%Y %H:%M:%S')
     from_utime = datetime.fromtimestamp(float(date_ele.attrib['uTime']))
@@ -1797,11 +1868,13 @@ def get_thorimage_time_xml(xml):
 
 
 def get_thorimage_time(thorimage_dir, use_mtime=False):
-    xml_path = join(thorimage_dir, 'Experiment.xml')
+    """Takes ThorImage directory to recording start time (from XML).
+    """
+    xml_path = get_thorimage_xml_path(thorimage_dir)
 
     # TODO delete. for debugging matching.
     '''
-    xml = xmlroot(xml_path)
+    xml = _xmlroot(xml_path)
     print(thorimage_dir)
     print(get_thorimage_time_xml(xml))
     print(datetime.fromtimestamp(getmtime(xml_path)))
@@ -1809,7 +1882,7 @@ def get_thorimage_time(thorimage_dir, use_mtime=False):
     '''
     #
     if not use_mtime:
-        xml = xmlroot(xml_path)
+        xml = _xmlroot(xml_path)
         return get_thorimage_time_xml(xml)
     else:
         return datetime.fromtimestamp(getmtime(xml_path))
@@ -1824,10 +1897,12 @@ def get_thorsync_time(thorsync_dir):
     return datetime.fromtimestamp(getmtime(syncxml))
 
 
-def get_thorimage_dims_xml(xmlroot):
+def get_thorimage_dims_xml(xml):
+    """Takes etree XML root object to (xy, z, c) dimensions of movie.
+
+    XML object should be as returned by `get_thorimage_xmlroot`.
     """
-    """
-    lsm_attribs = xmlroot.find('LSM').attrib
+    lsm_attribs = xml.find('LSM').attrib
     x = int(lsm_attribs['pixelX'])
     y = int(lsm_attribs['pixelY'])
     xy = (x,y)
@@ -1841,10 +1916,24 @@ def get_thorimage_dims_xml(xmlroot):
     return xy, z, c
 
 
-def get_thorimage_fps_xml(xmlroot):
+def get_thorimage_pixelsize_xml(xml):
+    """Takes etree XML root object to XY pixel size in um.
+
+    Pixel size in X is the same as pixel size in Y.
+
+    XML object should be as returned by `get_thorimage_xmlroot`.
     """
+    # TODO does thorimage (and their xml) even support unequal x and y?
+    # TODO support z here?
+    return float(xml.find('LSM').attrib['pixelSizeUM'])
+
+
+def get_thorimage_fps_xml(xml):
+    """Takes etree XML root object to (after-any-averaging) fps of recording.
+
+    XML object should be as returned by `get_thorimage_xmlroot`.
     """
-    lsm_attribs = xmlroot.find('LSM').attrib
+    lsm_attribs = xml.find('LSM').attrib
     raw_fps = float(lsm_attribs['frameRate'])
     # TODO is this correct handling of averageMode?
     average_mode = int(lsm_attribs['averageMode'])
@@ -1857,14 +1946,18 @@ def get_thorimage_fps_xml(xmlroot):
 
 
 def get_thorimage_fps(thorimage_directory):
+    """Takes ThorImage dir to (after-any-averaging) fps of recording.
     """
-    """
-    xmlroot = get_thorimage_xmlroot(thorimage_directory)
-    return get_thorimage_fps_xml(xmlroot)
+    xml = get_thorimage_xmlroot(thorimage_directory)
+    return get_thorimage_fps_xml(xml)
 
 
+# TODO maybe delete / refactor to use fns above
 def tif2xml_root(filename):
     """Returns etree root of ThorImage XML settings from TIFF filename.
+
+    Path can be to analysis output directory, as long as raw data directory
+    exists.
     """
     if filename.startswith(analysis_output_root()):
         filename = filename.replace(analysis_output_root(), raw_data_root())
@@ -1873,7 +1966,7 @@ def tif2xml_root(filename):
     thorimage_id = '_'.join(parts[-1].split('_')[:-1])
 
     xml_fname = sep.join(parts[:-2] + [thorimage_id, 'Experiment.xml'])
-    return xmlroot(xml_fname)
+    return _xmlroot(xml_fname)
 
 
 # TODO TODO rename this one to make it clear why it's diff from above
@@ -1896,20 +1989,20 @@ def fps_from_thor(df):
 
 
 def cnmf_metadata_from_thor(filename):
-    """Takes TIF filename to key settings from XML at fixed relative position.
+    """Takes TIF filename to key settings from XML needed for CNMF.
     """
     xml_root = tif2xml_root(filename)
     fps = get_thorimage_fps_xml(xml_root)
     # "spatial resolution of FOV in pixels per um" "(float, float)"
     # TODO do they really mean pixel/um, not um/pixel?
-    pixels_per_um = 1 / float(xml_root.find('LSM').attrib['pixelSizeUM'])
+    pixels_per_um = 1 / get_thorimage_pixelsize_xml(xml_root)
     dxy = (pixels_per_um, pixels_per_um)
     # TODO maybe load dims anyway?
     return {'fr': fps, 'dxy': dxy}
 
 
 def load_thorimage_metadata(thorimage_directory):
-    """
+    """Returns (fps, xy, z, c, raw_output_path) for ThorImage dir.
     """
     xml = get_thorimage_xmlroot(thorimage_directory)
 
@@ -1920,8 +2013,6 @@ def load_thorimage_metadata(thorimage_directory):
     return fps, xy, z, c, imaging_file
 
 
-# TODO TODO use this to convert to tifs, which will otherwise read the same as
-# those saved w/ imagej
 def read_movie(thorimage_dir):
     """Returns (t,x,y) indexed timeseries.
     """
@@ -1943,7 +2034,12 @@ def read_movie(thorimage_dir):
 
 
 def write_tiff(tiff_filename, movie):
-    """Write a tiff loading the same as the TIFFs we create with ImageJ.
+    """Write a TIFF loading the same as the TIFFs we create with ImageJ.
+
+    TIFFs are written in big-endian byte order to be readable by `imread_big`
+    from MATLAB file exchange.
+
+    Metadata may not be correct.
     """
     import tifffile
 
@@ -1972,9 +2068,43 @@ def write_tiff(tiff_filename, movie):
 
 
 def full_frame_avg_trace(movie):
-    # TODO handle 2d+t or 3d+t data as well
-    # (axis=(1,2) just works for 2d+t data)
-    return np.mean(movie, axis=(1,2))
+    """Takes a (t,x,y[,z]) movie to t-length vector of frame averages.
+    """
+    # Averages all dims but first, which is assumed to be time.
+    return np.mean(movie, axis=tuple(range(1, movie.ndim)))
+
+
+def crop_to_coord_bbox(matrix, coords, margin=0):
+    """Returns matrix cropped to bbox of coords and bounds.
+    """
+    x_min, y_min = coords.min(axis=0)
+    x_max, y_max = coords.max(axis=0)
+
+    assert x_min >= 0 and y_min >= 0, \
+        f'mins must be >= 0 (x_min={x_min}, y_min={y_min})'
+
+    # TODO might need to fix this / fns that use this such a that 
+    # coord limits are actually < matrix dims, rather than <=
+    '''
+    assert x_max < matrix.shape[0] and y_max < matrix.shape[1], \
+        (f'maxes must be < matrix shape = {matrix.shape} (x_max={x_max}' +
+        f', y_max={y_max}')
+    '''
+    assert x_max <= matrix.shape[0] and y_max <= matrix.shape[1], \
+        (f'maxes must be <= matrix shape = {matrix.shape} (x_max={x_max}' +
+        f', y_max={y_max}')
+
+    # Keeping min at 0 to prevent slicing error in that case
+    # (I think it will be empty, w/ -1:2, for instance)
+    # Capping max not necessary to prevent err, but to make behavior of bounds
+    # consistent on both edges.
+    x_min = max(0, x_min - margin)
+    x_max = min(x_max + margin, matrix.shape[0] - 1)
+    y_min = max(0, y_min - margin)
+    y_max = min(y_max + margin, matrix.shape[1] - 1)
+
+    cropped = matrix[x_min:x_max+1, y_min:y_max+1]
+    return cropped, ((x_min, x_max), (y_min, y_max))
 
 
 def crop_to_nonzero(matrix, margin=0):
@@ -1984,16 +2114,7 @@ def crop_to_nonzero(matrix, margin=0):
     with indices from (0,0) to the max coordinates in the input matrix.
     """
     coords = np.argwhere(matrix > 0)
-    x_min, y_min = coords.min(axis=0)
-    x_max, y_max = coords.max(axis=0)
-
-    x_min = x_min - margin
-    x_max = x_max + margin
-    y_min = y_min - margin
-    y_max = y_max + margin
-
-    cropped = matrix[x_min:x_max+1, y_min:y_max+1]
-    return cropped, ((x_min, x_max), (y_min, y_max))
+    return crop_to_coord_bbox(matrix, coords, margin=margin)
 
 
 # TODO better name?
@@ -2044,6 +2165,14 @@ def ijrois2masks(ijrois, shape, dims_as_cnmf=False):
     """
     # TODO maybe index final pandas thing by ijroi name (before .roi prefix)
     # (or just return np array indexed as CNMF "A" is)
+
+    # TODO test + fix. if this is duplicating logic of imagej2py_coords, try to
+    # move into there or somehow else only encode that imagej is transposed 
+    # wrt other things in ONE place (that was the point of those x2y_coords
+    # fns...)
+    assert len(shape) == 2 and shape[0] == shape[1], \
+        'not sure shape dims should be reversed, so must be symmetric'
+
     masks = [imagej2py_coords(contour2mask(c, shape[::-1])) for _, c in ijrois]
     masks = np.stack(masks, axis=-1)
     # (actually, putting off the below for now. just gonna not also reshape this
@@ -2912,6 +3041,8 @@ def motion_correct_to_tiffs(thorimage_dir, output_dir):
 """
 
 def cell_ids(df):
+    """Takes a DataFrame with 'cell' in MultiIndex or columns to unique values.
+    """
     if 'cell' in df.index.names:
         return df.index.get_level_values('cell').unique().to_series()
     elif 'cell' in df.columns:
@@ -2923,10 +3054,17 @@ def cell_ids(df):
 
 
 def matlabels(df, rowlabel_fn):
+    """
+    Takes DataFrame and function that takes one row of index to a label.
+
+    `rowlabel_fn` should take a DataFrame row (w/ columns from index) to a str.
+    """
     return df.index.to_frame().apply(rowlabel_fn, axis=1)
 
 
 def format_odor_conc(name, log10_conc):
+    """Takes `str` odor name and log10 concentration to a formatted `str`.
+    """
     if log10_conc is None:
         return name
     else:
@@ -2936,6 +3074,14 @@ def format_odor_conc(name, log10_conc):
 
 
 def format_mixture(*args):
+    """Returns `str` representing 2-component odor mixture.
+
+    Input can be any of:
+    - 2 `str` names
+    - 2 names and concs (n1, n2, c1, c2)
+    - a pandas.Series / dict with keys `name1`, `name2`, and (optionally)
+      `log10_concvv<1/2>`
+    """
     log10_c1 = None
     log10_c2 = None
     if len(args) == 2:
@@ -3898,3 +4044,345 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
         fig.tight_layout()
         return fig
 
+
+def imshow(img, title):
+    fig, ax = plt.subplots()
+    ax.imshow(img, cmap='gray')
+    ax.set_title(title)
+    ax.axis('off')
+    return fig
+
+
+def normed_u8(img):
+    return (255 * (img / img.max())).astype(np.uint8)
+
+
+def template_match(scene, template, method_str='cv2.TM_CCOEFF', hist=False):
+    import cv2
+
+    scene = normed_u8(scene)
+    # TODO TODO maybe template should only be scaled to it's usual fraction of
+    # max of the scene? like scaled both wrt orig_scene.max() / max across all
+    # images?
+    normed_template = normed_u8(template)
+
+    method = eval(method_str)
+    res = cv2.matchTemplate(scene, normed_template, method)
+
+    # b/c for sqdiff[_normed], find minima. for others, maxima.
+    if 'SQDIFF' in method_str:
+        res = res * -1
+
+    if hist:
+        fh = plt.figure()
+        plt.hist(res.flatten())
+        plt.title('Matching output values ({})'.format(method_str))
+
+    return res
+
+
+def euclidean_dist(v1, v2):
+    return np.linalg.norm(np.array(v1) - np.array(v2))
+
+
+def greedy_roi_packing(match_image, radius, d, threshold=None, n=None, 
+    exclusion_radius_frac=0.5, min_dist2neighbor=15, min_neighbors=3,
+    draw_on=None, _claimed_from_double_radius=True,
+    debug=False, bboxes=True, circles=True, nums=True):
+    """
+    Args:
+    match_image (np.ndarray): 2-dimensional array of match value
+        higher means better match of that point to template.
+
+    radius (int): radius of cell in pixels.
+
+    d (int): integer width (and height) of square template.
+        related to radius, but differ by margin set outside.
+
+    exclusion_radius_frac (float): approximately 1 - the fraction of two ROI
+        radii that are allowed to overlap.
+
+    """
+    import cv2
+
+    # TODO optimal non-greedy alg for this problem? (maximize weight of 
+    # match_image summed across all assigned ROIs)
+
+    if threshold is None and n is None:
+        threshold = 0.8
+
+    if not ((n is None and threshold is not None) or
+            (n is not None and threshold is None)):
+        raise ValueError('only specify either threshold or n')
+
+    if draw_on is not None:
+        # TODO figure out why background looks lighter here than in other 
+        # imshows of avg
+
+        draw_on = draw_on - np.min(draw_on)
+        draw_on = draw_on / np.max(draw_on)
+        cmap = plt.get_cmap('gray') #, lut=256)
+        # (throwing away alpha coord w/ last slice)
+        draw_on = np.round((cmap(draw_on)[:, :, :3] * 255)).astype(np.uint8)
+
+        # upsampling just so cv2 drawing functions look better
+        ups = 4
+        draw_on = cv2.resize(draw_on,
+            tuple([ups * x for x in draw_on.shape[:2]]))
+
+    flat_vals = match_image.flatten()
+    sorted_flat_indices = np.argsort(flat_vals)
+    if n is None:
+        idx = np.searchsorted(flat_vals[sorted_flat_indices], threshold)
+        sorted_flat_indices = sorted_flat_indices[idx:]
+
+    matches = np.unravel_index(sorted_flat_indices[::-1], match_image.shape)
+
+    # TODO wait, why the minus 1?
+    orig_shape = [x + d - 1 for x in match_image.shape]
+
+    claimed = np.zeros(orig_shape, dtype=np.uint8)
+
+    if _claimed_from_double_radius:
+        # The factor of two is to test for would-be circle overlap by just
+        # testing center point against mask painted with larger circles.
+        exclusion_radius = int(round(2 * radius * exclusion_radius_frac))
+    else:
+        exclusion_radius = int(round(radius * exclusion_radius_frac))
+
+    if debug:
+        print('radius:', radius)
+        print('exclusion_radius:', exclusion_radius)
+
+    found_n = 0
+    centers = []
+    min_err = None
+    for pt in zip(*matches[::-1]):
+        if n is not None:
+            if found_n >= n:
+                break
+
+        # TODO would some other (alternating?) rounding rule help?
+        # TODO random seed then randomly choose between floor and ceil for stuff
+        # at 0.5?
+        offset = int(round(d / 2))
+        center = (pt[0] + offset, pt[1] + offset)
+
+        if _claimed_from_double_radius:
+            if claimed[center[::-1]]:
+                continue
+        else:
+            mask = np.zeros_like(claimed, dtype=np.uint8)
+            cv2.circle(mask, center, exclusion_radius, 1, -1)
+            assert mask.sum() > 0
+            if np.any(claimed * mask):
+                continue
+
+        found_n += 1
+        center = (center[0] - 1, center[1] - 1)
+        centers.append(center)
+
+        if draw_on is not None:
+            draw_pt = (ups * pt[0], ups * pt[1])
+            draw_c = (ups * center[0], ups * center[1])
+
+            # TODO factor this stuff out into post-hoc drawing fn, so that
+            # roi filters in here can exclude stuff? or maybe just factor out
+            # the filtering stuff anyway?
+
+            if bboxes:
+                cv2.rectangle(draw_on, draw_pt,
+                    (draw_pt[0] + ups * d, draw_pt[1] + ups * d), (0,0,255), 2)
+
+            if circles:
+                cv2.circle(draw_on, draw_c, ups * radius, (255,0,0), 2)
+
+            if nums:
+                cv2.putText(draw_on, str(found_n), draw_pt,
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+
+        # TODO although it looked better in my one case i tested, is it correct
+        # to only *not* adjust center in this case? maybe just adjust other
+        # params. unit test edge cases.
+        cv2.circle(claimed, (center[0] + 1, center[1] + 1), exclusion_radius,
+            1, -1)
+
+    #if debug:
+    #    imshow(claimed, 'greedy_roi_packing claimed')
+
+    if debug and draw_on is not None:
+        imshow(draw_on, 'greedy_roi_packing debug')
+
+    if not min_neighbors:
+        filtered_centers = centers
+    else:
+        # TODO TODO maybe extend this to requiring the nth closest be closer
+        # than a certain amount (to exclude 2 (or n) cells off by themselves)
+
+        filtered_centers = []
+        for i, center in enumerate(centers):
+            n_neighbors = 0
+            for j, other_center in enumerate(centers):
+                if i == j:
+                    continue
+
+                dist = euclidean_dist(center, other_center)
+                if dist <= min_dist2neighbor:
+                    n_neighbors += 1
+
+                if n_neighbors >= min_neighbors:
+                    filtered_centers.append(center)
+                    break
+
+            if debug and n_neighbors < min_neighbors:
+                print('filtering roi at', center,
+                    'for lack of enough neighbors (had {})'.format(n_neighbors))
+
+    # TODO would probably need to return radii too, if incorporating multi-scale
+    # template matching w/ this
+    return np.array(filtered_centers)
+
+
+def autoroi_metadata_filename(ijroi_file):
+    path, fname = split(ijroi_file)
+    return join(path, '.{}.meta.p'.format(fname))
+
+
+def fit_circle_rois(tif, template, margin, mean_cell_extent_um, avg=None,
+    method_str='cv2.TM_CCOEFF', threshold=2000, exclusion_radius_frac=0.6,
+    min_neighbors=2, debug=False, write_ijrois=False, _force_write_to=None):
+
+    import tifffile
+    import cv2
+    import ijroi
+
+    if write_ijrois or _force_write_to is not None:
+        write_ijrois = True
+
+        path, tiff_last_part = split(tif)
+        tiff_parts = tiff_last_part.split('.tif')
+        assert len(tiff_parts) == 2 and tiff_parts[1] == ''
+        fname = join(path, tiff_parts[0] + '_rois.zip')
+
+        # TODO TODO change. fname needs to always be under
+        # analysis_output_root (or just change input in populate_db).
+        # TODO or at least err if not subdir of it
+        # see: https://stackoverflow.com/questions/3812849
+
+        if _force_write_to is not None:
+            if _force_write_to == True:
+                fname = join(path, tiff_parts[0] + '_auto_rois.zip')
+            else:
+                fname = _force_write_to
+
+        elif exists(fname):
+            print(fname, 'already existed. returning.')
+            return None, None
+
+    if avg is None:
+        movie = tifffile.imread(tif)
+        avg = movie.mean(axis=0)
+
+    # We enforce earlier that template must be symmetric.
+    d, d2 = template.shape[::-1]
+    assert d == d2
+
+    keys = tiff_filename2keys(tif)
+    ti_dir = thorimage_dir(*tuple(keys))
+    try:
+        xmlroot = get_thorimage_xmlroot(ti_dir)
+    except:
+        import ipdb; ipdb.set_trace()
+    um_per_pixel_xy = get_thorimage_pixelsize_xml(xmlroot)
+    expected_cell_pixel_diam = mean_cell_extent_um / um_per_pixel_xy
+
+    template_cell_pixel_diam = d - 2 * margin
+
+    template_scale = expected_cell_pixel_diam / template_cell_pixel_diam
+    new_template_d = int(round(template_scale * d))
+    new_template_shape = tuple([new_template_d] * len(template.shape))
+    if new_template_d != d:
+        scaled_template = cv2.resize(template, new_template_shape)
+    else:
+        scaled_template = template
+
+    # TODO maybe try histogram eq before template matching?
+    # (or some other constrast enhancing transform, maybe one that
+    # operates more locally?)
+
+    res = template_match(avg, scaled_template, method_str=method_str)
+    #imshow(res, 'match image')
+
+    # TODO one fn that just returns circles, another to draw
+
+    #eqd = cv2.equalizeHist(normed_u8(avg))
+    #draw_on = eqd
+    draw_on = avg
+
+    #imshow(avg, 'avg')
+    #imshow(eqd, 'equalized avg')
+
+    # TODO TODO some multi-scale template matching? how to integrate w/
+    # space constrained placement?
+
+    radius = int(round(template_cell_pixel_diam / 2))
+
+    # 0.5 seemed about OK as a threshold for normed ccoeff method
+    # For non-normed ccoeff, 1000 low enough to pick up border stuff,
+    # >3000 seems maybe too high, though 5000 still kinda reasonable.
+
+    # Regarding exclusion_radius_frac: 0.3 allowed too much overlap, 0.5
+    # borderline too much w/ non-normed method (0.7 OK there)
+    # (r=4,er=4,6 respectively, in 0.5 and 0.7 cases)
+    centers = greedy_roi_packing(res, radius, d, min_neighbors=min_neighbors,
+        draw_on=draw_on, threshold=threshold,
+        exclusion_radius_frac=exclusion_radius_frac,
+        bboxes=False, nums=False, debug=debug
+    )
+
+    if write_ijrois:
+        auto_md_fname = autoroi_metadata_filename(fname)
+
+        name2bboxes = list()
+        for i, center in enumerate(centers):
+            # TODO TODO TODO test that these radii are preserved across
+            # round trip save / loads (or at least check output looks OK
+            # loaded in my GUI)
+            min_corner = [center[0] - radius, center[1] - radius]
+            max_corner = [
+                min_corner[0] + 2 * radius,
+                min_corner[1] + 2 * radius
+            ]
+
+            bbox = np.flip([min_corner, max_corner], axis=1)
+            # TODO maybe this should be factored into ijroi?
+            # does existing polygon writing code do this? or does that case
+            # differ in the need for the offset for some reason?
+            bbox = bbox + 1
+            name2bboxes.append((str(i), bbox))
+
+        print('Writing ImageJ ROIs to {} ...'.format(fname))
+        ijroi.write_oval_roi_zip(name2bboxes, fname)
+
+        with open(auto_md_fname, 'wb') as f:
+            data = {
+                'mtime': getmtime(fname)
+            }
+            pickle.dump(data, f)
+
+    return centers, radius
+
+
+def template_data_file():
+    template_cache = 'template.p'
+    return join(analysis_output_root(), template_cache)
+
+
+def template_data():
+    template_cache = template_data_file()
+    if exists(template_cache):
+        with open(template_cache, 'rb') as f:
+            data = pickle.load(f)
+        return data
+    else:
+        return None

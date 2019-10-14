@@ -37,10 +37,10 @@ allow_gsheet_to_restrict_blocks = True
 fail_on_missing_dir_to_attempt = True
 only_do_anything_for_analysis = True
 
-'''
 convert_h5 = False
 calc_timing_info = False
 update_timing_info = False
+convert_raw_to_tiffs = False
 motion_correct = False
 '''
 convert_h5 = True
@@ -50,7 +50,9 @@ calc_timing_info = True
 update_timing_info = False
 convert_raw_to_tiffs = True
 motion_correct = True
+'''
 only_motion_correct_for_analysis = True
+fit_rois = True
 
 '''
 process_time_averages = True
@@ -146,12 +148,12 @@ df = u.mb_team_gsheet(
 # analysis output on disk (or just latter)
 
 # TODO move these paths to config file / envvar (+ defaults in util?)
-raw_data_root = '/mnt/nas/mb_team/raw_data'
-analysis_output_root = '/mnt/nas/mb_team/analysis_output'
+raw_data_root = u.raw_data_root()
+analysis_output_root = u.analysis_output_root()
 
 rel_to_cnmf_mat = 'cnmf'
 
-stimfile_root = '/mnt/nas/mb_team/stimulus_data_files' 
+stimfile_root = u.stimfile_root()
 
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', inplace=True)
@@ -379,10 +381,9 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     # directories in parallel?
     # TODO exclude stuff that indicates it's either already avg or motion
     # corrected? (or just always keep them separately?)
-    if motion_correct:
-        # TODO maybe also look w/o underscore, if that's remy's convention
-        for input_tif_path in glob.glob(join(tiff_dir, '*.tif')):
-
+    # TODO maybe also look w/o underscore, if that's remy's convention
+    for input_tif_path in glob.glob(join(tiff_dir, '*.tif')):
+        if motion_correct:
             thorimage_dir = split(input_tif_path)[-1][:-4]
             if only_motion_correct_for_analysis:
                 recordings = used[used.thorimage_dir == thorimage_dir]
@@ -448,6 +449,53 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
     print('')
 
     # TODO maybe delete empty folders under analysis? (do in atexit handler)
+
+
+if fit_rois:
+    print('Fitting ROIs...')
+    template_data = u.template_data()
+    if template_data is None:
+        warnings.warn('template data not found, so can not fit_rois')
+    else:
+        template = template_data['template']
+        margin = template_data['margin']
+        mean_cell_extent_um = template_data['mean_cell_extent_um']
+
+        for analysis_dir in glob.glob(analysis_output_root + '/*/*/'):
+            analysis_dir = os.path.normpath(analysis_dir)
+
+            prefix, fly_dir = split(analysis_dir)
+            _, date_dir = split(prefix)
+
+            try:
+                fly_num = int(fly_dir)
+            except ValueError:
+                continue
+
+            try:
+                date = datetime.strptime(date_dir, '%Y-%m-%d')
+            except ValueError:
+                continue
+
+            thorimage_ids = [split(td)[1] for td in
+                u.thorimage_subdirs(u.raw_fly_dir(date, fly_num))]
+
+            for thorimage_id in thorimage_ids:
+                try:
+                    tif = u.motion_corrected_tiff_filename(date, fly_num,
+                        thorimage_id)
+                # TODO is this except gonna work? OSError count?
+                except IOError as e:
+                    print(thorimage_id, end=': ')
+                    print(e)
+                    continue
+
+                # TODO TODO check if analysis is ticked in df (gsheet)
+
+                u.fit_circle_rois(tif, template, margin,
+                    mean_cell_extent_um, write_ijrois=True
+                )
+
 
 # TODO TODO why had i commented this? some reason it should not be this way?
 if not (upload_matlab_cnmf_output or process_time_averages):
