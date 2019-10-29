@@ -1157,6 +1157,9 @@ class Segmentation(QWidget):
             self.thorimage_id + '*.zip'))
 
         ijroiset_filename = None
+        # TODO fix automatic first choice in _NNN naming convention case
+        # (seemed to not work on 2019-07-25/2/_008)
+        # but actually it did work in */_007 case... so idk what's happening
         if len(possible_ijroi_files) == 1:
             ijroiset_filename = possible_ijroi_files[0]
 
@@ -1956,6 +1959,9 @@ class Segmentation(QWidget):
         self.presentation_dfs = []
         self.comparison_dfs = []
         comparison_num = -1
+
+        # TODO consider deleting this conditional if i'm not actually going to
+        # support else case (not used now, see where repeat_num is set in loop)
         if self.pair_case:
             repeats_across_real_blocks = False
         else:
@@ -2001,8 +2007,15 @@ class Segmentation(QWidget):
             # of the db mixture table design)
             odor1, odor2 = curr_odor_ids
             #
-            repeat_num = repeat_nums[curr_odor_ids]
-            repeat_nums[curr_odor_ids] = repeat_num + 1
+
+            if self.pair_case:
+                repeat_num = repeat_nums[curr_odor_ids]
+                repeat_nums[curr_odor_ids] = repeat_num + 1
+
+            # See note in missing odor handling portion of
+            # process_segmentation_output to see reasoning behind this choice.
+            else:
+                repeat_num = comparison_num
 
             # TODO check that all frames go somewhere and that frames aren't
             # given to two presentations. check they stay w/in block boundaries.
@@ -2519,8 +2532,26 @@ class Segmentation(QWidget):
                         row_data['odor_onset_frame'] = \
                             bdf.odor_onset_frame.max() + 1
                         row_data['odor_offset_frame'] = INT_NO_REAL_FRAME
+
+                        real_block_nums = bdf.real_block.unique()
+                        assert len(real_block_nums) == 1
+                        real_block_num = real_block_nums[0]
+                        row_data['real_block'] = real_block_num
+
+                        # The question here is whether I want to start the
+                        # repeat numbering with presentations that actually have
+                        # frames, or whether I want to keep the numbering as it
+                        # would have been...
+
+                        # Since in !self.pair_case, real_block num should be
+                        # equal to the intended repeat_num.
+                        row_data['repeat_num'] = real_block_num
+                        # TODO would need to fix this case to handle multiple
+                        # missing of one odor, if i did want to have repeat_num
+                        # numbering start with presentations that actually have
+                        # frames
                         # (- 1 since 0 indexed)
-                        row_data['repeat_num'] = n_full_repeats - 1
+                        #row_data['repeat_num'] = n_full_repeats - 1
 
                         missing_odor1s = list(odor1_set - set(bdf.odor1))
                         assert len(missing_odor1s) == 1
@@ -2617,6 +2648,14 @@ class Segmentation(QWidget):
 
             ###################################################################
             if plot_traces or plot_correlations:
+                # In plot_traces case above, odor order is handled inside
+                # plot_traces, and should give the same answer as here.
+                odor_order = None
+                if not self.pair_case:
+                    # TODO check legend below is also in this order?
+                    odor_order = u.df_to_odor_order(comparison_df,
+                        return_name1=True)
+
                 # TODO TODO might want to only compute responders/criteria one
                 # place, to avoid inconsistencies (so either move this section
                 # into next loop and aggregate, or index into this stuff from
@@ -2757,6 +2796,16 @@ class Segmentation(QWidget):
                         ' correlation')
 
                 odor_order_trial_mean_corrs = trial_by_cell_means.corr()
+
+                if odor_order is not None:
+                    odor_order_trial_mean_corrs = \
+                        odor_order_trial_mean_corrs.reindex(odor_order,
+                            level='name1', axis=0)
+
+                    odor_order_trial_mean_corrs = \
+                        odor_order_trial_mean_corrs.reindex(odor_order,
+                            level='name1', axis=1)
+
                 presentation_order_trial_mean_corrs = \
                     trial_mean_presentation_order.corr()
 
@@ -2786,9 +2835,15 @@ class Segmentation(QWidget):
         if plot_odor_abbreviation_key:
             abbrev2odor = {v: k for k, v in odor2abbrev.items()}
             cell_text = []
+
+            if odor_order is None:
+                abbrev_iter = sorted(abbrev2odor.keys())
+            else:
+                abbrev_iter = odor_order
+
             # TODO TODO include concentration in odor column / new column
             print('\nOdor abbreviations:')
-            for k in sorted(abbrev2odor.keys()):
+            for k in abbrev_iter:
                 if k != 'paraffin' and k != 'no_second_odor':
                     cell_text.append([k, abbrev2odor[k]])
                     print('{}: {}'.format(k, abbrev2odor[k]))
@@ -2871,6 +2926,10 @@ class Segmentation(QWidget):
 
 
     # TODO move core of this to util and just wrap it here
+    # TODO fail earlier / handle in case where corresponding entry in "flies"
+    # table is missing (like if number was not entered in fly_preps gsheet.
+    # now it fails only on sql insert here, and message doesn't indicate how to
+    # fix it.
     def upload_segmentation_info(self) -> None:
         run_info = {
             'run_at': [self.run_at],

@@ -368,10 +368,6 @@ for df_pickle in pickles:
     '''
     prefix = u.df_to_odorset_name(df)
     odor_order = [cu.odor2abbrev(o) for o in u.df_to_odor_order(df)]
-    # TODO delete this hack
-    if 'mix' not in odor_order:
-        odor_order = odor_order + ['mix']
-    #
     
     title = '/'.join([x for x in df_pickle[:-2].split('_')[-4:] if len(x) > 0])
     # TODO TODO fix so title doesn't split fn_0001 on the underscore

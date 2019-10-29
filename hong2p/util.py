@@ -450,16 +450,53 @@ odor_set2order = {
         '2-heptanone',
         # Only one of these will actually be present, they just take the same
         # place in the order.
-        'control mix 1'
+        'control mix 1',
         'control mix 2'
     ]
 }
-def df_to_odor_order(df):
+def df_to_odor_order(df, observed=True, return_name1=False):
+    """Takes a complex-mixture DataFrame to odor names in desired plot order.
+
+    Args:
+    df (pd.DataFrame): should have a 'original_name1' column, with names of
+        odors from complex mixture experiments we have pre-defined odor orders
+        for.
+
+    observed (bool): (optional, default=True) If True, only return odor names
+        in `df`.
+
+    return_name1 (bool): (optional, default=False) If True, corresponding
+        values in 'name1' will be returned for each value in 'original_name1'.
+    """
     # TODO might need to use name1 if original_name1 not there...
     # (for gui case)
     odor_set = df_to_odorset_name(df)
-    return [o for o in odor_set2order[odor_set] if o in
-        df.original_name1.unique()]
+    order = odor_set2order[odor_set]
+    observed_odors = df.original_name1.unique()
+    if observed:
+        order = [o for o in order if o in observed_odors]
+    else:
+        # TODO maybe just handle this externally (force all data w/in some
+        # analysis to only have one or the other control mix) and then delete
+        # this special casing
+        cm1 = 'control mix 1'
+        cm2 = 'control mix 2'
+        have_cm1 = cm1 in observed_odors
+        have_cm2 = cm2 in observed_odors
+        order = [o for o in order if o not in (cm1, cm2)]
+        if have_cm1:
+            assert not have_cm2, 'df should only have either cm1 or cm2'
+            order.append(cm1)
+
+        elif have_cm2:
+            order.append(cm2)
+
+    if return_name1:
+        o2n = df[['original_name1','name1']].drop_duplicates(
+            ).set_index('original_name1').name1
+        order = list(o2n[order])
+
+    return order
 
 
 def old_fmt_thorimage_num(x):
@@ -3274,6 +3311,8 @@ def format_keys(date, fly, *other_keys):
 # TODO rename to be inclusive of cases other than pairs
 def pair_ordering(comparison_df):
     """Takes a df w/ name1 & name2 to a dict of their tuples to order int.
+
+    Order integers start at 0 and do not skip any numbers.
     """
     # TODO maybe assert only 3 combinations of name1/name2
     pairs = [(x.name1, x.name2) for x in
@@ -3283,29 +3322,46 @@ def pair_ordering(comparison_df):
     # in subplots.
     ordering = dict()
 
+    # TODO maybe check that it's the second element specifically, since right
+    # now, it's only cause paraffin is abbreviated to pfo (for name1 col)
+    # that complex-mixture experiments go into first branch...
     has_paraffin = [p for p in pairs if 'paraffin' in p]
     if len(has_paraffin) == 0:
+        import chemutils as cu
         assert {x[1] for x in pairs} == {'no_second_odor'}
         odors = [p[0] for p in pairs]
 
-        # TODO TODO also support case where there isn't something we want to
-        # stick at the end like this, for Matt's case
-        last = None
-        for o in odors:
-            lo = o.lower()
-            if 'approx' in lo or 'mix' in lo:
-                if last is None:
-                    last = o
-                else:
-                    raise ValueError('multiple mixtures in odors to order')
-        ordering[(last, 'no_second_odor')] = len(odors) - 1
-        
-        i = 0
-        for o in sorted(odors):
-            if o == last:
-                continue
-            ordering[(o, 'no_second_odor')] = i
-            i += 1
+        # TODO change how odorset is identified so it can fail if none should be
+        # detected / return None or something, then call back to just sorting
+        # the odor names here, if no odor set name can be identified
+        # (do we also want to support some case where original_name1 is defined
+        # but the odorset name isn't necessarily?)
+        if 'original_name1' in comparison_df.columns:
+            original_name_order = df_to_odor_order(comparison_df)
+            o2n = comparison_df[['original_name1','name1']].drop_duplicates(
+                ).set_index('original_name1').name1
+            # TODO maybe don't assume 'no_second_odor' like this (& below)?
+            ordering = {(v, 'no_second_odor'): i for i, v in
+                enumerate(o2n[original_name_order])}
+        else:
+            # TODO also support case where there isn't something we want to
+            # stick at the end like this, for Matt's case
+            last = None
+            for o in odors:
+                if cu.odor_is_mix(o):
+                    if last is None:
+                        last = o
+                    else:
+                        raise ValueError('multiple mixtures in odors to order')
+            assert last is not None, 'expected a mix'
+            ordering[(last, 'no_second_odor')] = len(odors) - 1
+            
+            i = 0
+            for o in sorted(odors):
+                if o == last:
+                    continue
+                ordering[(o, 'no_second_odor')] = i
+                i += 1
     else:
         no_pfo = [p for p in pairs if 'paraffin' not in p]
         if len(no_pfo) < 1:
@@ -3320,6 +3376,10 @@ def pair_ordering(comparison_df):
             key=lambda x: x[0] if x[1] == 'paraffin' else x[1])):
 
             ordering[p] = i
+
+    # Checks that we order integers start at zero and don't skip anything.
+    # Important for some ways of using them (e.g. to index axes array).
+    assert {x for x in ordering.values()} == {x for x in range(len(ordering))}
 
     return ordering
 
