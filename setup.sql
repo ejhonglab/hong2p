@@ -404,6 +404,11 @@ CREATE TABLE IF NOT EXISTS presentations (
     /* TODO maybe reference an odor pair here? */
     comparison smallint NOT NULL,
 
+    -- TODO TODO make this NOT NULL after fixing old data that doesn't have this
+    -- (should be equal to comparison for the most part, excluding cases !
+        -- self.pair_case in gui)
+    real_block smallint,
+
     odor1 smallint NOT NULL,
     odor2 smallint NOT NULL,
 
@@ -479,6 +484,11 @@ ADD CONSTRAINT presentations_analysis_fkey
 
 ALTER TABLE presentations
     ADD COLUMN presentation_accepted boolean;
+
+-- TODO add NOT NULL constraint after fixing already entered values.
+-- see comment above.
+ALTER TABLE presentations
+    ADD COLUMN real_block smallint;
 
 
 /* TODO TODO store automated response calls in this table as well? */

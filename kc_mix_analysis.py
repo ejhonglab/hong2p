@@ -316,6 +316,7 @@ if test:
     warnings.warn('Only reading one pickle for testing! ' +
         'Set test = False to analyze all.')
     pickles = [p for p in pickles if '08-27_9_fn_0001' in p]
+    #pickles = [p for p in pickles if '08-27_9' in p]
 
 # TODO maybe use for this everything to speed things up a bit?
 # (not just plotting)
@@ -333,7 +334,8 @@ max_plotting_td = 1.0
 
 cell_cols = ['name1','name2','repeat_num','cell']
 response_calling_s = 5.0
-responder_frac_dfs = []
+#responder_frac_dfs = []
+responder_dfs = []
 auc_dfs = []
 for df_pickle in pickles:
     # TODO also support case here pickle has a dict
@@ -372,6 +374,8 @@ for df_pickle in pickles:
     #
     
     title = '/'.join([x for x in df_pickle[:-2].split('_')[-4:] if len(x) > 0])
+    # TODO TODO fix so title doesn't split fn_0001 on the underscore
+    # (and maybe need to fix fname too...)
     fname = prefix.replace(' ','') + '_' + title.replace('/','_')
     title = prefix.title() + ': ' + title
 
@@ -426,7 +430,28 @@ for df_pickle in pickles:
         mean_zchange_response_thresh)
     '''
     # picked from histogram on one fly's data
-    max_responder_thresh = 0.7
+
+    # TODO TODO should i sort input data so natural stuff is always analyzed
+    # first, if i want to use one of those odors to pick threshold? or have a
+    # separate reference odor for the other set (should give similar thresholds
+    # within fly, right?) or should i just not do it this way anyway...?
+
+    # These ref odors + fracs taken from 0.7 thresh on 2019-8-27/9 fly
+    if prefix == 'kiwi':
+        ref_odor = 'eb'
+        ref_response_percent = 18.6
+    else:
+        ref_odor = '1o3ol'
+        ref_response_percent = 11.1
+
+    max_responder_thresh = np.percentile(window_by_trial.max().loc[(ref_odor,)],
+        100 - ref_response_percent)
+    # TODO where thresh came from
+    print('max_responder_thresh from ref odors: {:.2f}'.format(
+        max_responder_thresh))
+
+    #max_responder_thresh = 0.7
+
     trial_responders = window_by_trial.max() > max_responder_thresh
     # TODO exclude pfo for this and below? (probably for reported means)
     print(('Fraction of cells trials counted as responses (max dff > {}): '
@@ -465,11 +490,68 @@ for df_pickle in pickles:
         return values[0]
 
     def add_metadata(out_df):
-        for var in ('prep_date', 'fly_num', 'thorimage_id'):
-            out_df[var] = get_single_index_val(var)
+        keys_to_add = ['prep_date', 'fly_num', 'thorimage_id']
+        vals_to_add = [get_single_index_val(k) for k in keys_to_add]
+        # TODO maybe delete this df special case. series case may work fine for
+        # dfs too.
+        if len(out_df.shape) > 1:
+            for k, v in zip(keys_to_add, vals_to_add):
+                out_df[k] = v
+        else:
+            # TODO i thought this would be the one line way to do it, but i
+            # guess not... is there one?
+            #out_df = pd.concat([out_df], names=keys_to_add, keys=vals_to_add)
+            for k, v in zip(keys_to_add[::-1], vals_to_add[::-1]):
+                out_df = pd.concat([out_df], names=[k], keys=[v])
+
         return out_df
 
-    responder_frac_dfs.append(add_metadata(trial_responders))
+    # TODO special handling for real kiwi in this section?
+
+    # TODO more idiomatic way?
+    # may want a table output? or a series of bar graphs?
+    odors = [x for x in
+        trial_responders.index.get_level_values('name1').unique() if x != 'pfo']
+
+    odor_resp_subset_fracs_list = []
+    for odor in odors:
+        oresp = reliable_responders.loc[odor]
+        cells = oresp[oresp].index.get_level_values('cell').unique()
+
+        n_odor_cells = len(cells)
+
+        other_odors = [o for o in odors if o != odor]
+        # TODO or maybe use reliable responders here too?
+        # TODO breakdown by trial as well
+        resp_fracs_to_others = trial_responders.loc[other_odors, :, :, cells
+            ].groupby('name1').sum() / (n_odor_cells * 3)
+        # TODO revisit (something more clear?)
+        resp_fracs_to_others.name = 'of_' + odor + '_resp'
+
+        odor_resp_subset_fracs_list.append(resp_fracs_to_others)
+
+    # TODO deal w/ this warning (what does sort=True mean?)
+    odor_resp_subset_fracs = pd.concat(odor_resp_subset_fracs_list, axis=1)
+
+    # TODO print the above in some nice(r) way?
+    # TODO TODO or save to figure? (like df_to_image?)
+    print('Responder fractions to subset of cells responding reliably to each'
+        'odor:')
+    print(odor_resp_subset_fracs)
+    print('')
+
+    # TODO include mix?
+    # TODO exclude pfo
+    n_ro_hist_fig = plt.figure()
+    reliable_responders.groupby('cell').sum().hist()
+    # TODO oo approach? from ret above? def ax first?
+    ax = plt.gca()
+    ax.set_title(title + ', number of odors cells respond reliably to')
+    n_ro_hist_fig.savefig(join(fig_dir, 'png', 'n_ro_hist_' + fname + '.png'))
+    n_ro_hist_fig.savefig(join(fig_dir, 'svg', 'n_ro_hist_' + fname + '.svg'))
+
+    # TODO rename from responder_frac_df / change input (now just bool)
+    responder_dfs.append(add_metadata(trial_responders))
     auc_dfs.append(add_metadata(auc_df))
 
     do_pca = True
@@ -827,16 +909,18 @@ for df_pickle in pickles:
 
     print('\n')
 
-responder_frac_df = pd.concat(responder_frac_dfs, ignore_index=True)
+#responder_frac_df = pd.concat(responder_frac_dfs, ignore_index=True)
+responder_df = pd.concat(responder_dfs, ignore_index=True)
 auc_df = pd.concat(auc_dfs, ignore_index=True)
 
 with open('kc_mix_analysis_outputs.p', 'wb') as f:
     data = {
-        'responder_frac_df': responder_frac_df,
+        #'responder_frac_df': responder_frac_df,
+        'responder_df': responder_df,
         'auc_df': auc_df
     }
     pickle.dump(data, f)
 
-plt.show()
+#plt.show()
 import ipdb; ipdb.set_trace()
 

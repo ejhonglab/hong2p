@@ -16,7 +16,6 @@ import pandas as pd
 import cv2
 import tifffile
 import matplotlib.pyplot as plt
-from scipy.optimize import linear_sum_assignment
 
 import ijroi
 import hong2p.util as u
@@ -65,20 +64,10 @@ def print_bad_keys(mask):
     print(mask.index[mask].to_frame().to_string(index=False))
 
 
-def image_grid(image_list):
-    n = int(np.ceil(np.sqrt(len(image_list))))
-    fig, axs = plt.subplots(n,n)
-    for ax, img in zip(axs.flat, image_list):
-        ax.imshow(img, cmap='gray')
-
-    for ax in axs.flat:
-        ax.axis('off')
-
-    plt.subplots_adjust(wspace=0, hspace=0.05)
-    return fig
-
-
-def make_template(image_list):
+# maybe set avg_all_rotations back to False
+# TODO though compare quality of matches from template computed that way to that
+# without
+def make_template(image_list, avg_all_rotations=True):
     extents = [img.shape for img in image_list]
     x_extents = [x for x, _ in extents]
     y_extents = [y for _, y in extents]
@@ -91,8 +80,18 @@ def make_template(image_list):
     template_shape = (template_extent, template_extent)
 
     resized = [cv2.resize(im, template_shape) for im in image_list]
-    template = np.mean(resized, axis=0)
-    return template
+
+    if avg_all_rotations:
+        # TODO would need to modify if i were to support 3d (x,y,z)
+        # frames here, b/c np.rot90 only rotates first two dims,
+        # and we'd want rotations of all three
+        to_avg = []
+        for n_rotations in range(4):
+            to_avg.extend([np.rot90(im, k=n_rotations) for im in resized])
+    else:
+        to_avg = resized
+
+    return np.mean(to_avg, axis=0)
 
 
 def try_all_template_matching_methods(scene, template):
@@ -111,7 +110,6 @@ def try_all_template_matching_methods(scene, template):
     for method in methods:
         res = cv2.matchTemplate(scene, normed_template, method)
         u.imshow(res, method)
-
 
 
 def unconstrained_roi_finding(match_image, radius, d, draw_on, threshold=0.8):
@@ -141,145 +139,16 @@ def unconstrained_roi_finding(match_image, radius, d, draw_on, threshold=0.8):
     u.imshow(scene_bgr, 'unconstrained template matching maxima')
 
 
-# TODO maybe move to ijroi
-# don't like this convexHull based approach though...
-def ijroi2cv_contour(roi):
-    # TODO need to swap (x,y) coords?
-
-    ## cnts = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    ## cnts[1][0].shape
-    ## cnts[1][0].dtype
-
-    # from inspecting output of findContours, as above:
-    #cnt = np.expand_dims(ijroi, 1).astype(np.int32)
-    # TODO fix so this isn't necessary. in case of rois that didn't start as
-    # circles, the convexHull may occasionally not be equal to what i want
-    cnt = cv2.convexHull(roi.astype(np.int32))
-    # if only getting cnt from convexHull, this is probably a given...
-    assert cv2.contourArea(cnt) > 0
-    return cnt
-#
-
-
-def roi_center(roi):
-    cnt = ijroi2cv_contour(roi)
-    M = cv2.moments(cnt)
-    cx = int(M['m10'] / M['m00'])
-    cy = int(M['m01'] / M['m00'])
-    return np.array((cx, cy))
-
-
-def roi_centers(rois):
-    centers = []
-    for roi in rois:
-        center = roi_center(roi)
-        # pretty close to (w/in 0.5 in each dim) np.mean(roi, axis=0),
-        # in at least one example i played with
-        centers.append(center)
-    return np.array(centers)
-
-
-def correspond_rois(left_centers, right_centers, cost_fn=u.euclidean_dist,
-    max_cost=9, show=True, left_name='Left', right_name='Right', draw_on=None):
-    """
-    """
-    if max_cost is None:
-        raise ValueError('max_cost must not be None')
-    
-    if type(left_centers) is list:
-        left_centers = roi_centers(left_centers)
-
-    if type(right_centers) is list:
-        right_centers = roi_centers(right_centers)
-
-    # TODO TODO should i make sure some max cost is enforced, to make
-    # multiplication of some fixed cost by number of unmatched rois more
-    # meaningful? or otherwise, how to handle unmatched rois?
-    # TODO or consider stuff whose final cost was over some thresh as unmatched?
-    # maybe that should have a high cost baked in to opt procedure tho?
-
-    # TODO other / better ways to generate cost matrix?
-    # pairwise jacard (would have to not take centers then)?
-    # TODO why was there a "RuntimeWarning: invalid valid encounterd in
-    # multiply" here ocassionally? it still seems like we had some left and
-    # right centers, so idk
-    costs = np.empty((len(left_centers), len(right_centers))) * np.nan
-    for i, cl in enumerate(left_centers):
-        for j, cr in enumerate(right_centers):
-            # TODO short circuit as appropriate? better way to loop over coords
-            # we need?
-            cost = cost_fn(cl, cr)
-            if cost > max_cost:
-                cost = max_cost
-            costs[i,j] = cost
-
-    # TODO was Kellan's method of matching points not equivalent to this?
-    # or per-timestep maybe it was (or this was better), but he also
-    # had a way to evolve points over time (+ a particular cost)?
-
-    left_idx, right_idx = linear_sum_assignment(costs)
-    # Just to double-check properties I assume about the assignment procedure.
-    assert len(left_idx) == len(np.unique(left_idx))
-    assert len(right_idx) == len(np.unique(right_idx))
-
-    if show:
-        fig, ax = plt.subplots()
-        if draw_on is not None:
-            ax.imshow(draw_on, cmap='gray')
-            ax.axis('off')
-
-        ax.scatter(*left_centers.T, label=left_name + ' centers', color='red',
-            alpha=0.6)
-        ax.scatter(*right_centers.T, label=right_name + ' centers',
-            color='blue', alpha=0.6)
-
-        if draw_on is None:
-            color = 'black'
-        else:
-            color = 'yellow'
-
-        for li, ri in zip(left_idx, right_idx):
-            if costs[li,ri] >= max_cost:
-                continue
-                #linestyle = '--'
-            else:
-                linestyle = '-'
-
-            lc = left_centers[li]
-            rc = right_centers[ri]
-            ax.plot([lc[0], rc[0]], [lc[1], rc[1]], linestyle=linestyle,
-                color=color, alpha=0.7)
-
-        ax.legend()
-
-    unmatched_left = set(range(len(left_centers))) - set(left_idx)
-    unmatched_right = set(range(len(right_centers))) - set(right_idx)
-
-    match_costs = costs[left_idx, right_idx]
-    total_cost = match_costs.sum()
-
-    to_unmatch = match_costs > max_cost
-    unmatched_left.update(left_idx[to_unmatch])
-    unmatched_right.update(right_idx[to_unmatch])
-    left_idx = left_idx[~ to_unmatch]
-    right_idx = right_idx[~ to_unmatch]
-
-    n_unassigned = abs(len(left_centers) - len(right_centers))
-
-    total_cost += max_cost * n_unassigned
-    # TODO better way to normalize error?
-    total_cost = total_cost / max(len(left_centers), len(right_centers))
-
-    unmatched_left = np.array(list(unmatched_left))
-    unmatched_right = np.array(list(unmatched_right))
-    lr_matches = np.stack([left_idx, right_idx], axis=-1)
-    return lr_matches, unmatched_left, unmatched_right, total_cost
-
-
 def main():
+    ignore_existing = False
     template_cache = u.template_data_file()
-    template_data = u.template_data()
+    if ignore_existing:
+        template_data = None
+    else:
+        template_data = u.template_data()
+
     if template_data is not None:
+        print(f'Loaded template data from {template_cache}')
         template = template_data['template']
         margin = template_data['margin']
         mean_cell_extent_um = template_data['mean_cell_extent_um']
@@ -287,6 +156,7 @@ def main():
     else:
         # TODO TODO probably factor this whole bit about local analysis checking
         # against db contents into util + use in kc_mix_analysis
+        print('Making template...')
 
         conn = u.get_db_conn()
         df = pd.read_sql_query('SELECT * FROM analysis_runs '
@@ -343,6 +213,7 @@ def main():
         zero_outside_roi = False
         dilation_kernel = np.ones((3,3), np.uint8)
         debug_plots = False
+        debug_each_movie = False
         show_cell_images = False
 
         # TODO maybe normalize movies or something first to better avg across?
@@ -416,26 +287,35 @@ def main():
 
             all_avg_cells.extend(avg_cells)
 
-            '''
-            if show_cell_images:
-                fig = image_grid(avg_cells)
+            if debug_each_movie:
                 title = \
                     f'{str(row.Index[0])[:10]}/{row.Index[1]}/{row.Index[2]}'
+
+                u.imshow(movie.mean(axis=0), f'{title} avg')
+
+                fig = u.image_grid(avg_cells)
                 fig.suptitle(title)
+
+                #template = make_template(avg_cells, avg_all_rotations=False)
+                #u.imshow(template, f'{title} template')
+
+                template = make_template(avg_cells, avg_all_rotations=True)
+                u.imshow(template,
+                    f'{title} template (averaged across rotations)')
+
                 plt.show()
-            '''
-            #template = make_template(avg_cells)
 
         mean_cell_extent_um = np.mean(cell_extents_um)
 
         if show_cell_images:
-            fig = image_grid(all_avg_cells)
+            fig = u.image_grid(all_avg_cells)
             title = 'All cells, across input recordings'
             fig.suptitle(title)
 
         template = make_template(all_avg_cells)
         u.imshow(template, 'Template')
 
+        print(f'writing template data to {template_cache}')
         with open(template_cache, 'wb') as f:
             data = {
                 'template': template,
@@ -457,7 +337,7 @@ def main():
     if not test_on_all:
         test_tifs = [test_tifs[0]]
 
-    print('Testing...')
+    print('\nTesting...')
     total_center_matching_costs = []
     for tif in test_tifs:
         print(tif)
@@ -501,9 +381,12 @@ def main():
 
         draw_on = avg
         max_cost = radius
-        lr_matches, unmatched_left, unmatched_right, total_cost = \
-            correspond_rois(centers, ijrois, max_cost=max_cost,
-            left_name='Automatic', right_name='Manual', draw_on=draw_on)
+        title = u.tiff_title(tif)
+
+        lr_matches, unmatched_left, unmatched_right, total_cost, _ = \
+            u.correspond_rois(centers, ijrois, max_cost=max_cost,
+            left_name='Automatic', right_name='Manual', draw_on=draw_on,
+            title=title)
 
         print('center matching cost: {:.2f}'.format(total_cost))
         total_center_matching_costs.append(total_cost)

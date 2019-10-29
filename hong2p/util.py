@@ -129,6 +129,9 @@ def stimfile_root():
 
 def _fly_dir(date, fly):
     if not type(date) is str:
+        # TODO update to work w/ np.datetime64 too (they don't have strftime)?
+        # (+ factor date formatting into its own function that handles the
+        # same cases?)
         date = date.strftime(date_fmt_str)
 
     if not type(fly) is str:
@@ -161,6 +164,7 @@ def matlab_exit_except_hook(exctype, value, traceback):
 
 # TODO maybe rename to init_matlab and return nothing, to be more clear that
 # other fns here are using it behind the scenes?
+evil = None
 def matlab_engine():
     """
     Gets an instance of MATLAB engine w/ correct paths for Remy's single plane
@@ -209,6 +213,10 @@ def get_matfile_var(matfile, varname, require=True):
     Raises KeyError if require is True and variable not found.
     """
     global evil
+
+    if evil is None:
+        matlab_engine()
+
     try:
         # TODO maybe clear workspace either before or after?
         # or at least clear this specific variable after?
@@ -236,6 +244,10 @@ def load_mat_timing_information(mat_file):
     # TODO this sufficient w/ global above to get access to matlab engine in
     # here?
     global evil
+
+    if evil is None:
+        matlab_engine()
+
     try:
         # TODO probably switch to doing it this way
         '''
@@ -608,8 +620,10 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
                 #print('pairs:')
                 #pprint.pprint(image_and_sync_pairs)
             except ValueError as e:
+                gn_str = format_keys(*gn)
+                print(f'For {gn_str}:')
                 print('could not pair thor dirs automatically!')
-                print(f'({e})')
+                print(f'({e})\n')
                 continue
 
             # could maybe try to sort things into "prep checking" / real
@@ -835,9 +849,12 @@ def merge_odors(df, *args):
     else:
         raise ValueError('incorrect number of arguments')
 
-    print('merging with odors table...', end='')
+    print('merging with odors table...', end='', flush=True)
     # TODO way to do w/o resetting index? merge failing to find odor1 or just
     # drop?
+    # TODO TODO TODO do i want drop=True? (it means cols in index won't be
+    # inserted into dataframe...) check use of merge_odors and change to
+    # drop=False (default) if it won't break anything
     df = df.reset_index(drop=True)
 
     df = pd.merge(df, odors, left_on='odor1', right_on='odor_id',
@@ -855,6 +872,9 @@ def merge_odors(df, *args):
         'log10_conc_vv': 'log10_conc_vv2'}, inplace=True)
 
     print(' done')
+
+    # TODO refactor merge fns to share some stuff? (progress, length checking,
+    # arg unpacking, etc)?
     return df
 
 
@@ -870,13 +890,15 @@ def merge_recordings(df, *args, verbose=True):
     else:
         raise ValueError('incorrect number of arguments')
 
-    print('merging with recordings table...', end='')
+    print('merging with recordings table...', end='', flush=True)
     len_before = len(df)
+    # TODO TODO TODO do i want drop=True? (it means cols in index won't be
+    # inserted into dataframe...) check use of this fn and change to
+    # drop=False (default) if it won't break anything
     df = df.reset_index(drop=True)
 
-    # TODO explicitly make this a left merge? (want len(df) preserved)
-    df = pd.merge(df, recordings,
-                  left_on='recording_from', right_on='started_at')
+    df = pd.merge(df, recordings, how='left', left_on='recording_from',
+        right_on='started_at', suffixes=(False, False))
 
     df.drop(columns=['started_at'], inplace=True)
 
@@ -890,11 +912,84 @@ def merge_recordings(df, *args, verbose=True):
 
 
 def arraylike_cols(df):
-    """Returns a list of column names that were lists or arrays.
+    """Returns a list of columns that have only lists or arrays as elements.
     """
     df = df.select_dtypes(include='object')
     return df.columns[df.applymap(lambda o:
         type(o) is list or isinstance(o, np.ndarray)).all()]
+
+
+# TODO use in other places that duplicate this functionality
+# (like in natural_odors/kc_analysis ?)
+def expand_array_cols(df):
+    """Expands any list/array entries, with new rows for each entry.
+
+    For any columns in `df` that have all list/array elements (at each row),
+    the column in `out_df` will have the type of single elements from those
+    arrays.
+
+    The length of `out_df` will be the length of the input `df`, multiplied by
+    the length (should be common in each input row) of each set of list/array
+    elements.
+
+    Other columns have their values duplicated, to match the lengths of the
+    expanded array values.
+
+    Args:
+    `df` (pd.DataFrame)
+
+    Returns:
+    `out_df` (pd.DataFrame)
+    """
+    if len(df.index.names) > 1 or df.index.names[0] is not None:
+        raise NotImplementedError('numpy repeating may not handle index. '
+            'reset_index first.')
+
+    # Will be ['raw_f', 'df_over_f', 'from_onset'] in the main way I'm using
+    # this function.
+    array_cols = arraylike_cols(df)
+
+    if len(array_cols) == 0:
+        raise ValueError('df did not appear to have any columns with all '
+            'arraylike elements')
+
+    orig_dtypes = df.dtypes.to_dict()
+    for ac in array_cols:
+        df[ac] = df[ac].apply(lambda x: np.array(x))
+        assert len(df[ac]) > 0 and len(df[ac][0]) > 0
+        orig_dtypes[ac] = df[ac][0][0].dtype
+
+    non_array_cols = df.columns.difference(array_cols)
+
+    # TODO true vectorized way to do this?
+    # is str.len (on either rows/columns) faster (+equiv)?
+    array_lengths = df[array_cols].applymap(len)
+    c0 = array_lengths[array_cols[0]]
+    for c in array_cols[1:]:
+        assert np.array_equal(c0, array_lengths[c])
+    array_lengths = c0
+
+    # TODO more idiomatic / faster way to do what this loop is doing?
+    n_non_array_cols = len(non_array_cols)
+    expanded_rows_list = []
+    for row, n_repeats in zip(df[non_array_cols].values, array_lengths):
+        # could try subok=True if want to use pandas obj as input rather than
+        # stuff from .values?
+        expanded_rows = np.broadcast_to(row, (n_repeats, n_non_array_cols))
+        expanded_rows_list.append(expanded_rows)
+    nac_data = np.concatenate(expanded_rows_list, axis=0)
+
+    ac_data = df[array_cols].apply(np.concatenate)
+    assert nac_data.shape[0] == ac_data.shape[0]
+    data = np.concatenate((nac_data, ac_data), axis=1)
+    assert data.shape[1] == df.shape[1]
+
+    new_cols = list(non_array_cols) + list(array_cols)
+    # TODO copy=False is fine here, right? measure the time difference?
+    out_df = pd.DataFrame(columns=new_cols, data=data).astype(orig_dtypes,
+        copy=False)
+
+    return out_df
 
 
 def diff_dataframes(df1, df2):
@@ -1148,6 +1243,60 @@ def tiff_thorimage_id(tiff_filename):
     # Behavior of os.path.split makes this work even if tiff_filename does not
     # have any directories in it.
     return '_'.join(split(tiff_filename[:-len('.tif')])[1].split('_')[:2])
+
+
+# TODO don't expose this if i can refactor other stuff to not use it
+# otherwise use this rather than their own separate definitions
+# (like in populate_db, etc)
+rel_to_cnmf_mat = 'cnmf'
+def matfile(date, fly_num, thorimage_id):
+    """Returns filename of Remy's metadata [+ CNMF output] .mat file.
+    """
+    return join(analysis_fly_dir(date, fly_num), rel_to_cnmf_mat,
+        thorimage_id + '_cnmf.mat'
+    )
+
+
+def tiff_matfile(tif):
+    """Returns filename of Remy's metadata [+ CNMF output] .mat file.
+    """
+    keys = tiff_filename2keys(tif)
+    return matfile(*keys)
+
+
+def metadata_filename(date, fly_num, thorimage_id):
+    """Returns filename of YAML for extra metadata.
+    """
+    return join(raw_fly_dir(date, fly_num), thorimage_id + '_metadata.yaml')
+
+
+# TODO maybe something to indicate various warnings
+# (like mb team not being able to pair things) should be suppressed?
+def metadata(date, fly_num, thorimage_id):
+    """Returns metadata from YAML, with defaults added.
+    """
+    import yaml
+
+    metadata_file = metadata_filename(date, fly_num, thorimage_id)
+
+    # TODO another var specifying number of frames that has *already* been
+    # cropped out of raw tiff (start/end), to resolve any descrepencies wrt 
+    # thorsync data
+    metadata = {
+        'drop_first_n_frames': 0
+    }
+    if exists(metadata_file):
+        # TODO TODO TODO also load single odors (or maybe other trial
+        # structures) from stuff like this, so analysis does not need my own
+        # pickle based stim format
+        with open(metadata_file, 'r') as mdf:
+            yaml_metadata = yaml.load(mdf)
+
+        for k in metadata.keys():
+            if k in yaml_metadata:
+                metadata[k] = yaml_metadata[k]
+
+    return metadata
 
 
 def tiff_filename2keys(tiff_filename):
@@ -3115,6 +3264,13 @@ def format_mixture(*args):
     return title
 
 
+def format_keys(date, fly, *other_keys):
+    date = date.strftime(date_fmt_str)
+    fly = str(int(fly))
+    others = [str(k) for k in other_keys]
+    return '/'.join([date] + [fly] + others)
+
+
 # TODO rename to be inclusive of cases other than pairs
 def pair_ordering(comparison_df):
     """Takes a df w/ name1 & name2 to a dict of their tuples to order int.
@@ -3682,6 +3838,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     cell2rect = dict()
     cell2text_and_rect = dict()
 
+    seen_ij = set()
     avg = None
     for i, cell_id in enumerate(cells):
         if verbose:
@@ -3861,11 +4018,15 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             #(prep_date, fly_num, thorimage_id,
             (_, _, _, comp, o1, o2, repeat_num, order) = n
 
+            # TODO TODO also support a 'fixed' order that B wanted
+            # (which should also include missing stuff[, again in gray,]
+            # ideally)
             if order_by == 'odors':
                 j = n_repeats * ordering[(o1, o2)] + repeat_num
 
             elif order_by == 'presentation_order':
                 j = order
+
             else:
                 raise ValueError("supported orderings are 'odors' and "+
                     "'presentation_order'")
@@ -3874,6 +4035,8 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 ymin = None
                 ymax = None
 
+            assert (i,j) not in seen_ij
+            seen_ij.add((i,j))
             ax = axs[i,j]
 
             # So that events that get the axes can translate to cell /
@@ -3886,6 +4049,52 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             ax.tick_params(labelsize=6)
 
             trial_times = cell_trial['from_onset']
+
+            # TODO TODO why is *first* ea trial the one not shown, and
+            # apparently the middle pfo trial
+            # (was it not actually ordered by 'order'/frame_num outside of
+            # odor order???)
+            # TODO TODO TODO why did this not seem to work? (or only for
+            # 1/3.  the middle one. iaa.)
+            # (and actually title is still hidden for ea and pfo trials
+            # mentioned above, but numbers / ticks / box still there)
+            # (above notes only apply to odor order case. presentation order
+            # worked)
+            # TODO and why is gray title over correct axes in odor order case,
+            # but axes not displaying data are in wrong place?
+            # TODO is cell_trial messed up?
+
+            # Supports at least the case when there are missing odor
+            # presentations at the end of the ~block.
+            missing_this_presentation = \
+                trial_times.shape == (1,) and pd.isnull(trial_times.iat[0])
+
+            if i == 0:
+                # TODO group in odors case as w/ matshow?
+                if order_by == 'odors':
+                    trial_title = format_mixture({
+                        'name1': o1,
+                        'name2': o2,
+                    })
+                elif order_by == 'presentation_order':
+                    trial_title = format_mixture({
+                        'name1': o1,
+                        'name2': o2
+                    })
+
+                if missing_this_presentation:
+                    tc = 'gray'
+                else:
+                    tc = 'black'
+
+                ax.set_title(trial_title, fontsize=6, color=tc)
+                # TODO may also need to do tight_layout here...
+                # it apply to these kinds of titles?
+
+            if missing_this_presentation:
+                ax.axis('off')
+                continue
+
             trial_dff = cell_trial['df_over_f']
 
             if raw:
@@ -3925,23 +4134,6 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 else:
                     ax.set_facecolor(nonresponse_rgb +
                         (response_call_alpha,))
-
-            if i == 0:
-                # TODO TODO group in odors case as w/ matshow
-                if order_by == 'odors':
-                    trial_title = format_mixture({
-                        'name1': o1,
-                        'name2': o2,
-                    })
-                elif order_by == 'presentation_order':
-                    trial_title = format_mixture({
-                        'name1': o1,
-                        'name2': o2
-                    })
-
-                ax.set_title(trial_title, fontsize=6) #, rotation=90)
-                # TODO may also need to do tight_layout here...
-                # it apply to these kinds of titles?
 
             if i == axs.shape[0] - 1 and j == 0:
                 # want these centered on example plot or across all?
@@ -4053,6 +4245,19 @@ def imshow(img, title):
     return fig
 
 
+def image_grid(image_list):
+    n = int(np.ceil(np.sqrt(len(image_list))))
+    fig, axs = plt.subplots(n,n)
+    for ax, img in zip(axs.flat, image_list):
+        ax.imshow(img, cmap='gray')
+
+    for ax in axs.flat:
+        ax.axis('off')
+
+    plt.subplots_adjust(wspace=0, hspace=0.05)
+    return fig
+
+
 def normed_u8(img):
     return (255 * (img / img.max())).astype(np.uint8)
 
@@ -4085,6 +4290,12 @@ def euclidean_dist(v1, v2):
     return np.linalg.norm(np.array(v1) - np.array(v2))
 
 
+# TODO TODO TODO try updating to take max of two diff match images,
+# created w/ different template scales (try a smaller one + existing),
+# and pack appropriate size at each maxima.
+# TODO make sure match criteria is comparable across scales (one threshold
+# ideally) (possible? using one of normalized metrics sufficient? test this
+# on fake test data?)
 def greedy_roi_packing(match_image, radius, d, threshold=None, n=None, 
     exclusion_radius_frac=0.5, min_dist2neighbor=15, min_neighbors=3,
     draw_on=None, _claimed_from_double_radius=True,
@@ -4179,6 +4390,8 @@ def greedy_roi_packing(match_image, radius, d, threshold=None, n=None,
                 continue
 
         found_n += 1
+        # TODO TODO was this just so output would be in imagej coords or
+        # something? make cleaner.
         center = (center[0] - 1, center[1] - 1)
         centers.append(center)
 
@@ -4248,13 +4461,40 @@ def autoroi_metadata_filename(ijroi_file):
     return join(path, '.{}.meta.p'.format(fname))
 
 
-def fit_circle_rois(tif, template, margin, mean_cell_extent_um, avg=None,
-    method_str='cv2.TM_CCOEFF', threshold=2000, exclusion_radius_frac=0.6,
-    min_neighbors=2, debug=False, write_ijrois=False, _force_write_to=None):
+def fit_circle_rois(tif, template=None, margin=None, mean_cell_extent_um=None,
+    avg=None, movie=None, method_str='cv2.TM_CCOEFF', threshold=2000,
+    exclusion_radius_frac=0.6, min_neighbors=2, debug=False, write_ijrois=False,
+    _force_write_to=None, max_cells_per_plane=650):
+    """
+    Even if movie or avg is passed in, tif is used to find metadata and
+    determine where to save ImageJ ROIs.
 
+    Returns centers, radius
+    """
     import tifffile
     import cv2
     import ijroi
+
+    required = [template, margin, mean_cell_extent_um]
+    have_req = [a is not None for a in required]
+    if any(have_req):
+        if not all(have_req):
+            req_str = ', '.join(['template', 'margin', 'mean_cell_extent_um'])
+            raise ValueError(f'if any of ({req_str}) are passed, '
+                'must pass them all')
+    else:
+        # TODO maybe options to cache this data across calls?
+        # might not matter...
+        data = template_data(err_if_missing=True)
+        template = data['template']
+        margin = data['margin']
+        mean_cell_extent_um = data['mean_cell_extent_um']
+
+    # TODO TODO maybe try incorporating slightly-varying-scale template
+    # matching into greedy roi assignment procedure (normed corr useful there?)
+    # TODO normed ccoeff equivalent to non-normed after appropriate choice of
+    # threshold? (seemed earlier, maybe no, but i could have done the test
+    # wrong)
 
     if write_ijrois or _force_write_to is not None:
         write_ijrois = True
@@ -4280,7 +4520,9 @@ def fit_circle_rois(tif, template, margin, mean_cell_extent_um, avg=None,
             return None, None
 
     if avg is None:
-        movie = tifffile.imread(tif)
+        if movie is None:
+            movie = tifffile.imread(tif)
+
         avg = movie.mean(axis=0)
 
     # We enforce earlier that template must be symmetric.
@@ -4289,20 +4531,39 @@ def fit_circle_rois(tif, template, margin, mean_cell_extent_um, avg=None,
 
     keys = tiff_filename2keys(tif)
     ti_dir = thorimage_dir(*tuple(keys))
-    try:
-        xmlroot = get_thorimage_xmlroot(ti_dir)
-    except:
-        import ipdb; ipdb.set_trace()
+    xmlroot = get_thorimage_xmlroot(ti_dir)
     um_per_pixel_xy = get_thorimage_pixelsize_xml(xmlroot)
+
+    # It seemed to me that picking a new threshold on cv2.TM_CCOEFF_NORMED was
+    # not sufficient to reproduce cv2.TM_CCOEFF performance, so even if the
+    # normed version were useful to keep the same threshold across image scales,
+    # it seems other problems prevent me from using that in my case, so I'm
+    # rescaling the image to match against.
+    # TODO probably store target frame shape in template data store, rather than
+    # hardcoding here
+    target_frame_shape = (256, 256)
+    frame_downscaling = 1.0
+    if avg.shape != target_frame_shape:
+        orig_frame_d = avg.shape[0]
+        assert avg.shape[0] == avg.shape[1]
+
+        avg = cv2.resize(avg, target_frame_shape)
+
+        new_frame_d = avg.shape[0]
+        frame_downscaling = orig_frame_d / new_frame_d
+        um_per_pixel_xy *= frame_downscaling
+
     expected_cell_pixel_diam = mean_cell_extent_um / um_per_pixel_xy
 
     template_cell_pixel_diam = d - 2 * margin
 
     template_scale = expected_cell_pixel_diam / template_cell_pixel_diam
     new_template_d = int(round(template_scale * d))
+
     new_template_shape = tuple([new_template_d] * len(template.shape))
     if new_template_d != d:
         scaled_template = cv2.resize(template, new_template_shape)
+        template_cell_pixel_diam *= new_template_d / d
     else:
         scaled_template = template
 
@@ -4340,14 +4601,21 @@ def fit_circle_rois(tif, template, margin, mean_cell_extent_um, avg=None,
         bboxes=False, nums=False, debug=debug
     )
 
+    # TODO lower bound too, if any bounds?
+    if len(centers) > max_cells_per_plane:
+        raise RuntimeError('too many cells detected. try lowering threshold?')
+
+    if frame_downscaling != 1.0:
+        radius = int(round(radius * frame_downscaling))
+        centers = np.round(centers * frame_downscaling).astype(centers.dtype)
+
     if write_ijrois:
         auto_md_fname = autoroi_metadata_filename(fname)
 
         name2bboxes = list()
         for i, center in enumerate(centers):
-            # TODO TODO TODO test that these radii are preserved across
-            # round trip save / loads (or at least check output looks OK
-            # loaded in my GUI)
+            # TODO TODO test that these radii are preserved across
+            # round trip save / loads?
             min_corner = [center[0] - radius, center[1] - radius]
             max_corner = [
                 min_corner[0] + 2 * radius,
@@ -4378,11 +4646,991 @@ def template_data_file():
     return join(analysis_output_root(), template_cache)
 
 
-def template_data():
+def template_data(err_if_missing=False):
     template_cache = template_data_file()
     if exists(template_cache):
         with open(template_cache, 'rb') as f:
             data = pickle.load(f)
         return data
     else:
+        if err:
+            raise IOError(f'template data not found at {template_cache}')
+
         return None
+
+
+def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True):
+    """Returns list of arrays, one per continuous acquisition.
+
+    Total length along time dimension should be preserved from input TIFF.
+    """
+    import tifffile
+    from scipy import stats
+
+    if movie is None:
+        movie = tifffile.imread(tif)
+
+    keys = tiff_filename2keys(tif)
+    mat = matfile(*keys)
+    ti = load_mat_timing_information(mat)
+
+    # TODO TODO remove use_cache. just for testing.
+    df = mb_team_gsheet(use_cache=True)
+    #
+
+    recordings = df.loc[(df.date == keys.date) &
+                        (df.fly_num == keys.fly_num) &
+                        (df.thorimage_dir == keys.thorimage_id)]
+    recording = recordings.iloc[0]
+    if recording.project != 'natural_odors':
+        warnings.warn('project type {} not supported. skipping.'.format(
+            recording.project))
+        return
+
+    # TODO factor this metadata handling out. fns for load / set?
+    # combine w/ remy's .mat metadata (+ my stimfile?)
+
+    meta = metadata(*keys)
+
+    stimfile = recording['stimulus_data_file']
+    stimfile_path = join(stimfile_root(), stimfile)
+    # TODO also err if not readable / valid
+    if not exists(stimfile_path):
+        raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
+            stimfile_root))
+
+    with open(stimfile_path, 'rb') as f:
+        data = pickle.load(f)
+
+    # TODO just infer from data if no stimfile and not specified in
+    # metadata_file
+    n_repeats = int(data['n_repeats'])
+
+    # TODO delete this hack (which is currently just using new pickle
+    # format as a proxy for the experiment being a supermixture experiment)
+    if 'odor_lists' not in data:
+        # The 3 is because 3 odors are compared in each repeat for the
+        # natural_odors project.
+        presentations_per_repeat = 3
+        odor_list = data['odor_pair_list']
+    else:
+        n_expected_real_blocks = 3
+        odor_list = data['odor_lists']
+        # because of "block" def in arduino / get_stiminfo code
+        # not matching def in randomizer / stimfile code
+        # (scopePin pulses vs. randomization units, depending on settings)
+        presentations_per_repeat = len(odor_list) // n_expected_real_blocks
+        assert len(odor_list) % n_expected_real_blocks == 0
+
+        # Hardcode to break up into more blocks, to align defs of blocks.
+        # TODO (maybe just for experiments on 2019-07-25 ?) or change block
+        # handling in here? make more flexible?
+        n_repeats = 1
+
+    presentations_per_block = n_repeats * presentations_per_repeat
+
+    if pd.isnull(recording['first_block']):
+        first_block = 0
+    else:
+        first_block = int(recording['first_block']) - 1
+
+    if pd.isnull(recording['last_block']):
+        n_full_panel_blocks = \
+            int(len(odor_list) / presentations_per_block)
+        last_block = n_full_panel_blocks - 1
+    else:
+        last_block = int(recording['last_block']) - 1
+
+    first_presentation = first_block * presentations_per_block
+    last_presentation = (last_block + 1) * presentations_per_block - 1
+
+    odor_list = odor_list[first_presentation:(last_presentation + 1)]
+    assert (len(odor_list) % (presentations_per_repeat * n_repeats) == 0)
+
+    # TODO TODO delete odor frame stuff after using them to check blocks frames
+    # are actually blocks and not trials
+    # TODO or if keeping odor stuff, re-add asserts involving odor_list,
+    # since how i have that here
+
+    odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
+        ).flatten() - 1
+    odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32).flatten() - 1
+    assert len(odor_onset_frames) == len(odor_offset_frames)
+
+    # Of length equal to number of blocks. Each element is the frame
+    # index (from 1) in CNMF output that starts the block, where
+    # block is defined as a period of continuous acquisition.
+    block_first_frames = np.array(ti['block_start_frame'], dtype=np.uint32
+        ).flatten() - 1
+    block_last_frames = np.array(ti['block_end_frame'], dtype=np.uint32
+        ).flatten() - 1
+
+    n_blocks_from_gsheet = last_block - first_block + 1
+    n_blocks_from_thorsync = len(block_first_frames)
+
+    assert (len(odor_list) == (last_block - first_block + 1) *
+        presentations_per_block)
+
+    n_presentations = n_blocks_from_gsheet * presentations_per_block
+
+    err_msg = ('{} blocks ({} to {}, inclusive) in Google sheet {{}} {} ' +
+        'blocks from ThorSync.').format(n_blocks_from_gsheet,
+        first_block + 1, last_block + 1, n_blocks_from_thorsync)
+    fail_msg = (' Fix in Google sheet, turn off ' +
+        'cache if necessary, and rerun.')
+
+    if n_blocks_from_gsheet > n_blocks_from_thorsync:
+        raise ValueError(err_msg.format('>') + fail_msg)
+
+    elif n_blocks_from_gsheet < n_blocks_from_thorsync:
+        if allow_gsheet_to_restrict_blocks:
+            warnings.warn(err_msg.format('<') + (' This is ONLY ok if you '+
+                'intend to exclude the LAST {} blocks in the Thor output.'
+                ).format(n_blocks_from_thorsync - n_blocks_from_gsheet))
+        else:
+            raise ValueError(err_msg.format('<') + fail_msg)
+
+    frame_times = np.array(ti['frame_times']).flatten()
+
+    total_block_frames = 0
+    for i, (b_start, b_end) in enumerate(
+        zip(block_first_frames, block_last_frames)):
+
+        if i != 0:
+            last_b_end = block_last_frames[i - 1]
+            assert last_b_end == (b_start - 1)
+
+        assert (b_start < len(frame_times)) and (b_end < len(frame_times))
+        block_frametimes = frame_times[b_start:b_end]
+        dts = np.diff(block_frametimes)
+        # np.max(np.abs(dts - np.mean(dts))) / np.mean(dts)
+        # was 0.000148... in one case I tested w/ data from the older
+        # system, so the check below w/ rtol=1e-4 would fail.
+        mode = stats.mode(dts)[0]
+        assert np.allclose(dts, mode, rtol=3e-4)
+
+        total_block_frames += b_end - b_start + 1
+
+    orig_n_frames = movie.shape[0]
+    # TODO may need to remove this assert to handle cases where there is a
+    # partial block (stopped early). leave assert after slicing tho.
+    # (warn instead, probably)
+    assert total_block_frames == orig_n_frames, \
+        '{} != {}'.format(total_block_frames, orig_n_frames)
+
+    if allow_gsheet_to_restrict_blocks:
+        # TODO unit test for case where first_block != 0 and == 0
+        # w/ last_block == first_block and > first_block
+        # TODO TODO doesn't this only support dropping blocks at end?
+        # do i assert that first_block is 0 then? probably should...
+        # TODO TODO TODO shouldnt it be first_block:last_block+1?
+        block_first_frames = block_first_frames[
+            :(last_block - first_block + 1)]
+        block_last_frames = block_last_frames[
+            :(last_block - first_block + 1)]
+
+        assert len(block_first_frames) == n_blocks_from_gsheet
+        assert len(block_last_frames) == n_blocks_from_gsheet
+
+        # TODO also delete this odor frame stuff when done
+        odor_onset_frames = odor_onset_frames[
+            :(last_presentation - first_presentation + 1)]
+        odor_offset_frames = odor_offset_frames[
+            :(last_presentation - first_presentation + 1)]
+
+        assert len(odor_onset_frames) == n_presentations
+        assert len(odor_offset_frames) == n_presentations
+        #
+
+        frame_times = frame_times[:(block_last_frames[-1] + 1)]
+
+    last_frame = block_last_frames[-1]
+
+    n_tossed_frames = movie.shape[0] - (last_frame + 1)
+    if n_tossed_frames != 0:
+        print(('Tossing trailing {} of {} frames of movie, which did not ' +
+            'belong to any used block.\n').format(
+            n_tossed_frames, movie.shape[0]))
+
+    # TODO want / need to do more than just slice to free up memory from
+    # other pixels? is that operation worth it?
+    drop_first_n_frames = meta['drop_first_n_frames']
+    # TODO TODO err if this is past first odor onset (or probably even too
+    # close)
+
+    odor_onset_frames = [n - drop_first_n_frames
+        for n in odor_onset_frames]
+    odor_offset_frames = [n - drop_first_n_frames
+        for n in odor_offset_frames]
+
+    block_first_frames = [n - drop_first_n_frames
+        for n in block_first_frames]
+    block_first_frames[0] = 0
+    block_last_frames = [n - drop_first_n_frames
+        for n in block_last_frames]
+
+    assert odor_onset_frames[0] > 0
+
+    frame_times = frame_times[drop_first_n_frames:]
+    movie = movie[drop_first_n_frames:(last_frame + 1)]
+
+    # TODO TODO fix bug referenced in cthulhu:190520...
+    # and re-enable assert
+    assert movie.shape[0] == len(frame_times), \
+        '{} != {}'.format(movie.shape[0], len(frame_times))
+    #
+
+    if movie.shape[0] != len(frame_times):
+        warnings.warn('{} != {}'.format(movie.shape[0], len(frame_times)))
+
+    # TODO maybe move this and the above checks on block start/end frames
+    # + frametimes into assign_frames_to_trials
+    n_frames = movie.shape[0]
+    total_block_frames = sum([e - s + 1 for s, e in
+        zip(block_first_frames, block_last_frames)])
+
+    assert total_block_frames == n_frames, \
+        '{} != {}'.format(total_block_frames, n_frames)
+
+
+    # TODO any time / space diff returning slices to slice array and only
+    # slicing inside loop vs. returning list of (presumably views) by slicing
+    # matrix?
+    blocks = [movie[start:(stop + 1)] for start, stop in
+        zip(block_first_frames, block_last_frames)]
+    assert sum([b.shape[0] for b in blocks]) == movie.shape[0]
+    return blocks
+
+
+def downsample_movie(movie, target_fps, current_fps, allow_overshoot=True,
+    allow_uneven_division=False, relative_fps_err=True, debug=False):
+    """Returns downsampled movie by averaging consecutive groups of frames.
+
+    Groups of frames averaged do not overlap.
+    """
+    if allow_uneven_division:
+        raise NotImplementedError
+
+    # TODO maybe kwarg for max acceptable (rel/abs?) factor error,
+    # and err / return None if it can't be achieved
+
+    target_factor = current_fps / target_fps
+    if debug:
+        print(f'allow_overshoot: {allow_overshoot}')
+        print(f'allow_uneven_division: {allow_uneven_division}')
+        print(f'relative_fps_err: {relative_fps_err}')
+        print(f'target_fps: {target_fps:.2f}\n')
+        print(f'target_factor: {target_factor:.2f}\n')
+
+    n_frames = movie.shape[0]
+
+    # TODO TODO also support uneven # of frames per bin (toss last probably)
+    # (skip loop checking for even divisors in that case)
+
+    # Find the largest/closest downsampling we can do, with equal numbers of
+    # frames for each average.
+    best_divisor = None
+    for i in range(1, n_frames):
+        if n_frames % i != 0:
+            continue
+
+        decimated_n_frames = n_frames // i
+        # (will always be float(i) in even division case, so could get rid of
+        # this if that's all i'll support)
+        factor = n_frames / decimated_n_frames
+        if debug:
+            print(f'factor: {factor:.2f}')
+
+        if factor > target_factor and not allow_overshoot:
+            if debug:
+                print('breaking because of overshoot')
+            break
+
+        downsampled_fps = current_fps / factor
+        fps_error = downsampled_fps - target_fps
+        if relative_fps_err:
+            fps_error = fps_error / target_fps
+
+        if debug:
+            print(f'downsampled_fps: {downsampled_fps:.2f}')
+            print(f'fps_error: {fps_error:.2f}')
+
+        if best_divisor is None or abs(fps_error) < abs(best_fps_error):
+            best_divisor = i
+            best_downsampled_fps = downsampled_fps
+            best_fps_error = fps_error
+            best_factor = factor
+
+            if debug:
+                print(f'best_downsampled_fps: {best_downsampled_fps:.2f}')
+                print('new best factor')
+
+        elif (best_divisor is not None and
+            abs(fps_error) > abs(best_fps_error)):
+
+            assert allow_overshoot
+            if debug:
+                print('breaking because past best factor')
+            break
+
+        if debug:
+            print('')
+
+    assert best_divisor is not None
+
+    # TODO unit test for this case
+    if best_divisor == 1:
+        raise ValueError('best downsampling with this flags at factor of 1')
+
+    if debug:
+        print(f'best_divisor: {best_divisor}')
+        print(f'best_factor: {best_factor:.2f}')
+        print(f'best_fps_error: {best_fps_error:.2f}')
+        print(f'best_downsampled_fps: {best_downsampled_fps:.2f}')
+
+    frame_shape = movie.shape[1:]
+    new_n_frames = n_frames // best_divisor
+
+    # see: stackoverflow.com/questions/15956309 for how to adapt this
+    # to uneven division case
+    downsampled = movie.reshape((new_n_frames, best_divisor) + frame_shape
+        ).mean(axis=1)
+
+    # TODO maybe it's obvious, but is there any kind of guarantee dimensions in
+    # frame_shape will not be screwed up in a way relevant to the average
+    # when reshaping?
+    # well, at least this looks reasonable:
+    # image_grid(downsampled[:64])
+
+    return downsampled, best_downsampled_fps
+
+
+# TODO maybe move to ijroi
+# don't like this convexHull based approach though...
+# (because roi may be intentionally not a convex hull)
+def ijroi2cv_contour(roi):
+    import cv2
+
+    ## cnts = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    ## cnts[1][0].shape
+    ## cnts[1][0].dtype
+    # from inspecting output of findContours, as above:
+    #cnt = np.expand_dims(ijroi, 1).astype(np.int32)
+    # TODO fix so this isn't necessary. in case of rois that didn't start as
+    # circles, the convexHull may occasionally not be equal to what i want
+    cnt = cv2.convexHull(roi.astype(np.int32))
+    # if only getting cnt from convexHull, this is probably a given...
+    assert cv2.contourArea(cnt) > 0
+    return cnt
+#
+
+
+def roi_center(roi):
+    import cv2
+    cnt = ijroi2cv_contour(roi)
+    M = cv2.moments(cnt)
+    cx = int(M['m10'] / M['m00'])
+    cy = int(M['m01'] / M['m00'])
+    return np.array((cx, cy))
+
+
+def roi_centers(rois):
+    centers = []
+    for roi in rois:
+        center = roi_center(roi)
+        # pretty close to (w/in 0.5 in each dim) np.mean(roi, axis=0),
+        # in at least one example i played with
+        centers.append(center)
+    return np.array(centers)
+
+
+def tiff_title(tif):
+    """Returns abbreviation of TIFF filename for use in titles.
+    """
+    parts = [x for x in tif.split('/')[-4:] if x != 'tif_stacks']
+    ext = '.tif'
+    if parts[-1].endswith(ext):
+        parts[-1] = parts[-1][:-len(ext)]
+    return '/'.join(parts)
+
+
+# TODO didn't i have some other fn for this? delete one if so
+# (or was it just in natural_odors?)
+def to_filename(title):
+    return title.replace('/','_').replace(' ','_').replace(',','').replace(
+        '.','') + '.'
+
+
+def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
+    max_cost=9, show=True, left_name='Left', right_name='Right', name_prefix='',
+    draw_on=None, title='', colors=None, connect_centers=True,
+    pairwise_plots=True, pairwise_same_style=False, roi_numbers=False,
+    jitter=True, progress=False):
+    """
+    Args:
+    left_centers_or_seq (list): (length n_timepoints) list of (n_rois x 2)
+        arrays of ROI center coordinates.
+
+    Returns:
+    lr_matches: list of arrays matching ROIs in one timepoint to ROIs in the
+        next.
+
+    left_unmatched: list of arrays with ROI labels at time t,
+        without a match at time (t + 1)
+
+    right_unmatched: same as left_unmatched, but for (t + 1) with respect to t.
+
+    total_costs: array of sums of costs from matching.
+    
+    fig: matplotlib figure handle to the figure with all ROIs on it,
+        for modification downstream.
+    """
+    # TODO doc support for ROI inputs / rewrite to expect them
+    # (to use jaccard, etc)
+
+    from scipy.optimize import linear_sum_assignment
+    import seaborn as sns
+    if progress:
+        from tqdm import tqdm
+
+    # TODO maybe unsupport two args case to be more concise
+    if len(right_centers) == 0:
+        sequence_of_centers = left_centers_or_seq
+
+    elif len(right_centers) == 1:
+        right_centers = right_centers[0]
+        sequence_of_centers = [left_centers_or_seq, right_centers]
+
+    else:
+        raise ValueError('wrong number of arguments')
+
+    if max_cost is None:
+        raise ValueError('max_cost must not be None')
+
+    default_two_colors = ['red', 'blue']
+    if len(sequence_of_centers) == 2:
+        pairwise_plots = False
+        scatter_alpha = 0.6
+        scatter_marker = None
+        labels = [n + ' centers' for n in (left_name, right_name)]
+        if colors is None:
+            colors = default_two_colors
+    else:
+        scatter_alpha = 0.8
+        scatter_marker = 'x'
+        labels = [name_prefix + str(i) for i in range(len(sequence_of_centers))]
+        if colors is None:
+            colors = sns.color_palette('hls', len(sequence_of_centers))
+
+    for i, centers in enumerate(sequence_of_centers):
+        # Otherwise it should be an ndarray representing centers
+        # TODO assertion on dims in ndarray case
+        if type(centers) is list:
+            sequence_of_centers[i] = roi_centers(centers)
+
+    fig = None
+    if show:
+        figsize = (10, 10)
+        fig, ax = plt.subplots(figsize=figsize)
+        if draw_on is None:
+            color = 'black'
+        else:
+            ax.imshow(draw_on, cmap='gray')
+            ax.axis('off')
+            color = 'yellow'
+        fontsize = 8
+        text_x_offset = 2
+        plot_format = 'png'
+
+        if jitter:
+            np.random.seed(50)
+            jl = -0.1
+            jh = 0.1
+
+    unmatched_left = []
+    unmatched_right = []
+    lr_matches = []
+    cost_totals = []
+
+    if progress:
+        centers_iter = tqdm(range(len(sequence_of_centers) - 1))
+        print('Matching ROIs across timepoints:')
+    else:
+        centers_iter = range(len(sequence_of_centers) - 1)
+
+    for k in centers_iter:
+        left_centers = sequence_of_centers[k]
+        right_centers = sequence_of_centers[k + 1]
+
+        # TODO other / better ways to generate cost matrix?
+        # pairwise jacard (would have to not take centers then)?
+        # TODO why was there a "RuntimeWarning: invalid valid encounterd in
+        # multiply" here ocassionally? it still seems like we had some left and
+        # right centers, so idk
+        costs = np.empty((len(left_centers), len(right_centers))) * np.nan
+        for i, cl in enumerate(left_centers):
+            for j, cr in enumerate(right_centers):
+                # TODO short circuit as appropriate? better way to loop over
+                # coords we need?
+                cost = cost_fn(cl, cr)
+                if cost > max_cost:
+                    cost = max_cost
+                costs[i,j] = cost
+
+        # TODO was Kellan's method of matching points not equivalent to this?
+        # or per-timestep maybe it was (or this was better), but he also
+        # had a way to evolve points over time (+ a particular cost)?
+
+        left_idx, right_idx = linear_sum_assignment(costs)
+        # Just to double-check properties I assume about the assignment
+        # procedure.
+        assert len(left_idx) == len(np.unique(left_idx))
+        assert len(right_idx) == len(np.unique(right_idx))
+
+        n_not_drawn = None
+        if show:
+            if jitter:
+                left_jitter = np.random.uniform(low=jl, high=jh,
+                    size=left_centers.shape)
+                right_jitter = np.random.uniform(low=jl, high=jh,
+                    size=right_centers.shape)
+
+                left_centers_to_plot = left_centers + left_jitter
+                right_centers_to_plot = right_centers + right_jitter
+            else:
+                left_centers_to_plot = left_centers
+                right_centers_to_plot = right_centers
+
+            if pairwise_plots:
+                # TODO maybe change multiple pairwise plots to be created as
+                # axes within one the axes from one call to subplots
+                pfig, pax = plt.subplots(figsize=figsize)
+                if pairwise_same_style:
+                    pmarker = scatter_marker
+                    c1 = colors[k]
+                    c2 = colors[k + 1]
+                else:
+                    pmarker = None
+                    c1 = default_two_colors[0]
+                    c2 = default_two_colors[1]
+
+                if draw_on is not None:
+                    pax.imshow(draw_on, cmap='gray')
+                    pax.axis('off')
+
+                pax.scatter(*left_centers_to_plot.T, label=labels[k],
+                    color=c1, alpha=scatter_alpha,
+                    marker=pmarker)
+
+                pax.scatter(*right_centers_to_plot.T, label=labels[k + 1],
+                    color=c2, alpha=scatter_alpha,
+                    marker=pmarker)
+
+                psuffix = f'{k} vs. {k+1}'
+                if len(name_prefix) > 0:
+                    psuffix = f'{name_prefix} ' + psuffix
+                if len(title) > 0:
+                    ptitle = f'{title}, ' + psuffix
+                else:
+                    ptitle = psuffix
+                pax.set_title(ptitle)
+                pax.legend()
+
+            ax.scatter(*left_centers_to_plot.T, label=labels[k],
+                color=colors[k], alpha=scatter_alpha,
+                marker=scatter_marker)
+
+            # TODO factor out scatter + opt numbers (internal fn?)
+            if roi_numbers:
+                for i, (x, y) in enumerate(left_centers_to_plot):
+                    ax.text(x + text_x_offset, y, str(i),
+                        color=colors[k], fontsize=fontsize)
+
+            # Because generally this loop only scatterplots the left_centers,
+            # so without this, the last set of centers would not get a
+            # scatterplot.
+            if (k + 1) == (len(sequence_of_centers) - 1):
+                last_centers = right_centers_to_plot
+
+                ax.scatter(*last_centers.T, label=labels[-1],
+                    color=colors[-1], alpha=scatter_alpha,
+                    marker=scatter_marker)
+
+                if roi_numbers:
+                    for i, (x, y) in enumerate(last_centers):
+                        ax.text(x + text_x_offset, y, str(i),
+                            color=colors[-1], fontsize=fontsize)
+
+            if connect_centers:
+                n_not_drawn = 0
+                for li, ri in zip(left_idx, right_idx):
+                    if costs[li,ri] >= max_cost:
+                        n_not_drawn += 1
+                        continue
+                        #linestyle = '--'
+                    else:
+                        linestyle = '-'
+
+                    lc = left_centers_to_plot[li]
+                    rc = right_centers_to_plot[ri]
+                    correspondence_line = ([lc[0], rc[0]], [lc[1], rc[1]])
+
+                    ax.plot(*correspondence_line, linestyle=linestyle,
+                        color=color, alpha=0.7)
+
+                    if pairwise_plots:
+                        pax.plot(*correspondence_line, linestyle=linestyle,
+                            color=color, alpha=0.7)
+
+                # TODO didn't i have some fn for getting filenames from things
+                # like titles? use that if so
+                # TODO plot format + flag to control saving + save to some
+                # better dir
+                # TODO separate dir for these figs? or at least place where some
+                # of other figs currently go?
+                if pairwise_plots:
+                    fname = to_filename(ptitle) + plot_format
+                    print(f'writing to {fname}')
+                    pfig.savefig(fname)
+
+        k_unmatched_left = set(range(len(left_centers))) - set(left_idx)
+        k_unmatched_right = set(range(len(right_centers))) - set(right_idx)
+
+        # TODO why is costs.min() actually 0? that seems unlikely?
+        match_costs = costs[left_idx, right_idx]
+        total_cost = match_costs.sum()
+
+        to_unmatch = match_costs >= max_cost
+        # For checking consistent w/ draw output above
+        if n_not_drawn is not None:
+            n_unmatched = to_unmatch.sum()
+            assert n_not_drawn == n_unmatched, f'{n_not_drawn} != {n_unmatched}'
+
+        k_unmatched_left.update(left_idx[to_unmatch])
+        k_unmatched_right.update(right_idx[to_unmatch])
+        left_idx = left_idx[~ to_unmatch]
+        right_idx = right_idx[~ to_unmatch]
+
+        n_unassigned = abs(len(left_centers) - len(right_centers))
+
+        total_cost += max_cost * n_unassigned
+        # TODO better way to normalize error?
+        total_cost = total_cost / max(len(left_centers), len(right_centers))
+
+        unmatched_left.append(np.array(list(k_unmatched_left)))
+        unmatched_right.append(np.array(list(k_unmatched_right)))
+        lr_matches.append(np.stack([left_idx, right_idx], axis=-1))
+        cost_totals.append(total_cost)
+
+    if show:
+        ax.legend()
+        ax.set_title(title)
+
+        # TODO and delete this extra hack
+        if len(sequence_of_centers) > 2:
+            extra = '_acrossblocks'
+        else:
+            extra = ''
+        fname = to_filename(title + extra) + plot_format
+        #
+        print(f'writing to {fname}')
+        fig.savefig(fname)
+        #
+
+    if len(sequence_of_centers) == 2:
+        lr_matches = lr_matches[0]
+        unmatched_left = unmatched_left[0]
+        unmatched_right = unmatched_right[0]
+        cost_totals = cost_totals[0]
+
+    # TODO maybe stop returning unmatched_* . not sure it's useful.
+
+    return lr_matches, unmatched_left, unmatched_right, cost_totals, fig
+
+
+def stable_rois(lr_matches, verbose=False):
+    """
+    Takes a list of n_cells x 2 matrices, with each row taking an integer ROI
+    label from one set of labels to the other.
+
+    Input is as first output of correspond_rois.
+
+    Returns:
+    stable_cells: a n_stable_cells x (len(lr_matches) + 1) matrix, where rows
+        represent different labels for the same real cells. Columns have the
+        set of stable cells IDs, labelled as the inputs are.
+
+    new_lost: a (len(lr_matches) - 1) length list of IDs lost when matching
+        lr_matches[i] to lr_matches[i + 1]. only considers IDs that had
+        been stable across all previous pairs of matchings.
+    """
+    # TODO TODO also test in cases where lr_matches is greater than len 2
+    # (at least len 3)
+
+    # TODO TODO also test when lr_matches is len 1, to support that case
+    if len(lr_matches) == 1 or type(lr_matches) is not list:
+        raise NotImplementedError
+
+    orig_matches = lr_matches
+    # Just since it gets written to in the loop.
+    lr_matches = [m.copy() for m in lr_matches]
+
+    stable = lr_matches[0][:,0]
+    UNLABELLED = -1
+    new_lost = []
+    for i in range(len(lr_matches) - 1):
+        matches1 = lr_matches[i]
+        matches2 = lr_matches[i + 1]
+
+        # These two columns should have the ROI / center numbers
+        # represent the same real ROI / point coordinates.
+        stable_1to2, m1_idx, m2_idx = np.intersect1d(
+            matches1[:,1], matches2[:,0], return_indices=True)
+
+        assert np.array_equal(matches1[m1_idx, 1], matches2[m2_idx, 0])
+
+        curr_stable_prior_labels = matches1[m1_idx, 0]
+
+        matches2[m2_idx, 0] = curr_stable_prior_labels
+
+        # To avoid confusion / errors related too using old, now meaningless
+        # labels.
+        not_in_m2_idx = np.setdiff1d(np.arange(len(matches2)), m2_idx)
+        assert (lr_matches[i + 1] == UNLABELLED).sum() == 0
+        matches2[not_in_m2_idx] = UNLABELLED 
+        assert (lr_matches[i + 1] == UNLABELLED).sum() == 2 * len(not_in_m2_idx)
+
+        ids_lost_at_i = np.setdiff1d(stable, curr_stable_prior_labels)
+        stable = np.setdiff1d(stable, ids_lost_at_i)
+        new_lost.append(ids_lost_at_i)
+
+        n_lost_at_i = len(ids_lost_at_i)
+        if verbose and n_lost_at_i > 0:
+            print(f'Lost {n_lost_at_i} ROI(s) between blocks {i} and {i + 1}')
+
+    # TODO make a test case where the total number of *matched* rois is
+    # conserved at each time step, but the matching makes the length of the
+    # ultimate stable set reduce
+    n_matched = [len(m) - ((m == UNLABELLED).sum() / 2) for m in lr_matches]
+    assert len(stable) <= min(n_matched)
+
+    stable_cells = []
+    for i, matches in enumerate(lr_matches):
+        # Because each of these columns will have been edited in the loop
+        # above, to have labels matching the first set of center labels.
+        _, _, stable_indices_i = np.intersect1d(stable, matches[:,0],
+            return_indices=True)
+
+        assert not UNLABELLED in matches[stable_indices_i, 0]
+        orig_labels_stable_i = orig_matches[i][stable_indices_i, 0]
+        stable_cells.append(orig_labels_stable_i)
+
+    # This last column in the last element in the last of matches
+    # was the only column that did NOT get painted over with the new labels.
+    stable_cells.append(matches[stable_indices_i, 1])
+    stable_cells = np.stack(stable_cells, axis=1)
+
+    # might be redundant...
+    stable_cells = stable_cells[np.argsort(stable_cells[:,0]), :]
+    assert np.array_equal(stable_cells[:,0], stable)
+    return stable_cells, new_lost
+
+
+# TODO TODO should either this fn or correspond_rois try to handle the case
+# where a cell drifts out of plane and then back into plane???
+# possible? some kind of filtering?
+def renumber_rois(matches_list, centers_list):
+    """
+    Each sequence of matched ROIs gets an increasing integer identifier
+    (including length-1 sequences, i.e. unmatched stuff).
+
+    Returns lists of IDs in each element of input list and centers,
+    re-indexed with new IDs.
+    """
+    # TODO TODO pad w/ NaN / UNLABELLED so that each element in 
+    # output list can be made of equal length (# of unique IDs across all)
+    # and then fit it all into an array
+    # TODO TODO do the same with centers
+
+    # TODO use this function inside stable_rois / delete that function
+    # altogether (?)
+
+    if type(matches_list) is not list or type(centers_list) is not list:
+        raise ValueError('both input arguments must be lists')
+
+    if len(matches_list) == 1:
+        raise NotImplementedError
+
+    assert len(centers_list) == len(matches_list) + 1
+
+    # Since they get written to in the loop.
+    matches_list = [m.copy() for m in matches_list]
+    centers_list = [c.copy() for c in centers_list]
+
+    ids_list = []
+    first_ids = matches_list[0][:, 0]
+    next_new_id = first_ids.max() + 1
+    # This also checks it's sorted, b/c unique sorts.
+    # Because these are sorted, don't need to re-order centers_list[0].
+    assert np.array_equal(np.unique(first_ids), first_ids)
+    ids_list.append(first_ids)
+
+    # TODO correct?
+    '''
+    # don't think so... it should be something usable to index centers
+    # (though prob also indep need something to fill in ids... ?)
+    '''
+
+    # To handle case where loop isn't entered
+    # (len(matches_list) == 1)
+    last_column_idx = np.arange(len(matches_list[0]))
+
+    for i in range(len(matches_list) - 1):
+        matches1 = matches_list[i]
+        matches2 = matches_list[i + 1]
+
+        # TODO TODO maybe assert that first column of matches1 is always sorted?
+        # (should it be? i mean we have re-ordered centers, and wasn't that kind
+        # of the point? or should propagated ids not have that value for some
+        # reason...?)
+
+        # These two columns should have the ROI / center numbers
+        # represent the same real ROI / point coordinates.
+        shared_center_ids, shared_m1_idx, shared_m2_idx = np.intersect1d(
+            matches1[:,1], matches2[:,0], return_indices=True)
+
+        assert np.array_equal(
+            matches1[shared_m1_idx, 1],
+            matches2[shared_m2_idx, 0]
+        )
+
+        # These centers are referred to by the IDs in matches_list[i + 1][:, 1],
+        # and (if it exists) matches_list[i + 2][:, 1]
+        centers = centers_list[i + 1]
+        assert len(matches2) <= len(centers)
+
+        # These include both things in matches2 (those not shared with matches1)
+        # and things we need to generate new IDs for.
+        #other_m2_center_ids = np.setdiff1d(np.arange(len(centers)),
+        #    shared_m2_idx)
+        other_m2_center_ids = np.setdiff1d(np.arange(len(centers)),
+            shared_center_ids)
+
+        # This should be of the same length as centers and should index each
+        # value, just in a different order.
+        #new_center_idx = np.concatenate((shared_m2_idx, other_m2_center_ids))
+        new_center_idx = np.concatenate((shared_center_ids,
+            other_m2_center_ids))
+        assert np.array_equal(np.arange(len(centers)),
+            np.unique(new_center_idx))
+
+        # We are re-ordering the centers, so that they are in the same order
+        # as the IDs (both propagated and new) at this timestep (curr_ids).
+        reordered_centers = centers[new_center_idx]
+        # (loop starts at i=0 and we do not need to re-order first array of
+        # centers. centers_list is also 1 longer than matches_list, so (i + 1)
+        # will never index the last element of centers_list.)
+        centers_list[i + 1] = reordered_centers
+
+        n_new_ids = len(other_m2_center_ids)
+        # Not + 1 because arange does not include the endpoint.
+        stop = next_new_id + n_new_ids
+        new_ids = np.arange(next_new_id, stop)
+        next_new_id = stop
+
+        prior_ids_of_shared = matches1[shared_m1_idx, 0]
+        matches2[shared_m2_idx, 0] = prior_ids_of_shared
+
+        # TODO TODO may need to fix
+        '''
+        nonshared_m2_idx = other_m2_center_ids[
+            other_m2_center_ids < len(matches2)]
+        # ROIs unmatched in matches2 get any remaining higher IDs in new_ids
+        matches2[nonshared_m2_idx, 0] = new_ids[:len(nonshared_m2_idx)]
+        '''
+
+        assert len(np.intersect1d(shared_m2_idx, nonshared_m2_idx)) == 0
+
+        curr_ids = np.concatenate((prior_ids_of_shared, new_ids))
+        assert len(curr_ids) == len(centers_list[i + 1])
+        assert len(curr_ids) == len(np.unique(curr_ids))
+
+        ids_list.append(curr_ids)
+
+        last_column_idx = np.concatenate(shared_m2_idx, nonshared_m2_idx)
+        # TODO some assert on what last col indexed by last_column_idx is?
+
+    last_matches = matches_list[-1]
+    last_centers = centers_list[-1]
+    assert len(last_matches) <= len(last_centers)
+    n_new_ids = len(last_centers) - len(last_matches)
+
+    stop = next_new_id + n_new_ids
+    new_ids = np.arange(next_new_id, stop)
+    # Not + 1 because arange does not include the endpoint.
+    next_new_id = stop
+
+    '''
+    other_m2_center_ids = np.setdiff1d(np.arange(len(last_centers)),
+        )
+    '''
+
+    # TODO uncomment
+    '''
+    # TODO TODO reorder last centers
+    last_center_idx = 
+    centers_list[-1] = last_centers[last_center_idx]
+
+    # TODO TODO 
+    ids_list.append(
+    '''
+
+    # TODO TODO need to special case end? (yes, just a matter of how)
+    # TODO how to reorder centers there?
+
+    # TODO TODO some more reasonable representation besides mask?
+    # (id, start, stop) tuples (if no re-assignment to ID after losing it...)?
+    # TODO should this be boolean (true for presence?)
+    #ids_array = np.empty((next_new_id, len(centers_list))) * np.nan
+    ids_array = np.zeros((next_new_id, len(centers_list)), dtype=bool)
+
+    centers_array = np.empty((next_new_id, len(centers_list), 2)) * np.nan
+
+    for i, (ids, centers) in enumerate(zip(ids_list, centers_list)):
+        ids_array[ids, i] = True
+        centers_array[ids, i, :] = centers
+
+    # TODO pad stuff / fill the above in
+
+    import ipdb; ipdb.set_trace()
+
+    return ids_array, centers_array
+
+
+# Adapted from Vishal's answer at https://stackoverflow.com/questions/287871
+_color_codes = {
+    'red': '31',
+    'green': '32',
+    'yellow': '33',
+    'blue': '34',
+    'cyan': '36'
+}
+def start_color(color_name):
+    try:
+        color_code = _color_codes[color_name]
+    except KeyError as err:
+        print('Available colors are:')
+        pprint.pprint(list(_color_codes.keys()))
+        raise
+    print('\033[{}m'.format(color_code), end='')
+
+
+def stop_color():
+    print('\033[0m', end='')
+
+
+def print_color(color_name, *args, **kwargs):
+    start_color(color_name)
+    print(*args, **kwargs, end='')
+    stop_color()
+

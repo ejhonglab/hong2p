@@ -30,6 +30,11 @@ import hong2p.util as u
 ################################################################################
 verbose = True
 
+# False or positive integers.
+# If not False, analysis will only run on the most recent n dates in the
+# mb_team_flies Google sheet metadata.
+only_last_n_days = 1
+
 use_cached_gsheet = False
 show_inferred_paths = True
 allow_gsheet_to_restrict_blocks = True
@@ -37,28 +42,16 @@ allow_gsheet_to_restrict_blocks = True
 fail_on_missing_dir_to_attempt = True
 only_do_anything_for_analysis = True
 
-convert_h5 = False
-calc_timing_info = False
-update_timing_info = False
-convert_raw_to_tiffs = False
-motion_correct = False
-'''
 convert_h5 = True
 calc_timing_info = True
 # If timing info ("ti") already exists in .mat, should we recalculate it?
-# TODO if this is False, still check that ti_code_version is there
+# TODO if this is False, still check that ti_code_version is there?
 update_timing_info = False
 convert_raw_to_tiffs = True
 motion_correct = True
-'''
 only_motion_correct_for_analysis = True
 fit_rois = True
 
-'''
-process_time_averages = True
-upload_matlab_cnmf_output = False
-ACTUALLY_UPLOAD = True
-'''
 process_time_averages = False
 upload_matlab_cnmf_output = False
 ACTUALLY_UPLOAD = True
@@ -133,6 +126,12 @@ df = u.mb_team_gsheet(
     use_cache=use_cached_gsheet,
     show_inferred_paths=show_inferred_paths
 )
+if only_last_n_days:
+    dates_to_consider = sorted(df.date.unique())[-only_last_n_days:]
+    date_dirs_to_consider = {pd.Timestamp(d).strftime(u.date_fmt_str)
+        for d in dates_to_consider}
+    print('B/c only_last_n_days setting, only considering date directories:',
+        date_dirs_to_consider)
 
 # TODO TODO warn if any raw data is not present on NAS / report which
 # (could indicate problems w/ path inference)
@@ -192,6 +191,9 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
     if fly_dir == 'unsorted':
         # TODO maybe make attempt to sort?
+        continue
+
+    if only_last_n_days and date_dir not in date_dirs_to_consider:
         continue
 
     try:
@@ -316,6 +318,11 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
             # TODO TODO check exit code -> save all applicable version info
             # into the same matfile, calling the matlab interface from here
+
+            # wasn't actually changing matlab err print color (cause stderr?)
+            # even if i did get it to work, might also color warnings and
+            # verbose prints, which i don't want
+            #u.start_color('red')
             try:
                 # TODO maybe determine whether to update_ti based on reading
                 # version info (in update_timing_info == False case)?
@@ -324,8 +331,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                 # throwing everything into _<>_cnmf.mat, as we are, would need
                 # to inspect it to check whether we already have the stiminfo...
                 updated_ti = evil.get_stiminfo(thorimage_dir,
-                    row['thorsync_dir'], analysis_fly_dir, date_dir, fly_num,
-                    update_ti, nargout=1)
+                    row['thorsync_dir'], analysis_fly_dir, update_ti, nargout=1)
 
                 if exists(matfile) and updated_ti:
                     evil.workspace['ti_code_version'] = curr_ti_code_version 
@@ -340,8 +346,12 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                     assert curr_ti_code_version == rt_matlab_code_version
                     evil.clear(nargout=0)
 
-            except matlab.engine.MatlabExecutionError:
+            except matlab.engine.MatlabExecutionError as err:
+                u.print_color('red', err)
+                print('')
                 continue
+            #finally:
+            #    u.stop_color()
 
             print(' done.')
 
@@ -461,11 +471,16 @@ if fit_rois:
         margin = template_data['margin']
         mean_cell_extent_um = template_data['mean_cell_extent_um']
 
+        # TODO make generator fns or something in util that yield
+        # raw / analysis dirs / tifs / whatever
         for analysis_dir in glob.glob(analysis_output_root + '/*/*/'):
             analysis_dir = os.path.normpath(analysis_dir)
 
             prefix, fly_dir = split(analysis_dir)
             _, date_dir = split(prefix)
+
+            if only_last_n_days and date_dir not in date_dirs_to_consider:
+                continue
 
             try:
                 fly_num = int(fly_dir)
@@ -523,6 +538,9 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
     prefix, fly_dir = split(analysis_dir)
     _, date_dir = split(prefix)
+
+    if only_last_n_days and date_dir not in date_dirs_to_consider:
+        continue
 
     try:
         fly_num = int(fly_dir)
@@ -897,14 +915,17 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # Of length equal to number of blocks. Each element is the frame
         # index (from 1) in CNMF output that starts the block, where
         # block is defined as a period of continuous acquisition.
-        block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
+        block_first_frames = np.array(ti['block_start_frame'], dtype=np.uint32
             ).flatten() - 1
 
-        # TODO after better understanding where trial_start comes from,
+        # TODO delete / use something else to get num blocks, if just using this
+        # list of sample times to count num blocks... (change matlab code)
+        # TODO after better understanding where block_start_frame comes from,
         # could get rid of this check if it's just tautological
-        block_ic_thorsync_idx = np.array(ti['block_ic_idx']).flatten()
+        block_ic_thorsync_idx = np.array(ti['block_start_sample']).flatten()
         assert len(block_ic_thorsync_idx) == len(block_first_frames), \
             'variables in MATLAB ti have inconsistent # of blocks'
+        #
 
         # TODO unit tests for block handling code
         n_blocks_from_gsheet = last_block - first_block + 1
@@ -949,7 +970,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO just assert equal to sorted version
         # TODO some fn for checking sorted? (i mean it's linear vs n*log(n)...)
 
-        block_last_frames = np.array(ti['trial_end'], dtype=np.uint32
+        block_last_frames = np.array(ti['block_end_frame'], dtype=np.uint32
             ).flatten() - 1
 
         if allow_gsheet_to_restrict_blocks:

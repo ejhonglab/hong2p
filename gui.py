@@ -49,7 +49,6 @@ from matplotlib.backends.backend_qt5agg import (FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
 import matlab.engine
-import yaml
 
 # TODO allow things to fail gracefully if we don't have cnmf.
 # either don't display tabs that involve it or display a message indicating it
@@ -78,8 +77,6 @@ show_inferred_paths = True
 overwrite_older_analysis = True
 
 df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
-
-rel_to_cnmf_mat = 'cnmf'
 
 # TODO probably just move this info into output of stimuli metadata generator
 # (or maybe just load either-or as-needed)
@@ -1843,8 +1840,14 @@ class Segmentation(QWidget):
 
 
     def assign_frames_to_trials(self) -> None:
-        # TODO doc + update doc below
+        # TODO finish doc
         """
+        Requires:
+        - self.movie
+        - self.presentations_per_block
+        - self.block_first_frames
+        - self.odor_onset_frames
+
         Sets:
         - self.trial_start_frames
         - self.trial_stop_frames
@@ -1953,11 +1956,18 @@ class Segmentation(QWidget):
         self.presentation_dfs = []
         self.comparison_dfs = []
         comparison_num = -1
+        if self.pair_case:
+            repeats_across_real_blocks = False
+        else:
+            repeats_across_real_blocks = True
+            repeat_nums = {id_group: 0 for id_group in self.odor_ids}
+
         print('processing presentations...', end='', flush=True)
         for i in range(len(self.trial_start_frames)):
             if i % self.presentations_per_block == 0:
                 comparison_num += 1
-                repeat_nums = {id_group: 0 for id_group in self.odor_ids}
+                if not repeats_across_real_blocks:
+                    repeat_nums = {id_group: 0 for id_group in self.odor_ids}
 
             start_frame = self.trial_start_frames[i]
             stop_frame = self.trial_stop_frames[i]
@@ -1998,11 +2008,6 @@ class Segmentation(QWidget):
             # given to two presentations. check they stay w/in block boundaries.
             # (they don't right now. fix!)
 
-            # TODO delete if there is an earlier check. should fail earlier
-            # anyway.
-            if not self.pair_case:
-                assert repeat_num == 0
-
             # TODO share more of this w/ dataframe creation below, unless that
             # table is changed to just reference presentation table
             presentation = pd.DataFrame({
@@ -2016,9 +2021,11 @@ class Segmentation(QWidget):
                 # blocks / repeats (or fixing block structure for future
                 # recordings)
                 'comparison': comparison_num if self.pair_case else 0,
+                'real_block': comparison_num,
                 'odor1': odor1,
                 'odor2': odor2,
-                'repeat_num': repeat_num if self.pair_case else comparison_num,
+                #'repeat_num': repeat_num if self.pair_case else comparison_num,
+                'repeat_num': repeat_num,
                 'odor_onset_frame': onset_frame,
                 'odor_offset_frame': offset_frame,
                 'from_onset': [[float(x) for x in presentation_frametimes]],
@@ -2042,24 +2049,13 @@ class Segmentation(QWidget):
             presentation_dff = self.df_over_f[start_frame:stop_frame, :]
             presentation_raw_f = self.raw_f[start_frame:stop_frame, :]
             '''
-            # TODO TODO TODO fix / delete hack!!
+            # TODO TODO fix / delete hack!!
             # TODO probably just need to more correctly calculate stop_frame?
             # (or could also try expanding frametimes to include that...)
             actual_frametimes_slice_len = len(presentation_frametimes)
-            # TODO TODO why didn't this fix it!?!?!? (did it?)
             stop_frame = start_frame + actual_frametimes_slice_len
             presentation_dff = self.df_over_f[start_frame:stop_frame, :]
             presentation_raw_f = self.raw_f[start_frame:stop_frame, :]
-
-            # TODO TODO TODO if these all start off as the same length,
-            # what ultimately compresses the frame times to len 680?
-            # just do the same thing w/ the other two?
-            # or don't do it w/ frame times?
-            '''
-            print(presentation_frametimes.shape)
-            print(presentation_raw_f.shape)
-            print(presentation_dff.shape)
-            '''
 
             # Assumes that cells are indexed same here as in footprints.
             cell_dfs = []
@@ -2285,6 +2281,8 @@ class Segmentation(QWidget):
         # (move later, don't compute traces if not needed for plots / accept)
         self.get_recording_dfs()
 
+        presentations_df = pd.concat(self.presentation_dfs, ignore_index=True)
+
         # TODO TODO TODO probably just fix self.n_blocks earlier
         # in supermixture case
         # (so there is only one button for accepting and stuff...)
@@ -2292,12 +2290,17 @@ class Segmentation(QWidget):
             n_blocks = self.n_blocks
             presentations_per_block = self.presentations_per_block
         else:
-            presentations_df = pd.concat(self.presentation_dfs,
-                ignore_index=True)
+            # TODO delete (though check commented and new are equiv on all
+            # non self.pair_case experiments)
+            '''
             n_blocks = presentations_df.comparison.max() + 1
             n_repeats = u.n_expected_repeats(presentations_df)
             n_stim = len(presentations_df[['odor1','odor2']].drop_duplicates())
             presentations_per_block = n_stim * n_repeats
+            '''
+            #
+            n_blocks = 1
+            presentations_per_block = len(self.odor_ids)
 
         w_inches_per_corr = 3
         h_inches_corrs = 2 * w_inches_per_corr
@@ -2443,8 +2446,115 @@ class Segmentation(QWidget):
                 (presentations_per_block * i):
                 (presentations_per_block * (i + 1))
             ]
-            comparison_df = pd.concat(comparison_dfs,
-                ignore_index=True)
+
+            # Using this in place of NaN, so frame nums will still always have
+            # int dtype. maybe NaN would be better though...
+            INT_NO_REAL_FRAME = sys.maxsize
+            last_real_temp_id = presentation_df.temp_presentation_id.max()
+
+            # Not supporting filling in missing odor presentations in pair case
+            # (it hasn't happened yet). (and would need to consider within
+            # comparisons, since odors be be shared across)
+            if not self.pair_case:
+                # TODO maybe add an 'actual_block' column or something in
+                # paircase? or in both?
+                assert presentation_df.comparison.nunique() == 1
+                n_full_repeats = presentation_df.odor1.value_counts().max()
+                assert len(presentation_df) % n_full_repeats == 0
+
+                odor1_set = set(presentation_df.odor1)
+                n_odors = len(odor1_set)
+
+                # n_blocks and n_pres_per_actual_block currently have different
+                # meanings in pair_case and not here, w/ blocks in this case not
+                # matching actual "scopePin high" blocks.
+                # In this case, "actual blocks" have each odor once.
+                n_pres_per_actual_block = len(presentation_df) // n_full_repeats
+
+                n_missed_per_block = n_odors - n_pres_per_actual_block
+
+                # TODO TODO add a flag for whether we should fill in missing
+                # data like this, and maybe fail if the flag is false and we
+                # have missing data (b/c plot labels get screwed up)
+                # (don't i already have a flag in open_recording? make more
+                # global (or an instance variable)?)
+
+                # TODO may want to assert all odor id lookups work in merge
+                # (if it doesn't already functionally do that), because
+                # technically it's possible that it just so happens the last
+                # odor (the missed one) is always the same
+
+                if n_missed_per_block > 0:
+                    # Could modify loop below to iterate over missed odors if
+                    # want to support this.
+                    assert n_missed_per_block == 1, 'for simplicity'
+
+                    # from_onset is not hashable so nunique on everything fails
+                    const_cols = presentation_df.columns[[
+                        (False if c == 'from_onset' else
+                        presentation_df[c].nunique() == 1)
+                        for c in presentation_df.columns
+                    ]]
+                    const_vals = presentation_df[const_cols].iloc[0].to_dict()
+
+                    # TODO if i were to support where n_cells being different in
+                    # each block, would need to subset comparison df to block
+                    # and get unique values from there (in loop below)
+                    cells = comparison_dfs[0].cell.unique()
+                    rec_from = const_vals['recording_from']
+                    filler_seg_run = pd.NaT
+
+                    pdf_in_order = \
+                        presentation_df.sort_values('odor_onset_frame')
+
+                    next_filler_temp_id = last_real_temp_id + 1
+                    for b in range(n_full_repeats):
+                        start = b * n_pres_per_actual_block
+                        stop = (b + 1) * n_pres_per_actual_block
+                        bdf = pdf_in_order[start:stop]
+
+                        row_data = dict(const_vals)
+                        row_data['from_onset'] = [np.nan]
+                        # Careful! This should be cleared after frame2order def.
+                        row_data['odor_onset_frame'] = \
+                            bdf.odor_onset_frame.max() + 1
+                        row_data['odor_offset_frame'] = INT_NO_REAL_FRAME
+                        # (- 1 since 0 indexed)
+                        row_data['repeat_num'] = n_full_repeats - 1
+
+                        missing_odor1s = list(odor1_set - set(bdf.odor1))
+                        assert len(missing_odor1s) == 1
+                        missing_odor1 = missing_odor1s.pop()
+                        row_data['odor1'] = missing_odor1
+
+                        row_data['temp_presentation_id'] = next_filler_temp_id
+
+                        presentation_df = \
+                            presentation_df.append(row_data, ignore_index=True)
+
+                        comparison_dfs.append(pd.DataFrame({
+                            'temp_presentation_id': next_filler_temp_id,
+                            'recording_from': rec_from,
+                            'segmentation_run': filler_seg_run,
+                            'cell': cells,
+                            'raw_f': [[np.nan] for _ in range(len(cells))],
+                            'df_over_f': [[np.nan] for _ in range(len(cells))]
+                        }))
+                        next_filler_temp_id += 1
+
+            frame2order = {f: o for o, f in
+                enumerate(sorted(presentation_df.odor_onset_frame.unique()))}
+            presentation_df['order'] = \
+                presentation_df.odor_onset_frame.map(frame2order)
+            del frame2order
+
+            # This does nothing if there were no missing odor presentations.
+            presentation_df.loc[
+                presentation_df.temp_presentation_id > last_real_temp_id,
+                'odor_onset_frame'] = INT_NO_REAL_FRAME
+
+            comparison_df = pd.concat(comparison_dfs, ignore_index=True,
+                sort=False)
 
             # TODO don't have separate instance variables for presentation_dfs
             # and comparison_dfs if i'm always going to merge here.
@@ -2470,81 +2580,24 @@ class Segmentation(QWidget):
             presentation_df = u.merge_recordings(
                 presentation_df, self.recordings)
 
-            array_cols = ['raw_f', 'df_over_f']
-            for ac in array_cols:
-                comparison_df[ac] = comparison_df[ac].apply(
-                    lambda x: np.array(x))
-            array_cols = array_cols + ['from_onset']
+            # TODO TODO TODO assert here, and earlier if necessary, that
+            # each odor has all repeat_num + ordering of repeat_num matches
+            # that of 'order' column
+            #comparison_df[['name1','repeat_num','order']
+            #].drop_duplicates().sort_values(['name1','repeat_num','order'])
 
-            # TODO TODO why are lengths of raw_f and df_over_f not always equal
-            # to the length of from_onset????? fix!!!!!
-            # (they do seem to always be equal to themselves though)
+            # Just including recording_from so it doesn't get duplicated in
+            # output (w/ '_x' and '_y' suffixes). This checks recording_from
+            # values are all equal, rather than just dropping one.
+            # No other columns should be common.
+            comparison_df = comparison_df.merge(presentation_df,
+                left_on=['recording_from', 'temp_presentation_id'],
+                right_on=['recording_from', 'temp_presentation_id']
+            )
+            comparison_df.drop(columns='temp_presentation_id', inplace=True)
+            del presentation_df
 
-            # TODO why does response_df (comparison_df) have recording_from col
-            # again? (since kinda redundant w/ presentation...)
-            comparison_df_shape_before = comparison_df.shape
-            #print(comparison_df_shape_before)
-            comparison_df = comparison_df.merge(presentation_df, how='left',
-                left_on='temp_presentation_id', right_on='temp_presentation_id')
-            comparison_df = comparison_df.drop(columns='temp_presentation_id')
-            '''
-            for c in presentation_df.columns:
-                comparison_df[c] = presentation_df[c]
-            '''
-            #print(comparison_df.shape)
-            # TODO del presentation_df?
-
-            group_cols = u.trial_cols
-            #if not self.pair_case:
-            #    group_cols = [c for c in group_cols if c != 'name2']
-
-            t0 = time.time()
-            # TODO TODO try to make this bit faster. it's the slowest step.
-            # (or avoid the need for it)
-            print('expanding array elements...', end='', flush=True)
-            non_array_cols = comparison_df.columns.difference(array_cols)
-            cell_response_dfs = []
-            for _, cell_df in comparison_df.groupby(group_cols + ['cell']):
-                lens = cell_df[array_cols].apply(lambda x: x.str.len(),
-                    axis='columns')
-                # TODO delete try except
-                try:
-                    # TODO TODO what do i need to fix this????
-                    # TODO was this originally supposed to be a check on
-                    # uniqueness? (it's not now, whether or not that was orig
-                    # intention)
-                    assert len(lens) == 1
-                except AssertionError:
-                    import ipdb; ipdb.set_trace()
-
-                length = lens.iat[0,0]
-                assert (lens == length).all().all()
-
-                # TODO maybe also do explosion stuff with index if the input
-                # here has a meaningful index
-                exploded = pd.DataFrame({c: np.repeat(cell_df[c].values, length)
-                    for c in non_array_cols})
-
-                for ac in array_cols:
-                    exploded[ac] = np.concatenate(cell_df[ac].values)
-
-                exploded.set_index(u.trial_cols, inplace=True)
-                cell_response_dfs.append(exploded)
-
-                # TODO maybe plot a set of traces here, as a sanity check?
-
-            comparison_df = pd.concat(cell_response_dfs)
-            comparison_df.reset_index(inplace=True) 
-            print(' done ({:.2f}s)'.format(time.time() - t0), flush=True)
-
-            frame2order = {f: o for o,f in
-                enumerate(sorted(comparison_df.odor_onset_frame.unique()))}
-
-            # TODO TODO exclude stuff that wasn't randomized w/in each
-            # comparison?  (or at least be aware which are which...)
-
-            comparison_df['order'] = \
-                comparison_df.odor_onset_frame.map(frame2order)
+            comparison_df = u.expand_array_cols(comparison_df)
 
             # TODO TODO make this optional
             # (and probably move to upload where fig gets saved.
@@ -2650,14 +2703,52 @@ class Segmentation(QWidget):
                         gridspec=presentation_order_trace_gs,
                         order_by='presentation_order', n=n, random=True)
 
-            ###################################################################
             if plot_correlations:
+                missing_dff = comparison_df[
+                    comparison_df.df_over_f.isnull()][
+                    window_trial_means.index.names + ['df_over_f']]
+
+                # This + pivot_table w/ dropna=False won't work until this bug:
+                # https://github.com/pandas-dev/pandas/issues/18030 is fixed.
+                '''
+                window_trial_means = pd.concat([window_trial_means,
+                    missing_dff.set_index(window_trial_means.index.names
+                    ).df_over_f
+                ])
+                '''
+
                 print('plotting correlations...', end='', flush=True)
                 # TODO rename to 'mean_df_over_f' or something, to avoid
                 # confusion
                 trial_by_cell_means = window_trial_means.to_frame().pivot_table(
                     index=['name1','name2','repeat_num','order'],
                     columns='cell', values='df_over_f').T
+
+
+                # Hack to workaround pivot NaN behavior bug mentioned above.
+                assert missing_dff.df_over_f.isnull().all()
+                missing_dff.df_over_f = missing_dff.df_over_f.fillna(0)
+                extra_cols = missing_dff.pivot_table(
+                    index='cell', values='df_over_f',
+                    columns=['name1','name2','repeat_num','order']
+                )
+                extra_cols.iloc[:] = np.nan
+
+                assert (len(trial_by_cell_means.columns.drop_duplicates()) ==
+                    len(trial_by_cell_means.columns))
+
+                trial_by_cell_means = pd.concat([trial_by_cell_means,
+                    extra_cols], axis=1)
+
+                assert (len(trial_by_cell_means.columns.drop_duplicates()) ==
+                    len(trial_by_cell_means.columns))
+
+                # TODO modify to follow global-order-across-experiments that B
+                # wanted + that i think i have an implementation of in
+                # kc_mix_analysis.py
+                trial_by_cell_means.sort_index(axis='columns', inplace=True)
+                # end of the hack to workaround pivot NaN behavior
+
 
                 trial_mean_presentation_order = \
                     trial_by_cell_means.sort_index(axis=1, level='order')
@@ -2692,7 +2783,6 @@ class Segmentation(QWidget):
 
                 print(' done', flush=True)
 
-        ###################################################################
         if plot_odor_abbreviation_key:
             abbrev2odor = {v: k for k, v in odor2abbrev.items()}
             cell_text = []
@@ -3525,7 +3615,7 @@ class Segmentation(QWidget):
         # Start stuff more likely to fail (missing file, etc)
         ########################################################################
 
-        mat = join(analysis_dir, rel_to_cnmf_mat, thorimage_id + '_cnmf.mat')
+        mat = u.tiff_matfile(tiff)
         ti = u.load_mat_timing_information(mat)
 
         recordings = df.loc[(df.date == date) &
@@ -3539,23 +3629,7 @@ class Segmentation(QWidget):
 
         raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
         # TODO TODO TODO also store (the contents of this) in db
-        metadata_file = join(raw_fly_dir, thorimage_id + '_metadata.yaml')
-        # TODO another var specifying number of frames that has *already* been
-        # cropped out of raw tiff (start/end), to resolve any descrepencies wrt 
-        # thorsync data
-        metadata = {
-            'drop_first_n_frames': 0
-        }
-        if exists(metadata_file):
-            # TODO TODO TODO also load single odors (or maybe other trial
-            # structures) from stuff like this, so analysis does not need my own
-            # pickle based stim format
-            with open(metadata_file, 'r') as mdf:
-                yaml_metadata = yaml.load(mdf)
-
-            for k in metadata.keys():
-                if k in yaml_metadata:
-                    metadata[k] = yaml_metadata[k]
+        metadata = u.metadata(date_dir, fly_dir, thorimage_id)
 
         stimfile = recording['stimulus_data_file']
         stimfile_path = join(stimfile_root, stimfile)
@@ -3568,14 +3642,14 @@ class Segmentation(QWidget):
             data = pickle.load(f)
 
         # TODO just infer from data if no stimfile and not specified in
-        # metadata_file
+        # metadata
         n_repeats = int(data['n_repeats'])
 
         # TODO delete this hack (which is currently just using new pickle
         # format as a proxy for the experiment being a supermixture experiment)
         if 'odor_lists' not in data:
             # The 3 is because 3 odors are compared in each repeat for the
-            # natural_odors project.
+            # natural_odors odor-pair experiments.
             presentations_per_repeat = 3
             odor_list = data['odor_pair_list']
             self.pair_case = True
@@ -3739,7 +3813,16 @@ class Segmentation(QWidget):
         # Of length equal to number of blocks. Each element is the frame
         # index (from 1) in CNMF output that starts the block, where
         # block is defined as a period of continuous acquisition.
-        block_first_frames = np.array(ti['trial_start'], dtype=np.uint32
+        try:
+            block_first_frames = ti['block_start_frame']
+
+        # TODO just fix all existing saved to new naming convention in a script
+        # like populate_db
+        except KeyError:
+            # This was the old name for it.
+            block_first_frames = ti['trial_start']
+
+        block_first_frames = np.array(block_first_frames, dtype=np.uint32
             ).flatten() - 1
 
         n_blocks_from_gsheet = last_block - first_block + 1
@@ -3782,41 +3865,6 @@ class Segmentation(QWidget):
             print('{} randomized blocks of "{}" and its components'.format(
                 n_blocks_from_gsheet, mix_name))
 
-        odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
-            ).flatten() - 1
-
-        # TODO maybe print this in tabular form?
-        # TODO TODO TODO use abbreviations (defined in one place for all hong
-        # lab code, ideally)
-        trial = 0
-        for i in range(n_blocks_from_gsheet):
-            p_start = presentations_per_block * i
-            p_end = presentations_per_block * (i + 1)
-            cline = '{}: '.format(i)
-
-            odor_strings = []
-            for o in odor_list[p_start:p_end]:
-                # TODO maybe always have odor_list hold str repr?
-                # or unify str repr generation -> don't handle use odor_lists
-                # for str representation in supermixture case?
-                # would also be a good time to unify name + *concentration*
-                # handling
-                if self.pair_case:
-                    if o[1] == 'paraffin':
-                        odor_string = o[0]
-                    else:
-                        odor_string = ' + '.join(o)
-                else:
-                    odor_string = str(o)
-
-                # Adding one to index frames as in ImageJ.
-                odor_string += ' ({})'.format(odor_onset_frames[trial] + 1)
-                trial += 1
-                odor_strings.append(odor_string)
-
-            print(cline + ', '.join(odor_strings))
-        print('')
-
         # stim_on is a number as above, but for the frame of the odor
         # onset.
         # TODO how does rounding work here? closest frame? first after?
@@ -3827,7 +3875,7 @@ class Segmentation(QWidget):
 
         # TODO TODO any way to only del existing movie if required to have
         # enough memory to load the new one?
-        print('Loading tiff {}...'.format(tiff), end='', flush=True)
+        print('Loading TIFF {}...'.format(tiff), end='', flush=True)
         start = time.time()
         # TODO is cnmf expecting float to be in range [0,1], like skimage?
         movie = tifffile.imread(tiff).astype('float32')
@@ -3849,25 +3897,26 @@ class Segmentation(QWidget):
         end = time.time()
         print(' done')
         print('Loading TIFF took {:.3f} seconds'.format(end - start))
-
         # TODO maybe just load a range of movie (if not all blocks/frames used)?
 
-        ########################################################################
-        # End stuff more likely to fail
-        ########################################################################
-        # Need to make sure we don't think the output of CNMF from other data is
-        # associated with the new data we load.
-        self.cnm = None
+        odor_onset_frames = np.array(ti['stim_on'], dtype=np.uint32
+            ).flatten() - 1
+        odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
+            ).flatten() - 1
+        assert len(odor_onset_frames) == len(odor_offset_frames)
 
-        self.recording_title = recording_title
-        self.odor_onset_frames = odor_onset_frames
-        self.odor_offset_frames = np.array(ti['stim_off'], dtype=np.uint32
+        try:
+            block_last_frames = ti['block_end_frame']
+
+        # TODO just fix all existing saved to new naming convention in a script
+        # like populate_db
+        except KeyError:
+            # This was the old name for it.
+            block_last_frames = ti['trial_end']
+
+        block_last_frames = np.array(block_last_frames, dtype=np.uint32
             ).flatten() - 1
 
-        assert len(self.odor_onset_frames) == len(self.odor_offset_frames)
-
-        block_last_frames = np.array(ti['trial_end'], dtype=np.uint32
-            ).flatten() - 1
         total_block_frames = 0
         for i, (b_start, b_end) in enumerate(
             zip(block_first_frames, block_last_frames)):
@@ -3887,10 +3936,6 @@ class Segmentation(QWidget):
 
             total_block_frames += b_end - b_start + 1
 
-        # TODO delete
-        print(block_first_frames)
-        print(block_last_frames)
-        #
         orig_n_frames = movie.shape[0]
         # TODO may need to remove this assert to handle cases where there is a
         # partial block (stopped early). leave assert after slicing tho.
@@ -3912,18 +3957,117 @@ class Segmentation(QWidget):
             assert len(block_first_frames) == n_blocks_from_gsheet
             assert len(block_last_frames) == n_blocks_from_gsheet
 
-            self.odor_onset_frames = self.odor_onset_frames[
+            odor_onset_frames = odor_onset_frames[
                 :(last_presentation - first_presentation + 1)]
 
-            self.odor_offset_frames = self.odor_offset_frames[
+            odor_offset_frames = odor_offset_frames[
                 :(last_presentation - first_presentation + 1)]
-
-            assert len(self.odor_onset_frames) == n_presentations
-            assert len(self.odor_offset_frames) == n_presentations
 
             frame_times = frame_times[:(block_last_frames[-1] + 1)]
 
-        assert len(self.odor_onset_frames) == len(odor_list)
+        # TODO TODO TODO need to adjust odor_onset_frames to exclude last
+        # presentations missing at end of each block, if not same len as odor
+        # list
+        n_missing_presentations = len(odor_list) - len(odor_onset_frames)
+        assert n_missing_presentations >= 0
+
+        #self.n_missing_per_block = 0
+        allow_missing_odor_presentations = True
+        if allow_missing_odor_presentations and n_missing_presentations > 0:
+            # MATLAB code also assumes equal number missing in each block.
+            assert n_missing_presentations % n_blocks_from_gsheet == 0
+            n_missing_per_block = \
+                n_missing_presentations // n_blocks_from_gsheet
+
+            #self.n_missing_per_block = n_missing_per_block
+
+            warnings.warn('{} missing presentations per block!'.format(
+                n_missing_per_block))
+
+            n_deleted = 0
+            for i in range(n_blocks_from_gsheet):
+                end_plus_one = presentations_per_block * (i + 1) - n_deleted
+                del_start = end_plus_one - n_missing_per_block
+                del_stop = end_plus_one - 1
+
+                to_delete = odor_list[del_start:(del_stop + 1)]
+                warnings.warn('presentations {} to {} ({}) were missing'.format(
+                    del_start + 1 + n_deleted, del_stop + 1 + n_deleted,
+                    to_delete)
+                )
+                n_deleted += len(to_delete)
+                del odor_list[del_start:(del_stop + 1)]
+                del odor_ids[del_start:(del_stop + 1)]
+
+            presentations_per_block -= n_missing_per_block
+
+        assert (len(odor_onset_frames) ==
+            (n_presentations - n_missing_presentations))
+        assert (len(odor_offset_frames) ==
+            (n_presentations - n_missing_presentations))
+
+        assert len(odor_onset_frames) == len(odor_list)
+        assert len(odor_ids) == len(odor_list)
+
+        # TODO maybe print this in tabular form?
+        trial = 0
+        for i in range(n_blocks_from_gsheet):
+            p_start = presentations_per_block * i
+            p_end = presentations_per_block * (i + 1)
+            cline = '{}: '.format(i)
+
+            odor_strings = []
+            for o in odor_list[p_start:p_end]:
+                # TODO maybe always have odor_list hold str repr?
+                # or unify str repr generation -> don't handle use odor_lists
+                # for str representation in supermixture case?
+                # would also be a good time to unify name + *concentration*
+                # handling
+                if self.pair_case:
+                    # TODO odor2abbrev here too probably... be more uniform
+                    if o[1] == 'paraffin':
+                        odor_string = o[0]
+                    else:
+                        odor_string = ' + '.join(o)
+                else:
+                    assert type(o) is str
+
+                    parts = o.split('@')
+                    odor_name = parts[0].strip()
+                    abbrev = None
+                    try:
+                        abbrev = cu.odor2abbrev(odor_name)
+                    # For a chemutils conversion failure.
+                    except ValueError:
+                        pass
+
+                    if abbrev is None:
+                        abbrev = odor_name
+
+                    odor_string = abbrev
+                    # TODO also don't append stuff if conc is @ 0.0 (log)
+                    if len(parts) > 1:
+                        assert len(parts) == 2
+                        odor_string += ' @' + parts[1]
+
+                # Adding one to index frames as in ImageJ.
+                odor_string += ' ({})'.format(odor_onset_frames[trial] + 1)
+                trial += 1
+                odor_strings.append(odor_string)
+
+            print(cline + ', '.join(odor_strings))
+        print('')
+
+        ########################################################################
+        # End stuff more likely to fail
+        ########################################################################
+        # Need to make sure we don't think the output of CNMF from other data is
+        # associated with the new data we load.
+        self.cnm = None
+
+        self.recording_title = recording_title
+        self.odor_onset_frames = odor_onset_frames
+        self.odor_offset_frames = odor_offset_frames
 
         # TODO probably delete after i come up w/ a better way to handle
         # splitting movies and analyzing subsets of them.
