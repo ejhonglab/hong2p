@@ -41,19 +41,12 @@ fig_dir = 'mix_figs'
 if not exists(fig_dir):
     os.mkdir(fig_dir)
 
-png_dir = join(fig_dir, 'png')
-if not exists(png_dir):
-    os.mkdir(png_dir)
-
-'''
-svg_dir = join(fig_dir, 'svg')
-if not exists(svg_dir):
-    os.mkdir(svg_dir)
-'''
-
-pdf_dir = join(fig_dir, 'pdf')
-if not exists(pdf_dir):
-    os.mkdir(pdf_dir)
+# Which formats to save plots in.
+plot_formats = ['png', 'pdf']
+for pf in plot_formats:
+    pf_dir = join(fig_dir, 'png')
+    if not exists(pf_dir):
+        os.mkdir(pf_dir)
 
 # TODO maybe just use u.matshow? or does that do enough extra stuff that it
 # would be hard to get it to just do what i want in this linearity-checking
@@ -77,9 +70,8 @@ def savefigs(fig, prefix, fname):
     else:
         prefix = ''
 
-    fig.savefig(join(fig_dir, 'png', prefix + fname + '.png'))
-    #fig.savefig(join(fig_dir, 'svg', prefix + fname + '.svg'))
-    fig.savefig(join(fig_dir, 'pdf', prefix + fname + '.pdf'))
+    for pf in plot_formats:
+        fig.savefig(join(fig_dir, pf, prefix + fname + '.' + pf))
 
 
 def component_sum_error(weights, components, mix):
