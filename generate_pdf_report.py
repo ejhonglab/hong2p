@@ -49,13 +49,21 @@ def plot_files_in_order(glob_str):
         panel_part = None
         for p in parts:
             if p == 'kiwi':
-                # So that kiwi comes first.
+                if panel_part is not None:
+                    raise ValueError(
+                        f'duplicate panel parts in filename {fname}')
+
                 if control_last:
                     panel_part = 0
                 else:
                     panel_part = 1
                 continue
+
             elif p == 'control':
+                if panel_part is not None:
+                    raise ValueError(
+                        f'duplicate panel parts in filename {fname}')
+
                 if control_last:
                     panel_part = 1
                 else:
@@ -63,15 +71,32 @@ def plot_files_in_order(glob_str):
                 continue
 
             try:
+                fly_part_already_found = fly_part is not None
                 # TODO also need to support thorimage_id for fly id?
                 # just be consistent w/ using num in other analysis?
                 fly_part = int(p)
-                continue
+                # Leading zeros might mean this part was actually one of the 
+                # "_NNN" format ThorImage IDs. Either way, fly_num should not
+                # be formatted into filename with any leading zeros.
+                if fly_part != 0 and p[0] == '0':
+                    fly_part = None
+                else:
+                    if fly_part_already_found:
+                        # Can't be a ValueError b/c using that as indication
+                        # part couldn't be converted to int...
+                        raise RuntimeError(
+                            f'duplicate fly_num in filename {fname}')
+                    continue
             except ValueError:
                 pass
 
             try:
+                date_part_already_found = date_part is not None
                 date_part = datetime.strptime(p, u.date_fmt_str)
+                if date_part_already_found:
+                    # Can't be a ValueError b/c using that as indication
+                    # part couldn't be converted to a date...
+                    raise RuntimeError( f'duplicate date in filename {fname}')
                 continue
             except ValueError:
                 pass
