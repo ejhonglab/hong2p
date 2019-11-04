@@ -1,16 +1,20 @@
 
 \documentclass{article}
 \usepackage{graphicx}
-%\usepackage{subfig}
 \usepackage{figureSeries}
 
-% Tried this, from: https://tex.stackexchange.com/questions/11059
-% to split figure across pages, but it yielded a \subplot outside float
-% error on the first \subfloat call.
-%\renewenvironment{figure}[1][]{%
-%  \def\@captype{figure}%
-%  \par\nobreak\begin{center}\nobreak}
-%  {\par\nobreak\end{center}}
+\usepackage{geometry}
+% Comment after finding appropriate frame boundaries.
+%\usepackage{showframe}
+% From: https://tex.stackexchange.com/questions/39383/determine-text-width
+% Required for printing \textwidth, etc, w/ particular units below.
+%\usepackage{layouts}
+
+\newgeometry{vmargin={15mm}, hmargin={12mm,17mm}}
+
+% If you don't want the "Figure: " prefix
+%\captionsetup[figure]{labelformat=empty}
+\captionsetup[sub]{labelformat=empty}
 
 \BLOCK{ if filename_captions }
     % Some stack overflow comment said that although the \verb functionality
@@ -29,22 +33,30 @@
 \date{\today}
 \maketitle
 
+% Using the layouts package referenced above:
+%\printinunitsof{in}\prntlen{\textwidth} % was 7.35971in
+%\printinunitsof{in}\prntlen{\textheight} % was 9.82082in
+
+\pagebreak
+
+% TODO some way to reduce vspace between rows a bit? couldn't tell from
+% figureSeries docs...
+% w/ default vspace, 0.25\textheight seems about most I can do to fit 3 rows
+% (0.3 was too much)
+
+% More than ~0.49 times \textwidth seems to breakup the rows.
+% Goal is to get 2 figures included per row, to have control and kiwi
+% experiments (within each fly) side-by-side.
+
 \BLOCK{ for section in sections }
-\section{\VAR{section[0]}}
+%#\section{\VAR{section[0]}}
 
-% Method to array figures in a grid from:
-% https://tex.stackexchange.com/questions/122786
-% TODO how to break across pages as necessary (automatically?)?
-%\begin{figure}
-%\begin{tabular}{cc}
-
-\figureSeriesHere{}
+\figureSeriesHere{\VAR{section[0]}}
 
 \BLOCK{ for row_figpdfs in section[1]|batch(2) }
 \figureSeriesRow{
 \BLOCK{ for figpdf in row_figpdfs }
-\figureSeriesElement{}{\includegraphics[width = 2.0in]{\VAR{figpdf}}}
-%\subfloat{\includegraphics[width = 2.0in]{\VAR{figpdf}}}\VAR{ "\\\\" if loop.index == 2 else " &" }
+\figureSeriesElement{}{\includegraphics[width=0.49\textwidth,height=0.25\textheight,keepaspectratio]{\VAR{figpdf}}}
 \BLOCK{ endfor }
 }
 \BLOCK{ endfor }
@@ -56,8 +68,7 @@
 %# See: https://tex.stackexchange.com/questions/122786
 %# if trying to adapt to subfloat case.
 
-%\end{tabular}
-%\end{figure}
+\pagebreak
 
 \BLOCK{ endfor }
 
