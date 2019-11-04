@@ -1,0 +1,40 @@
+
+\documentclass{article}
+\usepackage{graphicx}
+
+\BLOCK{ if filename_captions }
+    % Some stack overflow comment said that although the \verb functionality
+    % is in LaTeX by default, the implementations in this package are "better"
+    % , and override the defaults.
+    \usepackage{verbatim}
+    \usepackage{cprotect}
+\BLOCK{ endif }
+
+\graphicspath{{\VAR{pdfdir}/}}
+
+\begin{document}
+
+\title{Complex-mixture experiments analysis}
+\author{Tom O'Connell}
+\date{\today}
+\maketitle
+
+\BLOCK{ for section in sections }
+\section{\VAR{section[0]}}
+
+\BLOCK{ for figpdf in section[1] }
+\begin{figure}[htbp]
+    \centering
+    \includegraphics{\VAR{figpdf}}
+
+    \BLOCK{ if filename_captions }
+    % https://tex.stackexchange.com/questions/8810
+    \cprotect\caption{\verb=\VAR{figpdf}=}
+    \BLOCK{ endif }
+
+\end{figure}
+\BLOCK{ endfor }
+
+\BLOCK{ endfor }
+
+\end{document}
