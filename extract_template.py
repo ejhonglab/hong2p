@@ -21,45 +21,6 @@ import ijroi
 import hong2p.util as u
 
 
-# TODO factor into util + use in kc_mix_analysis
-def latest_trace_pickles():
-    """Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.
-
-    Only returns rows for filenames that had the latest timestamp for the
-    combination of index values.
-    """
-    def vars_from_filename(tp_path):
-        final_part = split(tp_path)[1][:-2]
-
-        # Note that we have lost any more precise time resolution, so an 
-        # exact search for this timestamp in database would fail.
-        n_time_chars = len('YYYYMMDD_HHMM')
-        run_at = pd.Timestamp(datetime.strptime(final_part[:n_time_chars],
-            '%Y%m%d_%H%M'))
-
-        parts = final_part.split('_')[2:]
-        date = pd.Timestamp(datetime.strptime(parts[0], u.date_fmt_str))
-        fly_num = int(parts[1])
-        thorimage_id = '_'.join(parts[2:])
-        return date, fly_num, thorimage_id, run_at, tp_path
-
-    keys = ['date', 'fly_num', 'thorimage_id']
-    tp_root = join(u.analysis_output_root(), 'trace_pickles')
-    tp_data = [vars_from_filename(f) for f in glob.glob(join(tp_root, '*.p'))]
-
-    df = pd.DataFrame(columns=keys + ['run_at', 'trace_pickle_path'],
-        data=tp_data
-    )
-
-    # TODO TODO check this when there are actually duplicate outputs
-    latest = df.groupby(keys).run_at.idxmax()
-    df.drop(index=df.index.difference(latest), inplace=True)
-    #
-
-    df.set_index(keys, inplace=True)
-    return df
-
-
 def print_bad_keys(mask):
     print(mask.index[mask].to_frame().to_string(index=False))
 
@@ -170,7 +131,7 @@ def main():
 
         # No real way to go from filenames under trace_pickles to imagej roi set
         # that was used, since mtime may have changed, but...
-        latest_on_disk = latest_trace_pickles()
+        latest_on_disk = u.latest_trace_pickles()
 
         # Getting keys from input_filename to not have to merge w/ other tables.
         # (uh... was there some other reason?)
