@@ -12,8 +12,21 @@ from latex.jinja2 import make_env
 import hong2p.util as u
 
 
+def clean_generated_latex(latex_str):
+    lines = latex_str.splitlines()
+    cleaned_lines = []
+    for first, second in zip(lines, lines[1:]):
+        if not (first == '' and second == ''):
+            cleaned_lines.append(first)
+    cleaned_lines.append(lines[-1])
+    return '\n'.join(cleaned_lines)
+
+
 def main():
     verbose = False
+    only_print_latex = False
+    write_latex_for_testing = True
+
     env = make_env(loader=FileSystemLoader('.'))
     template = env.get_template('template.tex')
     section_names_and_globstrs = [
@@ -34,24 +47,39 @@ def main():
         pprint(sections)
         print('')
 
-    template_str = template.render(pdfdir=pdfdir, sections=sections,
+    latex_str = template.render(pdfdir=pdfdir, sections=sections,
         filename_captions=False)
-    template_msg = 'Rendered TeX:\n{}\n'.format(template_str)
-    if verbose:
-        print(template_msg)
+    latex_str = clean_generated_latex(latex_str)
+
+    if write_latex_for_testing:
+        tex_fname = 'test.tex'
+        print('Writing LaTeX to {} (for testing)'.format(tex_fname))
+        with open(tex_fname, 'w') as f:
+            f.write(latex_str)
+
+    gen_latex_msg = 'Rendered TeX:\n{}\n'.format(latex_str)
+    if only_print_latex or verbose:
+        print(gen_latex_msg)
+    if only_print_latex:
+        import sys; sys.exit()
 
     current_dir = abspath(dirname(__file__))
     try:
         pdf_fname = (date.today().strftime(u.date_fmt_str) +
             '_kc_mix_analysis.pdf')
 
-        pdf = build_pdf(template_str, texinputs=[current_dir, ''])
+        # Current dir needs to be passed so that 'template.tex', and any 
+        # other dependencies in current directory, can be accessed in the
+        # temporary build dir created by the latex package.
+        # The empty string as the last element retains any default search paths
+        # TeX builder would have.
+        pdf = build_pdf(latex_str, texinputs=[current_dir, ''])
         print('Writing output to {}'.format(pdf_fname))
         pdf.save_to(pdf_fname)
 
     except LatexBuildError as err:
         if not verbose:
-            print(template_msg)
+            print(gen_latex_msg)
         raise
 
 

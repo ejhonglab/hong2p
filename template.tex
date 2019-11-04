@@ -1,6 +1,16 @@
 
 \documentclass{article}
 \usepackage{graphicx}
+%\usepackage{subfig}
+\usepackage{figureSeries}
+
+% Tried this, from: https://tex.stackexchange.com/questions/11059
+% to split figure across pages, but it yielded a \subplot outside float
+% error on the first \subfloat call.
+%\renewenvironment{figure}[1][]{%
+%  \def\@captype{figure}%
+%  \par\nobreak\begin{center}\nobreak}
+%  {\par\nobreak\end{center}}
 
 \BLOCK{ if filename_captions }
     % Some stack overflow comment said that although the \verb functionality
@@ -22,18 +32,32 @@
 \BLOCK{ for section in sections }
 \section{\VAR{section[0]}}
 
-\BLOCK{ for figpdf in section[1] }
-\begin{figure}[htbp]
-    \centering
-    \includegraphics{\VAR{figpdf}}
+% Method to array figures in a grid from:
+% https://tex.stackexchange.com/questions/122786
+% TODO how to break across pages as necessary (automatically?)?
+%\begin{figure}
+%\begin{tabular}{cc}
 
-    \BLOCK{ if filename_captions }
-    % https://tex.stackexchange.com/questions/8810
-    \cprotect\caption{\verb=\VAR{figpdf}=}
-    \BLOCK{ endif }
+\figureSeriesHere{}
 
-\end{figure}
+\BLOCK{ for row_figpdfs in section[1]|batch(2) }
+\figureSeriesRow{
+\BLOCK{ for figpdf in row_figpdfs }
+\figureSeriesElement{}{\includegraphics[width = 2.0in]{\VAR{figpdf}}}
+%\subfloat{\includegraphics[width = 2.0in]{\VAR{figpdf}}}\VAR{ "\\\\" if loop.index == 2 else " &" }
 \BLOCK{ endfor }
+}
+\BLOCK{ endfor }
+%# Was previously in a single figure definition in loop over figpdfs:
+%# % https://tex.stackexchange.com/questions/8810
+%# \BLOCK{ if filename_captions }
+%# \cprotect\caption{\verb=\VAR{figpdf}=}
+%# \BLOCK{ endif }
+%# See: https://tex.stackexchange.com/questions/122786
+%# if trying to adapt to subfloat case.
+
+%\end{tabular}
+%\end{figure}
 
 \BLOCK{ endfor }
 
