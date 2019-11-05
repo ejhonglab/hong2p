@@ -1,4 +1,8 @@
 test_data/
+mix_figs/
+output_pickles/
+err_logs/
+old_test_scripts/
 *_sheet_link.txt
 .gsheet_cache.p
 *.backup
