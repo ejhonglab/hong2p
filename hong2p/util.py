@@ -428,8 +428,8 @@ def df_to_odorset_name(df):
     return odor_set
 
 
-# TODO TODO use this for complex mixture experiment output plotting in gui
-# (downstream of plot order flags currently not implemented)
+# TODO maybe load (on demand) + cache the abbreviated versions of these, if
+# chemutils is available?
 odor_set2order = {
     'kiwi': [
         'pfo',
@@ -3518,11 +3518,54 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         return cax
 
 
+# TODO TODO call this in gui / factor into plot_odor_corrs (though it would
+# require accesss to df...) and call that there
+def add_missing_odor_cols(df, missing_df):
+    """
+    """
+    # TODO maybe check cols are indeed describing odors in missing_df?
+
+    # TODO delete / change note to be relevant here. copied from original
+    # implementation in gui
+    # This + pivot_table w/ dropna=False won't work until this bug:
+    # https://github.com/pandas-dev/pandas/issues/18030 is fixed.
+    '''
+    window_trial_means = pd.concat([window_trial_means,
+        missing_dff.set_index(window_trial_means.index.names
+        ).df_over_f
+    ])
+    '''
+    missing_dff = df[df.df_over_f.isnull()][
+        missing_df.columns.names + ['cell', 'df_over_f']
+    ]
+    # Hack to workaround pivot NaN behavior bug mentioned above.
+    assert missing_dff.df_over_f.isnull().all()
+    missing_dff.df_over_f = missing_dff.df_over_f.fillna(0)
+    extra_cols = missing_dff.pivot_table(
+        index='cell', values='df_over_f',
+        columns=['name1','name2','repeat_num','order']
+    )
+    extra_cols.iloc[:] = np.nan
+
+    assert (len(missing_df.columns.drop_duplicates()) ==
+        len(missing_df.columns))
+
+    missing_df = pd.concat([missing_df, extra_cols], axis=1)
+
+    assert (len(missing_df.columns.drop_duplicates()) ==
+        len(missing_df.columns))
+
+    missing_df.sort_index(axis='columns', inplace=True)
+    # end of the hack to workaround pivot NaN behavior
+
+    return missing_df
+
+
 # TODO should i actually compute correlations in here too? check input, and
 # compute if input wasn't correlations (/ symmetric?)?
 # if so, probably return them as well.
-def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None, stat='mean',
-    **kwargs):
+def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
+    trial_stat='mean', title_suffix='', **kwargs):
     """Takes a symmetric DataFrame with odor x odor correlations and plots it.
     """
     # TODO TODO TODO test this fn w/ possible missing data case.
@@ -3548,13 +3591,14 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None, stat='mean',
 
     if 'title' not in kwargs:
         kwargs['title'] = ('Odor' if odor_order else 'Presentation') + ' order'
+        kwargs['title'] += title_suffix
 
     if 'ticklabels' not in kwargs:
         kwargs['ticklabels'] = format_mixture
 
     if 'colorbar_label' not in kwargs:
         kwargs['colorbar_label'] = \
-            stat.title() + r' response $\frac{\Delta F}{F}$ correlation'
+            trial_stat.title() + r' response $\frac{\Delta F}{F}$ correlation'
 
     return matshow(corr_df, **kwargs)
 
@@ -5787,4 +5831,28 @@ def latest_trace_pickles():
 
     df.set_index(keys, inplace=True)
     return df
+
+
+def add_group_id(df, group_keys, name=None, start_at_one=True):
+    """Adds integer column to df to identify unique combinations of group_keys.
+    """
+    if name is None:
+        name = '_'.join(group_keys) + '_id'
+    assert name not in df.columns
+    df[name] = df.groupby(group_keys).ngroup()
+
+    if start_at_one:
+        df[name] = df[name] + 1
+
+    return df
+
+
+def add_fly_id(df):
+    name = 'fly_id'
+    return add_group_id(df, recording_cols[:2], name=name)
+
+
+def add_recording_id(df):
+    name = 'recording_id'
+    return add_group_id(df, recording_cols, name=name)
 

@@ -39,6 +39,22 @@
 
 \pagebreak
 
+
+\BLOCK{ for section in sections }
+%#\section{\VAR{section[0]}}
+
+\figureSeriesHere{\VAR{section[0]}}
+
+\BLOCK{ for figpdf in section[1] }
+\figureSeriesRow{
+\figureSeriesElement{}{\includegraphics[width=\textwidth,keepaspectratio]{\VAR{figpdf}}}
+}
+\BLOCK{ endfor }
+\pagebreak
+
+\BLOCK{ endfor }
+
+
 % TODO some way to reduce vspace between rows a bit? couldn't tell from
 % figureSeries docs...
 % w/ default vspace, 0.25\textheight seems about most I can do to fit 3 rows
@@ -48,7 +64,7 @@
 % Goal is to get 2 figures included per row, to have control and kiwi
 % experiments (within each fly) side-by-side.
 
-\BLOCK{ for section in sections }
+\BLOCK{ for section in paired_sections }
 %#\section{\VAR{section[0]}}
 
 \figureSeriesHere{\VAR{section[0]}}
