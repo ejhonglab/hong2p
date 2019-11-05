@@ -2806,6 +2806,7 @@ class Segmentation(QWidget):
                         odor_order_trial_mean_corrs.reindex(odor_order,
                             level='name1', axis=1)
 
+                # TODO maybe just re-order odor_order_... corrs...
                 presentation_order_trial_mean_corrs = \
                     trial_mean_presentation_order.corr()
 

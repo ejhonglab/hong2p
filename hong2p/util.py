@@ -3387,6 +3387,8 @@ def pair_ordering(comparison_df):
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
     yticklabels=None, xtickrotation=None, colorbar_label=None,
     group_ticklabels=False, ax=None, fontsize=None, fontweight=None):
+    # TODO TODO w/ all ticklabels kwargs, also support them being functions,
+    # which operate on (what type exactly?) index rows
     # TODO shouldn't this get ticklabels from matrix if nothing else?
     # maybe at least in the case when both columns and row indices are all just
     # one level of strings?
@@ -3412,13 +3414,26 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
             else:
                 yticklabels = None
         else:
-            assert df.shape[0] == df.shape[1]
             # TODO maybe also assert indices are actually equal?
+            assert df.shape[0] == df.shape[1]
+
+            if callable(ticklabels):
+                ticklabels = matlabels(df, ticklabels)
+
             xticklabels = ticklabels
             yticklabels = ticklabels
     else:
-        # TODO delete this hack
+        # TODO fix. probably need to specify axes of df or something.
+        # (maybe first modifying matlabels to accept that...)
+        '''
+        if callable(xticklabels):
+            xticklabels = matlabels(df, xticklabels)
+
+        if callable(yticklabels):
+            yticklabels = matlabels(df, yticklabels)
+        '''
         pass
+
 
     # TODO update this formula to work w/ gui corrs (too big now)
     if fontsize is None:
@@ -3501,6 +3516,47 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         return fig
     else:
         return cax
+
+
+# TODO should i actually compute correlations in here too? check input, and
+# compute if input wasn't correlations (/ symmetric?)?
+# if so, probably return them as well.
+def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None, stat='mean',
+    **kwargs):
+    """Takes a symmetric DataFrame with odor x odor correlations and plots it.
+    """
+    # TODO TODO TODO test this fn w/ possible missing data case.
+    # bring guis support for that in here?
+    if odors_in_order is not None:
+        odor_order = True
+
+    if odor_order:
+        corr_df = corr_df.reindex(odors_in_order, level='name1', axis=0
+            ).reindex(odors_in_order, level='name1', axis=1
+        )
+        if odors_in_order is None:
+            # TODO 
+            raise NotImplementedError
+
+        if 'group_ticklabels' not in kwargs:
+            kwargs['group_ticklabels'] = True
+    else:
+        corr_df = corr_df.sort_index(
+            axis=0, level='order', sort_remaining=False).sort_index(
+            axis=1, level='order', sort_remaining=False
+        )
+
+    if 'title' not in kwargs:
+        kwargs['title'] = ('Odor' if odor_order else 'Presentation') + ' order'
+
+    if 'ticklabels' not in kwargs:
+        kwargs['ticklabels'] = format_mixture
+
+    if 'colorbar_label' not in kwargs:
+        kwargs['colorbar_label'] = \
+            stat.title() + r' response $\frac{\Delta F}{F}$ correlation'
+
+    return matshow(corr_df, **kwargs)
 
 
 # TODO maybe one fn that puts in matrix format and another in table

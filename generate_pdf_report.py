@@ -135,9 +135,12 @@ def plot_files_in_order(glob_str):
 
 
 def main():
+    # TODO pop these out of kwargs if i'm gonna call this from outside,
+    # while still keeping this separate module. pass rest of kwargs to rendering
+    # fn?
     verbose = False
     only_print_latex = False
-    write_latex_for_testing = True
+    write_latex_for_testing = False
 
     env = make_env(loader=FileSystemLoader('.'))
     template = env.get_template('template.tex')
@@ -149,6 +152,16 @@ def main():
         ('Mix responder tuning', 'mix_rel_to_others_*'),
         #('Correlations', ('c1.svg', 'c2.svg'))
     ]
+    # TODO TODO TODO option to use passed in filenames rather than stuff from
+    # glob (to only include plots generated in one analysis run, for example)
+    # TODO maybe find intersection of globstrs w/ those filenames, and fail
+    # if any filenames are passed in w/ unrecognized glob strs
+    # might make more sense to just include all passed in actually...
+    # but should still group by non-id part of filename (prefix always?)
+    # (maybe order by suffix if there are other suffix keys besides
+    # date / fly_num / panel??)
+    # (put all those in their own section, like at top, for across fly
+    # stuff?)
     sections = \
         [(n, plot_files_in_order(gs)) for n, gs in section_names_and_globstrs]
 
@@ -159,6 +172,9 @@ def main():
         print('Section names and input files:')
         pprint(sections)
         print('')
+
+    # TODO even if not using sections in latex, maybe include quick list of
+    # types of figures to expect at top. maybe even bulleted.
 
     latex_str = template.render(pdfdir=pdfdir, sections=sections,
         filename_captions=False)
