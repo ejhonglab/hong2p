@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from os.path import join, split, abspath, normpath, dirname
+from os.path import join, split, abspath, normpath, dirname, getmtime
 import glob
 from datetime import date, datetime
 from pprint import pprint
@@ -25,12 +25,16 @@ def clean_generated_latex(latex_str):
 
 
 pdfdir = abspath(normpath(join('mix_figs', 'pdf')))
+def glob_plots(glob_str):
+    return [split(p)[1] for p in glob.glob(join(pdfdir, glob_str))]
+
+
 def plot_files_in_order(glob_str):
     """Returns filenames in order for plotting.
 
     Reverse chronological w/ control following kiwi.
     """
-    files = [split(p)[1] for p in glob.glob(join(pdfdir, glob_str))]
+    files = glob_plots(glob_str)
     if len(files) == 0:
         return []
 
@@ -157,12 +161,15 @@ def main():
     # refactoring
     # TODO maybe order these previously-unclaimed sections by (latest?) mtime
     # of files matched by the glob?
+    # TODO how to either show "Figure N" (without colon) or no figure label
+    # (while still incrementing figure num)? (for this stuff)
 
     # TODO TODO TODO maybe allow the second element of each tuple being
     # an iterable of glob strs, which defines order w/in a section
     # (so i can put shuffle control after cell tuning breadth, for example)
     # (or ctrl after kiwi stuff, if can't get single facetgrids to do what
     # i want)
+    all_pdfdir_files = set(glob_plots('*'))
 
     # These will all be stacked top to bottom (?)
     section_names_and_globstrs = [
@@ -172,8 +179,7 @@ def main():
         ('Control panel odor correlations', 'ctrl_corr*'),
         ('Cell linearity distributions', 'cell_linearity_dists*')
     ]
-    sections = [(n, [split(p)[1] for p in glob.glob(join(pdfdir, gs))])
-        for n, gs in section_names_and_globstrs]
+    sections = [(n, glob_plots(gs)) for n, gs in section_names_and_globstrs]
 
     # These will be lined up in two columns, with one odor_set in left column
     # and the other in the right column.
@@ -198,13 +204,155 @@ def main():
     paired_sections = [(n, plot_files_in_order(gs)) for n, gs
         in paired_section_names_and_globstrs]
 
+    unclaimed_pdfdir_files = (all_pdfdir_files -
+        (set([f for s in sections for f in s[1]]) | 
+         set([f for s in paired_sections for f in s[1]]))
+    )
+    def globstr(fname):
+        assert fname[-4] == '.'
+        parts = fname[:-4].split('_')
+
+        # To exclude something I know won't generate sensible globstrs.
+        if parts[-1] in ('sorted', 'seg', 'discrim'):
+            return None
+
+        prefix_parts = []
+        for i, p in enumerate(parts):
+            last_i = i
+            if p in ('kiwi', 'control'):
+                break
+            try:
+                datetime.strptime(p, u.date_fmt_str)
+                break
+            except ValueError:
+                prefix_parts.append(p)
+
+        if last_i == 0:
+            gs = '*'
+        else:
+            gs = ''
+
+        # TODO test last_i dependent stuff in boundary cases:
+        # 1) no '_' to split on
+        # 2) lone date/odor_set (at start, in middle, at end)
+        # 3) no date/odor_set
+        # 4) date/odor_set followed by thorimage_id
+
+        intermediate_asterisk = False
+        suffix_parts = []
+        for j, p in enumerate(parts[::-1]):
+            i = len(parts) - j - 1
+            if i <= last_i:
+                if i < len(parts) - 1:
+                    intermediate_asterisk = True
+                break
+
+            # Not just checking for a number because some odor abbreviations
+            # have numbers in them.
+            # Just crudely matching the common-end of my thorimage_id
+            # conventions..
+            if len(p) >= 3 and p[-3] == '0':
+                try:
+                    int(p[-2:])
+                    # Did seem to be a thorimage_id suffix.
+                    break
+                except ValueError:
+                    pass
+
+            suffix_parts.append(p)
+
+        suffix_parts = suffix_parts[::-1]
+
+        gs_parts = prefix_parts
+        if intermediate_asterisk:
+            gs_parts.append('*')
+        gs_parts += suffix_parts
+        gs += '_'.join(gs_parts) + '*'
+
+        return gs
+
+    unclaimed_files2globstrs = {f: globstr(f) for f in unclaimed_pdfdir_files}
+    unclaimed_files2globstrs = {f: gs for f, gs in
+        unclaimed_files2globstrs.items() if gs is not None
+    }
+
+    # TODO maybe exclude stuff older than a day by default? or at least
+    # warn (i mean we might not want to regenerate, but should be aware it's
+    # old maybe)?
+    # Could also do something like this to exclude stuff that is sufficiently
+    # older than other plots, such that it was likely to have been generated in
+    # a different run (and thus likely diff. code / data / parameters).
+    unclaimed_file2mtime = {f: getmtime(join(pdfdir, f)) for f in
+        unclaimed_pdfdir_files
+    }
+    # This will make it so files within globstrs are sorted by with recent ones
+    # first.
+    unclaimed_pdfdir_files = sorted(unclaimed_pdfdir_files,
+        key=unclaimed_file2mtime.get
+    )
+
+    unclaimed_files2globstrs = dict()
+    globstrs2unclaimed_files = dict()
+    gs2max_mtime = dict()
+    for f in unclaimed_pdfdir_files:
+        gs = globstr(f)
+        if gs is None:
+            continue
+        unclaimed_files2globstrs[f] = gs
+        mtime = unclaimed_file2mtime[f]
+        if gs not in gs2max_mtime:
+            gs2max_mtime[gs] = mtime
+            globstrs2unclaimed_files[gs] = [f]
+        else:
+            gs2max_mtime[gs] = max(gs2max_mtime[gs], mtime)
+            globstrs2unclaimed_files[gs].append(f)
+        
+    # TODO worth providing some manual checkpoint for adding these? always
+    # prompt as to whether any should be rejected, then list numbers or
+    # something?
+    # Will still need to manually filter these. Sometimes something we don't
+    # want to match on will show up in generated glob strings.
+
+    globstrs_to_exclude = {
+        'odorandfit*',
+        'oorder_corr_mean*',
+        'pca*',
+        'pca_unstandardized*',
+        'porder_corr_max*',
+        'porder_corr_mean*',
+        'skree*',
+        'skree_unstandardized*'
+    }
+    unclaimed_file_globstr_set = {g for g in unclaimed_files2globstrs.values()}
+    unclaimed_file_globstr_set -= globstrs_to_exclude
+    if len(unclaimed_file_globstr_set) > 0:
+        globstrs2unclaimed_files = {g: fs for g, fs in
+            globstrs2unclaimed_files.items() if g in unclaimed_file_globstr_set
+        }
+        print('Also including unclaimed plots matching these glob strings:')
+        pprint(globstrs2unclaimed_files)
+
+        # TODO TODO maybe (at least for some kind of table of contents?)
+        # parse the figure titles for a plot type description
+        # (how hard is it w/ matplotlib PDF output? i assume svg would have been
+        # easier, but then that was a pain to use in LaTeX)
+
+        new_sections = [('', globstrs2unclaimed_files[gs]) for gs in
+            sorted(unclaimed_file_globstr_set, key=gs2max_mtime.get)
+        ]
+        sections += new_sections
+
+        # TODO TODO maybe prompt to have this script edit itself to add the
+        # discovered plot type (empty title + the globstr)?
+        # or specify plot names + globstrs in some external config file anyway,
+        # and then edit that?
+
     # TODO if i'm gonna do this, maybe warn about which desired sections
     # were missing plots (or do that regardless...)?
-    sections = [(name, plots) for name, plots in sections
-        if len(plots) > 0]
+    sections = [(name, plots) for name, plots in sections if len(plots) > 0]
     paired_sections = [(name, plots) for name, plots in paired_sections
-        if len(plots) > 0]
-
+        if len(plots) > 0
+    ]
     if verbose:
         print('Section names and input files:')
         pprint(sections)
