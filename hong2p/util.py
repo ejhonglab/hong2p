@@ -3724,6 +3724,25 @@ def plot_pair_n(df, *args):
     imgkit.from_string(html, 'natural_odors_pair_n.png')
 
 
+def fix_facetgrid_axis_labels(facet_grid, shared_in_center=False,
+    x=True, y=True) -> None:
+    """Modifies a FacetGrid to not duplicate X and Y axis text labels.
+    """
+    # regarding the choice of shared_in_center: WWMDD?
+    if shared_in_center:
+        # TODO maybe add a axes over / under the FacetGrid axes, with the same
+        # shape, and label that one (i think i did this in my gui or one of the
+        # plotting fns. maybe plot_traces?)
+        raise NotImplementedError
+    else:
+        for ax in facet_grid.axes.flat:
+            if not (ax.is_first_col() and ax.is_last_row()):
+                if x:
+                    ax.set_xlabel('')
+                if y:
+                    ax.set_ylabel('')
+
+
 # TODO test when ax actually is passed in now that I made it a kwarg
 # (also works as optional positional arg, right?)
 def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
