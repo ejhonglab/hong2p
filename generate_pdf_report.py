@@ -25,16 +25,20 @@ def clean_generated_latex(latex_str):
 
 
 pdfdir = abspath(normpath(join('mix_figs', 'pdf')))
-def glob_plots(glob_str):
-    return [split(p)[1] for p in glob.glob(join(pdfdir, glob_str))]
+def glob_plots(glob_str, filenames_to_use):
+    matching_files = [split(p)[1] for p in glob.glob(join(pdfdir, glob_str))]
+    if filenames_to_use is None:
+        return matching_files
+    else:
+        return [f for f in matching_files if f in filenames_to_use]
 
 
-def plot_files_in_order(glob_str):
+def plot_files_in_order(glob_str, filenames_to_use):
     """Returns filenames in order for plotting.
 
     Reverse chronological w/ control following kiwi.
     """
-    files = glob_plots(glob_str)
+    files = glob_plots(glob_str, filenames_to_use)
     if len(files) == 0:
         return []
 
@@ -143,7 +147,7 @@ def plot_files_in_order(glob_str):
     return files
 
 
-def main():
+def main(*args, **kwargs):
     # TODO pop these out of kwargs if i'm gonna call this from outside,
     # while still keeping this separate module. pass rest of kwargs to rendering
     # fn?
@@ -151,6 +155,14 @@ def main():
     only_print_latex = False
     write_latex_for_testing = False
     date_in_pdf_name = True
+
+    if 'filenames' in kwargs:
+        filenames_to_use = kwargs.pop('filenames')
+        # Any matching files will have to also be present in here.
+        filenames_to_use = {split(p)[1] for p in filenames_to_use}
+    else:
+        # This means to use all matching files.
+        filenames_to_use = None
 
     env = make_env(loader=FileSystemLoader('.'))
     template = env.get_template('template.tex')
@@ -169,7 +181,7 @@ def main():
     # (so i can put shuffle control after cell tuning breadth, for example)
     # (or ctrl after kiwi stuff, if can't get single facetgrids to do what
     # i want)
-    all_pdfdir_files = set(glob_plots('*'))
+    all_pdfdir_files = set(glob_plots('*', filenames_to_use))
 
     # These will all be stacked top to bottom (?)
     section_names_and_globstrs = [
@@ -179,8 +191,9 @@ def main():
         ('Control panel odor correlations', 'ctrl_corr*'),
         ('Cell linearity distributions', 'cell_linearity_dists*')
     ]
-    sections = [(n, glob_plots(gs)) for n, gs in section_names_and_globstrs]
-
+    sections = [(n, glob_plots(gs, filenames_to_use)) for n, gs
+        in section_names_and_globstrs
+    ]
     # These will be lined up in two columns, with one odor_set in left column
     # and the other in the right column.
     paired_section_names_and_globstrs = [
@@ -191,8 +204,8 @@ def main():
         ('Mix responder tuning', 'mix_rel_to_others_*'),
         ('Trial-max response correlations', 'oorder_corr_max*'),
     ]
-    # TODO TODO option to use passed in filenames rather than stuff from
-    # glob (to only include plots generated in one analysis run, for example)
+    # TODO option to use passed in filenames rather than stuff from glob
+    # (to only include plots generated in one analysis run, for example)
     # TODO maybe find intersection of globstrs w/ those filenames, and fail
     # if any filenames are passed in w/ unrecognized glob strs
     # might make more sense to just include all passed in actually...
@@ -201,9 +214,9 @@ def main():
     # date / fly_num / panel??)
     # (put all those in their own section, like at top, for across fly
     # stuff?)
-    paired_sections = [(n, plot_files_in_order(gs)) for n, gs
-        in paired_section_names_and_globstrs]
-
+    paired_sections = [(n, plot_files_in_order(gs, filenames_to_use)) for n, gs
+        in paired_section_names_and_globstrs
+    ]
     unclaimed_pdfdir_files = (all_pdfdir_files -
         (set([f for s in sections for f in s[1]]) | 
          set([f for s in paired_sections for f in s[1]]))
@@ -331,6 +344,7 @@ def main():
         }
         print('Also including unclaimed plots matching these glob strings:')
         pprint(globstrs2unclaimed_files)
+        print('')
 
         # TODO TODO maybe (at least for some kind of table of contents?)
         # parse the figure titles for a plot type description
@@ -364,7 +378,7 @@ def main():
     # types of figures to expect at top. maybe even bulleted.
 
     latex_str = template.render(pdfdir=pdfdir, sections=sections,
-        paired_sections=paired_sections, filename_captions=False
+        paired_sections=paired_sections, filename_captions=False, **kwargs
     )
     latex_str = clean_generated_latex(latex_str)
 
@@ -403,6 +417,8 @@ def main():
         if not verbose:
             print(gen_latex_msg)
         raise
+
+    return pdf_fname
 
 
 if __name__ == '__main__':

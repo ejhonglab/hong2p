@@ -438,8 +438,10 @@ odor_set2order = {
         'isoamyl acetate',
         'isoamyl alcohol',
         'ethanol',
-        'd3 kiwi',
-        'kiwi approx.'
+        # TODO check that changing the order of these last two hasn't broken
+        # stuff...
+        'kiwi approx.',
+        'd3 kiwi'
     ],
     'control': [
         'pfo',
@@ -1117,12 +1119,20 @@ def git_hash(repo_file):
 # TODO TODO maybe check that remote seems to be valid, and fail if not.
 # don't want to assume we have an online (backed up) record of git repo when we
 # don't...
-def version_info(module_or_path, used_for=''):
+def version_info(*args, used_for='', force_git=False):
     """Takes module or string path to file in Git repo to a dict with version
     information (with keys and values the database will accept).
     """
     import git
     import pkg_resources
+
+    if len(args) == 1:
+        module_or_path = args[0]
+    elif len(args) == 0:
+        module_or_path = __file__
+        force_git = True
+    else:
+        raise ValueError('too many arguments')
 
     if isinstance(module_or_path, ModuleType):
         module = module_or_path
@@ -1158,6 +1168,9 @@ def version_info(module_or_path, used_for=''):
         }
 
     except git.exc.InvalidGitRepositoryError:
+        if force_git:
+            raise
+
         if module is None:
             # TODO try to find module from str
             raise NotImplementedError(

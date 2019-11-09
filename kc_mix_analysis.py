@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import os
-from os.path import exists, join, getmtime
+from os.path import exists, join, split, getmtime
 import glob
 from pprint import pprint as pp
 import warnings
@@ -9,6 +9,9 @@ import time
 import pickle
 import argparse
 import shutil
+import itertools
+from collections import deque
+import subprocess
 
 import numpy as np
 from scipy.optimize import minimize
@@ -24,37 +27,60 @@ import seaborn as sns
 import chemutils as cu
 
 import hong2p.util as u
+#from . import generate_pdf_report
+import generate_pdf_report
 
 
 parser = argparse.ArgumentParser(description='Analyzes calcium imaging traces '
     'stored as pickled pandas DataFrames that gui.py outputs.')
 parser.add_argument('-c', '--only-analyze-cached', default=False,
-    action='store_true', help='only analyzes cached outputs from previous runs '
-    'of this script. will not load any trace pickles.'
+    action='store_true', help='Only analyzes cached outputs from previous runs '
+    'of this script. Will not load any trace pickles.'
 )
-parser.add_argument('-n', '--no-save-figs', default=False, action='store_true')
+parser.add_argument('-n', '--no-save-figs', default=False, action='store_true',
+    help='Does not save any figures.'
+)
 parser.add_argument('-s', '--silent', default=False, action='store_true',
-    help='otherwise prints which figs are being saved'
+    help='Otherwise prints which figs are being saved.'
 )
 parser.add_argument('-p', '--print-full-fig-paths', default=False,
-    action='store_true', help='prints full paths to figs as they are saved'
+    action='store_true', help='Prints full paths to figs as they are saved.'
 )
 parser.add_argument('-t', '--test', default=False, action='store_true',
-    help='only loads two trace pickles, for faster testing.'
+    help='Only loads two trace pickles, for faster testing.'
 )
 parser.add_argument('-d', '--delete-existing-figs', default=False,
-    action='store_true', help='deletes any existing figs at the start, '
+    action='store_true', help='Deletes any existing figs at the start, '
     'to prevent confusion about which figs were generated this run.'
 )
 parser.add_argument('-a', '--across-flies-only', default=False,
-    action='store_true', help='only make plots for across-fly analyses'
+    action='store_true', help='Only make plots for across-fly analyses.'
 )
 parser.add_argument('-i', '--interactive-plots', default=False,
-    action='store_true', help='show plots interactively'
+    action='store_true', help='Show plots interactively (at end).'
+)
+parser.add_argument('-o', '--no-report-pdf', default=False,
+    action='store_true', help='Does not generate a PDF report at the end.'
+)
+parser.add_argument('-e', '--exclude-earlier-figs', default=False,
+    action='store_true', help='Does not includes any existing PDF figures in '
+    'PDF report, but does not delete them.'
 )
 args = parser.parse_args()
 
-analyze_cached_outputs = args.only_analyze_cached
+# TODO maybe get this from some object that stores the params / a context
+# manager of some kind that captures param variable names defined inside?
+param_names = [
+    'fix_ref_odor_response_fracs',
+    'ref_odor',
+    'ref_response_percent',
+    'mean_zchange_response_thresh',
+    'baseline_start',
+    'baseline_end',
+    'response_start',
+    'response_calling_s',
+    'trial_stat'
+]
 
 # TODO should look up odor_set of this odor, then pass that to ordering fn,
 # s.t. that odor_set is first
@@ -112,9 +138,11 @@ top_n = 100
 # If True, prints which types of plots are generated when they are saved.
 verbose_savefig = not args.silent
 print_full_plot_paths = args.print_full_fig_paths
-# TODO disable the many open plots warning if this is True
 # Otherwise, they are closed right after being saved.
 show_plots_interactively = args.interactive_plots
+if show_plots_interactively:
+    plt.rcParams.update({'figure.max_open_warning': 0})
+
 save_figs = not args.no_save_figs
 
 print_mean_responder_frac = False
@@ -184,10 +212,19 @@ def matshow(ax, data, as_row=False, **kwargs):
     return ax.matshow(data, **kwargs)
 
 
-# TODO maybe move into loop so it gets suffix (fname) as a closure?
+# TODO TODO maybe factor this save figs logic out (if not basically the whole
+# fn. may want to wrap a little for use here though?). keeping the last n
+# figs open could be useful in a lot of my analysis
+
+# So that the last few figs open can still be shown interactively while
+# debugging, in contrast to show_plots_interactively case, where all are shown.
+max_open_noninteractive = 3
+fig_queue = deque()
+
 plots_made_this_run = set()
 # TODO change so can be called w/ 2 args when prefix would be None?
 # (suffix always passed, right? change order make most sense?)
+# TODO maybe move into loop so it gets suffix (fname) as a closure?
 def savefigs(fig, prefix, suffix):
     if save_figs:
         if prefix is not None:
@@ -204,6 +241,12 @@ def savefigs(fig, prefix, suffix):
             if print_full_plot_paths:
                 print(plot_fname)
 
+            # This probably means we are unintentionally saving two different
+            # things to the same filename.
+            if args.delete_existing_figs and exists(plot_fname):
+                raise IOError('likely saving two different things to '
+                    f'{plot_fname}! fix code.')
+
             fig.savefig(plot_fname)
             plots_made_this_run.add(plot_fname)
 
@@ -211,7 +254,19 @@ def savefigs(fig, prefix, suffix):
             print('')
 
     if not show_plots_interactively:
-        plt.close(fig)
+        fig_queue.append(fig)
+        fignums = plt.get_fignums()
+        n_open = len(fignums)
+        while n_open > max_open_noninteractive:
+            try:
+                fig_to_close = fig_queue.popleft()
+                plt.close(fig_to_close)
+                n_open -= 1
+            # Since we may have open figures that we have not yet tried to
+            # save. They should not be closed, but will still influence
+            # n_open.
+            except IndexError:
+                break
 
 
 def trace_pickle_odor_set(trace_pickle):
@@ -656,7 +711,7 @@ if not exists(pickle_outputs_dir):
 pickle_outputs_fstr = join(pickle_outputs_dir,
     'kc_mix_analysis_outputs_meanzthr{:.2f}{}.p')
 
-if not analyze_cached_outputs:
+if not args.only_analyze_cached:
     # TODO use a longer/shorter baseline window?
     baseline_start = -2
     baseline_end = 0
@@ -1438,21 +1493,12 @@ if not analyze_cached_outputs:
             mean_zchange_response_thresh, '')
 
     print(f'Writing computed outputs to {pickle_outputs_name}')
+    # TODO TODO maybe save code version into df too? but diff name than one
+    # below, to be clear about which code did which parts of the analysis?
     with open(pickle_outputs_name, 'wb') as f:
-        data = {
-            'fix_ref_odor_response_fracs': fix_ref_odor_response_fracs,
-
-            'ref_odor': ref_odor,
-            'ref_response_percent': ref_response_percent,
-
-            'mean_zchange_response_thresh': mean_zchange_response_thresh,
-
-            'baseline_start': baseline_start,
-            'baseline_end': baseline_end,
-            'response_start': response_start,
-            'response_calling_s': response_calling_s,
-            'trial_stat': trial_stat,
-
+        _locals = locals()
+        data = {n: _locals[n] for n in param_names}
+        data.update({
             'responders': responders,
             'response_magnitudes': response_magnitudes,
 
@@ -1464,7 +1510,7 @@ if not analyze_cached_outputs:
             'linearity_df': linearity_df,
             'linearity_odor_df': linearity_odor_df,
             'linearity_cell_df': linearity_cell_df
-        }
+        })
         pickle.dump(data, f)
 
     after_raw_calc_time_s = time.time()
@@ -1489,6 +1535,9 @@ else:
     with open(pickle_outputs_name, 'rb') as f:
         data = pickle.load(f)
 
+    for n in param_names:
+        assert n in data.keys()
+
     # Modifying globals rather than locals, because at least globals
     # would still (sort-of) work if this got refactored into a function,
     # and the docs explicitly warn not to modify what locals() returns.
@@ -1509,14 +1558,45 @@ fly_colors = sns.color_palette('hls', n_flies)
 # could also try ':' or '-.'
 odorset2linestyle = {'kiwi': '-', 'control': '--'}
 
+odor_set2order_with_dupes = {s: [cu.odor2abbrev(o) for o in os] for s, os
+    in u.odor_set2order.items()}
+
+odor_set2order = dict()
+for s, oset in odor_set2order_with_dupes.items():
+    this_set_order = []
+    for o in oset:
+        if o not in this_set_order:
+            this_set_order.append(o)
+    odor_set2order[s] = this_set_order
+
+assert len(odor_set2order) == 2, 'below approach only works in that case'
+odor_sets = [set(os) for os in odor_set2order.values()]
+# Any odors in both can't tell us which set we have.
+nondiagnostic_odors = odor_sets[0] & odor_sets[1]
+
+odor_sets_nopfo = [os - {'pfo'} for os in odor_sets]
+
 n_ro_hist_fig, n_ro_hist_ax = plt.subplots()
+
+# TODO delete? not sure i ever want this True...
+# Whether to include data from presentations of actual kiwi.
+n_ro_include_kiwi = False
+if n_ro_include_kiwi:
+    n_ro_exclude = {}
+else:
+    n_ro_exclude = {'kiwi'}
+
 # Only the last bin includes both ends. All other bins only include the
 # value at their left edge. So with n_odors + 2, the last bin will be
 # [n_odors, n_odors + 1] (since arange doesn't include end), and will thus
 # only count cells that respond (reliably) to all odors, since it is not
 # possible for them to respond to > n_odors.
-n_odors = 6
-n_ro_bins = np.arange(n_odors + 2)
+n_max_odors_per_panel = max([len(os - n_ro_exclude) for os in odor_sets_nopfo])
+# TODO maybe this should be + 1 then, since n odors used to be 6, even though
+# kiwi (may?) have been included?
+n_ro_bins = np.arange(n_max_odors_per_panel + 2)
+# Needed to also exclude this data in loop.
+n_ro_exclude.add('pfo')
 
 rec_keys2odor_set = dict()
 
@@ -1727,14 +1807,27 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
         print('')
         '''
 
+        rr_idx_names = reliable_responders.index.names
+        rr = reliable_responders.reset_index()
+        reliable_responders = rr[~ rr.name1.isin(n_ro_exclude)
+            ].set_index(rr_idx_names)
+
         # TODO maybe try w/ any responses counting it as a responder for the
         # odor, instead of the 2 required for reliable_responders?
         rec_n_reliable_responders = reliable_responders.groupby('cell').sum()
+        rec_n_reliable_responders.name = 'n_odors_reliable_to'
 
-        # TODO maybe use kde instead?
-        n_ro_hist_ax.hist(rec_n_reliable_responders, bins=n_ro_bins,
+        n_ro_hist_odors = \
+            reliable_responders.index.get_level_values('name1').unique()
+        assert 'pfo' not in n_ro_hist_odors
+        if not n_ro_include_kiwi:
+            assert 'kiwi' not in n_ro_hist_odors
+
+        # TODO TODO maybe use kde instead (w/ approp bw)
+        n_ro_hist_ax.hist(rec_n_reliable_responders.values, bins=n_ro_bins,
             density=True, histtype='step', color=fly_color, linestyle=linestyle,
-            label=label)
+            label=label
+        )
         ########################################################################
         # end section to de-dupe w/ code in first loop
 
@@ -1758,33 +1851,17 @@ frac_responder_df = u.add_fly_id(pd.concat(frac_responder_dfs).reset_index(
 #frac_responder_df.loc[((frac_responder_df.odor_set == 'control') &
 #    (frac_responder_df.name1 == 'mix')), 'name1'] = 'cmix'
 
-odor_set2order_with_dupes = {s: [cu.odor2abbrev(o) for o in os] for s, os
-    in u.odor_set2order.items()}
-
-odor_set2order = dict()
-for s, os in odor_set2order_with_dupes.items():
-    this_set_order = []
-    for o in os:
-        if o not in this_set_order:
-            this_set_order.append(o)
-    odor_set2order[s] = this_set_order
-
-assert len(odor_set2order) == 2, 'below approach only works in that case'
-odor_sets = [set(os) for os in odor_set2order.values()]
-# Any odors in both can't tell us which set we have.
-nondiagnostic_odors = odor_sets[0] & odor_sets[1]
-
 def with_odor_order(plot_fn):
     def ordered_plot_fn(*args, **kwargs):
         odors = args[0].values
 
         odor_set = None
-        for s, os in odor_set2order.items():
+        for s, oset in odor_set2order.items():
             for o in odors:
                 if o in nondiagnostic_odors:
                     continue
 
-                if o in os:
+                if o in oset:
                     odor_set = s
                     break
 
@@ -1804,7 +1881,7 @@ def with_odor_order(plot_fn):
 # groupby in add_fly_id both sort, and thus have the same order.
 # Also assuming sort order of keys matches sort order of fly_ids, and using
 # np.unique rather than <ser>.unique() to also sort.
-palette = {i: c for i, c in zip(np.unique(frac_responder_df.fly_id),
+fly_id_palette = {i: c for i, c in zip(np.unique(frac_responder_df.fly_id),
     fly_colors)}
 
 # https://xkcd.com/color/rgb/
@@ -1813,6 +1890,40 @@ odor_set2color = {
     'control': sns.xkcd_rgb['orchid']
 }
 odor_set_order = ['kiwi', 'control']
+
+# These control whether these odors are included in plots that average some
+# quantity across all odors within values of odor_set (e.g. cell adaptation
+# rates).
+# TODO TODO TODO make sure these are always used where appropriate
+# (cell adaptions, linearity, n_ro_hist, etc)
+def drop_excluded_odors(df, pfo=True, kiwi=False, mix=False, components=False):
+    assert not (mix and components)
+
+    odor_cols = ([c for c in df.columns if 'name' in c.lower()] + 
+        [c for c in df.index.names if c is not None and 'name' in c.lower()]
+    )
+    odor_col = 'name1'
+    if (odor_col not in df.columns or
+        not (len(odor_cols) == 1 and set(odor_cols) == {odor_col})):
+        raise NotImplementedError
+
+    excluded = []
+    if pfo:
+        excluded.append('pfo')
+
+    if kiwi:
+        excluded.append('kiwi')
+
+    if mix:
+        excluded.append('mix')
+    elif components:
+        for c in df[odor_col].unique():
+            if c != 'mix':
+                excluded.append(c)
+
+    return df[~ df[odor_col].isin(excluded)]
+
+
 # col_wrap for FacetGrids
 cw = 4
 
@@ -1825,8 +1936,8 @@ cw = 4
 def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
     title, file_prefix):
     gs = []
-    for i, os in enumerate(odor_set_order):
-        os_df = df[df.odor_set == os]
+    for i, oset in enumerate(odor_set_order):
+        os_df = df[df.odor_set == oset]
 
         odor_col = None
         for n in ('name1', 'name1_a'):
@@ -1835,9 +1946,9 @@ def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
                 break
         assert odor_col is not None
 
-        col_order = odor_set2order[os]
+        col_order = odor_set2order[oset]
         g = sns.FacetGrid(os_df, col=odor_col, hue='fly_id',
-            palette=palette, sharex=False, col_wrap=cw,
+            palette=fly_id_palette, sharex=False, col_wrap=cw,
             col_order=col_order
         )
         g.map(plot_fn, xcol, ycol, **plot_kwargs)
@@ -1854,14 +1965,14 @@ def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
                 ax.xaxis.set_ticks(xticks)
 
         g.fig.subplots_adjust(top=0.85)
-        g.fig.suptitle(title + f'\n\n{os}')
+        g.fig.suptitle(title + f'\n\n{oset}')
 
         gs.append(g)
 
     # So that saving can be deferred until after any modifications to the plots.
     def save_fn():
-        for g, os in zip(gs, odor_set_order):
-            savefigs(g.fig, None, f'{file_prefix}_{os}')
+        for g, oset in zip(gs, odor_set_order):
+            savefigs(g.fig, None, f'{file_prefix}_{oset}')
 
     return gs, save_fn
 
@@ -1871,8 +1982,17 @@ def add_odorset(df):
         rec_keys2odor_set)
     return df
 
+def add_odor_id(df):
+    # This adds an odor ID that is also unique across odor_set, since
+    # 'mix' means different things for different values of odor_set.
+    oid = 'odor_id'
+    assert oid not in df.columns
+    df[oid] = [os + ', ' + o for os, o in zip(df.odor_set, df.name1)]
+    return df
+
+
 g = sns.FacetGrid(frac_responder_df, col='odor_set', hue='fly_id', 
-    palette=palette, sharex=False
+    palette=fly_id_palette, sharex=False
 )
 # TODO TODO maybe somehow connect lines that share a hue (to make it more
 # visually clear how much overall responsiveness is the main thing that varies)
@@ -1973,7 +2093,8 @@ def pd_linregress(gdf, xvar, yvar, verbose=True):
         'r_value': r_value,
         'p_value': p_value,
         'std_err': std_err,
-        'n': len(gdf)
+        'n': len(gdf),
+        'first_data_y': gdf[yvar].iloc[0]
     })
 
 
@@ -1994,12 +2115,51 @@ per_odor_reliable_idx = per_odor_reliable[per_odor_reliable].index
 n_odor_reliable_cells_per_rec = per_odor_reliable_idx.to_frame(index=False
     ).groupby(['fly_id','odor_set','name1']).cell.nunique()
 
-# TODO excluding non-responders, is adaptation more obvious? distribution of
-# cell adaptations more diff?
 
-for responders_only in (True, False):
+n_colors = max([len(os) for os in odor_sets_nopfo])
+# TODO also, maybe just vary alpha? maybe use something that varies color more
+# than this cmap does?
+#odor_colors = sns.diverging_palette(10, 220, n=n_colors, center='dark', sep=1)
+odor_colors = sns.color_palette('cubehelix', n_colors)
+
+nonpfo_odor_orders = [[o for o in os if o != 'pfo'] for os in
+    odor_set2order.values()]
+
+# TODO maybe hue by actual rather than intended (from odor_order) activation
+# order of odor_set?
+odor_hues_within_odorset = dict()
+for c, o1, o2 in itertools.zip_longest(odor_colors, *nonpfo_odor_orders):
+    # Any odors with common names (even if they can mean different things, like
+    # 'mix'), should get the same color.
+    if o1 in nondiagnostic_odors:
+        assert o2 in nondiagnostic_odors
+    if o2 in nondiagnostic_odors:
+        assert o1 in nondiagnostic_odors
+
+    if o1 is not None:
+        odor_hues_within_odorset[o1] = c
+
+    if o2 is not None:
+        odor_hues_within_odorset[o2] = c
+
+
+# TODO TODO TODO some kind of differential analysis on adaptation speeds
+# (each mix relative to its components)??
+# might be more interesting than just claiming basically either:
+# "the particular components in one of our panels happened to cause more
+# adaptation" or
+# "the mixture response of one adapted faster"
+# maybe mixture response was fast-adapting but component responses were less so
+# (and there was a difference in this difference across odor_sets) that would be
+# it? anymore analysis at cell resolution?
+
+responders_only_values = (True,)
+adaptation_analysis_on_all_cells = False
+if adaptation_analysis_on_all_cells:
+    responders_only_values += (False,)
+
+for responders_only in responders_only_values:
     if responders_only:
-
         rmags = response_magnitudes.set_index(per_odor_reliable.index.names)
         rmags = rmags.loc[per_odor_reliable_idx]
 
@@ -2036,11 +2196,6 @@ for responders_only in (True, False):
     # TODO TODO TODO if fitting across flies, should i normalize to the response
     # of the first trial first or something???
 
-    # TODO TODO TODO maybe look at distributions of adaptation speed across
-    # cells?
-    # would have to be pretty careful about interpretation. motion could cause
-    # some artifacts... maybe(?) in some kind of systematic way?
-
     # TODO and depending on how i reduce adaptation speed to a scalar, probably
     # need to throw out stuff where line was fit from two points (maybe just
     # don't fit lines on only two points) because maybe there is more adaptation
@@ -2051,6 +2206,11 @@ for responders_only in (True, False):
     # this distribution or changes in proportions between two populations.
     # TODO maybe just looking at the data from a strong odor, some bimodality in
     # response magnitudes is more apparent?
+
+    # TODO TODO TODO some kind of scatter plot / 2d hist of initial response
+    # vs slope (color by odor here? or avoid, just to limit the possible
+    # meanings colors can have?)
+    # TODO style w/in odorset for odor? too much?
 
     adaptation_fits = mean_rmags.groupby(['odor_set','name1']).apply(
         lambda x: pd_linregress(x, 'repeat_num', 'trialmax_df_over_f')
@@ -2073,10 +2233,10 @@ for responders_only in (True, False):
     )
     xs = np.unique(mean_rmags.repeat_num)
     xs = np.array([xs[0], xs[-1]])
-    for os, g in zip(odor_set_order, gs):
+    for oset, g in zip(odor_set_order, gs):
         assert len(g.row_names) == 0
 
-        os_adaptation_fits = adaptation_fits.loc[(os,)]
+        os_adaptation_fits = adaptation_fits.loc[(oset,)]
         assert set(g.col_names) == set(os_adaptation_fits.index)
 
         for name1, ax in zip(g.col_names, g.axes.flat):
@@ -2143,25 +2303,48 @@ for responders_only in (True, False):
     else:
         bins = None
 
-    # TODO TODO for the all_cell case, probably change the xlim and 
-    # num bins (just xlim enough?). get from percentiles or something,
-    # rather than hardcoding?
-
     print_percentiles = False
     if print_percentiles:
         percentiles = [100 * f for f in (0.01, 0.005, 0.001)]
         percentiles += [100 - p for p in percentiles]
         percentiles = sorted(percentiles)
 
+    # TODO TODO try multiple vals. maybe only do just before each plot so i can
+    # still use kiwi data
+    # TODO clean this index shuffling up. (at least to not hardcode second set
+    # of key) (ideally don't also reset_index below)
+    cell_adaptation_fits.reset_index(inplace=True)
+    # TODO probably drop pfo before fitting on cells anyway...
+    cell_adaptation_fits = drop_excluded_odors(cell_adaptation_fits)
+
+    cell_adaptation_fits = add_odor_id(cell_adaptation_fits)
+
+    cell_adaptation_fits.set_index(['odor_set','name1','fly_id','cell'],
+        inplace=True)
+    #
+
+    # may have to be pretty careful about interpretation. motion could cause
+    # some artifacts... maybe(?) in some kind of systematic way?
+    # TODO could probably replace this loop with a facetgrid call
+    # (i'm not actually using percentiles calculated w/in odor_sets
+    # anyway...)
     cell_adapt_fig, ax = plt.subplots()
-    for os in odor_set_order:
-        os_cell_slopes = cell_adaptation_fits.loc[(os,), 'slope']
+    for oset in odor_set_order:
+        os_cell_slopes = cell_adaptation_fits.loc[(oset,), 'slope']
+
+        # TODO TODO maybe do this (and stuff below that plots one thing per odor
+        # set) both with and without kiwi
+        old_idx_names = os_cell_slopes.index.names
+        os_cell_slopes = os_cell_slopes.reset_index()
+        os_cell_slopes = os_cell_slopes[os_cell_slopes.name1 != 'kiwi']
+        os_cell_slopes = os_cell_slopes.set_index(old_idx_names).slope
+
         # TODO OK to weight all *cell* equally, yea?
-        sns.distplot(os_cell_slopes, bins=bins, kde=kde, label=os.title(),
-            color=odor_set2color[os]
+        sns.distplot(os_cell_slopes, bins=bins, kde=kde, label=oset.title(),
+            color=odor_set2color[oset], hist_kws=dict(alpha=0.4)
         )
         if print_percentiles:
-            print(os)
+            print(oset)
             for p, s in zip(percentiles,
                 np.percentile(os_cell_slopes, percentiles)):
                 print('{:0.2f} percentile slope: {:.2f}'.format(p, s))
@@ -2180,15 +2363,95 @@ for responders_only in (True, False):
         ax.set_title('Cell adaptations')
 
     # TODO get this desc of response mag from input df var name too
-    ax.set_xlabel(r'Slope between max $\frac{\Delta F}{F}$ across '
-        'repeats of the same odor')
-    ax.set_ylabel('Normalized cell count')
+    trial_stat_desc = r'max $\frac{\Delta F}{F}$'
+    slope_label = f'Slope between {trial_stat_desc} across repeats'
+
+    ax.set_xlabel(slope_label)
+    density_label = 'Normalized cell count'
+    ax.set_ylabel(density_label)
     ax.set_xlim(xlim)
     ax.legend()
-    #savefigs(cell_adapt_fig, None, f'{fname_prefix}_adapt_dist')
+    savefigs(cell_adapt_fig, None, f'{fname_prefix}_adapt_dist')
 
-plt.show()
-import ipdb; ipdb.set_trace()
+    cell_adaptation_fits.reset_index(inplace=True)
+    cell_adaptation_fits_nokiwi = cell_adaptation_fits[
+        cell_adaptation_fits.name1 != 'kiwi']
+
+    # TODO delete. was for figuring out appropriate kde bandwidth.
+    '''
+    # TODO TODO TODO so probably plot each odor in it's own facet and then check
+    # that kde bandwith is set such that kdes always follow hist pretty well
+    # 'scott' is the default. 1,2,3 all seemed WAY too smoothed.
+    # scott and silverman seem identical. 0.25 still too smoothed.
+    # must be using "statsmodels backend", because "scipy treats (bw) as
+    # a scaling factor for the stddev of the data" (so 1 should be ~default,
+    # right? or what is default bw relative to stddev?)
+    print('slope stddev: {:.2f}'.format(cell_adaptation_fits.slope.std()))
+    # 0.1 seems maybe slightly more smoothed than scott. 0.05 much more so.
+    # (and both scalars give kdes in n=probably 1 or 2 cases as well, which i
+    # may not want)
+    bws = ['scott', 0.1, 0.05]
+    for bw in bws:
+        g = sns.FacetGrid(cell_adaptation_fits, col='odor_id', col_wrap=4,
+            xlim=xlim
+        )
+        g.map(sns.distplot, 'slope', bins=bins, kde_kws=dict(bw=bw))
+        g.fig.suptitle(f'KDE bandwidth = {bw}')
+    #
+    plt.show()
+    import ipdb; ipdb.set_trace()
+    '''
+
+    # TODO maye dotted line for kiwi kde or something? (if including)
+    g = sns.FacetGrid(cell_adaptation_fits, col='odor_set',
+        col_order=odor_set_order, hue='name1', palette=odor_hues_within_odorset
+    )
+    g.map(sns.distplot, 'slope', hist=False)
+    # not using hist now just b/c it seems harder to follow multiple than
+    # smoother kde for some reason...
+    #bins=bins, hist_kws=dict(histtype='step'))
+    g.set_axis_labels(slope_label, density_label)
+    g.set_titles('{col_name}')
+    g.add_legend()
+    g._legend.set_title('Odor')
+    g.fig.suptitle(title)
+    g.fig.subplots_adjust(top=0.85)
+    savefigs(g.fig, None, f'{fname_prefix}_adapt_dist_per_odor')
+
+    # TODO maybe don't use this fixed xlim
+    # TODO maybe increase range a bit in odor specific case, as noiser +
+    # differences may be in tails
+    g = sns.FacetGrid(cell_adaptation_fits_nokiwi, col='odor_set',
+        col_order=odor_set_order, height=4, xlim=(0, 7), ylim=xlim
+    )
+    # TODO maybe just separate plots of initial trial magnitude dists,
+    # rather than this?
+    g.map(sns.scatterplot, 'first_data_y', 'slope', color='black', alpha=0.3)
+    g.set_axis_labels(f'First trial {trial_stat_desc}', slope_label)
+    g.set_titles('{col_name}')
+    g.fig.suptitle(title)
+    g.fig.subplots_adjust(top=0.85)
+    savefigs(g.fig, None, f'{fname_prefix}_rmag0_v_adapt')
+
+    # The green kinda won out over the pink of the control, so this plot wasn't
+    # so good.
+    '''
+    sns.scatterplot(data=cell_adaptation_fits, x='first_data_y',
+        y='slope', hue='odor_set', palette=odor_set2color, alpha=0.3, ax=ax
+    )
+    '''
+    # TODO maybe still use these?
+    '''
+    for oset in odor_set_order:
+        fig, ax = plt.subplots()
+        sns.scatterplot(data=cell_adaptation_fits_nokiwi[
+            cell_adaptation_fits_nokiwi.odor_set == oset],
+            x='first_data_y', y='slope', hue='odor_set',
+            palette=odor_set2color, ax=ax
+        )
+        ax.set_xlim((0, 7))
+        ax.set_ylim((-3.5, 1.2))
+    '''
 
 # TODO TODO some way to make a statement about the PCA stuff across flies?
 # worth it?
@@ -2205,20 +2468,26 @@ linearity_cell_df = add_odorset(linearity_cell_df.reset_index())
 # TODO TODO TODO maybe also filter by some minimum of responsiveness? /
 # reliability? / noise?
 linearity_dist_fig, ax = plt.subplots()
-for os in odor_set_order:
-    os_cell_errs = linearity_cell_df.loc[linearity_cell_df.odor_set == os,
+for oset in odor_set_order:
+    os_cell_errs = linearity_cell_df.loc[linearity_cell_df.odor_set == oset,
         'weighted_mix_diff'
     ]
-    sns.distplot(os_cell_errs, label=os.title(), color=odor_set2color[os])
+    sns.distplot(os_cell_errs, label=oset.title(), color=odor_set2color[oset])
 
 ax.set_title('Distributions of cell residuals from linear mixture model')
 ax.set_xlim([-1, 1])
 ax.legend()
 savefigs(linearity_dist_fig, None, 'cell_linearity_dists')
 
+
 # TODO TODO TODO maybe plot (fly, trial) max / mean responses image grids, and
 # include them in pdf (B said something like that might useful for determining
 # if any pfo responsiveness is some analysis artifact or not / etc)
+
+if show_plots_interactively:
+    plt.show()
+else:
+    plt.close('all')
 
 # TODO TODO maybe only render stuff generated on this run into report, so that
 # it doesn't include things using different parameters
@@ -2227,10 +2496,96 @@ savefigs(linearity_dist_fig, None, 'cell_linearity_dists')
 # TODO TODO render in parameters to report + stuff about flies
 # (include them in a summary section(?) at the top or something)
 
-# TODO and maybe symlink 'latest_report.pdf' to this or something
+# TODO TODO also provide plain text descriptions of these params
+# TODO + optional units for params?
+# TODO and support all of these in latex template
 
-# TODO format code version (+link?) into pdf
+if not args.no_report_pdf:
+    if args.no_save_figs:
+        warnings.warn('--report-pdf was passed despite --no-save-figs! '
+            'The report generated will ONLY contain any figures already in the '
+            'PDF output directory!!!'
+        )
+        # (so this technically implies NOT -e)
+        plots_made_this_run = None
 
-plt.show()
+        # Because we can't really say what parameters were used to generate the
+        # existing plot files.
+        params_for_report = None
+        codelink = None
+        uncommitted_changes = None
+        outputs_pickle = None
+        input_trace_pickles = None
+    else:
+        if args.exclude_earlier_figs:
+            plots_made_this_run = {p for p in plots_made_this_run if
+                p.endswith('.pdf')}
+        else:
+            # Because None let's all matching files into the report, whereas
+            # if filenames are passed, only the matching files that intersect
+            # them are kept.
+            plots_made_this_run = None
+
+        if fix_ref_odor_response_fracs:
+            exclude_params = {'mean_zchange_response_thresh'}
+        else:
+            exclude_params = {'ref_odor', 'ref_response_percent'}
+
+        report_param_names = [p for p in param_names if p not in exclude_params]
+
+        # Since locals() is different inside the comprehension.
+        _locals = locals()
+        params_for_report = {n: _locals[n] for n in report_param_names}
+        # So strings have single quotes around them. Then all the params section
+        # should be usable a direct copy-paste fashion into the Python code.
+        params_for_report = {n: (f"'{p}'" if type(p) is str else p) for n, p
+            in params_for_report.items()
+        }
+        
+        # TODO TODO save the input file used into the report too
+
+        git_info = u.version_info()
+        github_link = git_info['git_remote'].replace(':','/').replace(
+            'git@','https://')
+            
+        if github_link.endswith('.git'):
+            github_link = github_link[:-len('.git')]
+        github_link += '/blob/'
+
+        # TODO test when should be 0
+        uncommitted_changes = len(git_info['git_uncommitted_changes']) > 0
+        if uncommitted_changes:
+            github_link += 'master/'
+        else:
+            github_link += git_info['git_hash'] + '/'
+
+        this_script_fname = split(__file__)[1]
+        github_link += this_script_fname
+
+        # TODO way to check if local commits are also on remote / github
+        # specifically?
+
+        if args.only_analyze_cached:
+            outputs_pickle = pickle_outputs_name
+            input_trace_pickles = None
+        else:
+            outputs_pickle = None
+            input_trace_pickles = pickles
+
+    print(uncommitted_changes)
+    pdf_fname = generate_pdf_report.main(params=params_for_report,
+        codelink=github_link, uncommitted_changes=uncommitted_changes,
+        input_trace_pickles=input_trace_pickles, outputs_pickle=outputs_pickle,
+        filenames=plots_made_this_run
+    )
+
+    # Linux specific.
+    symlink_name = 'latest_report.pdf'
+    if exists(symlink_name):
+        # In case it's pointing to something else.
+        os.remove(symlink_name)
+    os.symlink(pdf_fname, symlink_name)
+    subprocess.Popen(['xdg-open', pdf_fname])
+
 import ipdb; ipdb.set_trace()
 

@@ -1,5 +1,6 @@
 
 \documentclass{article}
+\usepackage{verbatim}
 \usepackage{graphicx}
 \usepackage{figureSeries}
 
@@ -20,9 +21,17 @@
     % Some stack overflow comment said that although the \verb functionality
     % is in LaTeX by default, the implementations in this package are "better"
     % , and override the defaults.
-    \usepackage{verbatim}
     \usepackage{cprotect}
 \BLOCK{ endif }
+
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+\urlstyle{same}
 
 \graphicspath{{\VAR{pdfdir}/}}
 
@@ -38,6 +47,63 @@
 %\printinunitsof{in}\prntlen{\textheight} % was 9.82082in
 
 \pagebreak
+
+\begin{flushleft}
+\BLOCK{ if params }
+\section{Parameters}
+%\verb=\VAR{key}= = \verb=\VAR{value}=
+\begin{verbatim}
+\BLOCK{ for key, value in params.items() }
+\VAR{key} = \VAR{value}
+\BLOCK{ endfor }
+\end{verbatim}
+\BLOCK{ endif }
+
+\BLOCK{ if codelink }
+\section{Code}
+The code for this analysis can be found at:
+\linebreak
+\url{\VAR{codelink}}
+
+The version of the code that generated this report 
+\BLOCK{ if uncommitted_changes }
+had some changes not yet in version control.
+\BLOCK{ endif }
+%# Since the a block with "else" in it did not seem to be working.
+\BLOCK{ if not uncommitted_changes }
+is the exact version of the code behind the link.
+\BLOCK{ endif }
+
+\BLOCK{ endif }
+
+\BLOCK{ if outputs_pickle }
+\section{Input}
+Started analysis from computed values in \verb=\VAR{outputs_pickle}=.
+
+The values in this intermediate file were previously computed from extracted
+fluorescence traces.
+\BLOCK{ endif }
+
+\BLOCK{ if input_trace_pickles }
+\section{Input}
+Used extracted fluorescence traces in these files:
+\begin{verbatim}
+\BLOCK{ for infile in input_trace_pickles }
+\VAR{infile}
+\BLOCK{ endfor }
+\end{verbatim}
+Started analysis from computed values in \verb=\VAR{outputs_pickle}=
+\BLOCK{ endif }
+
+\BLOCK{ if params or codelink or outputs_pickle or input_trace_pickles }
+\pagebreak
+\BLOCK{ endif }
+
+\end{flushleft}
+
+%# \BLOCK{ if params or codelink or outputs_pickle or input_trace_pickles or }
+%# \pagebreak
+%# \BLOCK{ endif }
 
 % TODO maybe put this stuff in a header or something? or at least center?
 % maybe back off vertical margin a bit?
@@ -92,5 +158,6 @@
 \pagebreak
 
 \BLOCK{ endfor }
+
 
 \end{document}
