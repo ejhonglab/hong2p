@@ -64,14 +64,9 @@
 The code for this analysis can be found at:
 \linebreak
 \url{\VAR{codelink}}
-
-The version of the code that generated this report 
-\BLOCK{ if uncommitted_changes }
-had some changes not yet in version control.
-\BLOCK{ endif }
+\linebreak
 %# Since the a block with "else" in it did not seem to be working.
-\BLOCK{ if not uncommitted_changes }
-is the exact version of the code behind the link.
+The version of the code that generated this report \BLOCK{ if uncommitted_changes } had some changes not yet in version control. \BLOCK{ endif } \BLOCK{ if not uncommitted_changes } is the exact version of the code behind the link.
 \BLOCK{ endif }
 
 \BLOCK{ endif }
@@ -92,7 +87,6 @@ Used extracted fluorescence traces in these files:
 \VAR{infile}
 \BLOCK{ endfor }
 \end{verbatim}
-Started analysis from computed values in \verb=\VAR{outputs_pickle}=
 \BLOCK{ endif }
 
 \BLOCK{ if params or codelink or outputs_pickle or input_trace_pickles }

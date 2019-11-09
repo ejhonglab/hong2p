@@ -160,6 +160,7 @@ def main(*args, **kwargs):
         filenames_to_use = kwargs.pop('filenames')
         # Any matching files will have to also be present in here.
         filenames_to_use = {split(p)[1] for p in filenames_to_use}
+        # TODO maybe print which files are excluded as they are? (if verbose?)
     else:
         # This means to use all matching files.
         filenames_to_use = None

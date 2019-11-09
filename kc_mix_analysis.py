@@ -27,6 +27,7 @@ import seaborn as sns
 import chemutils as cu
 
 import hong2p.util as u
+# TODO what does the first mean if these are not equivalent?
 #from . import generate_pdf_report
 import generate_pdf_report
 
@@ -63,8 +64,13 @@ parser.add_argument('-o', '--no-report-pdf', default=False,
     action='store_true', help='Does not generate a PDF report at the end.'
 )
 parser.add_argument('-e', '--exclude-earlier-figs', default=False,
-    action='store_true', help='Does not includes any existing PDF figures in '
-    'PDF report, but does not delete them.'
+    action='store_true', help='Does not include any existing PDF figures in '
+    'PDF report (any that are not re-generated in this run), but does not '
+    'delete them.'
+)
+parser.add_argument('-b', '--no-debug-shell', default=False,
+    action='store_true', help='Exits on completion, rather than dropping in '
+    'to an ipdb shell for further interactive analysis or debugging.'
 )
 args = parser.parse_args()
 
@@ -179,6 +185,10 @@ for pf in plot_formats:
         os.mkdir(pf_dir)
 
 
+def check_fraction_series(ser):
+    assert (ser.isnull() | ((ser <= 1.0) & (0.0 <= ser))).all()
+
+
 def get_single_index_val(df, var):
     values  = df[var].unique()
     assert len(values) == 1
@@ -225,6 +235,11 @@ plots_made_this_run = set()
 # TODO change so can be called w/ 2 args when prefix would be None?
 # (suffix always passed, right? change order make most sense?)
 # TODO maybe move into loop so it gets suffix (fname) as a closure?
+# TODO TODO maybe allow passing descriptions or notes which get rendered
+# into the latex if a pdf report is generated?
+# (could store filenames -> this data or something equivalent)
+# TODO or if i can be more consistent about either prefix or suffix being
+# constant, could store the constant one -> same data
 def savefigs(fig, prefix, suffix):
     if save_figs:
         if prefix is not None:
@@ -1495,6 +1510,9 @@ if not args.only_analyze_cached:
     print(f'Writing computed outputs to {pickle_outputs_name}')
     # TODO TODO maybe save code version into df too? but diff name than one
     # below, to be clear about which code did which parts of the analysis?
+    # TODO TODO or maybe equally important, i might want to save (input trace)
+    # pickles here, so i know all input data that went into final outputs.
+    # could then include both inputs (& maybe code versions) in latex report
     with open(pickle_outputs_name, 'wb') as f:
         _locals = locals()
         data = {n: _locals[n] for n in param_names}
@@ -1605,9 +1623,9 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
     fly_color = fly_colors[i]
 
     assert len(fly_gser.index.get_level_values(rec_key).unique()) == 2
-    # TODO TODO TODO just add variable for odorset earlier, so that i can group
-    # on that instead of (/in addition to) thorimage id, so i can loop over them
-    # in a fixed order
+    # TODO just add variable for odorset earlier, so that i can group on that
+    # instead of (/in addition to) thorimage id, so i can loop over them in a
+    # fixed order (? order doesn't matter here, does it?)
     for rec_gn, rec_gser in fly_gser.groupby(rec_key):
         # TODO maybe refactor this (kinda duped w/ odorset finding from the more
         # raw dfs)?
@@ -1620,7 +1638,6 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
 
         label = (odorset + ', ' +
             fly_gn[0].strftime(u.date_fmt_str) + '/' + str(fly_gn[1]))
-        # TODO include thorimage id anyway?
         fname = label.replace(',','').replace(' ','_').replace('/','_')
 
         trial_responders = rec_gser
@@ -1648,11 +1665,13 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
 
         frac_reliable_responders = \
             reliable_responders.groupby('name1').sum() / n_rec_cells
+        check_fraction_series(frac_reliable_responders)
 
-        # TODO TODO try to consolidate this w/ odor_order (they should have
+        # TODO try to consolidate this w/ odor_order (they should have
         # the same stuff, just one also has order info, right?)
         odors = [x for x in
-            trial_responders.index.get_level_values('name1').unique()]
+            trial_responders.index.get_level_values('name1').unique()
+        ]
 
         full_odor_order = [cu.odor2abbrev(o) for o in u.odor_set2order[odorset]]
         seen_odors = set()
@@ -1672,33 +1691,54 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
 
         frac_responders = (trial_responders.groupby('name1').sum() /
             (n_odor_repeats * n_rec_cells))[odor_order]
+        check_fraction_series(frac_responders)
 
         if not args.across_flies_only:
             resp_frac_fig = plt.figure()
             resp_frac_ax = frac_responders.plot.bar(color='black')
             resp_frac_ax.set_title(label.title() +
-                '\nAverage fraction responding by odor')
-            # TODO hide name1 xlabel before saveing each of these bar plots / 
-            # change it to "Odor" or something
-            # TODO TODO TODO use one scale for these across all flies
-            # (maybe just [0,1] or [0,0.8] (if confident 0.8 not reached) /
-            # compute)?
+                '\nAverage fraction responding by odor'
+            )
+            # Since it should be clear enough (from the odor names) that
+            # this axis is referring to odors anyway. To declutter.
+            resp_frac_ax.set_xlabel('')
+
+            fr_display_max = 0.4
+            fr_max = frac_responders.max()
+            assert fr_max <= fr_display_max, \
+                f'increase fr_display_max to more than {fr_max:.2f}'
+            resp_frac_ax.set_ylim([0, fr_display_max])
+
             savefigs(resp_frac_fig, 'resp_frac', fname)
 
-        '''
-        if not args.across_flies_only:
+            '''
             reliable_frac_fig = plt.figure()
             reliable_frac_ax = frac_reliable_responders[odor_order].plot.bar(
                 color='black')
             reliable_frac_ax.set_title(label.title() +
-                '\nReliable responder fraction by odor')
+                '\nReliable responder fraction by odor'
+            )
+            reliable_frac_ax.set_xlabel('')
             savefigs(reliable_frac_fig, 'reliable_frac', fname)
-        '''
+            '''
 
-        if not args.across_flies_only:
+            responded_at_all = n_trials_responded_to >= 1
+            # These are both per-odor.
+            n_cells_responded_at_all = responded_at_all.groupby('name1').sum()
+            n_cells_reliable = reliable_responders.groupby('name1').sum()
+
             reliable_of_resp_fig = plt.figure()
-            reliable_of_resp_ax = (frac_reliable_responders / frac_responders
-                )[odor_order].plot.bar(color='black')
+            rel_of_resp_frac = n_cells_reliable / n_cells_responded_at_all
+
+            # TODO is there anywhere else that i make a similar mistake?
+            # This was very wrong.
+            #rel_of_resp_frac = frac_reliable_responders / frac_responders
+
+            check_fraction_series(rel_of_resp_frac)
+
+            reliable_of_resp_ax = rel_of_resp_frac[odor_order].plot.bar(
+                color='black'
+            )
             # TODO TODO maybe at least color text of odors missing any
             # presentations red or something, if not gonna try to fix those
             # values. / otherwise mark
@@ -1706,7 +1746,9 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             # magnitudes as another measure. might have more info + less
             # discretization noise.
             reliable_of_resp_ax.set_title(label.title() +
-                '\nFraction of responders that are reliable, by odor')
+                '\nFraction of responders that are reliable, by odor'
+            )
+            reliable_of_resp_ax.set_xlabel('')
             savefigs(reliable_of_resp_fig, 'reliable_of_resp', fname)
 
         frac_responders = add_metadata(rec_gser.reset_index(), frac_responders)
@@ -1765,15 +1807,19 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
 
         of_mix_reliable_to_others = \
             odor_resp_subset_fracs['of_mix_resp'][odor_order]
+        check_fraction_series(of_mix_reliable_to_others)
 
         if not args.across_flies_only:
             fig = plt.figure()
 
             ax = of_mix_reliable_to_others.plot.bar(color='black')
             ax.set_title(label.title() + '\nFraction of mix reliable responders'
-                ' reliable to other odors')
+                ' reliable to other odors'
+            )
+            ax.set_xlabel('')
             savefigs(fig, 'mix_rel_to_others', fname)
 
+        '''
         of_mix_reliable_to_others_ratio = \
             of_mix_reliable_to_others / frac_reliable_responders
 
@@ -1789,22 +1835,10 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             # TODO update title on these to try to clarify how the value is
             # computed
             ratio_ax.set_title(label.title() + '\nFraction of mix reliable'
-                ' responders reliable to other odors (ratio)')
+                ' responders reliable to other odors (ratio)'
+            )
+            ratio_ax.set_xlabel('')
             savefigs(ratio_fig, 'ratio_mix_rel_to_others', fname)
-
-        # TODO TODO TODO aggregate across flies somehow? points for each
-        # fraction ratio? (swarm?) (mean frac at least?)
-
-        # TODO TODO TODO still maybe show this as a matshow, since that seems to
-        # be one version of the all-pairwise-venn-diagram thing betty was trying
-        # to envision, right?
-        '''
-        # TODO print the above in some nice(r) way?
-        # TODO TODO or save to figure? (like df_to_image?)
-        print('Responder fractions to subset of cells responding reliably'
-            ' to each odor:')
-        print(odor_resp_subset_fracs)
-        print('')
         '''
 
         rr_idx_names = reliable_responders.index.names
@@ -1842,14 +1876,6 @@ savefigs(n_ro_hist_fig, None, 'n_ro_hist')
 # info? or rename appropriately?
 frac_responder_df = u.add_fly_id(pd.concat(frac_responder_dfs).reset_index(
     name='frac_responding'))
-
-# TODO need to do this for other stuff? do above? in first loop even?
-# To differentiate between kiwi mix and control mix in seaborn plots that
-# include both in one subfigure.
-# Not sure any plots actually *should* have both mixes on literally the
-# same subfigure though...
-#frac_responder_df.loc[((frac_responder_df.odor_set == 'control') &
-#    (frac_responder_df.name1 == 'mix')), 'name1'] = 'cmix'
 
 def with_odor_order(plot_fn):
     def ordered_plot_fn(*args, **kwargs):
@@ -1891,6 +1917,15 @@ odor_set2color = {
 }
 odor_set_order = ['kiwi', 'control']
 
+# col_wrap for FacetGrids
+cw = 4
+
+# TODO delete after fixing legend business
+# (commented b/c colors do at least seem to be in correspondence between
+# n_ro_hist and facetgrid below)
+#print(frac_responder_df[fly_keys + ['fly_id']].drop_duplicates())
+#
+
 # These control whether these odors are included in plots that average some
 # quantity across all odors within values of odor_set (e.g. cell adaptation
 # rates).
@@ -1923,15 +1958,6 @@ def drop_excluded_odors(df, pfo=True, kiwi=False, mix=False, components=False):
 
     return df[~ df[odor_col].isin(excluded)]
 
-
-# col_wrap for FacetGrids
-cw = 4
-
-# TODO delete after fixing legend business
-# (commented b/c colors do at least seem to be in correspondence between
-# n_ro_hist and facetgrid below)
-#print(frac_responder_df[fly_keys + ['fly_id']].drop_duplicates())
-#
 
 def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
     title, file_prefix):
@@ -2489,16 +2515,14 @@ if show_plots_interactively:
 else:
     plt.close('all')
 
-# TODO TODO maybe only render stuff generated on this run into report, so that
-# it doesn't include things using different parameters
-# (how to implement... keep track of filenames saved in here?)
-# TODO TODO TODO generate report pdf here
-# TODO TODO render in parameters to report + stuff about flies
-# (include them in a summary section(?) at the top or something)
+# TODO include them in a summary section(?) at the top or something?
 
 # TODO TODO also provide plain text descriptions of these params
 # TODO + optional units for params?
 # TODO and support all of these in latex template
+
+# TODO TODO shortcut links from table of contents to (important?) sections
+# in pdf
 
 if not args.no_report_pdf:
     if args.no_save_figs:
@@ -2541,9 +2565,9 @@ if not args.no_report_pdf:
         params_for_report = {n: (f"'{p}'" if type(p) is str else p) for n, p
             in params_for_report.items()
         }
+        params_for_report['args.exclude_earlier_figs'] = \
+            args.exclude_earlier_figs
         
-        # TODO TODO save the input file used into the report too
-
         git_info = u.version_info()
         github_link = git_info['git_remote'].replace(':','/').replace(
             'git@','https://')
@@ -2552,7 +2576,6 @@ if not args.no_report_pdf:
             github_link = github_link[:-len('.git')]
         github_link += '/blob/'
 
-        # TODO test when should be 0
         uncommitted_changes = len(git_info['git_uncommitted_changes']) > 0
         if uncommitted_changes:
             github_link += 'master/'
@@ -2572,7 +2595,7 @@ if not args.no_report_pdf:
             outputs_pickle = None
             input_trace_pickles = pickles
 
-    print(uncommitted_changes)
+    print('')
     pdf_fname = generate_pdf_report.main(params=params_for_report,
         codelink=github_link, uncommitted_changes=uncommitted_changes,
         input_trace_pickles=input_trace_pickles, outputs_pickle=outputs_pickle,
@@ -2587,5 +2610,6 @@ if not args.no_report_pdf:
     os.symlink(pdf_fname, symlink_name)
     subprocess.Popen(['xdg-open', pdf_fname])
 
-import ipdb; ipdb.set_trace()
+if not args.no_debug_shell:
+    import ipdb; ipdb.set_trace()
 
