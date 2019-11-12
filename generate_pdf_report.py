@@ -3,6 +3,7 @@
 from os.path import join, split, abspath, normpath, dirname, getmtime
 import glob
 from datetime import date, datetime
+from collections import OrderedDict
 from pprint import pprint
 
 from jinja2.loaders import FileSystemLoader
@@ -147,20 +148,36 @@ def plot_files_in_order(glob_str, filenames_to_use):
     return files
 
 
+def agg_within_sections(sec_names_and_files):
+    """
+    Returns new list of sections and files, with no duplicate section names,
+    and file lists behind originally-duplicate section names concatenated
+    together.
+    """
+    name2files = OrderedDict()
+    for name, files in sec_names_and_files:
+        if name not in name2files:
+            name2files[name] = files
+        else:
+            name2files[name] += files
+
+    return list(name2files.items())
+
+
 def main(*args, **kwargs):
-    # TODO pop these out of kwargs if i'm gonna call this from outside,
-    # while still keeping this separate module. pass rest of kwargs to rendering
-    # fn?
     verbose = False
     only_print_latex = False
     write_latex_for_testing = False
+    write_latex_like_pdf = False
     date_in_pdf_name = True
 
     if 'filenames' in kwargs:
         filenames_to_use = kwargs.pop('filenames')
-        # Any matching files will have to also be present in here.
-        filenames_to_use = {split(p)[1] for p in filenames_to_use}
-        # TODO maybe print which files are excluded as they are? (if verbose?)
+        if filenames_to_use is not None:
+            # Any matching files will have to also be present in here.
+            filenames_to_use = {split(p)[1] for p in filenames_to_use}
+            # TODO maybe print which files are excluded as they are? (if
+            # verbose?)
     else:
         # This means to use all matching files.
         filenames_to_use = None
@@ -168,53 +185,27 @@ def main(*args, **kwargs):
     env = make_env(loader=FileSystemLoader('.'))
     template = env.get_template('template.tex')
 
-    # TODO TODO TODO maybe just lump everything in plot dir w/ unrecognized
-    # prefix into this section, just w/o secion name?
-    # would prob make it easier to add new plot types, w/o some other
-    # refactoring
-    # TODO maybe order these previously-unclaimed sections by (latest?) mtime
-    # of files matched by the glob?
-    # TODO how to either show "Figure N" (without colon) or no figure label
-    # (while still incrementing figure num)? (for this stuff)
-
-    # TODO TODO TODO maybe allow the second element of each tuple being
-    # an iterable of glob strs, which defines order w/in a section
-    # (so i can put shuffle control after cell tuning breadth, for example)
-    # (or ctrl after kiwi stuff, if can't get single facetgrids to do what
-    # i want)
     all_pdfdir_files = set(glob_plots('*', filenames_to_use))
 
-    # These will all be stacked top to bottom (?)
-    section_names_and_globstrs = [
-        ('Cell tuning breadth', 'n_ro_hist*'),
-        ('Mean fraction responding', 'mean_frac_responding*'),
-        ('Kiwi panel odor correlations', 'kiwi_corr*'),
-        ('Control panel odor correlations', 'ctrl_corr*'),
-        ('Cell linearity distributions', 'cell_linearity_dists*')
-    ]
+    # TODO test that auto finding + ordering missing stuff is still working when
+    # these are not passed in kwargs
+    # These will all be stacked top to bottom.
+    if 'section_names_and_globstrs' in kwargs:
+        section_names_and_globstrs = kwargs.pop('section_names_and_globstrs')
+    else:
+        section_names_and_globstrs = []
+
+    # These will be lined up in two columns, with one odor_set in left column
+    # and the other in the right column.
+    if 'paired_section_names_and_globstrs' in kwargs:
+        paired_section_names_and_globstrs = \
+            kwargs.pop('paired_section_names_and_globstrs')
+    else:
+        paired_section_names_and_globstrs = []
+
     sections = [(n, glob_plots(gs, filenames_to_use)) for n, gs
         in section_names_and_globstrs
     ]
-    # These will be lined up in two columns, with one odor_set in left column
-    # and the other in the right column.
-    paired_section_names_and_globstrs = [
-        ('Threshold sensitivity', 'threshold_sensitivity*'),
-        ('Response rates', 'resp_frac_*'),
-        ('Response reliability', 'reliable_of_resp_*'),
-        ('Normalized mix responder tuning', 'ratio_mix_rel_to_others_*'),
-        ('Mix responder tuning', 'mix_rel_to_others_*'),
-        ('Trial-max response correlations', 'oorder_corr_max*'),
-    ]
-    # TODO option to use passed in filenames rather than stuff from glob
-    # (to only include plots generated in one analysis run, for example)
-    # TODO maybe find intersection of globstrs w/ those filenames, and fail
-    # if any filenames are passed in w/ unrecognized glob strs
-    # might make more sense to just include all passed in actually...
-    # but should still group by non-id part of filename (prefix always?)
-    # (maybe order by suffix if there are other suffix keys besides
-    # date / fly_num / panel??)
-    # (put all those in their own section, like at top, for across fly
-    # stuff?)
     paired_sections = [(n, plot_files_in_order(gs, filenames_to_use)) for n, gs
         in paired_section_names_and_globstrs
     ]
@@ -289,13 +280,6 @@ def main(*args, **kwargs):
     unclaimed_files2globstrs = {f: gs for f, gs in
         unclaimed_files2globstrs.items() if gs is not None
     }
-
-    # TODO maybe exclude stuff older than a day by default? or at least
-    # warn (i mean we might not want to regenerate, but should be aware it's
-    # old maybe)?
-    # Could also do something like this to exclude stuff that is sufficiently
-    # older than other plots, such that it was likely to have been generated in
-    # a different run (and thus likely diff. code / data / parameters).
     unclaimed_file2mtime = {f: getmtime(join(pdfdir, f)) for f in
         unclaimed_pdfdir_files
     }
@@ -326,7 +310,6 @@ def main(*args, **kwargs):
     # something?
     # Will still need to manually filter these. Sometimes something we don't
     # want to match on will show up in generated glob strings.
-
     globstrs_to_exclude = {
         'odorandfit*',
         'oorder_corr_mean*',
@@ -357,10 +340,12 @@ def main(*args, **kwargs):
         ]
         sections += new_sections
 
-        # TODO TODO maybe prompt to have this script edit itself to add the
-        # discovered plot type (empty title + the globstr)?
-        # or specify plot names + globstrs in some external config file anyway,
-        # and then edit that?
+    # TODO may want to change this / how sections are rendered so sections
+    # are not just figure titles, but can be something that contain multiple
+    # differently-titled figures, that both go in the same named section
+    # (that can hopefully be referred to in some kind of table of contents)
+    sections = agg_within_sections(sections)
+    paired_sections = agg_within_sections(paired_sections)
 
     # TODO if i'm gonna do this, maybe warn about which desired sections
     # were missing plots (or do that regardless...)?
@@ -404,6 +389,11 @@ def main(*args, **kwargs):
     if date_in_pdf_name:
         pdf_fname = date.today().strftime(u.date_fmt_str) + f'_{pdf_fname}'
 
+    if write_latex_like_pdf:
+        tex_fname = pdf_fname[:-len('.pdf')] + '.tex'
+        print('Writing LaTeX to {}'.format(tex_fname))
+        with open(tex_fname, 'w') as f:
+            f.write(latex_str)
     try:
         # Current dir needs to be passed so that 'template.tex', and any 
         # other dependencies in current directory, can be accessed in the

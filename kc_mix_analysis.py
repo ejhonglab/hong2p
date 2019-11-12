@@ -162,9 +162,6 @@ test = args.test
 # Data whose trace pickles contain this substring are loaded.
 #test_substr = '08-27_9'
 test_substr = '10-04_1'
-if test:
-    show_plots_interactively = True
-    save_figs = False
 
 start_time_s = time.time()
 
@@ -231,28 +228,55 @@ def matshow(ax, data, as_row=False, **kwargs):
 max_open_noninteractive = 3
 fig_queue = deque()
 
+# TODO any cases where a per-figure note would also be useful enough to support
+# it?
+# TODO include a section kwarg that is more broad than current section,
+# rename current section to subsection, and use new section to group for
+# table of contents (e.g. so all adaptation stuff can be put together)?
+
+# Currently putting in LaTeX report in the order saved here, though still
+# with all paired stuff coming after non-paired stuff.
+
+plot_prefix2latex_data = dict()
 plots_made_this_run = set()
-# TODO change so can be called w/ 2 args when prefix would be None?
-# (suffix always passed, right? change order make most sense?)
-# TODO maybe move into loop so it gets suffix (fname) as a closure?
-# TODO TODO maybe allow passing descriptions or notes which get rendered
-# into the latex if a pdf report is generated?
-# (could store filenames -> this data or something equivalent)
-# TODO or if i can be more consistent about either prefix or suffix being
-# constant, could store the constant one -> same data
-def savefigs(fig, prefix, suffix):
-    if save_figs:
-        if prefix is not None:
-            assert not prefix.endswith('_')
-            prefix = prefix + '_'
+def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
+    subsection=None, note=None, exclude_from_latex=False, section_order=None):
+    """
+    section_order (None or int): If an int, it is used as a sort key to order
+        this section relative to the others. Default order start at 0 and
+        increases with each section added.
+    """
+    # TODO maybe rename subsection to figure name or something?
+    # (though if section is only thing passed, it has the same meaning...)
+    # change to have more consistent meanings (e.g. generally do NOT pass
+    # section, and only do so when we want a section, rather than a fig title)
+    # TODO TODO test case where we actually do want both a section title and
+    # fig title (in adaptation case now, not actually making fig titles)
+
+    # TODO maybe some cli flag to still save plots not bound for report?
+    if save_figs and not exclude_from_latex:
+        if len(vargs) == 1:
+            recording_info_suffix = vargs[0]
+            assert not recording_info_suffix.startswith('_')
+        elif len(vargs) == 0:
+            recording_info_suffix = None
         else:
-            prefix = ''
+            raise ValueError('too many positional arguments')
+
+        plot_type_parts = [plot_type_prefix]
+        if odor_set is not None:
+            plot_type_parts.append(odor_set)
+
+        if recording_info_suffix is not None:
+            plot_type_parts.append(recording_info_suffix)
+
+        plot_type = '_'.join(plot_type_parts)
 
         if verbose_savefig:
-            print(f'writing plots for {prefix + suffix}')
+            print(f'writing plots for {plot_type}')
 
         for pf in plot_formats:
-            plot_fname = join(fig_dir, pf, prefix + suffix + '.' + pf)
+            plot_fname = join(fig_dir, pf, plot_type + '.' + pf)
             if print_full_plot_paths:
                 print(plot_fname)
 
@@ -262,11 +286,43 @@ def savefigs(fig, prefix, suffix):
                 raise IOError('likely saving two different things to '
                     f'{plot_fname}! fix code.')
 
+            # This should be redundant with check above, but just to be sure.
+            assert plot_fname not in plots_made_this_run
+
             fig.savefig(plot_fname)
             plots_made_this_run.add(plot_fname)
 
         if print_full_plot_paths:
             print('')
+
+        paired = recording_info_suffix is not None
+        # TODO maybe assert that section is not None if subsection is not None
+        if section is None:
+            section = ''
+        if subsection is None:
+            subsection = ''
+        if plot_type_prefix not in plot_prefix2latex_data:
+            if section_order is None:
+                n_before = len([(s,d) for s, d in plot_prefix2latex_data.items()
+                    if d['paired'] == paired]
+                )
+                section_order = n_before
+            latex_data = {
+                'section': section,
+                'subsection': subsection,
+                'note': note,
+                'paired': paired,
+                'section_order': section_order
+            }
+            plot_prefix2latex_data[plot_type_prefix] = latex_data
+        else:
+            # Can't use plot_type_prefix as a key if the data would need
+            # to be different for two cases with the same would-be-key.
+            prev_latex_data = plot_prefix2latex_data[plot_type_prefix]
+            assert section == prev_latex_data['section']
+            assert subsection == prev_latex_data['subsection']
+            assert note == prev_latex_data['note']
+            assert paired == prev_latex_data['paired']
 
     if not show_plots_interactively:
         fig_queue.append(fig)
@@ -534,7 +590,7 @@ def odor_and_fit_plot(odor_cell_stats, weighted_sum, ordered_cells, fname,
     diff_cbar_label = r'$\frac{\Delta F}{F}$ difference'
     cax2.set_ylabel(diff_cbar_label)
 
-    savefigs(f3, 'odorandfit', fname)
+    savefigs(f3, 'odorandfit', fname, exclude_from_latex=True)
 
 
 # TODO add appropriately formatted descrip of mix to input index cols so it can
@@ -639,6 +695,8 @@ def plot_pca(df, fname=None):
     # TODO TODO TODO return PCA data somehow (4 things, 2 each std/nonstd?)
     # or components, explained variance, and fits (which are what exactly?),
     # for each?
+    # TODO TODO TODO start w/ explained variance fractions for across-fly
+    # skree plot. that might be the most easily interpretable.
     import ipdb; ipdb.set_trace()
 
 
@@ -702,8 +760,15 @@ def roc_analysis(window_trial_stats, reliable_responders, fname=None):
             if fname is not None:
                 odor_fname = odor.replace(' ', '_')
                 task_fname = 'seg' if segmentation else 'discrim'
-
-                savefigs(fig, None, fname + '_' + odor_fname + '_' + task_fname)
+                # TODO maybe don't save these figs tho?
+                # (would probably also screw up my paired-plot-detection
+                # scheme in savefig)
+                # TODO would need to at least check that pairing in report
+                # generation also works w/ arbitrary extra parts (beyond
+                # glob str, maybe), to also pair on the odor here
+                savefigs(fig, task_fname, odor_fname + '_' + fname,
+                    exclude_from_latex=True
+                )
 
     # TODO maybe also plot average distributions for segmentation and
     # discrimination, within this fly, but across all odors?
@@ -897,7 +962,9 @@ if not args.only_analyze_cached:
             # TODO maybe pick thresh from some kind of max of derivative (to
             # find an elbow)?
             # TODO could also use on one / a few flies for tuning, then disable?
-            savefigs(thr_fig, 'threshold_sensitivity', fname)
+            savefigs(thr_fig, 'threshold_sensitivity', fname,
+                section='Threshold sensitivity'
+            )
 
         # TODO not sure why it seems i need such a high threshold here, to get
         # reasonable sparseness... was the fly i'm testing it with just super
@@ -989,31 +1056,42 @@ if not args.only_analyze_cached:
                 title_suffix = '\n' + title
                 # TODO TODO and are there other plots / outputs that will be
                 # affected by missing odors?
+                # TODO exclude 3/4 of these from latex / don't compute at all
                 if trial_order_correlations:
                     porder_corr_mean_fig = u.plot_odor_corrs(
                         odor_corrs_from_means, title_suffix=title_suffix
                     )
-                    savefigs(porder_corr_mean_fig, 'porder_corr_mean', fname)
+                    savefigs(porder_corr_mean_fig, 'porder_corr_mean', fname,
+                        exclude_from_latex=True
+                    )
 
                     porder_corr_max_fig = u.plot_odor_corrs(
                         odor_corrs_from_maxes, trial_stat='max',
                         title_suffix=title_suffix
                     )
-                    savefigs(porder_corr_max_fig, 'porder_corr_max', fname)
+                    savefigs(porder_corr_max_fig, 'porder_corr_max', fname,
+                        exclude_from_latex=True
+                    )
 
                 if odor_order_correlations:
                     oorder_corr_mean_fig = u.plot_odor_corrs(
                         odor_corrs_from_means, odors_in_order=odor_order,
                         title_suffix=title_suffix
                     )
-                    savefigs(oorder_corr_mean_fig, 'oorder_corr_mean', fname)
+                    savefigs(oorder_corr_mean_fig, 'oorder_corr_mean', fname,
+                        exclude_from_latex=True
+                    )
 
                     oorder_corr_max_fig = u.plot_odor_corrs(
                         odor_corrs_from_maxes, trial_stat='max',
                         odors_in_order=odor_order,
                         title_suffix=title_suffix
                     )
-                    savefigs(oorder_corr_max_fig, 'oorder_corr_max', fname)
+                    savefigs(oorder_corr_max_fig, 'oorder_corr_max', fname,
+                        section='Trial-max response correlations',
+                        # A large number to put this at the end.
+                        section_order=200
+                    )
 
             tidy_corrs_from_means = melt_symmetric(odor_corrs_from_means,
                 name='corr')
@@ -1450,7 +1528,12 @@ if not args.only_analyze_cached:
                     fontsize=6, title=title)
                 ax = plt.gca()
                 ax.set_aspect(0.1)
-                savefigs(fs, 'avg', fname + ss)
+                # TODO support? this will prob not work w/ paired inference in
+                # savefig.
+                # TODO would need to at least check that pairing in report
+                # generation also works w/ arbitrary extra parts (beyond
+                # glob str, maybe), to also pair on the odor here
+                savefigs(fs, 'avg', fname + ss, exclude_from_latex=True)
 
             if odor_and_fit_matrices:
                 odor_and_fit_plot(odor_cell_stats, weighted_sum, order[:top_n],
@@ -1517,6 +1600,12 @@ if not args.only_analyze_cached:
         _locals = locals()
         data = {n: _locals[n] for n in param_names}
         data.update({
+            # TODO maybe also need to save hashes / full figs, to check that
+            # what exists on disk under the same names are actually what these
+            # filenames refer to?
+            'plots_made_this_run': plots_made_this_run,
+            'plot_prefix2latex_data': plot_prefix2latex_data,
+
             'responders': responders,
             'response_magnitudes': response_magnitudes,
 
@@ -1536,6 +1625,8 @@ if not args.only_analyze_cached:
         after_raw_calc_time_s - start_time_s))
 
 else:
+    after_raw_calc_time_s = time.time()
+
     load_most_recent = True
     if load_most_recent:
         out_pickles = glob.glob(pickle_outputs_fstr.replace('{:.2f}{}','*'))
@@ -1565,9 +1656,6 @@ else:
     # saving above / so variables loaded can't diverge (assuming pickle was
     # generated with most recent version...).
     globals().update(data)
-
-# TODO TODO TODO some kind of plot of the correlations themselves, to make a
-# statement across flies?
 
 fly_keys = ['prep_date', 'fly_num']
 rec_key = 'thorimage_id'
@@ -1709,7 +1797,9 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
                 f'increase fr_display_max to more than {fr_max:.2f}'
             resp_frac_ax.set_ylim([0, fr_display_max])
 
-            savefigs(resp_frac_fig, 'resp_frac', fname)
+            savefigs(resp_frac_fig, 'resp_frac', fname,
+                section='Response rates'
+            )
 
             '''
             reliable_frac_fig = plt.figure()
@@ -1749,7 +1839,9 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
                 '\nFraction of responders that are reliable, by odor'
             )
             reliable_of_resp_ax.set_xlabel('')
-            savefigs(reliable_of_resp_fig, 'reliable_of_resp', fname)
+            savefigs(reliable_of_resp_fig, 'reliable_of_resp', fname,
+                section='Response reliability'
+            )
 
         frac_responders = add_metadata(rec_gser.reset_index(), frac_responders)
         frac_responders = pd.concat([frac_responders],
@@ -1817,7 +1909,9 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
                 ' reliable to other odors'
             )
             ax.set_xlabel('')
-            savefigs(fig, 'mix_rel_to_others', fname)
+            savefigs(fig, 'mix_rel_to_others', fname,
+                section='Mix responder tuning'
+            )
 
         '''
         of_mix_reliable_to_others_ratio = \
@@ -1869,8 +1963,8 @@ n_ro_hist_ax.legend()
 n_ro_hist_ax.set_title('Cell tuning breadth')
 n_ro_hist_ax.set_xlabel('Number of odors cells respond to (at least twice)')
 n_ro_hist_ax.set_ylabel('Fraction of cells')
-
-savefigs(n_ro_hist_fig, None, 'n_ro_hist')
+# Deferring save of this fig until after response fraction plot, so that is
+# their order in the latex.
 
 # this is just the mean frac responding... maybe i should have gotten the trial
 # info? or rename appropriately?
@@ -1960,7 +2054,7 @@ def drop_excluded_odors(df, pfo=True, kiwi=False, mix=False, components=False):
 
 
 def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
-    title, file_prefix):
+    title):
     gs = []
     for i, oset in enumerate(odor_set_order):
         os_df = df[df.odor_set == oset]
@@ -1996,9 +2090,9 @@ def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
         gs.append(g)
 
     # So that saving can be deferred until after any modifications to the plots.
-    def save_fn():
+    def save_fn(file_prefix, **kwargs):
         for g, oset in zip(gs, odor_set_order):
-            savefigs(g.fig, None, f'{file_prefix}_{oset}')
+            savefigs(g.fig, file_prefix, odor_set=oset, **kwargs)
 
     return gs, save_fn
 
@@ -2042,8 +2136,10 @@ g.add_legend()
 g.set_axis_labels('Odor', 'Fraction responding')
 # TODO way to just capitalize?
 g.set_titles('{col_name}')
-savefigs(g.fig, None, 'mean_frac_responding')
+savefigs(g.fig, 'mean_frac_responding', section='Mean fraction responding')
 
+# Saving this down here so it's ordered after the above plot in the latex.
+savefigs(n_ro_hist_fig, 'n_ro_hist', section='Cell tuning breadth')
 
 old_len = len(responders.index.drop_duplicates())
 responders.name = 'response'
@@ -2095,9 +2191,9 @@ add_odorset(corr_df)
 
 gs, save_fn = odor_facetgrids(corr_df, categ_pt_plot_fn, 'name1_b', 'corr',
     'Odor B', 'Correlation', dict(marker='o'),
-    'Correlation consistency', 'corrs'
+    'Correlation consistency'
 )
-save_fn()
+save_fn('corrs', section='Correlation consistency')
 
 
 # TODO factor? didn't i use something like this in natural_odors?
@@ -2243,10 +2339,10 @@ for responders_only in responders_only_values:
     )
 
     if responders_only:
-        fname_prefix = 'reliable_responder'
+        fname_suffix = 'reliable_responder'
         title = 'Adaptation of reliable responders'
     else:
-        fname_prefix = 'allcell'
+        fname_suffix = 'allcell'
         title = 'Adaptation of all cells'
 
     # TODO want to change this to "mean of trial max...", or too verbose?
@@ -2254,8 +2350,7 @@ for responders_only in responders_only_values:
     # responders here (i'm leaning towards no, for space again)?
     ylabel = f'{trial_stat.title()}' + r' trial $\frac{\Delta F}{F}$'
     gs, save_fn = odor_facetgrids(mean_rmags, sns.lineplot, 'repeat_num',
-        'trialmax_df_over_f', 'Repeat', ylabel, dict(marker='o'),
-        title, f'{fname_prefix}_adaptation'
+        'trialmax_df_over_f', 'Repeat', ylabel, dict(marker='o'), title
     )
     xs = np.unique(mean_rmags.repeat_num)
     xs = np.array([xs[0], xs[-1]])
@@ -2276,7 +2371,7 @@ for responders_only in responders_only_values:
         # TODO TODO do try to patch a label for the fit line into the 
         # existing facetgrid legend somehow
 
-    save_fn()
+    save_fn(f'adaptation_{fname_suffix}', section=title)
 
     # TODO TODO maybe explicitly compare t1 - t0 and t2 - t2 adaptation?
     # if it's not linear, maybe measuring it with slope of line is
@@ -2397,7 +2492,7 @@ for responders_only in responders_only_values:
     ax.set_ylabel(density_label)
     ax.set_xlim(xlim)
     ax.legend()
-    savefigs(cell_adapt_fig, None, f'{fname_prefix}_adapt_dist')
+    savefigs(cell_adapt_fig, f'adapt_dist_{fname_suffix}', section=title)
 
     cell_adaptation_fits.reset_index(inplace=True)
     cell_adaptation_fits_nokiwi = cell_adaptation_fits[
@@ -2442,7 +2537,7 @@ for responders_only in responders_only_values:
     g._legend.set_title('Odor')
     g.fig.suptitle(title)
     g.fig.subplots_adjust(top=0.85)
-    savefigs(g.fig, None, f'{fname_prefix}_adapt_dist_per_odor')
+    savefigs(g.fig, f'adapt_dist_per_odor_{fname_suffix}', section=title)
 
     # TODO maybe don't use this fixed xlim
     # TODO maybe increase range a bit in odor specific case, as noiser +
@@ -2457,7 +2552,7 @@ for responders_only in responders_only_values:
     g.set_titles('{col_name}')
     g.fig.suptitle(title)
     g.fig.subplots_adjust(top=0.85)
-    savefigs(g.fig, None, f'{fname_prefix}_rmag0_v_adapt')
+    savefigs(g.fig, f'rmag0_v_adapt_{fname_suffix}', section=title)
 
     # The green kinda won out over the pink of the control, so this plot wasn't
     # so good.
@@ -2503,7 +2598,9 @@ for oset in odor_set_order:
 ax.set_title('Distributions of cell residuals from linear mixture model')
 ax.set_xlim([-1, 1])
 ax.legend()
-savefigs(linearity_dist_fig, None, 'cell_linearity_dists')
+savefigs(linearity_dist_fig, 'cell_linearity_dists',
+    section='Linearity', subsection='Cell linearity distributions'
+)
 
 
 # TODO TODO TODO maybe plot (fly, trial) max / mean responses image grids, and
@@ -2565,8 +2662,6 @@ if not args.no_report_pdf:
         params_for_report = {n: (f"'{p}'" if type(p) is str else p) for n, p
             in params_for_report.items()
         }
-        params_for_report['args.exclude_earlier_figs'] = \
-            args.exclude_earlier_figs
         
         git_info = u.version_info()
         github_link = git_info['git_remote'].replace(':','/').replace(
@@ -2589,26 +2684,51 @@ if not args.no_report_pdf:
         # specifically?
 
         if args.only_analyze_cached:
+            params_for_report['args.exclude_earlier_figs'] = \
+                args.exclude_earlier_figs
             outputs_pickle = pickle_outputs_name
             input_trace_pickles = None
         else:
             outputs_pickle = None
             input_trace_pickles = pickles
 
+    # TODO didn't i have something in latex report generation to take an
+    # iterable of globstrs as second element here? that could support my
+    # sections + subsections, but i'm not seeing it in generate_pdf_report.py
+    # now...
+
+    plot_prefix2latex_data_list = sorted(plot_prefix2latex_data.items(),
+        key=lambda x: x[1]['section_order']
+    )
+    section_names_and_globstrs = [(d['section'], p + '*') for p, d in
+        plot_prefix2latex_data_list if not d['paired']
+    ]
+    paired_section_names_and_globstrs = [(d['section'], p + '*') for p, d in
+        plot_prefix2latex_data_list if d['paired']
+    ]
+    # TODO TODO change latex report generation to actually include per-section
+    # notes, and then don't just throw them away here
+
     print('')
     pdf_fname = generate_pdf_report.main(params=params_for_report,
         codelink=github_link, uncommitted_changes=uncommitted_changes,
         input_trace_pickles=input_trace_pickles, outputs_pickle=outputs_pickle,
-        filenames=plots_made_this_run
+        filenames=plots_made_this_run,
+        section_names_and_globstrs=section_names_and_globstrs,
+        paired_section_names_and_globstrs=paired_section_names_and_globstrs
     )
 
     # Linux specific.
     symlink_name = 'latest_report.pdf'
+    print(f'Making a shortcut to this report at {symlink_name}')
     if exists(symlink_name):
         # In case it's pointing to something else.
         os.remove(symlink_name)
     os.symlink(pdf_fname, symlink_name)
     subprocess.Popen(['xdg-open', pdf_fname])
+
+print('Calculations on computed intermediates took {:.0f}s'.format(
+    time.time() - after_raw_calc_time_s))
 
 if not args.no_debug_shell:
     import ipdb; ipdb.set_trace()

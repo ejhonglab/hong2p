@@ -46,11 +46,17 @@
 %\printinunitsof{in}\prntlen{\textwidth} % was 7.35971in
 %\printinunitsof{in}\prntlen{\textheight} % was 9.82082in
 
+\tableofcontents
+
 \pagebreak
+
+\BLOCK{ if params or codelink or outputs_pickle or input_trace_pickles }
+\section{Reproducing}
+\BLOCK{ endif }
 
 \begin{flushleft}
 \BLOCK{ if params }
-\section{Parameters}
+\subsection{Parameters}
 %\verb=\VAR{key}= = \verb=\VAR{value}=
 \begin{verbatim}
 \BLOCK{ for key, value in params.items() }
@@ -60,7 +66,7 @@
 \BLOCK{ endif }
 
 \BLOCK{ if codelink }
-\section{Code}
+\subsection{Code}
 The code for this analysis can be found at:
 \linebreak
 \url{\VAR{codelink}}
@@ -72,7 +78,7 @@ The version of the code that generated this report \BLOCK{ if uncommitted_change
 \BLOCK{ endif }
 
 \BLOCK{ if outputs_pickle }
-\section{Input}
+\subsection{Input}
 Started analysis from computed values in \verb=\VAR{outputs_pickle}=.
 
 The values in this intermediate file were previously computed from extracted
@@ -80,7 +86,7 @@ fluorescence traces.
 \BLOCK{ endif }
 
 \BLOCK{ if input_trace_pickles }
-\section{Input}
+\subsection{Input}
 Used extracted fluorescence traces in these files:
 \begin{verbatim}
 \BLOCK{ for infile in input_trace_pickles }
@@ -104,7 +110,7 @@ Used extracted fluorescence traces in these files:
 \section{Across-fly analyses}
 
 \BLOCK{ for section in sections }
-%#\section{\VAR{section[0]}}
+\subsection{\VAR{section[0]}}
 
 \figureSeriesHere{\VAR{section[0]}}
 
@@ -130,7 +136,7 @@ Used extracted fluorescence traces in these files:
 % experiments (within each fly) side-by-side.
 
 \BLOCK{ for section in paired_sections }
-%#\section{\VAR{section[0]}}
+\subsection{\VAR{section[0]}}
 
 \figureSeriesHere{\VAR{section[0]}}
 
