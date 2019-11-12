@@ -59,8 +59,14 @@ def plot_files_in_order(glob_str, filenames_to_use):
         for p in parts:
             if p == 'kiwi':
                 if panel_part is not None:
+                    pass
+                    # This fails w/ discrim_kiwi_kiwi_<date>_<fly>_<thorimageid>
+                    # output.
+                    # TODO fix
+                    '''
                     raise ValueError(
                         f'duplicate panel parts in filename {fname}')
+                    '''
 
                 if control_last:
                     panel_part = 0

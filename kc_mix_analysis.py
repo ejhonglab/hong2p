@@ -9,7 +9,7 @@ import time
 import pickle
 import argparse
 import shutil
-import itertools
+from itertools import zip_longest, product
 from collections import deque
 import subprocess
 
@@ -60,13 +60,21 @@ parser.add_argument('-a', '--across-flies-only', default=False,
 parser.add_argument('-i', '--interactive-plots', default=False,
     action='store_true', help='Show plots interactively (at end).'
 )
+parser.add_argument('-m', '--max-open-saved-figs', type=int, default=3,
+    help='This number of figs will remain open despite being saved. '
+    'Use for debugging with minimal other changes.'
+)
 parser.add_argument('-o', '--no-report-pdf', default=False,
     action='store_true', help='Does not generate a PDF report at the end.'
 )
-parser.add_argument('-e', '--exclude-earlier-figs', default=False,
-    action='store_true', help='Does not include any existing PDF figures in '
-    'PDF report (any that are not re-generated in this run), but does not '
-    'delete them.'
+parser.add_argument('-e', '--earlier-figs', default=False,
+    action='store_true', help='Includes any existing PDF figures in report, '
+    'not just figures generated this run (or the run that produced the '
+    'intermediates used for this run).'
+)
+parser.add_argument('-f', '--save-nonreport-figs', default=False,
+    action='store_true', help='If passed, will save figs whether or not '
+    'they will be placed in the PDF report.'
 )
 parser.add_argument('-b', '--no-debug-shell', default=False,
     action='store_true', help='Exits on completion, rather than dropping in '
@@ -118,14 +126,16 @@ responder_threshold_plots = True
 trial_matrices = False
 odor_matrices = False
 
+# TODO TODO err if one of these flags is true but we are analyzing cached
+# data, and cache doesn't have the data of interest
 correlations = True
 plot_correlations = True
 trial_order_correlations = True
 odor_order_correlations = True
 # TODO return to trying to aggregate some type of this analysis across flies
 # after doing corr + linearity stuff across flies (+ ROC!)
-#do_pca = True
-do_pca = False
+do_pca = True
+#do_pca = False
 do_roc = True
 # TODO was one of these types of plots obselete? did odor_and_fit_matrices
 # replace fit_matrices? (seems like fit_matrices may be obselete)
@@ -182,6 +192,10 @@ for pf in plot_formats:
         os.mkdir(pf_dir)
 
 
+def is_component(name):
+    return name not in {'pfo', 'mix', 'kiwi'}
+
+
 def check_fraction_series(ser):
     assert (ser.isnull() | ((ser <= 1.0) & (0.0 <= ser))).all()
 
@@ -225,7 +239,7 @@ def matshow(ax, data, as_row=False, **kwargs):
 
 # So that the last few figs open can still be shown interactively while
 # debugging, in contrast to show_plots_interactively case, where all are shown.
-max_open_noninteractive = 3
+max_open_noninteractive = args.max_open_saved_figs
 fig_queue = deque()
 
 # TODO any cases where a per-figure note would also be useful enough to support
@@ -254,7 +268,7 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
     # fig title (in adaptation case now, not actually making fig titles)
 
     # TODO maybe some cli flag to still save plots not bound for report?
-    if save_figs and not exclude_from_latex:
+    if save_figs and (args.save_nonreport_figs or not exclude_from_latex):
         if len(vargs) == 1:
             recording_info_suffix = vargs[0]
             assert not recording_info_suffix.startswith('_')
@@ -288,41 +302,43 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
 
             # This should be redundant with check above, but just to be sure.
             assert plot_fname not in plots_made_this_run
-
             fig.savefig(plot_fname)
-            plots_made_this_run.add(plot_fname)
+            if not exclude_from_latex:
+                plots_made_this_run.add(plot_fname)
 
         if print_full_plot_paths:
             print('')
 
-        paired = recording_info_suffix is not None
-        # TODO maybe assert that section is not None if subsection is not None
-        if section is None:
-            section = ''
-        if subsection is None:
-            subsection = ''
-        if plot_type_prefix not in plot_prefix2latex_data:
-            if section_order is None:
-                n_before = len([(s,d) for s, d in plot_prefix2latex_data.items()
-                    if d['paired'] == paired]
-                )
-                section_order = n_before
-            latex_data = {
-                'section': section,
-                'subsection': subsection,
-                'note': note,
-                'paired': paired,
-                'section_order': section_order
-            }
-            plot_prefix2latex_data[plot_type_prefix] = latex_data
-        else:
-            # Can't use plot_type_prefix as a key if the data would need
-            # to be different for two cases with the same would-be-key.
-            prev_latex_data = plot_prefix2latex_data[plot_type_prefix]
-            assert section == prev_latex_data['section']
-            assert subsection == prev_latex_data['subsection']
-            assert note == prev_latex_data['note']
-            assert paired == prev_latex_data['paired']
+        if not exclude_from_latex:
+            paired = recording_info_suffix is not None
+            # TODO maybe assert that section is not None if subsection is not
+            # None
+            if section is None:
+                section = ''
+            if subsection is None:
+                subsection = ''
+            if plot_type_prefix not in plot_prefix2latex_data:
+                if section_order is None:
+                    n_before = len([(s,d) for s, d in
+                        plot_prefix2latex_data.items() if d['paired'] == paired
+                    ])
+                    section_order = n_before
+                latex_data = {
+                    'section': section,
+                    'subsection': subsection,
+                    'note': note,
+                    'paired': paired,
+                    'section_order': section_order
+                }
+                plot_prefix2latex_data[plot_type_prefix] = latex_data
+            else:
+                # Can't use plot_type_prefix as a key if the data would need
+                # to be different for two cases with the same would-be-key.
+                prev_latex_data = plot_prefix2latex_data[plot_type_prefix]
+                assert section == prev_latex_data['section']
+                assert subsection == prev_latex_data['subsection']
+                assert note == prev_latex_data['note']
+                assert paired == prev_latex_data['paired']
 
     if not show_plots_interactively:
         fig_queue.append(fig)
@@ -390,6 +406,21 @@ def order_one_odor_set_before_other(trace_pickles, first_odor_set='kiwi'):
     # which might be useful
 
     return odor_set2fnames[first_odor_set] + odor_set2fnames[second_odor_set]
+
+
+def fill_to_cartesian(df, cols_to_combine):
+    unique_per_col = [df[c].unique() for c in cols_to_combine]
+    # TODO the list call necessary? or need further processing, like explicit
+    # tuples for elements?
+    idx = list(product(*unique_per_col))
+
+    full_len = np.prod([len(u) for u in unique_per_col])
+    assert len(idx) == full_len
+
+    # Fills missing values with NaN.
+    full_df = df.set_index(cols_to_combine).reindex(idx)
+    assert len(full_df) == full_len
+    return full_df
 
 
 # TODO TODO factor into util / use other places (maybe even in natural_odors)?
@@ -575,14 +606,14 @@ def odor_and_fit_plot(odor_cell_stats, weighted_sum, ordered_cells, fname,
     cax2 = divider.append_axes('right', size='20%', pad=0.08)
 
     mix = odor_cell_stats.loc['mix']
-    weighted_mix_diff = mix - weighted_sum
+    weighted_mix_diff = weighted_sum - mix
     im2 = matshow(ax, weighted_mix_diff[ordered_cells], cmap='coolwarm',
         aspect='auto')
 
     # move to right if i want to keep the y ticks
     ax.set_yticks([])
     ax.set_xticks([0])
-    ax.set_xticklabels(['mix - sum'], fontsize=fontsize,
+    ax.set_xticklabels(['sum - mix'], fontsize=fontsize,
         rotation=xtickrotation)
     ax.tick_params(bottom=False)
 
@@ -610,20 +641,20 @@ def plot_pca(df, fname=None):
         #    hue='sample_type', style='fermented', size='day', legend='full')
         plt.title('PCA on raw data')
 
-        pca_obj = PCA()
-        pca_obj.fit(df)
+        unstd_pca_obj = PCA()
+        unstd_pca_obj.fit(df)
 
         f1b = plt.figure()
         # TODO TODO factor the 15 into a kwarg or something
         # TODO is explained_variance_ratio_ what i want exactly?
-        plt.plot(pca_obj.explained_variance_ratio_[:15], 'k.')
+        plt.plot(unstd_pca_obj.explained_variance_ratio_[:15], 'k.')
         plt.title('PCA on raw data')
         plt.xlabel('Principal component')
         plt.ylabel('Fraction of explained variance')
 
         '''
         pc_df = pd.DataFrame(columns=df.columns,
-                             data=pca_obj.components_)
+                             data=unstd_pca_obj.components_)
 
         ###pc_df.rename(columns=fmt_chem_id, inplace=True)
         ###pc_df.columns.name = 'Chemical'
@@ -637,17 +668,17 @@ def plot_pca(df, fname=None):
     standardizer = StandardScaler()
     df_standardized = standardizer.fit_transform(df)
 
-    pca_obj = PCA()
-    pca_obj.fit(df_standardized)
+    std_pca_obj = PCA()
+    std_pca_obj.fit(df_standardized)
 
     pca_2 = PCA(n_components=2)
     # TODO TODO TODO if pca_obj from fit (above) already has .components_, then
     # why even call fit_transform???
     pca_data = pca_2.fit_transform(df_standardized)
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
 
     for n in range(pca_2.n_components):
-        assert np.allclose(pca_obj.components_[n], pca_2.components_[n])
+        assert np.allclose(std_pca_obj.components_[n], pca_2.components_[n])
 
     # From Wikipedia page on PCA:
     # "If there are n observations with p variables, then the number of
@@ -672,13 +703,13 @@ def plot_pca(df, fname=None):
     plt.title('PCA on standardized data')
 
     f2b = plt.figure()
-    plt.plot(pca_obj.explained_variance_ratio_[:15], 'k.')
+    plt.plot(std_pca_obj.explained_variance_ratio_[:15], 'k.')
     plt.title('PCA on standardized data')
     plt.xlabel('Principal component')
     plt.ylabel('Fraction of explained variance')
 
     '''
-    pc_df = pd.DataFrame(columns=df.columns, data=pca_obj.components_)
+    pc_df = pd.DataFrame(columns=df.columns, data=std_pca_obj.components_)
     ####pc_df.rename(columns=fmt_chem_id, inplace=True)
     ####pc_df.columns.name = 'Chemical'
     for pc in range(2):
@@ -687,17 +718,24 @@ def plot_pca(df, fname=None):
     '''
 
     if fname is not None:
-        savefigs(f1a, 'pca_unstandardized', fname)
-        savefigs(f1b, 'skree_unstandardized', fname)
-        savefigs(f2a, 'pca', fname)
-        savefigs(f2b, 'skree', fname)
+        savefigs(f1a, 'pca_unstandardized', fname, exclude_from_latex=True)
+        savefigs(f1b, 'scree_unstandardized', fname, exclude_from_latex=True)
+        savefigs(f2a, 'pca', fname, exclude_from_latex=True)
+        savefigs(f2b, 'scree', fname, exclude_from_latex=True)
 
     # TODO TODO TODO return PCA data somehow (4 things, 2 each std/nonstd?)
     # or components, explained variance, and fits (which are what exactly?),
     # for each?
-    # TODO TODO TODO start w/ explained variance fractions for across-fly
-    # skree plot. that might be the most easily interpretable.
-    import ipdb; ipdb.set_trace()
+    ret_df = pd.DataFrame({
+        # TODO TODO is this right? is it right that cells are considered
+        # features?
+        'component_number':
+            np.arange(len(std_pca_obj.explained_variance_ratio_)) + 1,
+
+        'std_explained_var_ratio': std_pca_obj.explained_variance_ratio_,
+        'unstd_explained_var_ratio': unstd_pca_obj.explained_variance_ratio_
+    })
+    return ret_df
 
 
 # TODO maybe try on random subsets of cells (realistic # that MBONs read out?)
@@ -845,10 +883,11 @@ if not args.only_analyze_cached:
         linearity_odor_dfs = []
         linearity_cell_dfs = []
 
-    # TODO TODO also aggregate some things from pca analysis?
-
     if do_roc:
         auc_dfs = []
+
+    if do_pca:
+        pca_dfs = []
 
     if fix_ref_odor_response_fracs:
         # (date, fly_num) -> threshold
@@ -1107,9 +1146,13 @@ if not args.only_analyze_cached:
             )
 
         if do_roc:
+            # TODO TODO TODO maybe also return matrix of each pair of odors
+            # that produced one auc value for (task, odor) pairs
+            # (presumably those were averaged over to produce that auc value?)
             auc_df = roc_analysis(window_trial_stats, reliable_responders,
                 fname=fname
             )
+            auc_df.set_index(['task','odor','cell'], inplace=True)
             auc_dfs.append(add_metadata(df, auc_df))
 
         # TODO TODO would it make more sense to do some kind of PCA across
@@ -1126,7 +1169,9 @@ if not args.only_analyze_cached:
             )
             # TODO TODO add stuff to identify recording to titles (still
             # relevant?)
-            plot_pca(pivoted_window_trial_stats, fname=fname)
+            pca_df = plot_pca(pivoted_window_trial_stats, fname=fname)
+            pca_df.set_index('component_number', inplace=True)
+            pca_dfs.append(add_metadata(df, pca_df))
 
         responsiveness = window_trial_stats.groupby('cell').mean()
         cellssorted = responsiveness.sort_values(ascending=False)
@@ -1173,6 +1218,9 @@ if not args.only_analyze_cached:
             component_sum = components.sum()
             assert mix.shape == component_sum.shape
 
+            simple_sum = component_sum
+            simple_mix_diff = simple_sum - mix
+
             mix_norm = np.linalg.norm(mix)
             component_sum_norm = np.linalg.norm(component_sum)
 
@@ -1195,15 +1243,15 @@ if not args.only_analyze_cached:
             )
             scaled_sum = opt_scale * component_sum
 
-            scaled_mix_diff = mix - scaled_sum
+            scaled_mix_diff = scaled_sum - mix
             scaled_sum_residual = np.linalg.norm(scaled_mix_diff)**2
 
             epsilon = 0.1
-            r_plus = np.linalg.norm(mix - scaled_sum * (1 + epsilon))**2
+            r_plus = np.linalg.norm(scaled_sum * (1 + epsilon) - mix)**2
             assert scaled_sum_residual < r_plus, \
                 'scaled sum fit worse than larger scale'
 
-            r_minus = np.linalg.norm(mix - scaled_sum * (1 - epsilon))**2
+            r_minus = np.linalg.norm(scaled_sum * (1 - epsilon) - mix)**2
             assert scaled_sum_residual < r_minus, \
                 'scaled sum fit worse than smaller scale'
 
@@ -1228,7 +1276,7 @@ if not args.only_analyze_cached:
 
             # TODO maybe print the coefficients (or include on plot?)?
             weighted_sum = (coeffs * a).sum(axis=1)
-            weighted_mix_diff = mix - weighted_sum
+            weighted_mix_diff = weighted_sum - mix
 
             assert residuals.shape == (1,)
             residual = residuals[0]
@@ -1273,7 +1321,9 @@ if not args.only_analyze_cached:
                 'weighted_sum': weighted_sum,
                 'weighted_mix_diff': weighted_mix_diff,
                 'scaled_sum': scaled_sum,
-                'scaled_mix_diff': scaled_mix_diff
+                'scaled_mix_diff': scaled_mix_diff,
+                'simple_sum': simple_sum,
+                'simple_mix_diff': simple_mix_diff
             })
             linearity_sers.append(add_metadata(df, linearity_ser))
             linearity_odor_dfs.append(add_metadata(df, linearity_odor_df))
@@ -1566,6 +1616,11 @@ if not args.only_analyze_cached:
     else:
         auc_df = None
 
+    if do_pca:
+        pca_df = pd.concat(pca_dfs)
+    else:
+        pca_df = None
+
     if linearity_analysis:
         linearity_df = pd.concat(linearity_sers).unstack()
         linearity_odor_df = pd.concat(linearity_odor_dfs)
@@ -1613,6 +1668,8 @@ if not args.only_analyze_cached:
             'corr_df_from_maxes': corr_df_from_maxes,
 
             'auc_df': auc_df,
+
+            'pca_df': pca_df,
 
             'linearity_df': linearity_df,
             'linearity_odor_df': linearity_odor_df,
@@ -1706,7 +1763,21 @@ n_ro_exclude.add('pfo')
 
 rec_keys2odor_set = dict()
 
-frac_responder_dfs = []
+np.random.seed(1337)
+# TODO try increasing to 1000 if it works
+n_shuffles = 100
+hist_ci = 90
+hist_percentiles = ((100 - hist_ci) / 2, 100 - (100 - hist_ci) / 2)
+
+frac_responder_sers = []
+
+# n_ros = [N]umber of (reliably) [R]esponded [O]dors (per cell)
+# TODO delete the set of these i don't end up using
+n_ros_sers = []
+n_ros_hist_sers = []
+mean_shuffle_n_ros_hist_sers = []
+shuffle_n_ros_sers = []
+
 for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
     fly_color = fly_colors[i]
 
@@ -1750,6 +1821,7 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             == n_trials_responded_to.max()
         )
         reliable_responders = n_trials_responded_to >= 2
+        reliable_responders.name = 'reliable_responder'
 
         frac_reliable_responders = \
             reliable_responders.groupby('name1').sum() / n_rec_cells
@@ -1843,11 +1915,14 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
                 section='Response reliability'
             )
 
-        frac_responders = add_metadata(rec_gser.reset_index(), frac_responders)
-        frac_responders = pd.concat([frac_responders],
-            names=['odor_set'], keys=[odorset]
-        )
-        frac_responder_dfs.append(frac_responders)
+        def add_rec_metadata(ser_or_df):
+            ser_or_df = add_metadata(rec_gser.reset_index(), ser_or_df)
+            return pd.concat([ser_or_df], names=['odor_set'],
+                keys=[odorset]
+            )
+
+        frac_responders = add_rec_metadata(frac_responders)
+        frac_responder_sers.append(frac_responders)
 
         odors = [o for o in odors if o not in ('pfo', 'kiwi')]
         odor_order = [o for o in odor_order if o not in ('pfo', 'kiwi')]
@@ -1934,16 +2009,23 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             ratio_ax.set_xlabel('')
             savefigs(ratio_fig, 'ratio_mix_rel_to_others', fname)
         '''
+        ########################################################################
+        # end section to de-dupe w/ code in first loop
 
         rr_idx_names = reliable_responders.index.names
         rr = reliable_responders.reset_index()
         reliable_responders = rr[~ rr.name1.isin(n_ro_exclude)
             ].set_index(rr_idx_names)
+        assert reliable_responders.shape[1] == 1
+        reliable_responders = reliable_responders.iloc[:, 0]
 
         # TODO maybe try w/ any responses counting it as a responder for the
         # odor, instead of the 2 required for reliable_responders?
         rec_n_reliable_responders = reliable_responders.groupby('cell').sum()
         rec_n_reliable_responders.name = 'n_odors_reliable_to'
+        assert rec_n_reliable_responders.notnull().all(), \
+            'cant cast to int if any NaN'
+        rec_n_reliable_responders = rec_n_reliable_responders.astype(np.uint16)
 
         n_ro_hist_odors = \
             reliable_responders.index.get_level_values('name1').unique()
@@ -1951,29 +2033,158 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
         if not n_ro_include_kiwi:
             assert 'kiwi' not in n_ro_hist_odors
 
+        # Since last bin includes right edge, but beyond that stuff would not
+        # have a bin.
+        assert rec_n_reliable_responders.max() <= n_ro_bins[-1]
+
         # TODO TODO maybe use kde instead (w/ approp bw)
-        n_ro_hist_ax.hist(rec_n_reliable_responders.values, bins=n_ro_bins,
+        n_ro_hist_ax.hist(rec_n_reliable_responders, bins=n_ro_bins,
             density=True, histtype='step', color=fly_color, linestyle=linestyle,
             label=label
         )
-        ########################################################################
-        # end section to de-dupe w/ code in first loop
+        # Checked this once to justify use of np.histogram this way below.
+        # The printed values were indeed equal to the histogram line made
+        # by matplotlib in the .hist call.
+        #'''
+        hist_vals, _ = np.histogram(rec_n_reliable_responders, bins=n_ro_bins,
+            density=True
+        )
+        '''
+        print(hist_vals)
+        plt.show()
+        '''
+
+        # TODO TODO TODO double check myself, and with B, that this is actually
+        # the shuffle we want to do
+        # TODO TODO TODO maybe first want to subset boolean (odor, cell)
+        # responder flags to only include cells that reliable responded to
+        # anything??
+        # TODO TODO TODO maybe keep number of times each cell is counted a
+        # responder constant, sampling from something like the distribution of
+        # how often each odor was responded to??? (so explicitly just changing
+        # real data so it is now as if each odor WAS independent? (this
+        # correct?))
+
+        shuffle_indices = np.stack([
+            np.random.permutation(len(reliable_responders)) for _
+            in range(n_shuffles)
+        ])
+        # Transposing so first dimension will be length of reliable_responders
+        # again, so the index from reliable_responders can be applied to it.
+        shuffled_rrs = reliable_responders.values[shuffle_indices].T
+
+        # Checking that different shuffles actually differ.
+        if reliable_responders.sum() > 0:
+            first_shuffle = shuffled_rrs[:, 0]
+            shuffles_to_check = np.random.choice(np.arange(1, n_shuffles),
+                size=5, replace=False
+            )
+            for i in shuffles_to_check:
+                assert i != 0, 'next assertion would fail b/c identity'
+                assert not np.array_equal(shuffled_rrs[:, i], first_shuffle), \
+                    'shuffles did not differ. fix shuffling procedure.'
+
+        shuffled_rrs = pd.DataFrame(shuffled_rrs,
+            index=reliable_responders.index
+        )
+        shuffled_rrs.columns.name = 'shuffle_num'
+
+        shuffled_rr_sums = shuffled_rrs.sum()
+        assert shuffled_rr_sums.shape == (n_shuffles,)
+        unq_shuffled_rr_sums = shuffled_rr_sums.unique()
+        assert len(unq_shuffled_rr_sums) == 1
+        assert unq_shuffled_rr_sums[0] == reliable_responders.sum()
+
+        rec_shuffled_n_rrs = shuffled_rrs.groupby('cell').sum()
+        assert rec_shuffled_n_rrs.notnull().all(axis=None), \
+            'cant cast to int if any NaN'
+        rec_shuffled_n_rrs = rec_shuffled_n_rrs.astype(np.uint16)
+
+        # TODO TODO provide CIs for the histogram value in each bin (right?)
+        # TODO and then plot w/ fill between? or save all hist vals and use
+        # seaborn to plot after this loop?
+
+        hists_from_shuffles = np.stack([
+            np.histogram(shuffle_rrs, bins=n_ro_bins, density=True)[0]
+            for shuffle_rrs in rec_shuffled_n_rrs.T.values
+        ])
+        n_bins = len(n_ro_bins) - 1
+        assert hists_from_shuffles.shape == (n_shuffles, n_bins)
+
+        mean_shuffle_hist = np.mean(hists_from_shuffles, axis=0)
+        assert mean_shuffle_hist.shape == (n_bins,)
+
+        # TODO maybe delete this. may not be a meaningful check at this point.
+        shuffle_hist_vals, _ = np.histogram(rec_shuffled_n_rrs, bins=n_ro_bins,
+            density=True
+        )
+        assert np.allclose(shuffle_hist_vals, mean_shuffle_hist)
+        del shuffle_hist_vals
+        #
+
+        # TODO TODO TODO how to aggregate these across flies (and how to
+        # get CI on [mean-per-bin(?)]-shuffle-hist across flies at end, given
+        # diff #s of cells per fly?)
+
+        # TODO TODO KDE w/ weights based approach like in shuffle_fruits??
+        # TODO TODO maybe still check that against mean-of-mean-hists +
+        # bootstrapped mean there? (or mean of CIs from each fly? those
+        # seem like they are quite different, though not sure which i want)
+
+        # TODO TODO do i want to plot the mean hist from shuffle
+        # and then bootstrap shuffled hists to compute CI of this mean??
+        # or just plot percentiles of the histogram from the shuffles?
+        # maybe at that point, plot median rather than mean hist?
+
+        # TODO delete this and percentile definitions above if not used
+        '''
+        low_percentile_hist, high_percentile_hist = \
+            np.percentile(hists_from_shuffles, hist_percentiles, axis=0)
+        assert low_percentile_hist.shape == (n_bins,)
+        '''
+        # TODO maybe just plot shuffle mean + percentiles & real hist *per
+        # recording*, so i can actually visually check it seems to be working?
+
+        n_ro_hist = pd.Series(hist_vals, index=n_ro_bins[:-1], name='cell_frac')
+        n_ro_hist.index.name = rec_n_reliable_responders.name
+
+        mean_shuffle_n_ro_hist = pd.Series(mean_shuffle_hist,
+            index=n_ro_bins[:-1], name='cell_frac'
+        )
+        mean_shuffle_n_ro_hist.index.name = rec_n_reliable_responders.name
+
+        rec_shuffled_n_rrs = rec_shuffled_n_rrs.unstack()
+        rec_shuffled_n_rrs.name = rec_n_reliable_responders.name
+
+        n_ros_sers.append(add_rec_metadata(rec_n_reliable_responders))
+        shuffle_n_ros_sers.append(add_rec_metadata(rec_shuffled_n_rrs))
+
+        n_ros_hist_sers.append(add_rec_metadata(n_ro_hist))
+        mean_shuffle_n_ros_hist_sers.append(
+            add_rec_metadata(mean_shuffle_n_ro_hist)
+        )
 
 n_ro_hist_ax.legend()
 n_ro_hist_ax.set_title('Cell tuning breadth')
 n_ro_hist_ax.set_xlabel('Number of odors cells respond to (at least twice)')
 n_ro_hist_ax.set_ylabel('Fraction of cells')
-# Deferring save of this fig until after response fraction plot, so that is
-# their order in the latex.
 
 # this is just the mean frac responding... maybe i should have gotten the trial
 # info? or rename appropriately?
-frac_responder_df = u.add_fly_id(pd.concat(frac_responder_dfs).reset_index(
+frac_responder_df = u.add_fly_id(pd.concat(frac_responder_sers).reset_index(
     name='frac_responding'))
 
-def with_odor_order(plot_fn):
+component_sum_odor_name = 'sum'
+component_sum_diff_odor_name = component_sum_odor_name + ' - mix'
+def with_odor_order(plot_fn, **fn_kwargs):
     def ordered_plot_fn(*args, **kwargs):
+        for fk, fv in fn_kwargs.items():
+            if fk not in kwargs:
+                kwargs[fk] = fv
+
         odors = args[0].values
+        yvals = args[1].values
+        assert len(odors) == len(yvals)
 
         odor_set = None
         for s, oset in odor_set2order.items():
@@ -1991,9 +2202,44 @@ def with_odor_order(plot_fn):
         if odor_set is None:
             raise ValueError('could not determine odor_set. needed for order.')
 
-        order = [o for o in odor_set2order[odor_set] if o in odors]
+        order = list(odor_set2order[odor_set])
+        if component_sum_odor_name in odors:
+            if odor_set == 'kiwi':
+                assert order[-1] == 'kiwi'
+                order = order[:-1]
 
-        return plot_fn(*args, order=order, **kwargs)
+            order.append(component_sum_odor_name)
+            if component_sum_diff_odor_name in odors:
+                order.append(component_sum_diff_odor_name)
+
+            if odor_set == 'kiwi':
+                order.append('kiwi')
+
+        assert len(args) == 2 or len(args) == 3
+        if len(args) == 2:
+            orig_odor2yval = dict(zip(odors, yvals))
+            new_yvals = [orig_odor2yval[o] if o in odors else np.nan
+                for o in order
+            ]
+            assert len(order) == len(new_yvals)
+            new_args = (order, new_yvals)
+            return plot_fn(*new_args, order=order, **kwargs)
+
+        elif len(args) == 3:
+            missing_odors = set(odors) - set(order)
+            if len(missing_odors) > 0:
+                raise ValueError('fill in missing odors before calling, '
+                    'if using the third positional hue arg')
+
+            hue_keys = args[2].values
+            assert len(hue_keys) == len(odors)
+            full_cartesian_len = len(set(odors)) * len(set(hue_keys))
+
+            if len(odors) < full_cartesian_len:
+                raise ValueError('fill in missing combinations before calling, '
+                    'if using the third positional hue arg')
+
+            return plot_fn(*args, order=order, **kwargs)
 
     return ordered_plot_fn
 
@@ -2053,8 +2299,8 @@ def drop_excluded_odors(df, pfo=True, kiwi=False, mix=False, components=False):
     return df[~ df[odor_col].isin(excluded)]
 
 
-def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
-    title):
+def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, title,
+    by_fly=True, **plot_kwargs):
     gs = []
     for i, oset in enumerate(odor_set_order):
         os_df = df[df.odor_set == oset]
@@ -2067,12 +2313,25 @@ def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, plot_kwargs,
         assert odor_col is not None
 
         col_order = odor_set2order[oset]
-        g = sns.FacetGrid(os_df, col=odor_col, hue='fly_id',
-            palette=fly_id_palette, sharex=False, col_wrap=cw,
-            col_order=col_order
-        )
-        g.map(plot_fn, xcol, ycol, **plot_kwargs)
-        g.set_axis_labels(xlabel, ylabel)
+        if by_fly:
+            g = sns.FacetGrid(os_df, col=odor_col, hue='fly_id',
+                palette=fly_id_palette, sharex=False, col_wrap=cw,
+                col_order=col_order
+            )
+        else:
+            g = sns.FacetGrid(os_df, col=odor_col, sharex=False, col_wrap=cw,
+                col_order=col_order
+            )
+
+        vargs = (xcol,)
+        if ycol is not None:
+            vargs += (ycol,)
+        g.map(plot_fn, *vargs, **plot_kwargs)
+
+        g.set_xlabels(xlabel)
+        if ylabel is not None:
+            g.set_ylabels(ylabel)
+
         g.set_titles('{col_name}')
         g.add_legend()
         u.fix_facetgrid_axis_labels(g, shared_in_center=False)
@@ -2111,6 +2370,50 @@ def add_odor_id(df):
     return df
 
 
+real_n_ros_df = u.add_fly_id(pd.concat(n_ros_sers).reset_index())
+shuffle_n_ros_df = u.add_fly_id(pd.concat(shuffle_n_ros_sers).reset_index())
+
+real_n_ros_df['is_shuffle'] = False
+shuffle_n_ros_df['is_shuffle'] = True
+n_ros_df = pd.concat([real_n_ros_df, shuffle_n_ros_df], ignore_index=True,
+    sort=False
+)
+
+# TODO maybe use style of is_shuffle rather than row/col?
+g = sns.FacetGrid(n_ros_df, row='is_shuffle', hue='odor_set',
+    palette=odor_set2color, aspect=1.5
+)
+g.map(sns.distplot, 'n_odors_reliable_to', bins=n_ro_bins, kde=False,
+    norm_hist=True
+)
+g.add_legend()
+g.set_axis_labels('Number of odors responded to reliably', 'Fraction of cells')
+for ax in g.axes.flat:
+    old_title = ax.get_title()
+    if old_title == 'is_shuffle = False':
+        title = 'Real data'
+    elif old_title == 'is_shuffle = True':
+        # Whether a cell responded reliably to a certain odor is shuffled across
+        # all cells and also across all odors, within each fly.
+        title = 'Cells and odors shuffled within each fly'
+    else:
+        raise AssertionError('unexpected title')
+    ax.set_title(title)
+# TODO better name?
+g.fig.suptitle('Cell tuning breadth vs. shuffle')
+g.fig.subplots_adjust(top=0.85, hspace=0.6)
+savefigs(g.fig, 'tuning_breadth_vs_shuffle', section='Cell tuning breadth')
+
+'''
+n_ros_hist_df = u.add_fly_id(pd.concat(n_ros_hist_sers).reset_index())
+mean_shuffle_n_ros_hist_df = u.add_fly_id(pd.concat(
+    mean_shuffle_n_ros_hist_sers).reset_index()
+)
+'''
+
+savefigs(n_ro_hist_fig, 'n_ro_hist', section='Cell tuning breadth')
+
+
 g = sns.FacetGrid(frac_responder_df, col='odor_set', hue='fly_id', 
     palette=fly_id_palette, sharex=False
 )
@@ -2119,14 +2422,17 @@ g = sns.FacetGrid(frac_responder_df, col='odor_set', hue='fly_id',
 
 # Used swarmplot before, but I like the jittering here, to avoid overlapping
 # points.
-categ_pt_plot_fn = with_odor_order(sns.stripplot)
-g.map(categ_pt_plot_fn, 'name1', 'frac_responding')
 
-# TODO TODO TODO TODO fix >1 stuff here. maybe compute first (w/ similar calls
-# to what seaborn should be making) and assert nothing >1.
-# (might just be pfo, maybe b/c double counting across odor_set)
-# actually was it here that had the >1 problem, or somewhere else?
-# response reliability in loop above (2nd loop) or something?
+# TODO TODO TODO check this works in all cases i was previously using
+# stripplot... docs say swarmplot points don't overlap, so maybe i was mistaken
+# when i previously thought points were overlapping (no i think it was a matter
+# of facetgrid making multiple calls, across which points can overlap)?
+# (check that swarmplot still works. see note @ redef of categ_pt_plot_fn below)
+
+categ_pt_plot_fn = with_odor_order(sns.stripplot)
+#categ_pt_plot_fn = with_odor_order(sns.swarmplot)
+
+g.map(categ_pt_plot_fn, 'name1', 'frac_responding')
 
 # TODO TODO either somehow show (date, fly_num) in this legend, or show
 # fly_id in n_ro_hist above, to match between them
@@ -2136,10 +2442,9 @@ g.add_legend()
 g.set_axis_labels('Odor', 'Fraction responding')
 # TODO way to just capitalize?
 g.set_titles('{col_name}')
-savefigs(g.fig, 'mean_frac_responding', section='Mean fraction responding')
-
-# Saving this down here so it's ordered after the above plot in the latex.
-savefigs(n_ro_hist_fig, 'n_ro_hist', section='Cell tuning breadth')
+savefigs(g.fig, 'mean_frac_responding', section='Mean fraction responding',
+    section_order=-1
+)
 
 old_len = len(responders.index.drop_duplicates())
 responders.name = 'response'
@@ -2158,12 +2463,9 @@ keys = [k for k in responders.index.names if k != 'repeat_num']
 per_odor_reliable = responders.groupby(keys).sum() >= 2
 per_odor_reliable.name = 'per_odor_reliable'
 
-# TODO delete if i don't end up using this
-'''
 keys = [k for k in keys if k != 'name1']
 reliable_to_any = per_odor_reliable.groupby(keys).any()
 reliable_to_any.name = 'reliable_to_any'
-'''
 
 
 # TODO lookup which corrs (max / mean) to use from trial_stat, if not gonna
@@ -2174,26 +2476,20 @@ corr_df['odor_pair'] = [a + ', ' + b for a, b in zip(corr_df.name1_a,
 
 add_odorset(corr_df)
 
-
 # TODO TODO want to agg across trials here? mean? max?
 # (yes, but investigate 1s + other issues first)
-
-# TODO some way to have diff sets of cols on each row?
-# (similar to odor order problem i dealt with w/ wrapper fn above...)
-# may just want two separate plots...
-
-# TODO tune fig size (+ fonts) for all of these to look good in pdf
-# (+ above facetgrid stuff). should be roughly final size, too, so not
-# scaled too much.
-
-# TODO TODO TODO TODO investigate 1s for some non-identities here
-# + bimodality some some other cases
+# i don't remember changing this to agg, but it seem to have a # of points
+# consistent w/ that now... what's up?
+# TODO why did legend get screwed up (s.t. kiwi fig missing fly 1 and 2, though
+# their colors are in plots)? fix.
 
 gs, save_fn = odor_facetgrids(corr_df, categ_pt_plot_fn, 'name1_b', 'corr',
-    'Odor B', 'Correlation', dict(marker='o'),
-    'Correlation consistency'
+    'Odor B', 'Correlation', 'Correlation consistency', marker='o'
 )
-save_fn('corrs', section='Correlation consistency')
+for g in gs:
+    g.fig.subplots_adjust(hspace=0.4)
+
+save_fn('corrs', section='Correlation consistency', section_order=200)
 
 
 # TODO factor? didn't i use something like this in natural_odors?
@@ -2250,7 +2546,7 @@ nonpfo_odor_orders = [[o for o in os if o != 'pfo'] for os in
 # TODO maybe hue by actual rather than intended (from odor_order) activation
 # order of odor_set?
 odor_hues_within_odorset = dict()
-for c, o1, o2 in itertools.zip_longest(odor_colors, *nonpfo_odor_orders):
+for c, o1, o2 in zip_longest(odor_colors, *nonpfo_odor_orders):
     # Any odors with common names (even if they can mean different things, like
     # 'mix'), should get the same color.
     if o1 in nondiagnostic_odors:
@@ -2264,6 +2560,7 @@ for c, o1, o2 in itertools.zip_longest(odor_colors, *nonpfo_odor_orders):
     if o2 is not None:
         odor_hues_within_odorset[o2] = c
 
+trial_stat_desc = trial_stat + r' $\frac{\Delta F}{F}$'
 
 # TODO TODO TODO some kind of differential analysis on adaptation speeds
 # (each mix relative to its components)??
@@ -2274,6 +2571,8 @@ for c, o1, o2 in itertools.zip_longest(odor_colors, *nonpfo_odor_orders):
 # maybe mixture response was fast-adapting but component responses were less so
 # (and there was a difference in this difference across odor_sets) that would be
 # it? anymore analysis at cell resolution?
+
+adapt_sec_order = 100
 
 responders_only_values = (True,)
 adaptation_analysis_on_all_cells = False
@@ -2348,9 +2647,10 @@ for responders_only in responders_only_values:
     # TODO want to change this to "mean of trial max...", or too verbose?
     # some way to do it? and should i include whether it's restricted to
     # responders here (i'm leaning towards no, for space again)?
+    # TODO maybe just get from capitalizing first char in trial_stat_desc?
     ylabel = f'{trial_stat.title()}' + r' trial $\frac{\Delta F}{F}$'
     gs, save_fn = odor_facetgrids(mean_rmags, sns.lineplot, 'repeat_num',
-        'trialmax_df_over_f', 'Repeat', ylabel, dict(marker='o'), title
+        'trialmax_df_over_f', 'Repeat', ylabel, title, marker='o'
     )
     xs = np.unique(mean_rmags.repeat_num)
     xs = np.array([xs[0], xs[-1]])
@@ -2371,7 +2671,9 @@ for responders_only in responders_only_values:
         # TODO TODO do try to patch a label for the fit line into the 
         # existing facetgrid legend somehow
 
-    save_fn(f'adaptation_{fname_suffix}', section=title)
+    save_fn(f'adaptation_{fname_suffix}', section=title,
+        section_order=adapt_sec_order
+    )
 
     # TODO TODO maybe explicitly compare t1 - t0 and t2 - t2 adaptation?
     # if it's not linear, maybe measuring it with slope of line is
@@ -2420,7 +2722,7 @@ for responders_only in responders_only_values:
     # bins might make the effect larger than my fixed bins.
     fixed_bins = True
     if fixed_bins:
-        bins = np.linspace(*xlim, num=30)
+        bins = np.linspace(*xlim, num=(30 + 1))
     else:
         bins = None
 
@@ -2461,8 +2763,9 @@ for responders_only in responders_only_values:
         os_cell_slopes = os_cell_slopes.set_index(old_idx_names).slope
 
         # TODO OK to weight all *cell* equally, yea?
-        sns.distplot(os_cell_slopes, bins=bins, kde=kde, label=oset.title(),
-            color=odor_set2color[oset], hist_kws=dict(alpha=0.4)
+        sns.distplot(os_cell_slopes, bins=bins, kde=kde, norm_hist=True,
+            label=oset.title(), color=odor_set2color[oset],
+            hist_kws=dict(alpha=0.4)
         )
         if print_percentiles:
             print(oset)
@@ -2479,12 +2782,10 @@ for responders_only in responders_only_values:
     # TODO try to get a title that expresses more what this is / at least
     # what kind of response magnitude it's computed from
     if responders_only:
-        ax.set_title('Reliable responder adaptations')
+        ax.set_title('Adaptation of reliable responders')
     else:
-        ax.set_title('Cell adaptations')
+        ax.set_title('Adaptation of all cells')
 
-    # TODO get this desc of response mag from input df var name too
-    trial_stat_desc = r'max $\frac{\Delta F}{F}$'
     slope_label = f'Slope between {trial_stat_desc} across repeats'
 
     ax.set_xlabel(slope_label)
@@ -2492,7 +2793,9 @@ for responders_only in responders_only_values:
     ax.set_ylabel(density_label)
     ax.set_xlim(xlim)
     ax.legend()
-    savefigs(cell_adapt_fig, f'adapt_dist_{fname_suffix}', section=title)
+    savefigs(cell_adapt_fig, f'adapt_dist_{fname_suffix}', section=title,
+        section_order=adapt_sec_order
+    )
 
     cell_adaptation_fits.reset_index(inplace=True)
     cell_adaptation_fits_nokiwi = cell_adaptation_fits[
@@ -2537,7 +2840,9 @@ for responders_only in responders_only_values:
     g._legend.set_title('Odor')
     g.fig.suptitle(title)
     g.fig.subplots_adjust(top=0.85)
-    savefigs(g.fig, f'adapt_dist_per_odor_{fname_suffix}', section=title)
+    savefigs(g.fig, f'adapt_dist_per_odor_{fname_suffix}', section=title,
+        section_order=adapt_sec_order
+    )
 
     # TODO maybe don't use this fixed xlim
     # TODO maybe increase range a bit in odor specific case, as noiser +
@@ -2552,7 +2857,9 @@ for responders_only in responders_only_values:
     g.set_titles('{col_name}')
     g.fig.suptitle(title)
     g.fig.subplots_adjust(top=0.85)
-    savefigs(g.fig, f'rmag0_v_adapt_{fname_suffix}', section=title)
+    savefigs(g.fig, f'rmag0_v_adapt_{fname_suffix}', section=title,
+        section_order=adapt_sec_order
+    )
 
     # The green kinda won out over the pink of the control, so this plot wasn't
     # so good.
@@ -2585,41 +2892,301 @@ for responders_only in responders_only_values:
 
 # TODO TODO TODO repeat this analysis only using kiwi data for fixed
 # concentration!
-linearity_cell_df = add_odorset(linearity_cell_df.reset_index())
-# TODO TODO TODO maybe also filter by some minimum of responsiveness? /
-# reliability? / noise?
-linearity_dist_fig, ax = plt.subplots()
-for oset in odor_set_order:
-    os_cell_errs = linearity_cell_df.loc[linearity_cell_df.odor_set == oset,
-        'weighted_mix_diff'
-    ]
-    sns.distplot(os_cell_errs, label=oset.title(), color=odor_set2color[oset])
+linearity_cell_df = u.add_fly_id(add_odorset(linearity_cell_df.reset_index()))
+# TODO TODO TODO also filter by some minimum of responsiveness? /
+# reliability! / noise?
 
-ax.set_title('Distributions of cell residuals from linear mixture model')
-ax.set_xlim([-1, 1])
-ax.legend()
-savefigs(linearity_dist_fig, 'cell_linearity_dists',
-    section='Linearity', subsection='Cell linearity distributions'
+responders_only_values = (True,)
+# TODO add parameters like this + things that control binning to params rendered
+# into pdf
+linearity_analysis_on_all_cells = True
+if linearity_analysis_on_all_cells:
+    responders_only_values += (False,)
+
+lin_odor_df = u.add_fly_id(add_odorset(linearity_odor_df.reset_index()))
+unq_n_components = lin_odor_df.groupby(['fly_id','odor_set']).name1.nunique(
+    ).unique()
+assert len(unq_n_components) == 1
+n_components = unq_n_components[0]
+
+n_params_and_diff_col_prefixes = (
+    (0, 'simple'),
+    (1, 'scaled'),
+    (n_components, 'weighted')
 )
+n_params2latex_eq = {
+    0: r'$\left(\sum_{c\in components} R^{cell}_{c}\right) - R^{cell}_{mix}$',
+    1: r'$W^*\left(\sum_{c\in components} R^{cell}_{c}\right) - '
+        r'R^{cell}_{mix}$',
+    n_components: r'$\left(\sum_{c\in components} W^*_c R^{cell}_{c}\right) - '
+        r'R^{cell}_{mix}$'
+}
+
+# TODO also replace categ_pt_plot_fn above w/ this after making sure that
+# stuff all still works + refactoring so hue+palettes are in map call
+# rather than facetgrid, and legend has explicit title
+categ_pt_plot_fn = with_odor_order(sns.swarmplot)
+
+n_reliable_to_any = reliable_to_any.sum()
+reliable_to_any_idx = reliable_to_any[reliable_to_any].index
+for responders_only in responders_only_values:
+    # TODO TODO but would i want to do the fits with this restrictions too?? not
+    # sure just subsetting after the fact makes sense...
+    if responders_only:
+        lin_df = linearity_cell_df.set_index(reliable_to_any.index.names)
+        original_len = len(lin_df)
+        assert n_reliable_to_any < original_len
+        lin_df = lin_df.loc[reliable_to_any_idx].reset_index()
+        assert len(lin_df) == n_reliable_to_any
+
+        rmags = response_magnitudes.set_index(reliable_to_any.index.names)
+        rmags = rmags.loc[reliable_to_any_idx].reset_index()
+
+        title_cellsubset = 'Cell (reliable to any odor)'
+        fname_cellsubset = 'reliabletoany'
+    else:
+        lin_df = linearity_cell_df
+        rmags = response_magnitudes
+
+        title_cellsubset = 'All cell'
+        fname_cellsubset = 'allcells'
+
+    # TODO TODO maybe try this kind of analysis w/ mean as trial stat rather
+    # than max? seems likely that sum of max might blow up in a way that sum
+    # of means might not...
+
+    keys = ['fly_id', 'odor_set', 'name1']
+    mean_rmags = rmags.groupby(keys).trialmax_df_over_f.mean()
+    mean_rmags.name = 'mean_' + mean_rmags.name
+    # mtrs = mean trial response stat
+    mtrs_name = mean_rmags.name
+
+    keys = ['fly_id', 'odor_set']
+    mean_rmag_df = mean_rmags.reset_index()
+    csum = mean_rmag_df.loc[mean_rmag_df.name1.map(is_component)].groupby(keys
+        )[mtrs_name].sum()
+    del mean_rmag_df
+    csum = pd.concat([csum], names=['name1'], keys=[component_sum_odor_name]
+        ).reorder_levels(mean_rmags.index.names)
+
+    csum_minus_mix = csum - mean_rmags.loc[:, :, 'mix']
+    csum_minus_mix = csum_minus_mix.reset_index()
+    csum_minus_mix.name1 = component_sum_diff_odor_name
+    csum_minus_mix = csum_minus_mix.set_index(mean_rmags.index.names)[mtrs_name]
+
+    mean_rmags = pd.concat([mean_rmags, csum, csum_minus_mix])
+    mean_rmag_df = mean_rmags.reset_index()
+
+    # TODO not sure how to get this to work w/ groupby, b/c i i'm not sure
+    # what to do w/ original range index of group df
+    '''
+    mean_rmag_df = mean_rmag_df.groupby('odor_set').apply(
+        lambda gdf: fill_to_cartesian(gdf, ['fly_id','odor_set','name1'])
+    )
+    '''
+    full_mean_rmag_dfs = []
+    for gn, gdf in mean_rmag_df.groupby('odor_set'):
+        full_gdf = fill_to_cartesian(gdf, ['fly_id','odor_set','name1'])
+        full_mean_rmag_dfs.append(full_gdf)
+    mean_rmag_df = pd.concat(full_mean_rmag_dfs).reset_index()
+
+    g = sns.FacetGrid(mean_rmag_df, col='odor_set', height=6.5,
+        col_order=odor_set_order, sharex=False, dropna=False
+    )
+    # TODO make all barplots this blue color? or make this black?
+    # still color as odor_set despite not sharing a sub figure?
+    g.map(with_odor_order(sns.barplot), 'name1', mtrs_name)
+    g.set_axis_labels('Odor', 'Mean of cell-trial ' + trial_stat_desc)
+    g.set_titles('{col_name}')
+    g.fig.suptitle('Mean response magnitudes and their raw sum')
+    g.fig.subplots_adjust(top=0.9)
+    savefigs(g.fig, f'simple_linearity_{fname_cellsubset}',
+        section='Linearity', subsection=f'{title_cellsubset} simple linearity'
+    )
+
+    '''
+    g = sns.FacetGrid(mean_rmag_df, col='odor_set',
+        col_order=odor_set_order, hue='fly_id', palette=fly_id_palette,
+        sharex=False
+    )
+    g.map(categ_pt_plot_fn, 'name1', mtrs_name)
+    '''
+    # was necesssary to get dodge kwarg to work w/ wrapped stripplot fn
+    # see: https://stackoverflow.com/questions/46134282 for explanation
+    # also necessary to actually have swarmplot points not overlap, for
+    # same reason i believe.
+    g = sns.FacetGrid(mean_rmag_df, col='odor_set', height=6.5,
+        col_order=odor_set_order, sharex=False, dropna=False
+    )
+    g.map(categ_pt_plot_fn, 'name1', mtrs_name, 'fly_id',
+        palette=fly_id_palette
+    )
+    # TODO maybe rename ylabel to Mean response magnitude, and just define
+    # that somewhere (maybe a definitions section in pdf or something?)
+    # cell-trial / cell+trial / (cell,trial) ?
+    g.set_axis_labels('Odor', 'Mean of cell-trial ' + trial_stat_desc)
+    g.set_titles('{col_name}')
+    g.add_legend(title='Fly')
+    g.fig.suptitle('Fly-mean response magnitudes and their raw sum')
+    g.fig.subplots_adjust(top=0.9)
+    savefigs(g.fig, f'flymean_simple_linearity_{fname_cellsubset}',
+        section='Linearity', subsection=f'{title_cellsubset} simple linearity'
+        ' with each fly'
+    )
+
+    for n_params, diff_col_prefix in n_params_and_diff_col_prefixes:
+        diff_col = f'{diff_col_prefix}_mix_diff'
+
+        # TODO see notes in other place i use this strategy to pick range / bins
+        percent_excluded = 2 * 0.5
+        xlim_percentiles = [percent_excluded / 2, 100 - percent_excluded / 2]
+        xlim = np.percentile(lin_df[diff_col], xlim_percentiles)
+
+        fixed_bins = True
+        if fixed_bins:
+            bins = np.linspace(*xlim, num=(30 + 1))
+        else:
+            bins = None
+
+        print_percentiles = False
+        if print_percentiles:
+            print(diff_col)
+            print('xlim:', xlim)
+            percentiles = [100 * f for f in (0.01, 0.005, 0.001)]
+            percentiles += [100 - p for p in percentiles]
+            percentiles = sorted(percentiles)
+            for p, s in zip(percentiles,
+                np.percentile(lin_df[diff_col], percentiles)):
+
+                print('{:0.2f} percentile diff: {:.2f}'.format(p, s))
+
+        linearity_dist_fig, ax = plt.subplots()
+        for oset in odor_set_order:
+            os_cell_errs = lin_df.loc[lin_df.odor_set == oset, diff_col]
+            sns.distplot(os_cell_errs, label=oset.title(), bins=bins,
+                color=odor_set2color[oset], kde=False, norm_hist=True
+            )
+
+        ax.set_title(f'{title_cellsubset} residuals from '
+            f'({n_params} parameter) linear model'
+        )
+        ax.set_xlim(*xlim)
+        ax.set_xlabel(n_params2latex_eq[n_params])
+        ax.set_ylabel('Density of cells')
+        ax.legend()
+
+        # Because otherwise the LaTeX equations in the xlabels are cut off.
+        linearity_dist_fig.subplots_adjust(bottom=0.15)
+
+        savefigs(linearity_dist_fig, f'linearity_dists_{fname_cellsubset}_'
+            f'{n_params}param', section='Linearity',
+            subsection=f'{title_cellsubset} ({n_params} parameter)'
+            ' linearity distributions'
+        )
+
+
+auc_df = u.add_fly_id(add_odorset(auc_df.reset_index()))
+auc_df.rename(columns={'odor': 'name1'}, inplace=True)
+# TODO why is this:
+# len(auc_df[['fly_id','odor_set','cell']].drop_duplicates()) (1113)
+# slightly different from this: reliable_to_any.sum() (1118)
+# ???
+
+auc_vline_alpha = 0.5
+fixed_auc_bins = True
+if fixed_auc_bins:
+    n_auc_bins = 30
+    auc_bins = np.linspace(0, 1, num=(n_auc_bins + 1))
+else:
+    auc_bins = None
+
+g = sns.FacetGrid(auc_df, col='task', hue='odor_set', palette=odor_set2color)
+g.map(sns.distplot, 'auc', norm_hist=True, kde=False, bins=auc_bins)
+xlabel = 'AUC'
+ylabel = 'Density of cells'
+g.set_axis_labels(xlabel, ylabel)
+g.set_titles('{col_name}')
+g.add_legend()
+for ax in g.axes.flat:
+    ax.axvline(x=0.5, color='r', alpha=auc_vline_alpha)
+
+g.fig.subplots_adjust(left=0.08)
+savefigs(g.fig, 'roc_task_and_odorset', section='ROC',
+    subsection='Mean AUC distributions'
+)
+
+for task in ('segmentation', 'discrimination'):
+    gs, save_fn = odor_facetgrids(auc_df, sns.distplot, 'auc', None,
+        xlabel, ylabel, f'Mean {task} AUC distributions', by_fly=False,
+        bins=auc_bins, kde=False, norm_hist=True
+    )
+    for g in gs:
+        for ax in g.axes.flat:
+            ax.axvline(x=0.5, color='r', alpha=auc_vline_alpha)
+        g.fig.subplots_adjust(left=0.05)
+
+    save_fn(f'roc_{task}_by_odor', section='ROC', subsection=task.title())
+
+# TODO anything by fly (averages w/in odor_set?) or just leave it at
+# individual (task, odor) distributions for the per-fly analyses?
+
+
+pca_df = u.add_fly_id(add_odorset(pca_df.reset_index()))
+for col_prefix, title_part in (('std', ''), ('unstd', 'un')):
+    x = 'component_number'
+    pca_xlim = (1, 8)
+    xlabel = 'Component number'
+    ylabel = 'Explained variance fraction'
+    ev_col = col_prefix + '_explained_var_ratio'
+    shared_title = f'cree plot\n(from PCA on {title_part}standardized data)'
+    section_prefix = 'Standardized' if col_prefix == 'std' else 'Unstandardized'
+
+    os_scree_fig, ax = plt.subplots()
+    pca_ci = 90
+    sns.lineplot(data=pca_df, x=x, y=ev_col, hue='odor_set',
+        palette=odor_set2color, ax=ax, ci=pca_ci
+    )
+    ax.set_xlim(pca_xlim)
+    ax.set_title('S' + shared_title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel('Mean ' + ylabel.lower() + f'\n(with {pca_ci:.0f}% CI)')
+    savefigs(os_scree_fig, f'scree_{col_prefix}',
+        section=f'{section_prefix} PCA',
+        subsection='Mean scree'
+    )
+
+    # TODO change back to row if i can fix layout in pdf
+    g = sns.FacetGrid(pca_df, col='odor_set', col_order=odor_set_order,
+        hue='fly_id', palette=fly_id_palette, xlim=pca_xlim
+    )
+    g.map(sns.lineplot, x, ev_col)
+    g.add_legend()
+    g.set_titles('{col_name}')
+    g.set_axis_labels(xlabel, ylabel)
+
+    g.fig.suptitle('Across-fly s' + shared_title)
+    g.fig.subplots_adjust(top=0.75)
+    savefigs(g.fig, f'acrossfly_scree_{col_prefix}',
+        section=f'{section_prefix} PCA', subsection='Across-fly scree'
+    )
 
 
 # TODO TODO TODO maybe plot (fly, trial) max / mean responses image grids, and
 # include them in pdf (B said something like that might useful for determining
 # if any pfo responsiveness is some analysis artifact or not / etc)
 
+
+print('Calculations on computed intermediates took {:.0f}s'.format(
+    time.time() - after_raw_calc_time_s))
+
 if show_plots_interactively:
     plt.show()
 else:
     plt.close('all')
 
-# TODO include them in a summary section(?) at the top or something?
-
 # TODO TODO also provide plain text descriptions of these params
 # TODO + optional units for params?
 # TODO and support all of these in latex template
-
-# TODO TODO shortcut links from table of contents to (important?) sections
-# in pdf
 
 if not args.no_report_pdf:
     if args.no_save_figs:
@@ -2638,14 +3205,15 @@ if not args.no_report_pdf:
         outputs_pickle = None
         input_trace_pickles = None
     else:
-        if args.exclude_earlier_figs:
-            plots_made_this_run = {p for p in plots_made_this_run if
-                p.endswith('.pdf')}
-        else:
+        if args.earlier_figs:
             # Because None let's all matching files into the report, whereas
             # if filenames are passed, only the matching files that intersect
             # them are kept.
             plots_made_this_run = None
+        else:
+            plots_made_this_run = {p for p in plots_made_this_run if
+                p.endswith('.pdf')
+            }
 
         if fix_ref_odor_response_fracs:
             exclude_params = {'mean_zchange_response_thresh'}
@@ -2683,14 +3251,20 @@ if not args.no_report_pdf:
         # TODO way to check if local commits are also on remote / github
         # specifically?
 
+        # TODO update this logic, corresponding logic above (need to save input
+        # pickles into pickle), and templating s.t. input includes input
+        # piclkes used to generate intermediate, as well as the intermediate
+        # actually used as input
         if args.only_analyze_cached:
-            params_for_report['args.exclude_earlier_figs'] = \
-                args.exclude_earlier_figs
+            params_for_report['args.earlier_figs'] = args.earlier_figs
             outputs_pickle = pickle_outputs_name
             input_trace_pickles = None
         else:
             outputs_pickle = None
             input_trace_pickles = pickles
+
+        if input_trace_pickles is not None:
+            input_trace_pickles = sorted(input_trace_pickles)
 
     # TODO didn't i have something in latex report generation to take an
     # iterable of globstrs as second element here? that could support my
@@ -2706,13 +3280,38 @@ if not args.no_report_pdf:
     paired_section_names_and_globstrs = [(d['section'], p + '*') for p, d in
         plot_prefix2latex_data_list if d['paired']
     ]
+
+    exclude_globstrs = {
+        'pca_unstandardized*',
+        # TODO delete existing figs and then aything here where scree is
+        # spelled with a 'k'
+        'skree_unstandardized*',
+        'scree_unstandardized*',
+        'pca*',
+        'skree*',
+        'scree*'
+    }
+    section_names_and_globstrs = [(n, g) for n, g in
+        section_names_and_globstrs if g not in exclude_globstrs
+    ]
+    paired_section_names_and_globstrs = [(n, g) for n, g in
+        paired_section_names_and_globstrs if g not in exclude_globstrs
+    ]
     # TODO TODO change latex report generation to actually include per-section
     # notes, and then don't just throw them away here
+    '''
+    print('\nsection_names_and_globstrs:')
+    pp(section_names_and_globstrs)
+    print('paired_section_names_and_globstrs:')
+    pp(paired_section_names_and_globstrs)
+    import ipdb; ipdb.set_trace()
+    '''
 
     print('')
     pdf_fname = generate_pdf_report.main(params=params_for_report,
         codelink=github_link, uncommitted_changes=uncommitted_changes,
-        input_trace_pickles=input_trace_pickles, outputs_pickle=outputs_pickle,
+        input_trace_pickles=input_trace_pickles,
+        outputs_pickle=outputs_pickle,
         filenames=plots_made_this_run,
         section_names_and_globstrs=section_names_and_globstrs,
         paired_section_names_and_globstrs=paired_section_names_and_globstrs
@@ -2726,9 +3325,6 @@ if not args.no_report_pdf:
         os.remove(symlink_name)
     os.symlink(pdf_fname, symlink_name)
     subprocess.Popen(['xdg-open', pdf_fname])
-
-print('Calculations on computed intermediates took {:.0f}s'.format(
-    time.time() - after_raw_calc_time_s))
 
 if not args.no_debug_shell:
     import ipdb; ipdb.set_trace()
