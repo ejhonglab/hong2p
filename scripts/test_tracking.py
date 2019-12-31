@@ -5,12 +5,12 @@
 
 from os.path import join
 
-import tifffile
+#####import tifffile
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import pyqtgraph as pg
+#####import pyqtgraph as pg
 
 import hong2p.util as u
 
@@ -57,7 +57,70 @@ def show_centers_on_movie(movie,
 '''
 
 
+def make_test_centers(n=50, nt=100, frame_shape=(256, 256), sigma=3,
+    exlusion_radius=None, loss_probability=0.01, gain_probability=0.01,
+    round_=True):
+
+    # TODO TODO how to balance gain probability / loss probability s.t.
+    # # ROIs stays about constant? any way to do this w/o having gain
+    # probability depend on the current # of ROIs?
+    # (since loss probability must be dependent on current # of ROIs at least
+    # somewhat, since if there are 0, we can't lose more...)
+    # maybe the probability should still not be considered for each ROI,
+    # and then just do nothing when there are no ROIs left to take...
+    # (and allow multiple per time step? which distribution to use?)
+
+    if exlusion_radius is not None:
+        raise NotImplementedError
+
+    assert len(frame_shape) == 2
+    assert frame_shape[0] == frame_shape[1]
+    d = frame_shape[0]
+
+    # TODO have shape (size) be consistent w/ other places that deal
+    # w/ centers. (2 first or n first?)
+    initial_centers = np.random.randint(d, size=(n, 2))
+
+    # TODO TODO more idiomatic numpy way to generate cumulative noise?
+    # (if so, just repeat initial_centers to generate centers, and add the 
+    # two) (maybe not, with my constraints...)
+    xy_steps = np.random.randn(nt - 1, n, 2) * sigma
+    
+    centers = np.empty((nt, n, 2)) * np.nan
+    centers[0] = initial_centers
+    max_coord = d - 1
+    # TODO should i be generating the noise differently, so that the x and y
+    # components are not independent (so that if deviation is high in one,
+    # it's more likely to be lower in other coordinate, to more directly
+    # constrain the distance? maybe it's just a scaling thing though...)
+    for t in range(1, nt):
+        centers[t] = centers[t - 1] + xy_steps[t - 1]
+        centers[t][centers[t] > max_coord] = max_coord
+        centers[t][centers[t] < 0] = 0
+        # TODO TODO TODO also support losing / gaining centers, and have output
+        # in same format as the fns in util to associate ROIs (keeping labels
+        # const) across matchings
+
+    if round_:
+        centers = np.round(centers).astype(np.uint16)
+
+    return centers
+
+
+
+# TODO TODO TODO fns for generating test data. centers + gaussian updates
+# (w/ edge + non-overlap constraints) first. const radii?
+# use that to test gui + fitting + tracking
+# TODO other test data where centers (mostly? constraints...) satisfy
+# requirements for kalman filter to be optimal? (const accel?)
+# TODO combine w/ fns i had to generate test images in that one test
+# script mostly aimed at roi fitting / some ijroi stuff
+# (to generate movie)
+
+
 def main():
+    centers = make_test_centers()
+    import ipdb; ipdb.set_trace()
     '''
     test_movie = np.random.randn(300, 256, 256)
     imw = pg.image(movie)

@@ -2437,6 +2437,7 @@ def load_thorimage_metadata(thorimage_directory):
     return fps, xy, z, c, imaging_file
 
 
+# TODO rename to indicate a thor (+raw?) format
 def read_movie(thorimage_dir):
     """Returns (t,x,y) indexed timeseries.
     """
@@ -2630,7 +2631,8 @@ def footprints_to_flat_cnmf_dims(footprints):
     return np.reshape(footprints, (frame_pixels, n_footprints), order='F')
 
 
-def extract_traces_boolean_footprints(movie, footprints, verbose=True):
+def extract_traces_boolean_footprints(movie, footprints,
+    footprint_framenums=None, verbose=True):
     """
     Averages the movie within each boolean mask in footprints
     to make a matrix of traces (n_frames x n_footprints).
@@ -6045,10 +6047,10 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True):
 
     Total length along time dimension should be preserved from input TIFF.
     """
-    import tifffile
     from scipy import stats
 
     if movie is None:
+        import tifffile
         movie = tifffile.imread(tif)
 
     keys = tiff_filename2keys(tif)
