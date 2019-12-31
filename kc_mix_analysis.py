@@ -33,7 +33,8 @@ import generate_pdf_report
 
 
 parser = argparse.ArgumentParser(description='Analyzes calcium imaging traces '
-    'stored as pickled pandas DataFrames that gui.py outputs.')
+    'stored as pickled pandas DataFrames that gui.py outputs.'
+)
 parser.add_argument('-c', '--only-analyze-cached', default=False,
     action='store_true', help='Only analyzes cached outputs from previous runs '
     'of this script. Will not load any trace pickles.'
@@ -96,6 +97,9 @@ param_names = [
     'trial_stat'
 ]
 
+odor_set_order = ['kiwi', 'control', 'flyfood']
+use_existing_abbrevs = False
+
 # TODO should look up odor_set of this odor, then pass that to ordering fn,
 # s.t. that odor_set is first
 ref_odor = 'eb'
@@ -135,7 +139,6 @@ odor_order_correlations = True
 # TODO return to trying to aggregate some type of this analysis across flies
 # after doing corr + linearity stuff across flies (+ ROC!)
 do_pca = True
-#do_pca = False
 do_roc = True
 # TODO was one of these types of plots obselete? did odor_and_fit_matrices
 # replace fit_matrices? (seems like fit_matrices may be obselete)
@@ -193,7 +196,7 @@ for pf in plot_formats:
 
 
 def is_component(name):
-    return name not in {'pfo', 'mix', 'kiwi'}
+    return name not in {'pfo', 'mix', 'kiwi', 'fly food'}
 
 
 def check_fraction_series(ser):
@@ -356,56 +359,65 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
                 break
 
 
-def trace_pickle_odor_set(trace_pickle):
-    """Returns the name of the odor_set presented in trace_pickle recording.
-
-    Will be one of either 'kiwi' or 'control'.
-    """
-    # TODO maybe something faster than loading each pickle twice? maybe return
-    # dataframes from the load in here, and just use those?
-    # TODO TODO one fn that loads all pickles in correct order?
-    # at <~1s per pickle now, prob not worth it.
-    df = pd.read_pickle(trace_pickle)
-    unique_odor_abbrevs = df.name1.unique()
-    if 'eb' in unique_odor_abbrevs:
-        return 'kiwi'
-    elif '1o3ol' in unique_odor_abbrevs:
-        return 'control'
+trace_pickle2df = dict()
+def read_pickle(trace_pickle):
+    if trace_pickle in trace_pickle2df:
+        return trace_pickle2df[trace_pickle]
     else:
-        raise ValueError(f'{trace_pickle} had neither reference odor '
-            'indicating odor_set (eb / 1o3ol) in name1 column')
+        df = pd.read_pickle(trace_pickle)
+        trace_pickle2df[trace_pickle] = df
+        return df
 
 
-def order_one_odor_set_before_other(trace_pickles, first_odor_set='kiwi'):
+def order_by_odor_sets(trace_pickles, drop_if_missing=['kiwi']):
     """
-    Returns re-ordered list of pickle filenames, with data from one odor_set
-    before all data from the other odor_set.
+    Returns re-ordered list of pickle filenames, with data from within flys now
+    appearing in a fixed order.
 
     This is so the odor_set with the reference odor can be analyzed first,
-    and that threshold applied to the other recording with the same fly.
-    No other properties of order are guaranteed (data from the same fly won't
-    necessarily be adjacent or not).
+    and that threshold applied to the other recording(s) with the same fly.
     """
-    odor_set2fnames = dict()
+    odor_set2order = {o: i for i, o in enumerate(odor_set_order)}
+    fname2keys = dict()
+    fly_keys2odor_sets = dict()
+    fly_keys2fnames = dict()
     for tp in trace_pickles:
-        odor_set = trace_pickle_odor_set(tp)
-        if odor_set not in odor_set2fnames:
-            odor_set2fnames[odor_set] = [tp]
+        df = read_pickle(tp)
+
+        # Excluding last recording col, so it just indexes a fly, not a
+        # recording.
+        fly_keys = df[u.recording_cols[:-1]].drop_duplicates()
+        assert len(fly_keys) == 1
+        fly_keys = tuple(fly_keys.iloc[0])
+
+        odor_set = u.df_to_odorset_name(df)
+        # TODO delete all other add_odorset stuff?
+        assert 'odor_set' not in df.columns
+        df['odor_set'] = 'odor_set'
+
+        keys = fly_keys + (odor_set2order[odor_set],) 
+        fname2keys[tp] = keys
+        if fly_keys not in fly_keys2odor_sets:
+            fly_keys2odor_sets[fly_keys] = {odor_set}
+            fly_keys2fnames[fly_keys] = [tp]
         else:
-            odor_set2fnames[odor_set].append(tp)
+            fly_keys2odor_sets[fly_keys].add(odor_set)
+            fly_keys2fnames[fly_keys].append(tp)
 
-    assert len(odor_set2fnames) == 2, 'expected 2 odor_set names'
-    assert first_odor_set in odor_set2fnames, \
-        f'expected odor_set {first_odor_set}'
+    if drop_if_missing is None or len(drop_if_missing) == 0:
+        raise NotImplementedError('no support for missing ref odor')
+    else:
+        with_all_required_odorsets = []
+        for fly_keys, odor_sets in fly_keys2odor_sets.items():
+            if all([required in odor_sets for required in drop_if_missing]):
+                with_all_required_odorsets.extend(fly_keys2fnames[fly_keys])
+            else:
+                warnings.warn(f'excluding data for fly {fly_keys} because it '
+                    'did not have all required odor sets'
+                )
+        trace_pickles = with_all_required_odorsets
 
-    second_odor_set = [os for os in odor_set2fnames.keys()
-        if os != first_odor_set][0]
-
-    # TODO maybe also order recordings within fly next to each other.
-    # might make any print outputs easier to follow within fly,
-    # which might be useful
-
-    return odor_set2fnames[first_odor_set] + odor_set2fnames[second_odor_set]
+    return sorted(trace_pickles, key=fname2keys.get)
 
 
 def fill_to_cartesian(df, cols_to_combine):
@@ -747,12 +759,12 @@ def roc_analysis(window_trial_stats, reliable_responders, fname=None):
     # TODO maybe don't subset to "reliable" responders as shen et al do?
     # TODO maybe just two distributions, one for natural one control?
     odors = window_trial_stats.index.get_level_values('name1')
-    df = window_trial_stats[odors != 'pfo'].reset_index()
+    df = window_trial_stats[~ odors.isin(('pfo', 'water'))].reset_index()
 
     auc_dfs = []
     for segmentation in (True, False):
         for odor in df.name1.unique():
-            if segmentation and (odor == 'mix' or odor == 'kiwi'):
+            if segmentation and odor in ('mix', 'kiwi', 'fly food'):
                 continue
 
             odor_reliable_responders = reliable_responders.loc[(odor,)]
@@ -765,7 +777,7 @@ def roc_analysis(window_trial_stats, reliable_responders, fname=None):
                 ].groupby('cell'):
 
                 if segmentation:
-                    gdf = gdf[gdf.name1 != 'kiwi']
+                    gdf = gdf[~ gdf.name1.isin(('kiwi', 'fly food'))]
 
                 if segmentation:
                     labels = (gdf.name1 == 'mix') | (gdf.name1 == odor)
@@ -827,7 +839,8 @@ if not exists(pickle_outputs_dir):
     os.mkdir(pickle_outputs_dir)
 
 pickle_outputs_fstr = join(pickle_outputs_dir,
-    'kc_mix_analysis_outputs_meanzthr{:.2f}{}.p')
+    'kc_mix_analysis_outputs_meanzthr{:.2f}{}.p'
+)
 
 if not args.only_analyze_cached:
     # TODO use a longer/shorter baseline window?
@@ -837,19 +850,31 @@ if not args.only_analyze_cached:
     response_calling_s = 5.0
     trial_stat = 'max'
 
+    gsheet_link = u.gsheet_csv_export_link('tom_data_ledger_sheet_link.txt')
+    # Adding gid of default sheet.
+    gsheet_link += '0'
+    gsheet_df = pd.read_csv(gsheet_link)
+    gsheet_df.date = pd.to_datetime(gsheet_df.date)
+    gsheet_df = gsheet_df.iloc[:gsheet_df.date.isna().idxmax()]
+    gsheet_df.fly_num = gsheet_df.fly_num.astype(np.uint16)
+    rejects = {tuple(x) for _, x in gsheet_df.loc[gsheet_df['reject?'],
+        ['date','fly_num','thorimage_id']].iterrows()
+    }
+
     # TODO TODO update loop to use this df, and get index values directly from
     # there, rather than re-calculating them
     latest_pickles = u.latest_trace_pickles()
     pickles = list(latest_pickles.trace_pickle_path)
     if test:
         warnings.warn('Only reading two pickles for testing! '
-            'Set test = False to analyze all.')
+            'Set test = False to analyze all.'
+        )
         pickles = [p for p in pickles if test_substr in p]
 
-    # takes a little under 1s per pickle
-    #b = time.time()
-    pickles = order_one_odor_set_before_other(pickles)
-    #print('determining pickle order took {:.2f}s'.format(time.time() - b))
+    b = time.time()
+    print('reading all pickles to decide their order... ', end='', flush=True)
+    pickles = order_by_odor_sets(pickles)
+    print('done ({:.2f}s)'.format(time.time() - b), flush=True)
 
     # TODO maybe use for this everything to speed things up a bit?
     # (not just plotting)
@@ -900,10 +925,13 @@ if not args.only_analyze_cached:
         # TODO also support case here pickle has a dict
         # (w/ this df behind a trace_df key & maybe other data, like PID, behind
         # something else?)
-        df = pd.read_pickle(df_pickle)
+        df = read_pickle(df_pickle)
 
         assert 'original_name1' in df.columns
-        df.name1 = df.original_name1.map(cu.odor2abbrev)
+        if not use_existing_abbrevs or 'name1' not in df.columns:
+            on1_unique = df.original_name1.unique()
+            o2n = {o: cu.odor2abbrev(o) for o in on1_unique}
+            df.name1 = df.original_name1.map(o2n)
 
         prefix = u.df_to_odorset_name(df)
         odor_order = [cu.odor2abbrev(o) for o in u.df_to_odor_order(df)]
@@ -950,15 +978,16 @@ if not args.only_analyze_cached:
         scalar_response_criteria = \
             response_criteria.groupby(cell_cols).agg('mean')
 
-        if fix_ref_odor_response_fracs:
-            fly_nums = df.fly_num.unique()
-            assert len(fly_nums) == 1
-            fly_num = fly_nums[0]
-            dates = df.prep_date.unique()
-            assert len(dates) == 1
-            date = dates[0]
-            fly_key = (date, fly_num)
+        fly_nums = df.fly_num.unique()
+        assert len(fly_nums) == 1
+        fly_num = fly_nums[0]
+        dates = df.prep_date.unique()
+        assert len(dates) == 1
+        date = dates[0]
+        fly_key = (date, fly_num)
 
+        used_for_thresh = False
+        if fix_ref_odor_response_fracs:
             if fly_key not in fly2response_threshold:
                 mean_zchange_response_thresh = np.percentile(
                     scalar_response_criteria.loc[(ref_odor,)],
@@ -969,12 +998,29 @@ if not args.only_analyze_cached:
                 print(('Calculated mean Z-scored response threshold, from '
                     'reference response percentage of {:.1f} to {}: '
                     '{:.2f}').format(ref_response_percent, ref_odor,
-                    mean_zchange_response_thresh))
+                    mean_zchange_response_thresh)
+                )
+                used_for_thresh = True
             else:
                 unique_name1s = scalar_response_criteria.index.get_level_values(
                     'name1').unique()
                 assert ref_odor not in unique_name1s
                 mean_zchange_response_thresh = fly2response_threshold[fly_key]
+
+        thorimage_ids = df.thorimage_id.unique()
+        assert len(thorimage_ids) == 1
+        thorimage_id = thorimage_ids[0]
+        rec_key = (pd.Timestamp(fly_key[0]), fly_key[1], thorimage_id)
+        if rec_key in rejects:
+            warnings.warn(f'skipping rest of analysis on {rec_key} because '
+                'marked reject in tom_data_ledger'
+            )
+            # TODO only do this if some stuff for fly is not dropped
+            if used_for_thresh:
+                warnings.warn('AND this recording was used to set the threshold'
+                    ' for this fly!'
+                )
+            continue
 
         if responder_threshold_plots:
             zthreshes = np.linspace(0, 25.0, 40)
@@ -1209,7 +1255,7 @@ if not args.only_analyze_cached:
             # (-> hong2p.util, both use that?)
 
             component_names = [x for x in odor_cell_stats.index
-                if x not in ('mix', 'kiwi', 'pfo')] 
+                if x not in ('mix', 'kiwi', 'water', 'fly food', 'pfo')] 
             # TODO TODO also do on traces as in kc_analysis?
             # or at least per-trial(?) rather than per-mean?
 
@@ -1719,10 +1765,11 @@ rec_key = 'thorimage_id'
 n_flies = len(responders.index.to_frame()[fly_keys].drop_duplicates())
 fly_colors = sns.color_palette('hls', n_flies)
 # could also try ':' or '-.'
-odorset2linestyle = {'kiwi': '-', 'control': '--'}
+odorset2linestyle = {'kiwi': '-', 'control': '--', 'flyfood': 'dotted'}
 
 odor_set2order_with_dupes = {s: [cu.odor2abbrev(o) for o in os] for s, os
-    in u.odor_set2order.items()}
+    in u.odor_set2order.items()
+}
 
 odor_set2order = dict()
 for s, oset in odor_set2order_with_dupes.items():
@@ -1732,34 +1779,46 @@ for s, oset in odor_set2order_with_dupes.items():
             this_set_order.append(o)
     odor_set2order[s] = this_set_order
 
-assert len(odor_set2order) == 2, 'below approach only works in that case'
-odor_sets = [set(os) for os in odor_set2order.values()]
-# Any odors in both can't tell us which set we have.
-nondiagnostic_odors = odor_sets[0] & odor_sets[1]
+odor_set_odors = [set(os) for os in odor_set2order.values()]
+odor_counts = dict()
+for odors in odor_set_odors:
+    for odor in odors:
+        if odor not in odor_counts:
+            odor_counts[odor] = 1
+        else:
+            odor_counts[odor] += 1
+nondiagnostic_odors = {o for o, c in odor_counts.items() if c > 1}
+del odor_counts
 
-odor_sets_nopfo = [os - {'pfo'} for os in odor_sets]
+# TODO TODO TODO also exclude water (fly food case) wherever i'm excluding pfo
+odor_set_odors_nosolvent = [os - {'pfo','water'} for os in odor_set_odors]
 
 n_ro_hist_fig, n_ro_hist_ax = plt.subplots()
 
 # TODO delete? not sure i ever want this True...
 # Whether to include data from presentations of actual kiwi.
-n_ro_include_kiwi = False
-if n_ro_include_kiwi:
+n_ro_include_real = False
+if n_ro_include_real:
     n_ro_exclude = {}
 else:
-    n_ro_exclude = {'kiwi'}
+    n_ro_exclude = {'kiwi', 'fly food'}
 
 # Only the last bin includes both ends. All other bins only include the
 # value at their left edge. So with n_odors + 2, the last bin will be
 # [n_odors, n_odors + 1] (since arange doesn't include end), and will thus
 # only count cells that respond (reliably) to all odors, since it is not
 # possible for them to respond to > n_odors.
-n_max_odors_per_panel = max([len(os - n_ro_exclude) for os in odor_sets_nopfo])
+n_max_odors_per_panel = max(
+    [len(os - n_ro_exclude) for os in odor_set_odors_nosolvent]
+)
 # TODO maybe this should be + 1 then, since n odors used to be 6, even though
 # kiwi (may?) have been included?
 n_ro_bins = np.arange(n_max_odors_per_panel + 2)
+del n_max_odors_per_panel
+
 # Needed to also exclude this data in loop.
 n_ro_exclude.add('pfo')
+n_ro_exclude.add('water')
 
 rec_keys2odor_set = dict()
 
@@ -1781,17 +1840,25 @@ shuffle_n_ros_sers = []
 for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
     fly_color = fly_colors[i]
 
-    assert len(fly_gser.index.get_level_values(rec_key).unique()) == 2
+    assert len(fly_gser.index.get_level_values(rec_key).unique()) in {1,2,3}
+
     # TODO just add variable for odorset earlier, so that i can group on that
     # instead of (/in addition to) thorimage id, so i can loop over them in a
     # fixed order (? order doesn't matter here, does it?)
     for rec_gn, rec_gser in fly_gser.groupby(rec_key):
         # TODO maybe refactor this (kinda duped w/ odorset finding from the more
         # raw dfs)?
-        if 'eb' in rec_gser.index.get_level_values('name1'):
+        unique_odors = rec_gser.index.get_level_values('name1')
+        if 'eb' in unique_odors:
             odorset = 'kiwi'
-        else:
+        elif '1o3ol' in unique_odors:
             odorset = 'control'
+        elif 'aa' in unique_odors:
+            odorset = 'flyfood'
+        else:
+            raise ValueError('odor set not recognized')
+        del unique_odors
+
         rec_keys2odor_set[fly_gn + (rec_gn,)] = odorset
         linestyle = odorset2linestyle[odorset]
 
@@ -1804,7 +1871,7 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
         # response fractions / reliable response fraction in one set of plots.
         # at least save as a redefinition for below.
         #trial_responders = rec_gser[~ rec_gser.index.get_level_values('name1'
-        #    ).isin(('pfo', 'kiwi'))]
+        #    ).isin(('pfo', 'kiwi', 'water', 'fly food'))]
 
         n_rec_cells = \
             len(trial_responders.index.get_level_values('cell').unique())
@@ -1863,7 +1930,7 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             # this axis is referring to odors anyway. To declutter.
             resp_frac_ax.set_xlabel('')
 
-            fr_display_max = 0.4
+            fr_display_max = 0.5
             fr_max = frac_responders.max()
             assert fr_max <= fr_display_max, \
                 f'increase fr_display_max to more than {fr_max:.2f}'
@@ -1924,8 +1991,12 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
         frac_responders = add_rec_metadata(frac_responders)
         frac_responder_sers.append(frac_responders)
 
-        odors = [o for o in odors if o not in ('pfo', 'kiwi')]
-        odor_order = [o for o in odor_order if o not in ('pfo', 'kiwi')]
+        odors = [o for o in odors
+            if o not in ('pfo', 'water', 'fly food', 'kiwi')
+        ]
+        odor_order = [o for o in odor_order
+            if o not in ('pfo', 'water', 'fly food', 'kiwi')
+        ]
 
         odor_resp_subset_fracs_list = []
         for odor in odors:
@@ -2030,8 +2101,10 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
         n_ro_hist_odors = \
             reliable_responders.index.get_level_values('name1').unique()
         assert 'pfo' not in n_ro_hist_odors
-        if not n_ro_include_kiwi:
+        assert 'water' not in n_ro_hist_odors
+        if not n_ro_include_real:
             assert 'kiwi' not in n_ro_hist_odors
+            assert 'fly food' not in n_ro_hist_odors
 
         # Since last bin includes right edge, but beyond that stuff would not
         # have a bin.
@@ -2208,12 +2281,20 @@ def with_odor_order(plot_fn, **fn_kwargs):
                 assert order[-1] == 'kiwi'
                 order = order[:-1]
 
+            # TODO refactor to just mark which are real
+            if odor_set == 'flyfood':
+                assert order[-1] == 'fly food'
+                order = order[:-1]
+
             order.append(component_sum_odor_name)
             if component_sum_diff_odor_name in odors:
                 order.append(component_sum_diff_odor_name)
 
             if odor_set == 'kiwi':
                 order.append('kiwi')
+
+            if odor_set == 'flyfood':
+                order.append('fly food')
 
         assert len(args) == 2 or len(args) == 3
         if len(args) == 2:
@@ -2253,9 +2334,9 @@ fly_id_palette = {i: c for i, c in zip(np.unique(frac_responder_df.fly_id),
 # https://xkcd.com/color/rgb/
 odor_set2color = {
     'kiwi': sns.xkcd_rgb['light olive green'],
-    'control': sns.xkcd_rgb['orchid']
+    'control': sns.xkcd_rgb['orchid'],
+    'flyfood': sns.xkcd_rgb['light brown']
 }
-odor_set_order = ['kiwi', 'control']
 
 # col_wrap for FacetGrids
 cw = 4
@@ -2271,7 +2352,9 @@ cw = 4
 # rates).
 # TODO TODO TODO make sure these are always used where appropriate
 # (cell adaptions, linearity, n_ro_hist, etc)
-def drop_excluded_odors(df, pfo=True, kiwi=False, mix=False, components=False):
+def drop_excluded_odors(df, solvent=True, real=False, mix=False,
+    components=False):
+
     assert not (mix and components)
 
     odor_cols = ([c for c in df.columns if 'name' in c.lower()] + 
@@ -2283,11 +2366,11 @@ def drop_excluded_odors(df, pfo=True, kiwi=False, mix=False, components=False):
         raise NotImplementedError
 
     excluded = []
-    if pfo:
-        excluded.append('pfo')
+    if solvent:
+        excluded.extend(['pfo', 'water'])
 
-    if kiwi:
-        excluded.append('kiwi')
+    if real:
+        excluded.extend(['kiwi', 'fly food'])
 
     if mix:
         excluded.append('mix')
@@ -2358,7 +2441,8 @@ def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, title,
 # TODO factor to util (would need to change implementation...)?
 def add_odorset(df):
     df['odor_set'] = df.set_index(fly_keys + [rec_key]).index.map(
-        rec_keys2odor_set)
+        rec_keys2odor_set
+    )
     return df
 
 def add_odor_id(df):
@@ -2534,31 +2618,38 @@ n_odor_reliable_cells_per_rec = per_odor_reliable_idx.to_frame(index=False
     ).groupby(['fly_id','odor_set','name1']).cell.nunique()
 
 
-n_colors = max([len(os) for os in odor_sets_nopfo])
+n_colors = max([len(os) for os in odor_set_odors_nosolvent])
 # TODO also, maybe just vary alpha? maybe use something that varies color more
 # than this cmap does?
 #odor_colors = sns.diverging_palette(10, 220, n=n_colors, center='dark', sep=1)
 odor_colors = sns.color_palette('cubehelix', n_colors)
 
-nonpfo_odor_orders = [[o for o in os if o != 'pfo'] for os in
-    odor_set2order.values()]
+nonsolvent_odor_orders = [[o for o in os if o not in {'pfo', 'water'}] for os in
+    odor_set2order.values()
+]
 
 # TODO maybe hue by actual rather than intended (from odor_order) activation
 # order of odor_set?
 odor_hues_within_odorset = dict()
-for c, o1, o2 in zip_longest(odor_colors, *nonpfo_odor_orders):
+for color_and_odors in zip_longest(odor_colors, *nonsolvent_odor_orders):
+    c = color_and_odors[0]
+    odors = color_and_odors[1:]
+    odors_are_nondiag = [o in nondiagnostic_odors for o in odors]
     # Any odors with common names (even if they can mean different things, like
     # 'mix'), should get the same color.
-    if o1 in nondiagnostic_odors:
-        assert o2 in nondiagnostic_odors
-    if o2 in nondiagnostic_odors:
-        assert o1 in nondiagnostic_odors
+    # TODO TODO TODO fix how this breaks in etoh / 2h / etoh case
+    # (just don't have assert fail in that case?)
+    '''
+    if any(odors_are_nondiag):
+        try:
+            assert all(odors_are_nondiag), f'{odors} ({odors_are_nondiag})'
+        except AssertionError:
+            import ipdb; ipdb.set_trace()
+    '''
 
-    if o1 is not None:
-        odor_hues_within_odorset[o1] = c
-
-    if o2 is not None:
-        odor_hues_within_odorset[o2] = c
+    for o in odors:
+        if o is not None:
+            odor_hues_within_odorset[o] = c
 
 trial_stat_desc = trial_stat + r' $\frac{\Delta F}{F}$'
 
@@ -2759,7 +2850,9 @@ for responders_only in responders_only_values:
         # set) both with and without kiwi
         old_idx_names = os_cell_slopes.index.names
         os_cell_slopes = os_cell_slopes.reset_index()
-        os_cell_slopes = os_cell_slopes[os_cell_slopes.name1 != 'kiwi']
+        os_cell_slopes = os_cell_slopes[~ os_cell_slopes.name1.isin(
+            ('kiwi','fly food')
+        )]
         os_cell_slopes = os_cell_slopes.set_index(old_idx_names).slope
 
         # TODO OK to weight all *cell* equally, yea?
@@ -2798,9 +2891,9 @@ for responders_only in responders_only_values:
     )
 
     cell_adaptation_fits.reset_index(inplace=True)
-    cell_adaptation_fits_nokiwi = cell_adaptation_fits[
-        cell_adaptation_fits.name1 != 'kiwi']
-
+    cell_adaptation_fits_noreal = cell_adaptation_fits[
+        ~ cell_adaptation_fits.name1.isin(('kiwi','fly food'))
+    ]
     # TODO delete. was for figuring out appropriate kde bandwidth.
     '''
     # TODO TODO TODO so probably plot each odor in it's own facet and then check
@@ -2847,7 +2940,7 @@ for responders_only in responders_only_values:
     # TODO maybe don't use this fixed xlim
     # TODO maybe increase range a bit in odor specific case, as noiser +
     # differences may be in tails
-    g = sns.FacetGrid(cell_adaptation_fits_nokiwi, col='odor_set',
+    g = sns.FacetGrid(cell_adaptation_fits_noreal, col='odor_set',
         col_order=odor_set_order, height=4, xlim=(0, 7), ylim=xlim
     )
     # TODO maybe just separate plots of initial trial magnitude dists,
@@ -2872,8 +2965,8 @@ for responders_only in responders_only_values:
     '''
     for oset in odor_set_order:
         fig, ax = plt.subplots()
-        sns.scatterplot(data=cell_adaptation_fits_nokiwi[
-            cell_adaptation_fits_nokiwi.odor_set == oset],
+        sns.scatterplot(data=cell_adaptation_fits_noreal[
+            cell_adaptation_fits_noreal.odor_set == oset],
             x='first_data_y', y='slope', hue='odor_set',
             palette=odor_set2color, ax=ax
         )

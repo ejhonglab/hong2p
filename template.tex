@@ -140,10 +140,23 @@ Used extracted fluorescence traces in these files:
 
 \figureSeriesHere{\VAR{section[0]}}
 
+% TODO pass in batch num + figure out textwidth factor from that
+% 0.49 worked w/o creating new lines for batch(2).
+
+% 0.6 now just b/c no matter the batch setting we are still only getting one
+% thing per row...
 \BLOCK{ for row_figpdfs in section[1]|batch(2) }
 \figureSeriesRow{
 \BLOCK{ for figpdf in row_figpdfs }
-\figureSeriesElement{}{\includegraphics[width=0.49\textwidth,height=0.25\textheight,keepaspectratio]{\VAR{figpdf}}}
+
+\BLOCK{ if figpdf }
+\figureSeriesElement{}{\includegraphics[width=0.6\textwidth,height=0.25\textheight,keepaspectratio]{\VAR{figpdf}}}
+\BLOCK{ endif }
+
+\BLOCK{ if not figpdf }
+\figureSeriesElement{}{\includegraphics[width=0.4\textwidth]{empty_placeholder.pdf}}
+\BLOCK{ endif }
+
 \BLOCK{ endfor }
 }
 \BLOCK{ endfor }

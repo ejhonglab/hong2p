@@ -1066,6 +1066,9 @@ class Segmentation(QWidget):
     def save_ijrois(self):
         """Saves CNMF footprints to ImageJ compatible ROIs.
         """
+        raise NotImplementedError('need to recheck this path for '
+            'transpositions converting to ImageJ coordinates'
+        )
         if self.footprint_df is None:
             print('No footprints loaded. Run CNMF or load a run.')
             return
@@ -1279,7 +1282,8 @@ class Segmentation(QWidget):
         # (separate user action to confirm)?
 
         self.raw_f = u.extract_traces_boolean_footprints(self.movie,
-            self.footprints)
+            self.footprints
+        )
         n_footprints = self.raw_f.shape[1]
 
         # TODO factor df/f calc into util fn
@@ -2390,7 +2394,8 @@ class Segmentation(QWidget):
             # (and maybe support some local analysis anyway that doesn't require
             # rt through the db...)
             presentations_df = u.merge_odors(presentations_df,
-                self.db_odors.reset_index())
+                self.db_odors.reset_index()
+            )
             # TODO maybe adapt to case where name2 might have only occurence of 
             # an odor, or name1 might be paraffin.
             # TODO TODO check this is actually in the order i want across blocks
@@ -2400,8 +2405,8 @@ class Segmentation(QWidget):
             # TODO should fail earlier (rather than having to wait for cnmf
             # to finish)
             assert (set(name2_unique) == {'no_second_odor'} or 
-                set(name2_unique) - set(name1_unique) == {'paraffin'})
-
+                set(name2_unique) - set(name1_unique) == {'paraffin'}
+            )
             # TODO factor these flags out to be user configurable
             single_letter_abbrevs = False
             abbrev_in_presentation_order = True
@@ -2585,17 +2590,19 @@ class Segmentation(QWidget):
                 'odor_onset_frame'] = INT_NO_REAL_FRAME
 
             comparison_df = pd.concat(comparison_dfs, ignore_index=True,
-                sort=False)
+                sort=False
+            )
 
             # TODO don't have separate instance variables for presentation_dfs
             # and comparison_dfs if i'm always going to merge here.
             # just merge before and then put in one instance variable.
             # (probably just keep name comparison_dfs)
             presentation_df['from_onset'] = presentation_df['from_onset'].apply(
-                lambda x: np.array(x))
-
+                lambda x: np.array(x)
+            )
             presentation_df = u.merge_odors(presentation_df,
-                self.db_odors.reset_index())
+                self.db_odors.reset_index()
+            )
 
             # TODO maybe only abbreviate at end? this approach break upload to
             # database? maybe redo so abbrev only happens before plot?
@@ -2634,12 +2641,15 @@ class Segmentation(QWidget):
             # (and probably move to upload where fig gets saved.
             # just need to hold onto a ref to comparison_df)
             df_filename = (self.run_at.strftime('%Y%m%d_%H%M_') +
-                self.recording_title.replace('/','_') + '.p')
+                self.recording_title.replace('/','_') + '.p'
+            )
             df_filename = join(analysis_output_root, 'trace_pickles',
-                df_filename)
+                df_filename
+            )
 
             print('writing dataframe to {}...'.format(df_filename), end='',
-                flush=True)
+                flush=True
+            )
             comparison_df.to_pickle(df_filename)
             print(' done', flush=True)
 
@@ -3677,6 +3687,7 @@ class Segmentation(QWidget):
 
         mat = u.tiff_matfile(tiff)
         ti = u.load_mat_timing_information(mat)
+        import ipdb; ipdb.set_trace()
 
         recordings = df.loc[(df.date == date) &
                             (df.fly_num == fly_num) &
@@ -3799,8 +3810,15 @@ class Segmentation(QWidget):
             # so this hack isn't necessary
             # TODO TODO fix entries already in db w/ trailing / leading
             # whitespace (split_odor_w_conc didn't used to strip returned name)
+            # TODO TODO TODO fix what generates broken data['odors'] in at least
+            # some of the fly food cases (missing fly food b)
+            '''
             odors = pd.DataFrame([split_odor_w_conc(x) for x in (data['odors'] +
                 ['no_second_odor'])])
+            '''
+            odors = pd.DataFrame([split_odor_w_conc(x) for x in
+                (list(set(data['odor_lists'])) + ['no_second_odor'])])
+
         u.to_sql_with_duplicates(odors, 'odors')
 
         # TODO make unique id before insertion? some way that wouldn't require
@@ -3849,8 +3867,6 @@ class Segmentation(QWidget):
             # trial?
             odor_ids = list(zip(odor1_ids, odor2_ids))
         else:
-            #odor_ids = [(self.db_odors.at[tuple(split_odor_w_conc(o)),
-            #    'odor_id'],) for o in odor_list]
             odor1_ids = [self.db_odors.at[tuple(split_odor_w_conc(o)),
                 'odor_id'] for o in odor_list]
 

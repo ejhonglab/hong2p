@@ -21,6 +21,7 @@ from scipy.sparse import coo_matrix
 import pandas as pd
 import matlab.engine
 import tifffile
+import matplotlib.pyplot as plt
 
 # TODO maybe just move these fns into a module hong2p, rather than hong2p util?
 # or maybe __init__ stuff to get them importable under hong2p?
@@ -33,7 +34,7 @@ verbose = True
 # False or positive integers.
 # If not False, analysis will only run on the most recent n dates in the
 # mb_team_flies Google sheet metadata.
-only_last_n_days = 1
+only_last_n_days = 3
 
 use_cached_gsheet = False
 show_inferred_paths = True
@@ -463,14 +464,10 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
 if fit_rois:
     print('Fitting ROIs...')
-    template_data = u.template_data()
+    template_data = u.load_template_data()
     if template_data is None:
         warnings.warn('template data not found, so can not fit_rois')
     else:
-        template = template_data['template']
-        margin = template_data['margin']
-        mean_cell_extent_um = template_data['mean_cell_extent_um']
-
         # TODO make generator fns or something in util that yield
         # raw / analysis dirs / tifs / whatever
         for analysis_dir in glob.glob(analysis_output_root + '/*/*/'):
@@ -493,12 +490,13 @@ if fit_rois:
                 continue
 
             thorimage_ids = [split(td)[1] for td in
-                u.thorimage_subdirs(u.raw_fly_dir(date, fly_num))]
-
+                u.thorimage_subdirs(u.raw_fly_dir(date, fly_num))
+            ]
             for thorimage_id in thorimage_ids:
                 try:
                     tif = u.motion_corrected_tiff_filename(date, fly_num,
-                        thorimage_id)
+                        thorimage_id
+                    )
                 # TODO is this except gonna work? OSError count?
                 except IOError as e:
                     print(thorimage_id, end=': ')
@@ -507,10 +505,16 @@ if fit_rois:
 
                 # TODO TODO check if analysis is ticked in df (gsheet)
 
-                u.fit_circle_rois(tif, template, margin,
-                    mean_cell_extent_um, write_ijrois=True
-                )
-
+                try:
+                    u.fit_circle_rois(tif, template_data, write_ijrois=True,
+                        overwrite=True, min_neighbors=None, multiscale=True,
+                        threshold=0.3, roi_diams_from_kmeans_k=2,
+                        exclude_dark_regions=True
+                    )
+                except RuntimeError as e:
+                    print(e)
+                    plt.show()
+                    continue
 
 # TODO TODO why had i commented this? some reason it should not be this way?
 if not (upload_matlab_cnmf_output or process_time_averages):

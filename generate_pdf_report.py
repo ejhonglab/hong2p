@@ -9,6 +9,7 @@ from pprint import pprint
 from jinja2.loaders import FileSystemLoader
 from latex import build_pdf, escape, LatexBuildError
 from latex.jinja2 import make_env
+import matplotlib.pyplot as plt
 
 import hong2p.util as u
 
@@ -37,13 +38,16 @@ def glob_plots(glob_str, filenames_to_use):
 def plot_files_in_order(glob_str, filenames_to_use):
     """Returns filenames in order for plotting.
 
-    Reverse chronological w/ control following kiwi.
+    Reverse chronological w/ panels in [kiwi, control, fly food] order.
+    None in list where fly was missing a panel.
     """
     files = glob_plots(glob_str, filenames_to_use)
     if len(files) == 0:
         return []
 
     reverse_chronological = True
+    # TODO refactor s.t. this indicates order of all panels, not just where
+    # control should be (since supporting >=2 panels now)
     control_last = True
     # Since we change sort direction in reverse_chronological case:
     if reverse_chronological:
@@ -57,6 +61,7 @@ def plot_files_in_order(glob_str, filenames_to_use):
         fly_part = None
         panel_part = None
         for p in parts:
+            # TODO refactor to not need a separate hardcoded branch per panel
             if p == 'kiwi':
                 if panel_part is not None:
                     pass
@@ -69,9 +74,9 @@ def plot_files_in_order(glob_str, filenames_to_use):
                     '''
 
                 if control_last:
-                    panel_part = 0
-                else:
                     panel_part = 1
+                else:
+                    panel_part = 2
                 continue
 
             elif p == 'control':
@@ -80,22 +85,27 @@ def plot_files_in_order(glob_str, filenames_to_use):
                         f'duplicate panel parts in filename {fname}')
 
                 if control_last:
-                    panel_part = 1
+                    panel_part = 2
                 else:
-                    panel_part = 0
+                    panel_part = 1
+                continue
+
+            elif p == 'flyfood':
+                if panel_part is not None:
+                    raise ValueError(
+                        f'duplicate panel parts in filename {fname}')
+
+                panel_part = 0
                 continue
 
             try:
                 fly_part_already_found = fly_part is not None
                 curr_fly_part = int(p)
 
-                # TODO probably also want to fail in >1 consectutive zero case.
-                # may not be important to support fly_num == 0 case either.
-
                 # Leading zeros might mean this part was actually one of the 
                 # "_NNN" format ThorImage IDs. Either way, fly_num should not
                 # be formatted into filename with any leading zeros.
-                if curr_fly_part != 0 and p[0] == '0':
+                if p[0] == '0':
                     # We can continue here, because were this part a date,
                     # it would have failed int parsing above anyway.
                     continue
@@ -142,16 +152,49 @@ def plot_files_in_order(glob_str, filenames_to_use):
         else:
             date_fly2seen_panels[df].add(panel)
 
+    # TODO delete
+    '''
     p0 = list(date_fly2seen_panels.values())[0]
-    for df, seen in date_fly2seen_panels.items():
+    for date_fly, seen in date_fly2seen_panels.items():
         if len(seen) != 2 or seen != p0:
-            raise ValueError(f'fly {df} did not have all expected panels')
-
+            raise ValueError(f'fly {date_fly} did not have all expected panels')
+    '''
 
     files = sorted(files, key=lambda f: fname2keys[f])
+    files_with_fillers = []
+    last_date_fly = None
+    max_panel = max([x[-1] for x in fname2keys.values()])
+    panel = None
+    for f in files:
+        keys = fname2keys[f]
+        date_fly = keys[:2]
+        if date_fly != last_date_fly:
+            last_date_fly = date_fly
+            next_panel = 0
+            if panel is not None:
+                while panel < max_panel:
+                    files_with_fillers.append(None)
+                    panel += 1
+
+        panel = keys[-1]
+        while next_panel < panel:
+            files_with_fillers.append(None)
+            next_panel += 1
+        next_panel = panel + 1
+        files_with_fillers.append(f)
+
+    while panel < max_panel:
+        files_with_fillers.append(None)
+        panel += 1
+
+    assert (len(files_with_fillers) ==
+        (max_panel + 1) * len({x[:2] for x in fname2keys.values()})
+    )
+
     if reverse_chronological:
-        files = files[::-1]
-    return files
+        files_with_fillers = files_with_fillers[::-1]
+
+    return files_with_fillers
 
 
 def agg_within_sections(sec_names_and_files):
@@ -359,6 +402,21 @@ def main(*args, **kwargs):
     paired_sections = [(name, plots) for name, plots in paired_sections
         if len(plots) > 0
     ]
+    # TODO TODO delete hack. requires figuring out how to get rows with three
+    # elements to layout in single rows in the pdf (even down to 0.05\textwidth,
+    # it made one row per plot)
+    # this isn't even working... even with 2 per row now, stuff only ever seems
+    # to be placed by itself on a row...
+    new_paired_sections = []
+    for name, plots in paired_sections:
+        assert len(plots) % 3 == 0
+        new_plots = []
+        for i in range(len(plots) // 3):
+            assert len(plots[3*i:3*i + 3]) == 3
+            new_plots.extend(plots[3*i:3*i + 3] + [None])
+        assert len(new_plots) % 4 == 0
+        new_paired_sections.append((name, new_plots))
+    #
     if verbose:
         print('Section names and input files:')
         pprint(sections)
@@ -400,6 +458,14 @@ def main(*args, **kwargs):
         print('Writing LaTeX to {}'.format(tex_fname))
         with open(tex_fname, 'w') as f:
             f.write(latex_str)
+
+    # TODO only do if None in file lists / delete?
+    fig, ax = plt.subplots()
+    ax.axis('off')
+    # For debugging layout (so this placeholder is visible).
+    # this is visible in plt.show(), but not in saved figure...
+    fig.savefig('empty_placeholder.pdf')#, facecolor='red')
+
     try:
         # Current dir needs to be passed so that 'template.tex', and any 
         # other dependencies in current directory, can be accessed in the

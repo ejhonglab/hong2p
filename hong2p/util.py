@@ -15,7 +15,7 @@ import xml.etree.ElementTree as etree
 from types import ModuleType
 from datetime import datetime
 import warnings
-import pprint
+from pprint import pprint
 import glob
 import re
 
@@ -26,10 +26,12 @@ import matplotlib.patches as patches
 # is just importing this potentially going to interfere w/ gui?
 # put import behind paths that use it?
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
 
+np.set_printoptions(precision=2)
 
 recording_cols = [
     'prep_date',
@@ -292,7 +294,7 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
 
     if verbose:
         print('SQL column types:')
-        pprint.pprint(dtypes)
+        pprint(dtypes)
    
     df_types = new_df.dtypes.to_dict()
     if index:
@@ -301,7 +303,7 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
 
     if verbose:
         print('\nOld dataframe column types:')
-        pprint.pprint(df_types)
+        pprint(df_types)
 
     sqlalchemy2pd_type = {
         'INTEGER()': np.dtype('int32'),
@@ -312,14 +314,14 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
     }
     if verbose:
         print('\nSQL types to cast:')
-        pprint.pprint(sqlalchemy2pd_type)
+        pprint(sqlalchemy2pd_type)
 
     new_df_types = {n: sqlalchemy2pd_type[repr(t)] for n, t in dtypes.items()
         if repr(t) in sqlalchemy2pd_type}
 
     if verbose:
         print('\nNew dataframe column types:')
-        pprint.pprint(new_df_types)
+        pprint(new_df_types)
 
     # TODO how to get around converting things to int if they have NaN.
     # possible to not convert?
@@ -341,7 +343,7 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
     if index:
         # TODO need to handle case where conversion dict is empty
         # (seems to fail?)
-        #pprint.pprint(new_index_types)
+        #pprint(new_index_types)
 
         # MultiIndex astype method seems to not work the same way?
         new_df.index = pd.MultiIndex.from_frame(
@@ -419,12 +421,33 @@ def df_to_odorset_name(df):
     Looks at odors in original_name1 column. Name used to lookup desired
     plotting order for the odors in the set.
     """
-    if 'ethyl butyrate' in df.original_name1.unique():
-        odor_set = 'kiwi'
+    odor_set = None
+    if 'original_name1' in df.columns:
+        unique_original_name1 = df.original_name1.unique()
+        if 'ethyl butyrate' in unique_original_name1:
+            odor_set = 'kiwi'
+        elif 'acetoin' in unique_original_name1:
+            odor_set = 'flyfood'
+        elif '1-octen-3-ol' in unique_original_name1:
+            odor_set = 'control'
     else:
-        odor_set = 'control'
+        assert 'name1' in df.columns, \
+            'need either original_name1 or name1 in df columns'
+
+        # Assuming abbreviated names now.
+        unique_name1 = df.name1.unique()
+        if 'eb' in unique_name1:
+            odor_set = 'kiwi'
+        elif 'atoin' in unique_name1:
+            odor_set = 'flyfood'
+        elif '1o3ol' in unique_name1:
+            odor_set = 'control'
+
+    if odor_set is None:
+        raise ValueError('none of diagnostic odors in odor column')
+
     # TODO probably just find single odor that satisfies is_mix and derive from
-    # that, for more generality
+    # that, for more generality (would only work in original name case)
     return odor_set
 
 
@@ -454,6 +477,16 @@ odor_set2order = {
         # place in the order.
         'control mix 1',
         'control mix 2'
+    ],
+    'flyfood': [
+        'water',
+        'propanoic acid',
+        'isobutyric acid',
+        'acetic acid',
+        'acetoin',
+        'ethanol',
+        'fly food approx.',
+        'fly food b'
     ]
 }
 def df_to_odor_order(df, observed=True, return_name1=False):
@@ -524,9 +557,23 @@ def thorsync_num(x):
     return int(x[len(prefix):])
 
 
+def gsheet_csv_export_link(file_with_edit_link):
+    """
+    Takes a gsheet link copied from browser while editing it, and returns a
+    URL suitable for reading it as a CSV into a DataFrame.
+
+    Must append appropriate GID to what is returned.
+    """
+    pkg_data_dir = split(split(__file__)[0])[0]
+    with open(join(pkg_data_dir, file_with_edit_link), 'r') as f:
+        gsheet_link = f.readline().split('/edit')[0] + '/export?format=csv&gid='
+    return gsheet_link
+
+
 _mb_team_gsheet = None
-def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
-    natural_odors_only=False):
+def mb_team_gsheet(use_cache=False, natural_odors_only=False,
+    drop_nonexistant_dirs=True, show_inferred_paths=False,
+    print_excluded_on_disk=True, verbose=False):
     '''Returns a pandas.DataFrame with data on flies and MB team recordings.
     '''
     global _mb_team_gsheet
@@ -544,10 +591,7 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     else:
         # TODO TODO maybe env var pointing to this? or w/ link itself?
         # TODO maybe just get relative path from __file__ w/ /.. or something?
-        pkg_data_dir = split(split(__file__)[0])[0]
-        with open(join(pkg_data_dir, 'mb_team_sheet_link.txt'), 'r') as f:
-            gsheet_link = \
-                f.readline().split('/edit')[0] + '/export?format=csv&gid='
+        gsheet_link = gsheet_csv_export_link('mb_team_sheet_link.txt')
 
         # If you want to add more sheets, when you select the new sheet in your
         # browser, the GID will be at the end of the URL in the address bar.
@@ -640,8 +684,11 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
         missing_thorimage = pd.isnull(df.thorimage_dir)
         missing_thorsync = pd.isnull(df.thorsync_dir)
 
-    prep_checking = 'n/a (prep checking)'
     my_project = 'natural_odors'
+
+    # TODO TODO fix current behavior where key groups that have nothing filled
+    # in on gsheet (for dirs) will default to old format.  misbehaving for
+    # 8-27/1 and all of 11-21, for example. (fixed?)
 
     check_and_set = []
     for gn, gdf in df.groupby(keys):
@@ -653,11 +700,24 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
             if not exists(fly_dir):
                 continue
 
-            #print('\n' + fly_dir)
+            if verbose:
+                print('\n' + fly_dir)
+
             try:
-                image_and_sync_pairs = pair_thor_subdirs(fly_dir)
-                #print('pairs:')
-                #pprint.pprint(image_and_sync_pairs)
+                # Since we are disabling check that ThorImage nums (from naming
+                # convention) are unique, we must check this before
+                # mb_team_gsheet returns.
+                image_and_sync_pairs = pair_thor_subdirs(fly_dir,
+                     check_unique_thorimage_nums=False
+                )
+                if verbose:
+                    print('pairs:')
+                    pprint(image_and_sync_pairs)
+
+            # TODO TODO should ValueError actually be caught?
+            # (from comments in other fns) it seems it will only be raised
+            # when they are not 1:1, which should maybe cause failure in the way
+            # AssertionErrors do now...
             except ValueError as e:
                 gn_str = format_keys(*gn)
                 print(f'For {gn_str}:')
@@ -669,12 +729,17 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
             # experiment based on time length or something (and maybe try
             # to fall back to just pairing w/ real experiments? and extending
             # condition below to # real experiments in gdf)
-            nm = len(image_and_sync_pairs)
+            n_matched = len(image_and_sync_pairs)
             ng = len(gdf)
-            if nm < ng:
-                #print('more rows for (date, fly) pair than matched outputs'
-                #    f' ({nm} < {ng})')
-                continue
+            # TODO should this be an error (was previously just a
+            # print + continue)?
+            if n_matched < ng:
+                msg = ('more rows for (date, fly) pair than matched outputs'
+                    f' ({n_matched} < {ng})'
+                )
+                raise AssertionError(msg)
+                #print(msg)
+                #continue
 
             all_group_in_old_dir_fmt = True
             group_tids = []
@@ -682,7 +747,8 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
             for tid, tsd in image_and_sync_pairs:
                 tid = split(tid)[-1]
                 if pd.isnull(old_fmt_thorimage_num(tid)):
-                    #print(f'{tid} not in old format')
+                    if verbose:
+                        print(f'{tid} not in old format')
                     all_group_in_old_dir_fmt = False
 
                 group_tids.append(tid)
@@ -691,16 +757,41 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
             # Not immediately setting df in this case, so that I can check
             # these results against the old way of doing things.
             if all_group_in_old_dir_fmt:
-                #print('all in old dir format')
+                if verbose:
+                    print('all in old dir format')
+
                 check_and_set.append((gn, gdf.index, group_tids, group_tsds))
             else:
-                #print('filling in b/c not (all) in old dir format')
+                if verbose:
+                    print('filling in b/c not (all) in old dir format')
+
                 # TODO is it ok to modify df used to create groupby while
                 # iterating over groupby?
                 df.loc[gdf.index, 'thorimage_dir'] = group_tids
                 df.loc[gdf.index, 'thorsync_dir'] = group_tsds
 
-    df.drop(df[df.project != 'natural_odors'].index, inplace=True)
+    if print_excluded_on_disk:
+        # So that we can exclude these directories when printing stuff on disk
+        # (but not in df) later, to reduce noise (because of course other
+        # project stuff is dropped and will not be mentioned in df).
+        ti_from_other_projects = set()
+        ts_from_other_projects = set()
+        for gn, gdf in df[df.project != my_project].groupby(keys):
+            fly_dir = raw_fly_dir(*gn)
+            if not exists(fly_dir):
+                continue
+
+            gdf_ti = set(gdf.thorimage_dir.dropna().apply(
+                lambda d: join(fly_dir, d))
+            )
+            gdf_ts = set(gdf.thorsync_dir.dropna().apply(
+                lambda d: join(fly_dir, d))
+            )
+
+            ti_from_other_projects |= gdf_ti
+            ts_from_other_projects |= gdf_ts
+
+    df.drop(df[df.project != my_project].index, inplace=True)
 
     # TODO TODO implement option to (at least) also keep prep checking that
     # preceded natural_odors (or maybe just that was on the same day)
@@ -711,15 +802,25 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     # from combination of gsheet info and convention
 
     df['thorimage_num'] = df.thorimage_dir.apply(old_fmt_thorimage_num)
+    # TODO TODO should definition of consistency be changed to just check that
+    # the ranking of the two are the same?
+    # (maybe just if the group is all new format (which will have first real
+    # experiments start w/ thorimage_num zero more often, b/c fn / fn_0000
+    # thing)
     df['numbering_consistent'] = \
         pd.isnull(df.thorimage_num) | (df.thorimage_num == df.recording_num)
 
     # TODO unit test this
     # TODO TODO check that, if there are mismatches here, that they *never*
     # happen when recording num will be used for inference in rows in the group
-    # *after* the mismatch
-    gkeys = keys + ['thorimage_dir','thorsync_dir','thorimage_num',
-                    'recording_num','numbering_consistent']
+    # *after* the mismatch (?)
+    gkeys = keys + [
+        'thorimage_dir',
+        'thorsync_dir',
+        'thorimage_num',
+        'recording_num',
+        'numbering_consistent'
+    ]
     for name, group_df in df.groupby(keys):
         # TODO maybe refactor above so case 3 collapses into case 1?
         '''
@@ -793,12 +894,17 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
             print('')
             raise AssertionError('inconsistent rankings w/ old format')
 
+    assert df.fly_num.notnull().all()
+    df = df.astype({'fly_num': np.int64})
+
+    cols = keys + ['thorimage_dir','thorsync_dir','attempt_analysis']
+    # TODO flag to do this only for stuff marked attempt_analysis
     if show_inferred_paths:
-        cols = keys + ['thorimage_dir','thorsync_dir']
+        # TODO only do this if any actually *were* inferred
         print('Inferred ThorImage directories:')
-        print(df.loc[missing_thorimage, cols])
+        print(df.loc[missing_thorimage, cols].to_string(index=False))
         print('\nInferred ThorSync directories:')
-        print(df.loc[missing_thorsync, cols])
+        print(df.loc[missing_thorsync, cols].to_string(index=False))
         print('')
 
     duped_thorimage = df.duplicated(subset=keys + ['thorimage_dir'], keep=False)
@@ -823,6 +929,70 @@ def mb_team_gsheet(use_cache=False, show_inferred_paths=False,
     to_sql_with_duplicates(flies.rename(
         columns={'date': 'prep_date'}), 'flies'
     )
+
+    # For manual sanity checking that important data isn't being excluded
+    # inappropriately.
+    if print_excluded_on_disk:
+        ti_ondisk_not_in_df = set()
+        ts_ondisk_not_in_df = set()
+        for gn, gdf in df.groupby(keys):
+            fly_dir = raw_fly_dir(*gn)
+            if not exists(fly_dir):
+                continue
+
+            # Need them somewhat absolute (w/ date + fly info at least), so that
+            # set operations on directories across (date, fly) combinations are
+            # meaningful.
+            gdf_ti = set(gdf.thorimage_dir.apply(lambda d: join(fly_dir, d)))
+            gdf_ts = set(gdf.thorsync_dir.apply(lambda d: join(fly_dir, d)))
+
+            thorimage_dirs, thorsync_dirs = thor_subdirs(fly_dir)
+            ti_ondisk_not_in_df |= set(thorimage_dirs) - gdf_ti
+            ts_ondisk_not_in_df |= set(thorsync_dirs) - gdf_ts
+
+        # Excluding other-project stuff that was dropped from df earlier.
+        ti_ondisk_not_in_df -= ti_from_other_projects
+        ts_ondisk_not_in_df -= ts_from_other_projects
+
+        msg = '{} directories on disk but not in DataFrame (from gsheet):'
+        if len(ti_ondisk_not_in_df) > 0:
+            print(msg.format('ThorImage'))
+            pprint(ti_ondisk_not_in_df)
+            print('')
+
+        if len(ts_ondisk_not_in_df) > 0:
+            print(msg.format('ThorSync'))
+            pprint(ts_ondisk_not_in_df)
+            print('')
+
+    fly_dirs = df.apply(lambda r: raw_fly_dir(r.date, r.fly_num), axis=1)
+    abs_thorimage_dirs = fly_dirs.str.cat(others=df.thorimage_dir, sep='/')
+    abs_thorsync_dirs = fly_dirs.str.cat(others=df.thorsync_dir, sep='/')
+    thorimage_exists = abs_thorimage_dirs.apply(isdir)
+    thorsync_exists = abs_thorsync_dirs.apply(isdir)
+    any_dir_missing = ~ (thorimage_exists & thorsync_exists)
+
+    any_missing_marked_attempt = (any_dir_missing & df.attempt_analysis)
+    # TODO maybe an option to just warn here, rather than failing
+    if any_missing_marked_attempt.any():
+        print('Directories marked attempt analysis with missing data:')
+        print(df.loc[any_missing_marked_attempt, cols[:-1]].to_string())
+        print('')
+        raise AssertionError('some experiments marked attempt_analysis '
+            'had some data directories missing')
+
+    if drop_nonexistant_dirs:
+        n_to_drop = any_dir_missing.sum()
+        if n_to_drop > 0:
+            print(
+                f'Dropping {n_to_drop} rows because directories did not exist.'
+            )
+        df.drop(df[any_dir_missing].index, inplace=True)
+
+    # TODO TODO is 2019-08-27 fn_0000 stuff inferred correctly?
+    # (will have same thorimage num as fn) (?)
+    # (not critical apart from value as test case, b/c all stuff used from
+    # that day has explicit paths in gsheet)
 
     _mb_team_gsheet = df
 
@@ -1490,7 +1660,7 @@ def is_thorimage_dir(d, verbose=False):
         print('have_raw:', have_raw)
         if have_xml and not have_raw:
             print('all dir contents:')
-            pprint.pprint(files)
+            pprint(files)
 
     if have_xml and have_raw:
         return True
@@ -1567,15 +1737,40 @@ def thorsync_subdirs(parent_dir):
     return _filtered_subdirs(parent_dir, is_thorsync_dir)
 
 
+def thor_subdirs(parent_dir, absolute_paths=True):
+    """
+    Returns a length-2 tuple, where the first element is all ThorImage children
+    and the second element is all ThorSync children (of `parent_dir`).
+    """
+    thorimage_dirs, thorsync_dirs = _filtered_subdirs(parent_dir,
+        (is_thorimage_dir, is_thorsync_dir)
+    )
+    if not absolute_paths:
+        thorimage_dirs = [split(d)[-1] for d in thorimage_dirs]
+        thorsync_dirs = [split(d)[-1] for d in thorsync_dirs]
+
+    return (thorimage_dirs, thorsync_dirs)
+
+
 def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
-    use_ranking=True, check_against_naming_conv=True, verbose=False):
+    use_ranking=True, check_against_naming_conv=True,
+    check_unique_thorimage_nums=True, verbose=False):
     """
     Takes lists (not necessarily same len) of dirs, and returns a list of
-    lits of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
+    lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
+
+    Args:
+    check_against_naming_conv (bool): (default=True) If True, check ordering
+        from pairing is consistent with ordering derived from our naming
+        conventions for Thor software output.
 
     Raises ValueError if two dirs of one type match to the same one of the
     other, but just returns shorter list of pairs if some matches can not be
-    made.
+    made. These errors currently just cause skipping of pairing for the
+    particular (date, fly) pair above (though maybe this should change?).
+
+    Raises AssertionError when assumptions are violated in a way that should
+    trigger re-evaluating the code.
     """
     if use_ranking:
         if len(thorimage_dirs) != len(thorsync_dirs):
@@ -1640,7 +1835,6 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
         print(ts_idx)
         pairs = list(zip(thorimage_dirs[ti_idx], thorsync_dirs[ts_idx]))
 
-    # TODO TODO or just return these (flag to do so?)?
     if check_against_naming_conv:
         ti_last_parts = [split(tid)[-1] for tid, _ in pairs]
 
@@ -1656,13 +1850,38 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
         if not_all_old_fmt:
             try:
                 thorimage_nums = [new_fmt_thorimage_num(d)
-                    for d in ti_last_parts]
+                    for d in ti_last_parts
+                ]
+            # If ALL ThorImage directories are not in old naming convention,
+            # then we assume they will ALL be named according to the new
+            # convention.
             except ValueError as e:
                 # (changing error type so it isn't caught, w/ other ValueErrors)
-                raise AssertionError(str(e))
+                raise AssertionError('Check against naming convention failed, '
+                    'because a new_fmt_thorimage_num parse call failed with: ' +
+                    str(e)
+                )
 
-        if len(thorimage_nums) > len(set(thorimage_nums)):
-            raise AssertionError('thorimage nums were not unique')
+        # TODO TODO need to stable (arg)sort if not going to check this, but
+        # still checking ordering below??? (or somehow ordering by naming
+        # convention, so that fn comes before fn_0000, etc?)
+
+        # Call from mb_team_gsheet disables this, so that fn / fn_0000 don't
+        # cause a failure even though both have ThorImage num of 0, because fn
+        # should always be dropped after the pairing in this case (should be
+        # checked in mb_team_gsheet after, since it will then not be checked
+        # here).
+        if check_unique_thorimage_nums:
+            if len(thorimage_nums) > len(set(thorimage_nums)):
+                print('Directories where pairing failed:')
+                print('ThorImage:')
+                pprint(list(thorimage_dirs))
+                print('Extracted thorimage_nums:')
+                pprint(thorimage_nums)
+                print('ThorSync:')
+                pprint(list(thorsync_dirs))
+                print('')
+                raise AssertionError('thorimage nums were not unique')
 
         thorsync_nums = [thorsync_num(split(tsd)[-1]) for _, tsd in pairs]
 
@@ -1744,25 +1963,31 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     """
 
 
-def pair_thor_subdirs(parent_dir, verbose=False):
+def pair_thor_subdirs(parent_dir, verbose=False, **kwargs):
     """
-    Raises ValueError when pair_thor_dirs does.
+    Raises ValueError/AssertionError when pair_thor_dirs does.
+
+    Above, the former causes skipping of automatic pairing, whereas the latter
+    is not handled and will intentionally cause failure, to prevent incorrect
+    assumptions from leading to incorrect results.
     """
-    thorimage_dirs, thorsync_dirs = _filtered_subdirs(parent_dir,
-        (is_thorimage_dir, is_thorsync_dir), verbose=False #verbose
-    )
+    # TODO TODO need to handle case where maybe one thorimage/sync dir doesn't
+    # have all output, and then that would maybe offset the pairing? test!
+    # (change filter fns to include a minimal set of data, s.t. all such cases
+    # still are counted?)
+    thorimage_dirs, thorsync_dirs = thor_subdirs(parent_dir)
     if verbose:
         print('thorimage_dirs:')
-        pprint.pprint(thorimage_dirs)
+        pprint(thorimage_dirs)
         print('thorsync_dirs:')
-        pprint.pprint(thorsync_dirs)
+        pprint(thorsync_dirs)
 
-    return pair_thor_dirs(thorimage_dirs, thorsync_dirs, verbose=True)
+    return pair_thor_dirs(thorimage_dirs, thorsync_dirs, verbose=True, **kwargs)
 
 
 # TODO still work w/ parens added around initial .+ ? i want to match the parent
 # id...
-shared_subrecording_regex = '(.+)_\db\d_from_(nr|rig)'
+shared_subrecording_regex = r'(.+)_\db\d_from_(nr|rig)'
 def is_subrecording(thorimage_id):
     """
     Returns whether a recording id matches my GUIs naming convention for the
@@ -2006,7 +2231,7 @@ def accepted_blocks(analysis_run_at, verbose=False):
 
     accepted = accepted.to_list()
 
-    # TODO TODO TODO TODO also calculate and return uploaded_block_info
+    # TODO TODO TODO also calculate and return uploaded_block_info
     # based on whether a given block has (all) of it's presentations and
     # responses entries (whether accepted or not)
     if verbose:
@@ -2357,40 +2582,24 @@ def contour2mask(contour, shape):
     return mask.astype('bool')
 
 
-def ijrois2masks(ijrois, shape, dims_as_cnmf=False):
+def ijrois2masks(ijrois, shape):
     """
     Transforms ROIs loaded from my ijroi fork to an array full of boolean masks,
     of dimensions (shape + (n_rois,)).
     """
     # TODO maybe index final pandas thing by ijroi name (before .roi prefix)
     # (or just return np array indexed as CNMF "A" is)
-
-    # TODO test + fix. if this is duplicating logic of imagej2py_coords, try to
-    # move into there or somehow else only encode that imagej is transposed 
-    # wrt other things in ONE place (that was the point of those x2y_coords
-    # fns...)
-    assert len(shape) == 2 and shape[0] == shape[1], \
-        'not sure shape dims should be reversed, so must be symmetric'
-
+    assert len(shape) == 2
     masks = [imagej2py_coords(contour2mask(c, shape[::-1])) for _, c in ijrois]
     masks = np.stack(masks, axis=-1)
-    # (actually, putting off the below for now. just gonna not also reshape this
-    # output as we currently reshape CNMF A before using it for other stuff)
-    if dims_as_cnmf:
-        # TODO check that reshaping is not breaking association to components
-        # (that it is equivalent to repeating reshape w/in each component and
-        # then stacking)
-        # TODO TODO conform shape to cnmf output shape (what's that dim order?)
-        # n_pixels x n_components, w/ n_pixels reshaped from ixj image "in F
-        # order"
-        #import ipdb; ipdb.set_trace()
-        raise NotImplementedError
     # TODO maybe normalize here?
     # (and if normalizing, might as well change dtype to match cnmf output?)
     # and worth casting type to bool, rather than keeping 0/1 uint8 array?
     return masks
 
 
+# TODO rename these two to indicate it only works on images (not coordinates)
+# TODO and make + use fns that operate on coordinates?
 def imagej2py_coords(array):
     """
     Since ijroi source seems to have Y as first coord and X as second.
@@ -2421,7 +2630,7 @@ def footprints_to_flat_cnmf_dims(footprints):
     return np.reshape(footprints, (frame_pixels, n_footprints), order='F')
 
 
-def extract_traces_boolean_footprints(movie, footprints):
+def extract_traces_boolean_footprints(movie, footprints, verbose=True):
     """
     Averages the movie within each boolean mask in footprints
     to make a matrix of traces (n_frames x n_footprints).
@@ -2437,7 +2646,10 @@ def extract_traces_boolean_footprints(movie, footprints):
     # TODO vectorized way to do this?
     n_footprints = footprints.shape[-1]
     traces = np.empty((n_frames, n_footprints)) * np.nan
-    print('extracting traces from boolean masks...', end='', flush=True)
+
+    if verbose:
+        print('extracting traces from boolean masks...', end='', flush=True)
+
     for i in range(n_footprints):
         mask = footprints[slices + (i,)]
         # TODO compare time of this to sparse matrix dot product?
@@ -2448,7 +2660,10 @@ def extract_traces_boolean_footprints(movie, footprints):
         trace = np.mean(movie[:, mask], axis=1)
         assert len(trace.shape) == 1 and len(trace) == n_frames
         traces[:, i] = trace
-    print(' done')
+
+    if verbose:
+        print(' done')
+
     return traces
 
 
@@ -4450,21 +4665,136 @@ def image_grid(image_list):
     return fig
 
 
-def normed_u8(img):
-    return (255 * (img / img.max())).astype(np.uint8)
+# TODO worth having min/max as inputs, so that maybe can use vals from
+# either scene or template for the other? i guess point of baselining
+# is to avoid need for stuff like that...
+def baselined_normed_u8(img):
+    u8_max = 255
+    # TODO maybe convert to float64 or something first before some operations,
+    # to minimize rounding errs?
+    baselined = img - img.min()
+    normed = baselined / baselined.max()
+    return (u8_max * normed).astype(np.uint8)
 
 
-def template_match(scene, template, method_str='cv2.TM_CCOEFF', hist=False):
+def template_match(scene, template, method_str='cv2.TM_CCOEFF', hist=False,
+    debug=False):
+
     import cv2
 
-    scene = normed_u8(scene)
+    vscaled_scene = baselined_normed_u8(scene)
     # TODO TODO maybe template should only be scaled to it's usual fraction of
     # max of the scene? like scaled both wrt orig_scene.max() / max across all
     # images?
-    normed_template = normed_u8(template)
+    vscaled_template = baselined_normed_u8(template)
+
+    if debug:
+        # To check how much conversion to u8 (necessary for cv2 template
+        # matching) has reduced the number of pixel levels.
+        scene_levels = len(set(scene.flat))
+        vs_scene_levels = len(set(vscaled_scene.flat))
+        template_levels = len(set(template.flat))
+        vs_template_levels = len(set(vscaled_template.flat))
+        print(f'Number of scene levels BEFORE scaling: {scene_levels}')
+        print(f'Number of scene levels AFTER scaling: {vs_scene_levels}')
+        print(f'Number of template levels BEFORE scaling: {template_levels}')
+        print(f'Number of template levels AFTER scaling: {vs_template_levels}')
+
+        # So you can see that the relative dimensions and scales of each of
+        # these seems reasonable.
+        def compare_template_and_scene(template, scene, suptitle,
+            same_scale=True):
+
+            smin = scene.min()
+            smax = scene.max()
+            tmin = template.min()
+            tmax = template.max()
+
+            print(f'\n{suptitle}')
+            print('scene shape:', scene.shape)
+            print('template shape:', template.shape)
+            print('scene min:', smin)
+            print('scene max:', smax)
+            print('template min:', tmin)
+            print('template max:', tmax)
+
+            # Default, for this fig at least seemed to be (6.4, 4.8)
+            # This has the same aspect ratio.
+            fh = 10
+            fw = (1 + 1/3) * fh
+            fig, axs = plt.subplots(ncols=3, figsize=(fw, fh))
+
+            xlim = (0, max(scene.shape[0], template.shape[0]) - 1)
+            ylim = (0, max(scene.shape[1], template.shape[1]) - 1)
+
+            if same_scale:
+                vmin = min(smin, tmin)
+                vmax = max(smax, tmax)
+            else:
+                vmin = None
+                vmax = None
+
+            ax = axs[0]
+            sim = ax.imshow(scene, vmin=vmin, vmax=vmax)
+            ax.set_title('scene')
+
+            ax = axs[1]
+            tim = ax.imshow(template, vmin=vmin, vmax=vmax)
+            ax.set_title('template (real scale)')
+
+            ax = axs[2]
+            btim = ax.imshow(template, vmin=vmin, vmax=vmax)
+            ax.set_title('template (blown up)')
+
+            # https://stackoverflow.com/questions/31006971
+            plt.setp(axs, xlim=xlim, ylim=ylim)
+
+            ax.set_xlim((0, template.shape[0] - 1))
+            ax.set_ylim((0, template.shape[0] - 1))
+
+            fig.suptitle(suptitle)
+
+            if same_scale:
+                # l, b, w, h
+                cax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+                cb = fig.colorbar(sim, cax=cax)
+                cb.set_label('shared')
+                fig.subplots_adjust(right=0.8)
+            else:
+                # l, b, w, h
+                cax1 = fig.add_axes([0.75, 0.15, 0.025, 0.7])
+                cb1 = fig.colorbar(sim, cax=cax1)
+                cb1.set_label('scene')
+
+                cax2 = fig.add_axes([0.85, 0.15, 0.025, 0.7])
+                cb2 = fig.colorbar(tim, cax=cax2)
+                cb2.set_label('template')
+
+                fig.subplots_adjust(right=0.7)
+
+            bins = 50
+            fig, axs = plt.subplots(ncols=2, sharex=same_scale)
+            ax = axs[0]
+            shistvs, sbins, _ = ax.hist(scene.flat, bins=bins, log=True)
+            ax.set_title('scene')
+            ax.set_ylabel('Frequency (a.u.)')
+            ax = axs[1]
+            thitvs, tbins, _ = ax.hist(template.flat, bins=bins, log=True)
+            ax.set_title('template')
+            fig.suptitle(f'{suptitle}\npixel value distributions ({bins} bins)')
+            fig.subplots_adjust(top=0.85)
+
+        compare_template_and_scene(template, scene, 'original',
+            same_scale=False
+        )
+        compare_template_and_scene(vscaled_template, vscaled_scene,
+            'baselined + scaled'
+        )
+        print('')
+        hist = True
 
     method = eval(method_str)
-    res = cv2.matchTemplate(scene, normed_template, method)
+    res = cv2.matchTemplate(vscaled_scene, vscaled_template, method)
 
     # b/c for sqdiff[_normed], find minima. for others, maxima.
     if 'SQDIFF' in method_str:
@@ -4482,170 +4812,668 @@ def euclidean_dist(v1, v2):
     return np.linalg.norm(np.array(v1) - np.array(v2))
 
 
+def u8_color(draw_on):
+    # TODO figure out why background looks lighter here than in other 
+    # imshows of same input (w/o converting manually)
+    draw_on = draw_on - np.min(draw_on)
+    draw_on = draw_on / np.max(draw_on)
+    cmap = plt.get_cmap('gray') #, lut=256)
+    # (throwing away alpha coord w/ last slice)
+    draw_on = np.round((cmap(draw_on)[:, :, :3] * 255)).astype(np.uint8)
+    return draw_on
+
+
+
 # TODO TODO TODO try updating to take max of two diff match images,
 # created w/ different template scales (try a smaller one + existing),
 # and pack appropriate size at each maxima.
 # TODO make sure match criteria is comparable across scales (one threshold
 # ideally) (possible? using one of normalized metrics sufficient? test this
 # on fake test data?)
-def greedy_roi_packing(match_image, radius, d, threshold=None, n=None, 
-    exclusion_radius_frac=0.5, min_dist2neighbor=15, min_neighbors=3,
-    draw_on=None, _claimed_from_double_radius=True,
-    debug=False, bboxes=True, circles=True, nums=True):
+def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None, 
+    exclusion_radius_frac=0.7, min_dist2neighbor_px=15, min_neighbors=3,
+    exclusion_mask=None,
+    draw_on=None, debug=False, draw_bboxes=True, draw_circles=True,
+    draw_nums=True, multiscale_strategy='one_order', match_value_weights=None,
+    radii_px_ps=None, scale_order=None, subpixel=False, _src_img_shape=None,
+    _show_match_images=False, _show_packing_constraints=False, _show_fit=True,
+    _initial_single_threshold=None):
     """
     Args:
-    match_image (np.ndarray): 2-dimensional array of match value
-        higher means better match of that point to template.
+    match_images (np.ndarray / iterable of same): 2-dimensional array of match
+    value higher means better match of that point to template.
+        
+        Shape is determined by the number of possible offsets of the template in
+        the original image, so it is smaller than the original image in each
+        dimension. As an example, for a 3x3 image and a 2x2 template, the
+        template can occupy 4 possible positions in the 3x3 image, and the match
+        image will be 2x2.
 
-    radius (int): radius of cell in pixels.
-
-    d (int): integer width (and height) of square template.
+    ds (int / iterable of same): integer width (and height) of square template.
         related to radius, but differ by margin set outside.
+
+    radii_px (int / iterable of same): radius of cell in pixels.
 
     exclusion_radius_frac (float): approximately 1 - the fraction of two ROI
         radii that are allowed to overlap.
-
     """
+    # TODO move drawing fns for debug to mpl and remove this if not gonna
+    # use for constraints here
     import cv2
+    #
+    # Use of either this or KDTree seem to cause pytest ufunc size changed
+    # warning (w/ pytest at least), though it should be harmless.
+    from scipy.spatial import cKDTree
+
+    if subpixel is True:
+        raise NotImplementedError
+
+    if thresholds is None and ns is None:
+        raise ValueError('specify either thresholds or ns')
+
+    if not ((ns is None and thresholds is not None) or
+            (ns is not None and thresholds is None)):
+        raise ValueError('only specify either thresholds or ns')
+
+    # For multiscale matching, we require (at lesat) multiple radii, so we test
+    # whether it is iterable to determine if we should be using multiscale
+    # matching.
+    try:
+        iter(radii_px)
+
+        if len(radii_px) == 1:
+            multiscale = False
+        else:
+            assert len(set(ds)) == len(ds)
+            assert len(set(radii_px)) == len(radii_px)
+            multiscale = True
+
+    except TypeError:
+        multiscale = False
+        # also check most other things are NOT iterable in this case?
+
+        match_images = [match_images]
+        ds = [ds]
+        radii_px = [radii_px]
+
+    if ns is None:
+        total_n = None
+        # TODO maybe delete this test and force thresholds (if-specified)
+        # to have same length. useless if one threshold is never gonna work.
+        try:
+            iter(thresholds)
+            # If we have multiple thresholds, we must have as many
+            # as the things above.
+            assert len(thresholds) == len(radii_px)
+        except TypeError:
+            thresholds = [thresholds] * len(radii_px)
+
+    elif thresholds is None:
+        try:
+            iter(ns)
+            # TODO want this behavior ever? maybe delete try/except...
+            # Here, we are specify how many of each size we are looking for.
+            assert len(ns) == len(radii_px)
+            if len(ns) == 1:
+                total_n = ns[0]
+                ns = None
+            else:
+                total_n = None
+        except TypeError:
+            # Here, we specify a target number of cells of any size to find.
+            total_n = ns
+            ns = None
+
+    if multiscale:
+        n_scales = len(radii_px)
+        assert len(match_images) == n_scales
+        assert len(ds) == n_scales
+
+        if multiscale_strategy != 'one_order':
+            assert match_value_weights is None, ('match_value_weights are only '
+                "meaningful in multiscale_strategy='one_order' case, because "
+                'they do not change match ordering within a single match scale.'
+                ' They only help make one ordering across matching scales.'
+            )
+
+        if multiscale_strategy != 'random':
+            assert radii_px_ps is None, ('radii_px_ps is only meaningful in '
+                "multiscale_strategy='random' case"
+            )
+
+        if multiscale_strategy != 'fixed_scale_order':
+            assert scale_order is None, ('scale_order is only meaningful in '
+                "multiscale_strategy='fixed_scale_order' case"
+            )
+
+        if multiscale_strategy == 'one_order':
+            # Can still be None here, that just implies that match values
+            # at different scales will be sorted into one order with no
+            # weighting.
+            if match_value_weights is not None:
+                assert len(match_value_weights) == n_scales
+
+            # could also accept callable for each element, if a fn (rather than
+            # linear scalar) would be more useful to make match values
+            # comparable across scales (test for it later, at time-to-use)
+
+        elif multiscale_strategy == 'random':
+            assert radii_px_ps is not None
+            assert np.isclose(np.sum(radii_px_ps), 1)
+            assert all([r >= 0 and r <= 1 for r in radii_px_ps])
+            if any([r == 0 or r == 1 for r in radii_px_ps]):
+                warnings.warn('Some elements of radii_px_ps were 0 or 1. '
+                    "This means using multiscale_strategy='random' may not make"
+                    ' sense.'
+                )
+
+        elif multiscale_strategy == 'fixed_scale_order':
+            # could just take elements from other iterables in order passed
+            # in... just erring on side of being explicit
+            assert scale_order is not None
+            assert len(set(scale_order)) == len(scale_order)
+            for i in scale_order:
+                try:
+                    radii_px[i]
+                except IndexError:
+                    raise ValueError('scale_order had elements not usable to '
+                        'index scales'
+                    )
+
+        else:
+            raise ValueError(f'multiscale_strategy {multiscale_strategy} not '
+                'recognized'
+            )
+
+        # Can not assert all match_images have the same shape, because d
+        # affects shape of match image (as you can see from line inverting
+        # this dependence to calculate orig_shape, below)
+
+    else:
+        n_scales = 1
+        assert match_value_weights is None
+        assert radii_px_ps is None
+        assert scale_order is None
+        # somewhat tautological. could delete.
+        if thresholds is None:
+            assert total_n is not None
 
     # TODO optimal non-greedy alg for this problem? (maximize weight of 
     # match_image summed across all assigned ROIs)
 
-    if threshold is None and n is None:
-        threshold = 0.8
+    # TODO do away with this copying if not necessary
+    # (just don't want to mutate inputs without being clear about it)
+    # (multiplication by match_value_weights below)
+    match_images = [mi.copy() for mi in match_images]
+    orig_shapes = set()
+    for match_image, d in zip(match_images, ds):
+        # Working through example w/ 3x3 src img and 2x2 template -> 2x2 match
+        # image in docstring indicates necessity for - 1 here.
+        orig_shape = tuple(x + d - 1 for x in match_image.shape)
+        orig_shapes.add(orig_shape)
 
-    if not ((n is None and threshold is not None) or
-            (n is not None and threshold is None)):
-        raise ValueError('only specify either threshold or n')
+    assert len(orig_shapes) == 1
+    orig_shape = orig_shapes.pop()
+    if _src_img_shape is not None:
+        assert orig_shape == _src_img_shape
+        del _src_img_shape
 
     if draw_on is not None:
-        # TODO figure out why background looks lighter here than in other 
-        # imshows of avg
+        # if this fails, just fix shape comparison in next assertion and
+        # then delete this assert
+        assert len(draw_on.shape) == 2
+        assert draw_on.shape == orig_shape
 
-        draw_on = draw_on - np.min(draw_on)
-        draw_on = draw_on / np.max(draw_on)
-        cmap = plt.get_cmap('gray') #, lut=256)
-        # (throwing away alpha coord w/ last slice)
-        draw_on = np.round((cmap(draw_on)[:, :, :3] * 255)).astype(np.uint8)
-
+        draw_on = u8_color(draw_on)
         # upsampling just so cv2 drawing functions look better
         ups = 4
         draw_on = cv2.resize(draw_on,
-            tuple([ups * x for x in draw_on.shape[:2]]))
+            tuple([ups * x for x in draw_on.shape[:2]])
+        )
 
-    flat_vals = match_image.flatten()
-    sorted_flat_indices = np.argsort(flat_vals)
-    if n is None:
-        idx = np.searchsorted(flat_vals[sorted_flat_indices], threshold)
-        sorted_flat_indices = sorted_flat_indices[idx:]
+    if match_value_weights is not None:
+        for i, w in enumerate(match_value_weights):
+            match_images[i] = match_images[i] * w
 
-    matches = np.unravel_index(sorted_flat_indices[::-1], match_image.shape)
+    if debug and _show_match_images:
+        # wanted these as subplots w/ colorbar besides each, but colorbars
+        # seemed to want to go to the side w/ the simplest attempt
+        ncols = 3
+        nrows = n_scales % ncols + 1
+        fig, axs = plt.subplots(ncols=ncols, nrows=nrows)
 
-    # TODO wait, why the minus 1?
-    orig_shape = [x + d - 1 for x in match_image.shape]
+        if not multiscale or multiscale_strategy == 'one_order':
+            vmin = min([mi.min() for mi in match_images])
+            vmax = max([mi.max() for mi in match_images])
+            same_scale = True
+        else:
+            vmin = None
+            vmax = None
+            same_scale = False
 
-    claimed = np.zeros(orig_shape, dtype=np.uint8)
+        for i, (ax, td, match_image) in enumerate(zip(
+            axs.flat, ds, match_images)):
 
-    if _claimed_from_double_radius:
-        # The factor of two is to test for would-be circle overlap by just
-        # testing center point against mask painted with larger circles.
-        exclusion_radius = int(round(2 * radius * exclusion_radius_frac))
-    else:
-        exclusion_radius = int(round(radius * exclusion_radius_frac))
+            to_show = match_image.copy()
+            if thresholds is not None:
+                to_show[to_show < thresholds[i]] = np.nan
+
+            im = ax.imshow(to_show)
+            if not same_scale:
+                # https://stackoverflow.com/questions/23876588
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes('right', size='5%', pad=0.05)
+                fig.colorbar(im, cax=cax)
+
+            title = f'({td}x{td} template)'
+            if match_value_weights is not None:
+                w = match_value_weights[i]
+                title += f' (weight={w:.2f})'
+            ax.set_title(title)
+
+        if same_scale:
+            # l, b, w, h
+            cax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+            cb = fig.colorbar(im, cax=cax)
+            cb.set_label('match value')
+            fig.subplots_adjust(right=0.8)
+
+        title = 'template matching metric at each template offset'
+        if thresholds is not None:
+            title += '\n(white space is pixels below corresponding threshold)'
+        fig.suptitle(title)
+        # TODO may want to decrease wspace if same_scale
+        fig.subplots_adjust(wspace=0.7)
+
+    all_flat_vals = [mi.flatten() for mi in match_images]
 
     if debug:
-        print('radius:', radius)
-        print('exclusion_radius:', exclusion_radius)
+        print('thresholds for each scale:', thresholds)
+        print('min (possibly scaled) match val at each scale:',
+            np.array([vs.min() for vs in all_flat_vals])
+        )
+        print('max (possibly scaled) match val at each scale:',
+            np.array([vs.max() for vs in all_flat_vals])
+        )
+        print('match_value_weights:', match_value_weights)
 
-    found_n = 0
-    centers = []
-    min_err = None
-    for pt in zip(*matches[::-1]):
-        if n is not None:
-            if found_n >= n:
+    if not multiscale or multiscale_strategy == 'one_order':
+        # TODO TODO TODO need to sort flat_vals into one order, while
+        # maintaining info about which match_image (index) a particular
+        # value came from
+        # how to do this while also thresholding each one?
+
+        all_vals = []
+        all_scale_and_flat_indices = []
+        for i, (fv, thresh) in enumerate(zip(all_flat_vals, thresholds)):
+            if thresholds is not None:
+                flat_idx_at_least_thresh = np.argwhere(fv > thresh)[:,0]
+                vals_at_least_thresh = fv[flat_idx_at_least_thresh]
+            else:
+                flat_idx_at_least_thresh = np.arange(len(fv))
+                vals_at_least_thresh = fv
+
+            if debug:
+                thr_frac = len(flat_idx_at_least_thresh) / len(fv)
+                print(f'scale {i} fraction of (scaled) match values above'
+                    ' threshold:', thr_frac
+                )
+
+                '''
+                # TODO delete after figuring out discrepancy
+                thr_fracs = [0.001252, 0.0008177839, 0.00087937249]
+                assert np.isclose(thr_frac, thr_fracs[i])
+
+                #print(len(flat_idx_at_least_thresh))
+                #import ipdb; ipdb.set_trace()
+                #
+                '''
+                # TODO TODO maybe find range of weights that produce same
+                # fraction above thresholds, and see if somewhere in that range
+                # is a set of weights that also leads to a global ordering that
+                # behaves as I want?
+
+                # TODO delete if not gonna finish
+                if _initial_single_threshold is not None:
+                    t0 = _initial_single_threshold
+
+                    '''
+                    if match_value_weights is not None:
+                        # Undoing previous multiplication by weight.
+                        w = match_value_weights[i]
+                        orig_match_image = match_images[i] / w
+                    orig 
+
+                    # TODO TODO TODO fit(?) to find match value weight that
+                    # produces same fraction of pixels above threshold
+                    import ipdb; ipdb.set_trace()
+                    '''
+                #
+
+            # TODO maybe just store ranges of indices in concatenated
+            # flat_idx... that correspond to each source img?
+            src_img_idx = np.repeat(i, len(flat_idx_at_least_thresh))
+
+            scale_and_flat_indices = np.stack(
+                [src_img_idx, flat_idx_at_least_thresh]
+            )
+            all_scale_and_flat_indices.append(scale_and_flat_indices)
+            all_vals.append(vals_at_least_thresh)
+
+        all_scale_and_flat_indices = np.concatenate(all_scale_and_flat_indices,
+            axis=1
+        )
+
+        all_vals = np.concatenate(all_vals)
+        # Reversing order so indices corresponding to biggest element is first,
+        # and so on, decreasing.
+        one_order_indices = np.argsort(all_vals)[::-1]
+
+        '''
+        # TODO delete
+        #np.set_printoptions(threshold=sys.maxsize)
+        out = all_scale_and_flat_indices.T[one_order_indices]
+        print('all_scale_and_flat_indices.shape:',
+            all_scale_and_flat_indices.shape
+        )
+        print('one_order_indices.shape:', one_order_indices.shape)
+
+        print('sorted match values:')
+        print(all_vals[one_order_indices])
+
+        nlines = 20
+        head = out[:nlines]
+        tail = out[-nlines:]
+        print('head:')
+        print(head)
+        print('tail:')
+        print(tail)
+
+        chead = np.array([[     2, 120520],
+               [     1, 108599],
+               [     0, 125250],
+               [     2, 120521],
+               [     2, 120029],
+               [     2, 120519],
+               [     2, 121011],
+               [     2, 120030],
+               [     2, 121012],
+               [     2, 120028],
+               [     2, 121010],
+               [     1, 108600],
+               [     1, 109096],
+               [     1, 108598],
+               [     1, 108102],
+               [     0, 125750],
+               [     0, 125249],
+               [     0, 124750],
+               [     0, 125251],
+               [     1, 124002]])
+
+        ctail = np.array([[     0, 108759],
+               [     0, 112252],
+               [     0, 111259],
+               [     0, 112257],
+               [     0, 125723],
+               [     0, 124223],
+               [     0, 128231],
+               [     0, 121728],
+               [     0, 128228],
+               [     0, 124236],
+               [     0, 125736],
+               [     0, 121731],
+               [     0, 128227],
+               [     0, 126236],
+               [     0, 126223],
+               [     0, 121732],
+               [     0, 123723],
+               [     0, 128232],
+               [     0, 121727],
+               [     0, 123736]])
+
+        try:
+            assert np.array_equal(chead, head)
+            assert np.array_equal(ctail, tail)
+        except AssertionError:
+            print('arrays did not match')
+            print('correct versions (from specific thresholds):')
+            print('correct head:')
+            print(chead)
+            print('correct tail:')
+            print(ctail)
+            import ipdb; ipdb.set_trace()
+        #
+        '''
+
+        def match_iter_fn():
+            for scale_idx, match_img_flat_idx in all_scale_and_flat_indices.T[
+                one_order_indices]:
+
+                match_image = match_images[scale_idx]
+                match_pt = np.unravel_index(match_img_flat_idx,
+                    match_image.shape
+                )
+                yield scale_idx, match_pt
+
+    else:
+        all_matches = []
+        for i, match_image in enumerate(match_images):
+            flat_vals = all_flat_vals[i]
+            sorted_flat_indices = np.argsort(flat_vals)
+            if thresholds is not None:
+                idx = np.searchsorted(flat_vals[sorted_flat_indices],
+                    thresholds[i]
+                )
+                sorted_flat_indices = sorted_flat_indices[idx:]
+                del idx
+
+            # Reversing order so indices corresponding to biggest element is
+            # first, and so on, decreasing.
+            sorted_flat_indices = sorted_flat_indices[::-1]
+            matches = np.unravel_index(sorted_flat_indices, match_image.shape)
+            all_matches.append(matches)
+
+        if multiscale_strategy == 'fixed_scale_order':
+            def match_iter_fn():
+                for scale_idx in scale_order:
+                    matches = all_matches[scale_idx]
+                    for match_pt in zip(*matches):
+                        yield scale_idx, match_pt
+
+        elif multiscale_strategy == 'random':
+            def match_iter_fn():
+                per_scale_last_idx = [0] * n_scales
+                scale_ps = radii_px_ps
+                while True:
+                    scale_idx = np.random.choice(n_scales, p=scale_ps)
+                    matches = all_matches[scale_idx]
+
+                    if all([last >= len(matches[0]) for last, matches in
+                        zip(per_scale_last_idx, all_matches)]):
+
+                        # This should end the generator's iteration.
+                        return
+
+                    # Currently just opting to retry sampling when we
+                    # got something for which we have already exhausted all
+                    # matches, rather than changing probabilities and choices.
+                    if per_scale_last_idx[scale_idx] >= len(matches[0]):
+                        continue
+
+                    match_idx = per_scale_last_idx[scale_idx]
+                    match_pt = tuple(m[match_idx] for m in matches)
+
+                    per_scale_last_idx[scale_idx] += 1
+
+                    '''
+                    if per_scale_last_idx[scale_idx] == len(matches):
+                        # TODO 
+                        import ipdb; ipdb.set_trace()
+                    '''
+
+                    yield scale_idx, match_pt
+                    
+    match_iter = match_iter_fn()
+
+    # TODO and any point to having subpixel circles anyway?
+    # i.e. will packing decisions ever differ from those w/ rounded int
+    # circles (and then also given that my ijroi currently only supports
+    # saving non-subpixel rois...)?
+
+    claimed = []
+    center2radius = dict()
+
+    total_n_found = 0
+    roi_centers = []
+    # roi_ prefix here is to disambiguate this from radii_px input, which
+    # describes radii of various template scales to use for matching, but
+    # NOT the radii of the particular matched ROI outputs.
+    roi_radii_px = []
+
+    if ns is not None:
+        n_found_per_scale = [0] * n_scales
+
+    max_exclusion_radius_px = max(exclusion_radius_frac * r for r in radii_px)
+    scale_info_printed = [False] * n_scales
+    for scale_idx, pt in match_iter:
+        if total_n is not None:
+            if total_n_found >= total_n:
                 break
 
-        # TODO would some other (alternating?) rounding rule help?
-        # TODO random seed then randomly choose between floor and ceil for stuff
-        # at 0.5?
-        offset = int(round(d / 2))
+        elif ns is not None:
+            if all([n_found >= n for n_found, n in zip(n_found_per_scale, ns)]):
+                break
+
+            if n_found_per_scale[scale_idx] >= ns[scale_idx]:
+                continue
+
+        d = ds[scale_idx]
+        offset = d / 2
         center = (pt[0] + offset, pt[1] + offset)
+        del offset
 
-        if _claimed_from_double_radius:
-            if claimed[center[::-1]]:
-                continue
-        else:
-            mask = np.zeros_like(claimed, dtype=np.uint8)
-            cv2.circle(mask, center, exclusion_radius, 1, -1)
-            assert mask.sum() > 0
-            if np.any(claimed * mask):
+        if exclusion_mask is not None:
+            if not exclusion_mask[tuple(int(round(v)) for v in center)]:
                 continue
 
-        found_n += 1
-        # TODO TODO was this just so output would be in imagej coords or
-        # something? make cleaner.
-        center = (center[0] - 1, center[1] - 1)
-        centers.append(center)
+        radius_px = radii_px[scale_idx]
+        exclusion_radius_px = radius_px * exclusion_radius_frac
+        if debug:
+            if not scale_info_printed[scale_idx]:
+                print('template d:', d)
+                print('radius_px:', radius_px)
+                print('exclusion_radius_frac:', exclusion_radius_frac)
+                print('exclusion_radius_px:', exclusion_radius_px)
+                scale_info_printed[scale_idx] = True
+
+        # Ideally I'd probably use a data structure that doesn't need to
+        # be rebuilt each time (and k-d trees in general don't, but
+        # scipy's doesn't support that (perhaps b/c issues w/ accumulating
+        # rebalancing costs?), nor do they seem to offer spatial
+        # structures that do)
+        if len(claimed) > 0:
+            tree = cKDTree(claimed)
+            # (would need to relax if supporting 3d)
+            assert tree.m == 2
+            # TODO tests to check whether this is right dist bound
+            # ( / 2 ?)
+            dists, locs = tree.query(center,
+                distance_upper_bound=max_exclusion_radius_px * 2
+            )
+            # Docs say this indicates no neighbors found.
+            if locs != tree.n:
+                try:
+                    len(dists)
+                except:
+                    dists = [dists]
+                    locs = [locs]
+
+                conflict = False
+                for dist, neighbor_idx in zip(dists, locs):
+                    # TODO TODO any way to add metadata to tree element to avoid
+                    # this lookup? (+ dist bound above)
+                    neighbor_r = center2radius[tuple(tree.data[neighbor_idx])]
+                    # We already counted the radius about the tentative
+                    # new ROI, but that assumes all neighbors are just points.
+                    # This prevents small ROIs from being placed inside big
+                    # ones.
+                    # TODO check these two lines
+                    dist -= neighbor_r * exclusion_radius_frac
+                    if dist <= exclusion_radius_px:
+                        conflict = True
+                        break
+                if conflict:
+                    continue
+
+        total_n_found += 1
+        roi_centers.append(center)
+        roi_radii_px.append(radius_px)
 
         if draw_on is not None:
-            draw_pt = (ups * pt[0], ups * pt[1])
-            draw_c = (ups * center[0], ups * center[1])
+            draw_pt = (ups * pt[0], ups * pt[1])[::-1]
+            draw_c = (
+                int(round(ups * center[0])),
+                int(round(ups * center[1]))
+            )[::-1]
 
             # TODO factor this stuff out into post-hoc drawing fn, so that
             # roi filters in here can exclude stuff? or maybe just factor out
             # the filtering stuff anyway?
 
-            if bboxes:
+            if draw_bboxes:
                 cv2.rectangle(draw_on, draw_pt,
-                    (draw_pt[0] + ups * d, draw_pt[1] + ups * d), (0,0,255), 2)
+                    (draw_pt[0] + ups * d, draw_pt[1] + ups * d), (0,0,255), 2
+                )
 
-            if circles:
-                cv2.circle(draw_on, draw_c, ups * radius, (255,0,0), 2)
+            # TODO maybe diff colors for diff scales? (random or from kwarg)
+            if draw_circles:
+                cv2.circle(draw_on, draw_c, int(round(ups * radius_px)),
+                    (255,0,0), 2
+                )
 
-            if nums:
-                cv2.putText(draw_on, str(found_n), draw_pt,
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+            if draw_nums:
+                cv2.putText(draw_on, str(total_n_found), draw_pt,
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2
+                )
 
-        # TODO although it looked better in my one case i tested, is it correct
-        # to only *not* adjust center in this case? maybe just adjust other
-        # params. unit test edge cases.
-        cv2.circle(claimed, (center[0] + 1, center[1] + 1), exclusion_radius,
-            1, -1)
+        claimed.append(center)
+        center2radius[tuple(center)] = radius_px
 
-    #if debug:
-    #    imshow(claimed, 'greedy_roi_packing claimed')
+    '''
+    if debug and _show_packing_constraints:
+        title = 'greedy_roi_packing overlap exlusion mask'
+        imshow(claimed, title)
+    '''
 
-    if debug and draw_on is not None:
-        imshow(draw_on, 'greedy_roi_packing debug')
+    if debug and draw_on is not None and _show_fit:
+        imshow(draw_on, 'greedy_roi_packing fit')
 
+    # TODO also use kdtree for this step
     if not min_neighbors:
-        filtered_centers = centers
+        filtered_roi_centers = roi_centers
+        filtered_roi_radii = roi_radii_px
     else:
-        # TODO TODO maybe extend this to requiring the nth closest be closer
-        # than a certain amount (to exclude 2 (or n) cells off by themselves)
-
-        filtered_centers = []
-        for i, center in enumerate(centers):
+        # TODO maybe extend this to requiring the nth closest be closer than a
+        # certain amount (to exclude 2 (or n) cells off by themselves)
+        filtered_roi_centers = []
+        filtered_roi_radii = []
+        for i, (center, radius) in enumerate(zip(roi_centers, roi_radii_px)):
             n_neighbors = 0
-            for j, other_center in enumerate(centers):
+            for j, other_center in enumerate(roi_centers):
                 if i == j:
                     continue
 
                 dist = euclidean_dist(center, other_center)
-                if dist <= min_dist2neighbor:
+                if dist <= min_dist2neighbor_px:
                     n_neighbors += 1
 
                 if n_neighbors >= min_neighbors:
-                    filtered_centers.append(center)
+                    filtered_roi_centers.append(center)
+                    filtered_roi_radii.append(radius)
                     break
 
-            if debug and n_neighbors < min_neighbors:
-                print('filtering roi at', center,
-                    'for lack of enough neighbors (had {})'.format(n_neighbors))
-
-    # TODO would probably need to return radii too, if incorporating multi-scale
-    # template matching w/ this
-    return np.array(filtered_centers)
+    assert len(filtered_roi_centers) == len(filtered_roi_radii)
+    return np.array(filtered_roi_centers), np.array(filtered_roi_radii)
 
 
 def autoroi_metadata_filename(ijroi_file):
@@ -4653,40 +5481,226 @@ def autoroi_metadata_filename(ijroi_file):
     return join(path, '.{}.meta.p'.format(fname))
 
 
-def fit_circle_rois(tif, template=None, margin=None, mean_cell_extent_um=None,
-    avg=None, movie=None, method_str='cv2.TM_CCOEFF', threshold=2000,
-    exclusion_radius_frac=0.6, min_neighbors=2, debug=False, write_ijrois=False,
-    _force_write_to=None, max_cells_per_plane=650):
+def scale_template(template_data, um_per_pixel_xy, target_cell_diam_um=None,
+    target_cell_diam_px=None, target_template_d=None, debug=False):
+    import cv2
+
+    if target_cell_diam_um is None:
+        # TODO make either of other kwargs also work (any of the 3 should
+        # be alone)
+        raise NotImplementedError
+
+    template = template_data['template']
+    margin = template_data['margin']
+    # We enforce both elements of shape are same at creation.
+    d = template.shape[0]
+
+    target_cell_diam_px = target_cell_diam_um / um_per_pixel_xy
+
+    # TODO which of these is correct? both? assert one is w/in
+    # rounding err of other?
+    template_cell_diam_px = d - 2 * margin
+    template_scale = target_cell_diam_px / template_cell_diam_px
+    '''
+    template_cell_diam_um = template_data['mean_cell_diam_um']
+    print(f'template_cell_diam_um: {template_cell_diam_um}')
+    template_scale = target_cell_diam_um / template_cell_diam_um
+    '''
+    new_template_d = int(round(template_scale * d))
+    new_template_shape = tuple([new_template_d] * len(template.shape))
+
+    if debug:
+        print(f'\nscale_template:\nd: {d}\nmargin: {margin}')
+        print(f'um_per_pixel_xy: {um_per_pixel_xy}')
+        print(f'target_cell_diam_um: {target_cell_diam_um}')
+        print(f'target_cell_diam_px: {target_cell_diam_px}')
+        print(f'template_cell_diam_px: {template_cell_diam_px}')
+        print(f'template_scale: {template_scale}')
+        print(f'new_template_d: {new_template_d}')
+        print('')
+
+    if new_template_d != d:
+        scaled_template = cv2.resize(template, new_template_shape)
+        scaled_template_cell_diam_px = \
+            template_cell_diam_px * new_template_d / d
+
+        return scaled_template, scaled_template_cell_diam_px
+
+    else:
+        return template.copy(), template_cell_diam_px
+
+
+def _get_template_roi_radius_px(template_data, if_template_d=None, _round=True):
+    template = template_data['template']
+    margin = template_data['margin']
+    d = template.shape[0]
+    template_cell_diam_px = d - 2 * margin
+    template_cell_radius_px = template_cell_diam_px / 2
+
+    radius_frac = template_cell_radius_px / d
+
+    if if_template_d is None:
+        if_template_d = d
+
+    radius_px = radius_frac * if_template_d
+    if _round:
+        radius_px = int(round(radius_px))
+    return radius_px
+
+
+# TODO test this w/ n.5 centers / radii
+def get_circle_ijroi_input(center_px, radius_px):
+    """Returns appropriate first arg for my ijroi.write_roi
+    """
+    min_corner = [center_px[0] - radius_px, center_px[1] - radius_px]
+    max_corner = [
+        min_corner[0] + 2 * radius_px,
+        min_corner[1] + 2 * radius_px
+    ]
+    bbox = np.array([min_corner, max_corner])
+    return bbox
+
+
+def plot_circles(draw_on, centers, radii):
+    import cv2
+    draw_on = cv2.normalize(draw_on, None, alpha=0, beta=255,
+        norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1
+    )
+    draw_on = cv2.equalizeHist(draw_on)
+
+    fig, ax = plt.subplots(figsize=(10, 10.5))
+    ax.imshow(draw_on, cmap='gray')
+    for center, radius in zip(centers, radii):
+        roi_circle = plt.Circle((center[1] - 0.5, center[0] - 0.5), radius,
+            fill=False, color='r'
+        )
+        ax.add_artist(roi_circle)
+
+    ax.set_frame_on(False)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    return fig, ax
+
+
+def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
+    method_str='cv2.TM_CCOEFF_NORMED', thresholds=None, threshold=None,
+    exclusion_radius_frac=0.8, min_neighbors=2, debug=False,
+    _packing_debug=False, show_fit=False, write_ijrois=False,
+    _force_write_to=None, overwrite=False, exclude_dark_regions=None,
+    max_n_rois=650, min_n_rois=150, per_scale_max_n_rois=None,
+    per_scale_min_n_rois=None, threshold_update_factor=0.7,
+    update_factor_shrink_factor=0.7, max_threshold_tries=4,
+    _um_per_pixel_xy=None, multiscale=False, roi_diams_px=None,
+    roi_diams_um=None, roi_diams_from_kmeans_k=None,
+    multiscale_strategy='one_order', template_d2match_value_scale_fn=None,
+    allow_duplicate_px_scales=False, _show_scaled_templates=False, **kwargs):
     """
     Even if movie or avg is passed in, tif is used to find metadata and
     determine where to save ImageJ ROIs.
 
-    Returns centers, radius
+    _um_per_pixel_xy only used for testing. Normally, XML is found from `tif`,
+    and that is loaded to get this value.
+
+    Returns centers_px, radii_px
+    (both w/ coordinates and conventions ijrois uses)
     """
     import tifffile
     import cv2
     import ijroi
+    from scipy.cluster.vq import vq
 
-    required = [template, margin, mean_cell_extent_um]
-    have_req = [a is not None for a in required]
-    if any(have_req):
-        if not all(have_req):
-            req_str = ', '.join(['template', 'margin', 'mean_cell_extent_um'])
-            raise ValueError(f'if any of ({req_str}) are passed, '
-                'must pass them all')
+    if debug:
+        show_fit = True
+
+    method_str2default_thresh = {
+        # Though this does not work at all scales
+        # (especially sensitive since not normed)
+        'cv2.TM_CCOEFF': 4000.0,
+        'cv2.TM_CCOEFF_NORMED': 0.9
+    }
+    if threshold is None:
+        threshold = method_str2default_thresh[method_str]
+
+    # Will divide rather than multiply by this,
+    # if we need to increase threshold.
+    assert threshold_update_factor < 1 and threshold_update_factor > 0
+
+    # TODO TODO TODO TODO also provide fitting for this fn in extract_template!
+    mvw_key = 'match_value_weights'
+    if template_d2match_value_scale_fn is not None:
+        assert multiscale and multiscale_strategy == 'one_scale'
+        assert mvw_key not in kwargs
+        match_value_weights = []
     else:
+        try:
+            match_value_weights = kwargs.pop(mvw_key)
+        except KeyError:
+            match_value_weights = None
+
+    if template_data is None:
         # TODO maybe options to cache this data across calls?
         # might not matter...
-        data = template_data(err_if_missing=True)
-        template = data['template']
-        margin = data['margin']
-        mean_cell_extent_um = data['mean_cell_extent_um']
+        template_data = load_template_data(err_if_missing=True)
+    
+    template = template_data['template']
+    margin = template_data['margin']
+    mean_cell_diam_um = template_data['mean_cell_diam_um']
+    frame_shape = template_data['frame_shape']
 
-    # TODO TODO maybe try incorporating slightly-varying-scale template
-    # matching into greedy roi assignment procedure (normed corr useful there?)
-    # TODO normed ccoeff equivalent to non-normed after appropriate choice of
-    # threshold? (seemed earlier, maybe no, but i could have done the test
-    # wrong)
+    if _um_per_pixel_xy is None:
+        keys = tiff_filename2keys(tif)
+        ti_dir = thorimage_dir(*tuple(keys))
+        xmlroot = get_thorimage_xmlroot(ti_dir)
+        um_per_pixel_xy = get_thorimage_pixelsize_xml(xmlroot)
+        del keys, ti_dir, xmlroot
+    else:
+        um_per_pixel_xy = _um_per_pixel_xy
+
+    if multiscale:
+        # Centroids are scalars in units of um diam
+        kmeans_k2cluster_cell_diams = \
+            template_data['kmeans_k2cluster_cell_diams']
+
+        if roi_diams_px is not None:
+            assert roi_diams_um is None and roi_diams_from_kmeans_k is None
+            roi_diams_um = [rd_px * um_per_pixel_xy for rd_px in roi_diams_px]
+
+        if roi_diams_um is None and roi_diams_from_kmeans_k is None:
+            roi_diams_from_kmeans_k = 3
+
+        if roi_diams_um is None:
+            roi_diams_um = kmeans_k2cluster_cell_diams[roi_diams_from_kmeans_k]
+
+            print(f'Using ROI diameters {roi_diams_um} (um) from K-means (k='
+                f'{roi_diams_from_kmeans_k}) on data used to generate template.'
+            )
+            if multiscale_strategy == 'random':
+                all_cell_diams_um = template_data['all_cell_diams_um']
+                clusters, _ = vq(all_cell_diams_um, roi_diams_um)
+                count_clusters, counts = np.unique(clusters, return_counts=True)
+                # otherwise would need to reindex the counts
+                assert np.array_equal(count_clusters, np.sort(count_clusters))
+                radii_px_ps = counts / np.sum(counts)
+                kwargs['radii_px_ps'] = radii_px_ps
+                print('Calculated these probabilities from template data:',
+                    radii_px_ps
+                )
+    else:
+        assert roi_diams_px is None
+        assert roi_diams_um is None
+        assert roi_diams_from_kmeans_k is None
+        roi_diams_um = [mean_cell_diam_um]
+
+    n_scales = len(roi_diams_um)
+
+    if thresholds is None:
+        thresholds = [threshold] * n_scales
+    else:
+        # TODO better way to specify thresholds in kmeans case, where
+        # user may not know # thresholds needed in advance?
+        assert len(thresholds) == n_scales
+    del threshold
+    thresholds = np.array(thresholds)
 
     if write_ijrois or _force_write_to is not None:
         write_ijrois = True
@@ -4707,121 +5721,293 @@ def fit_circle_rois(tif, template=None, margin=None, mean_cell_extent_um=None,
             else:
                 fname = _force_write_to
 
-        elif exists(fname):
+        # TODO TODO TODO also check for modifications before overwriting (mtime 
+        # in that hidden file)
+        elif not overwrite and exists(fname):
             print(fname, 'already existed. returning.')
             return None, None
 
     if avg is None:
         if movie is None:
             movie = tifffile.imread(tif)
-
         avg = movie.mean(axis=0)
-
-    # We enforce earlier that template must be symmetric.
-    d, d2 = template.shape[::-1]
-    assert d == d2
-
-    keys = tiff_filename2keys(tif)
-    ti_dir = thorimage_dir(*tuple(keys))
-    xmlroot = get_thorimage_xmlroot(ti_dir)
-    um_per_pixel_xy = get_thorimage_pixelsize_xml(xmlroot)
+    assert avg.shape[0] == avg.shape[1]
+    orig_frame_d = avg.shape[0]
 
     # It seemed to me that picking a new threshold on cv2.TM_CCOEFF_NORMED was
     # not sufficient to reproduce cv2.TM_CCOEFF performance, so even if the
     # normed version were useful to keep the same threshold across image scales,
     # it seems other problems prevent me from using that in my case, so I'm
     # rescaling the image to match against.
-    # TODO probably store target frame shape in template data store, rather than
-    # hardcoding here
-    target_frame_shape = (256, 256)
+
     frame_downscaling = 1.0
-    if avg.shape != target_frame_shape:
-        orig_frame_d = avg.shape[0]
-        assert avg.shape[0] == avg.shape[1]
+    if avg.shape != frame_shape:
+        scaled_avg = cv2.resize(avg, frame_shape)
 
-        avg = cv2.resize(avg, target_frame_shape)
-
-        new_frame_d = avg.shape[0]
+        new_frame_d = scaled_avg.shape[0]
         frame_downscaling = orig_frame_d / new_frame_d
+        del new_frame_d
         um_per_pixel_xy *= frame_downscaling
-
-    expected_cell_pixel_diam = mean_cell_extent_um / um_per_pixel_xy
-
-    template_cell_pixel_diam = d - 2 * margin
-
-    template_scale = expected_cell_pixel_diam / template_cell_pixel_diam
-    new_template_d = int(round(template_scale * d))
-
-    new_template_shape = tuple([new_template_d] * len(template.shape))
-    if new_template_d != d:
-        scaled_template = cv2.resize(template, new_template_shape)
-        template_cell_pixel_diam *= new_template_d / d
     else:
-        scaled_template = template
+        scaled_avg = avg
 
-    # TODO maybe try histogram eq before template matching?
-    # (or some other constrast enhancing transform, maybe one that
-    # operates more locally?)
+    if debug:
+        print('frame downscaling:', frame_downscaling)
+        print('scaled_avg.shape:', scaled_avg.shape)
 
-    res = template_match(avg, scaled_template, method_str=method_str)
-    #imshow(res, 'match image')
+    if exclude_dark_regions:
+        histvals, bins = np.histogram(scaled_avg.flat, bins=100, density=True)
+        hv_deltas = np.diff(histvals)
+        # TODO get the + 3 from a parameter controller percentage beyond 
+        # count delta min
+        dark_thresh = bins[np.argmin(hv_deltas) + 4]
+        exclusion_mask = scaled_avg >= dark_thresh
+        if debug:
+            fig, axs = plt.subplots(ncols=2)
+            axs[0].imshow(scaled_avg)
+            axs[1].imshow(exclusion_mask)
+            axs[1].set_title('exclusion mask')
+    else:
+        exclusion_mask = None
 
-    # TODO one fn that just returns circles, another to draw
+    # We enforce earlier that template must be symmetric.
+    d, d2 = template.shape
+    assert d == d2
 
-    #eqd = cv2.equalizeHist(normed_u8(avg))
-    #draw_on = eqd
-    draw_on = avg
+    match_images = []
+    template_ds = []
+    per_scale_radii_px = []
+    for i, roi_diam_um in enumerate(roi_diams_um):
+        scaled_template, scaled_template_cell_diam_px = scale_template(
+            template_data, um_per_pixel_xy, roi_diam_um, debug=debug
+        )
+        scaled_radius_px = scaled_template_cell_diam_px / 2
+        if debug:
+            print('scaled template shape:', scaled_template.shape)
 
-    #imshow(avg, 'avg')
-    #imshow(eqd, 'equalized avg')
+        if debug and _show_scaled_templates:
+            fig, ax = plt.subplots()
+            ax.imshow(scaled_template)
+            title = f'scaled template (roi_diam_um={roi_diam_um:.2f})'
+            if roi_diams_px is not None:
+                title += f'\n(roi_diam_px={roi_diams_px[i]:.1f})'
+            ax.set_title(title)
 
-    # TODO TODO some multi-scale template matching? how to integrate w/
-    # space constrained placement?
+        # see note below about what i'd need to do to continue using
+        # a check like this
+        '''
+        if template.shape != scaled_template.shape:
+            # Just for checking that conversion back to original coordinates
+            # (just scale diff) seems to be working.
+            radius_px_before_scaling = int(round((d - 2 * margin) / 2))
+        '''
 
-    radius = int(round(template_cell_pixel_diam / 2))
+        match_image = template_match(scaled_avg, scaled_template,
+            method_str=method_str
+        )
+        if debug:
+            print(f'scaled_template_cell_diam_px: '
+                f'{scaled_template_cell_diam_px}'
+            )
+            print(f'scaled_radius_px: {scaled_radius_px}')
 
-    # 0.5 seemed about OK as a threshold for normed ccoeff method
-    # For non-normed ccoeff, 1000 low enough to pick up border stuff,
-    # >3000 seems maybe too high, though 5000 still kinda reasonable.
+        template_d = scaled_template.shape[0]
+        if (match_value_weights is not None and
+            template_d2match_value_scale_fn is not None):
 
-    # Regarding exclusion_radius_frac: 0.3 allowed too much overlap, 0.5
-    # borderline too much w/ non-normed method (0.7 OK there)
-    # (r=4,er=4,6 respectively, in 0.5 and 0.7 cases)
-    centers = greedy_roi_packing(res, radius, d, min_neighbors=min_neighbors,
-        draw_on=draw_on, threshold=threshold,
-        exclusion_radius_frac=exclusion_radius_frac,
-        bboxes=False, nums=False, debug=debug
-    )
+            match_value_weights.append(
+                template_d2match_value_scale_fn(template_d)
+            )
 
-    # TODO lower bound too, if any bounds?
-    if len(centers) > max_cells_per_plane:
-        raise RuntimeError('too many cells detected. try lowering threshold?')
+        match_images.append(match_image)
+        template_ds.append(template_d)
+        per_scale_radii_px.append(scaled_radius_px)
+
+    if debug:
+        print('template_ds:', template_ds)
+
+    if len(set(template_ds)) != len(template_ds):
+        if not allow_duplicate_px_scales:
+            raise ValueError(f'roi_diams_um: {roi_diams_um} led to duplicate '
+                f'pixel template scales ({template_ds})'
+            )
+        else:
+            # TODO would still probably have to de-duplicate before passing to
+            # packing fn
+            raise NotImplementedError
+
+    # TODO one fn that just returns circles, another to draw?
+    draw_on = scaled_avg
+
+    if per_scale_max_n_rois is not None or per_scale_min_n_rois is not None:
+        if per_scale_max_n_rois is not None:
+            assert len(per_scale_max_n_rois) == n_scales, \
+                f'{len(per_scale_max_n_rois)} != {n_scales}'
+
+        if per_scale_min_n_rois is not None:
+            assert len(per_scale_min_n_rois) == n_scales, \
+                f'{len(per_scale_min_n_rois)} != {n_scales}'
+
+        print('Per-scale bounds on number of ROIs overriding global bounds.')
+        min_n_rois = None
+        max_n_rois = None
+        per_scale_n_roi_bounds = True
+    else:
+        per_scale_n_roi_bounds = False
+
+    threshold_tries_remaining = max_threshold_tries
+    while threshold_tries_remaining > 0:
+        # Regarding exclusion_radius_frac: 0.3 allowed too much overlap, 0.5
+        # borderline too much w/ non-normed method (0.7 OK there)
+        # (r=4,er=4,6 respectively, in 0.5 and 0.7 cases)
+        if debug:
+            print('per_scale_radii_px:', per_scale_radii_px)
+
+        centers_px, radii_px = greedy_roi_packing(match_images, template_ds,
+            per_scale_radii_px, thresholds=thresholds,
+            min_neighbors=min_neighbors, exclusion_mask=exclusion_mask,
+            exclusion_radius_frac=exclusion_radius_frac, draw_on=draw_on,
+            draw_bboxes=False, draw_nums=False,
+            multiscale_strategy=multiscale_strategy, debug=_packing_debug,
+            match_value_weights=match_value_weights,
+            _src_img_shape=scaled_avg.shape, **kwargs
+        )
+
+        n_found_per_scale = {r_px: 0 for r_px in per_scale_radii_px}
+        for r_px in radii_px:
+            n_found_per_scale[r_px] += 1
+        assert len(centers_px) == sum(n_found_per_scale.values())
+
+        if debug:
+            print('number of ROIs found at each pixel radius scale:')
+            pprint(n_found_per_scale)
+
+        if per_scale_n_roi_bounds:
+            wrong_num = False
+            for i in range(n_scales):
+                r_px = per_scale_radii_px[i]
+                thr = thresholds[i]
+                n_found = n_found_per_scale[r_px]
+
+                sstr = f' w/ radius={r_px}px @ thr={thr:.2f}'
+                have_retries = threshold_tries_remaining > 1
+                if have_retries:
+                    sstr += f'\nthr:={{:.2f}}'
+
+                if per_scale_max_n_rois is not None:
+                    smax = per_scale_max_n_rois[i]
+                    if smax < n_found:
+                        thresholds[i] /= threshold_update_factor
+                        print((f'too many ROIs ({n_found} > {smax}){sstr}'
+                            ).format(thresholds[i] if have_retries else tuple()
+                        ))
+                        wrong_num = True
+
+                if per_scale_min_n_rois is not None:
+                    smin = per_scale_min_n_rois[i]
+                    if n_found < smin:
+                        thresholds[i] *= threshold_update_factor
+                        print(f'too few ROIs ({n_found} < {smin}){sstr}'.format(
+                            thresholds[i] if have_retries else tuple()
+                        ))
+                        wrong_num = True
+
+            if not wrong_num:
+                break
+            elif debug:
+                print('')
+
+        n_rois_found = len(centers_px)
+        if not per_scale_n_roi_bounds:
+            if ((min_n_rois is None or min_n_rois <= n_rois_found) and
+                (max_n_rois is None or n_rois_found <= max_n_rois)):
+                break
+
+        threshold_tries_remaining -= 1
+        if threshold_tries_remaining == 0:
+            if debug or _packing_debug:
+                plt.show()
+
+            raise RuntimeError(f'too many/few ({n_rois_found}) ROIs still '
+                f'detected after {max_threshold_tries} attempts to modify '
+                'threshold. try changing threshold(s)?'
+            )
+
+        if not per_scale_n_roi_bounds:
+            # TODO maybe squeeze to threshold if just one
+            fail_notice_suffix = f', with thresholds={thresholds}'
+            if max_n_rois is not None and n_rois_found > max_n_rois:
+                thresholds /= threshold_update_factor
+                fail_notice = \
+                    f'found too many ROIs ({n_rois_found} > {max_n_rois})'
+
+            elif min_n_rois is not None and n_rois_found < min_n_rois:
+                thresholds *= threshold_update_factor
+                fail_notice = \
+                    f'found too few ROIs ({n_rois_found} < {min_n_rois})'
+
+            fail_notice += fail_notice_suffix
+            print(f'{fail_notice}\n\nretrying with thresholds={thresholds}')
+
+        if update_factor_shrink_factor is not None:
+            threshold_update_factor = \
+                1 - (1 - threshold_update_factor) * update_factor_shrink_factor
 
     if frame_downscaling != 1.0:
-        radius = int(round(radius * frame_downscaling))
-        centers = np.round(centers * frame_downscaling).astype(centers.dtype)
+        # TODO if i want to keep doing this check, while also supporting
+        # multiscale case, gonna need to check (the set of?) radii returned
+        # (would i need more info for that?)
+        '''
+        # This is to invert any previous scaling into coordinates for matching
+        radius_px = scaled_radius_px * frame_downscaling
+
+        # always gonna be true? seems like if a frame were 7x7, converting size
+        # down to say 2x2 and back up by same formula would yield same result
+        # as a 6x6 input or something, no?
+        assert radius_px == radius_px_before_scaling
+        del radius_px_before_scaling
+        '''
+        centers_px = centers_px * frame_downscaling
+        radii_px  = radii_px * frame_downscaling
+
+    # TODO would some other (alternating?) rounding rule help?
+    # TODO random seed then randomly choose between floor and ceil for stuff
+    # at 0.5?
+    # TODO TODO or is rounding wrong? do some tests to try to figure out
+    centers_px = np.round(centers_px).astype(np.uint16)
+    radii_px = np.round(radii_px).astype(np.uint16)
+    # this work if centers is empty?
+    assert np.all(centers_px >= 0) and np.all(centers_px < orig_frame_d)
+
+    if show_fit:
+        fig, ax = plot_circles(avg, centers_px, radii_px)
+        if tif is None:
+            title = 'fit circles'
+        else:
+            title = tiff_title(tif)
+        ax.set_title(title)
+
+        roi_plot_dir = 'auto_rois'
+        if not exists(roi_plot_dir):
+            os.makedirs(roi_plot_dir)
+
+        roi_plot_fname = join(roi_plot_dir, title.replace('/','_') + '.png')
+        print(f'Writing image showing fit ROIs to {roi_plot_fname}')
+        fig.savefig(roi_plot_fname)
 
     if write_ijrois:
         auto_md_fname = autoroi_metadata_filename(fname)
 
         name2bboxes = list()
-        for i, center in enumerate(centers):
+        for i, (center_px, radius_px) in enumerate(zip(centers_px, radii_px)):
             # TODO TODO test that these radii are preserved across
             # round trip save / loads?
-            min_corner = [center[0] - radius, center[1] - radius]
-            max_corner = [
-                min_corner[0] + 2 * radius,
-                min_corner[1] + 2 * radius
-            ]
-
-            bbox = np.flip([min_corner, max_corner], axis=1)
-            # TODO maybe this should be factored into ijroi?
-            # does existing polygon writing code do this? or does that case
-            # differ in the need for the offset for some reason?
-            bbox = bbox + 1
+            bbox = get_circle_ijroi_input(center_px, radius_px)
             name2bboxes.append((str(i), bbox))
 
         print('Writing ImageJ ROIs to {} ...'.format(fname))
+        # TODO TODO TODO uncomment
+        '''
         ijroi.write_oval_roi_zip(name2bboxes, fname)
 
         with open(auto_md_fname, 'wb') as f:
@@ -4829,8 +6015,11 @@ def fit_circle_rois(tif, template=None, margin=None, mean_cell_extent_um=None,
                 'mtime': getmtime(fname)
             }
             pickle.dump(data, f)
+        '''
 
-    return centers, radius
+    ns_found = [n_found_per_scale[rpx] for rpx in per_scale_radii_px]
+
+    return centers_px, radii_px, thresholds, ns_found
 
 
 def template_data_file():
@@ -4838,7 +6027,7 @@ def template_data_file():
     return join(analysis_output_root(), template_cache)
 
 
-def template_data(err_if_missing=False):
+def load_template_data(err_if_missing=False):
     template_cache = template_data_file()
     if exists(template_cache):
         with open(template_cache, 'rb') as f:
@@ -5320,6 +6509,10 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
         if type(centers) is list:
             sequence_of_centers[i] = roi_centers(centers)
 
+        # This is just to make them display right (not transposed).
+        # Should not change any of the matching.
+        sequence_of_centers[i] = np.flip(sequence_of_centers[i], axis=1)
+
     fig = None
     if show:
         figsize = (10, 10)
@@ -5412,12 +6605,12 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
 
                 pax.scatter(*left_centers_to_plot.T, label=labels[k],
                     color=c1, alpha=scatter_alpha,
-                    marker=pmarker)
-
+                    marker=pmarker
+                )
                 pax.scatter(*right_centers_to_plot.T, label=labels[k + 1],
                     color=c2, alpha=scatter_alpha,
-                    marker=pmarker)
-
+                    marker=pmarker
+                )
                 psuffix = f'{k} vs. {k+1}'
                 if len(name_prefix) > 0:
                     psuffix = f'{name_prefix} ' + psuffix
@@ -5430,13 +6623,14 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
 
             ax.scatter(*left_centers_to_plot.T, label=labels[k],
                 color=colors[k], alpha=scatter_alpha,
-                marker=scatter_marker)
-
+                marker=scatter_marker
+            )
             # TODO factor out scatter + opt numbers (internal fn?)
             if roi_numbers:
                 for i, (x, y) in enumerate(left_centers_to_plot):
                     ax.text(x + text_x_offset, y, str(i),
-                        color=colors[k], fontsize=fontsize)
+                        color=colors[k], fontsize=fontsize
+                    )
 
             # Because generally this loop only scatterplots the left_centers,
             # so without this, the last set of centers would not get a
@@ -5446,12 +6640,13 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
 
                 ax.scatter(*last_centers.T, label=labels[-1],
                     color=colors[-1], alpha=scatter_alpha,
-                    marker=scatter_marker)
-
+                    marker=scatter_marker
+                )
                 if roi_numbers:
                     for i, (x, y) in enumerate(last_centers):
                         ax.text(x + text_x_offset, y, str(i),
-                            color=colors[-1], fontsize=fontsize)
+                            color=colors[-1], fontsize=fontsize
+                        )
 
             if connect_centers:
                 n_not_drawn = 0
@@ -5812,7 +7007,7 @@ def start_color(color_name):
         color_code = _color_codes[color_name]
     except KeyError as err:
         print('Available colors are:')
-        pprint.pprint(list(_color_codes.keys()))
+        pprint(list(_color_codes.keys()))
         raise
     print('\033[{}m'.format(color_code), end='')
 

@@ -95,7 +95,7 @@ def main():
     withinblock_center_sequence = []
     for i in tqdm(range(n_ds_frames)):
         frame = downsampled[i]
-        centers, radius = u.fit_circle_rois(tif, avg=frame)
+        centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame)
         withinblock_center_sequence.append(centers)
 
     lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
@@ -165,7 +165,7 @@ def main():
     center_sequence = []
     for i in range(len(blocks)):
         frame = blocks[i].mean(axis=0)
-        centers, radius = u.fit_circle_rois(tif, avg=frame)
+        centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame)
         center_sequence.append(centers)
 
     roi_numbers = False
