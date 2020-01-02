@@ -85,25 +85,6 @@ natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', verify_integrity=True,
     inplace=True)
 
-def split_odor_w_conc(row_or_str):
-    try:
-        odor_w_conc = row_or_str.odor_w_conc
-    except AttributeError:
-        odor_w_conc = row_or_str
-    parts = odor_w_conc.split('@')
-    if len(parts) == 1:
-        log10_conc = 0.0
-    else:
-        log10_conc = float(parts[1])
-    ret = {'name': parts[0].strip(), 'log10_conc_vv': log10_conc}
-    try:
-        ret.update(row_or_str.to_dict())
-    # TODO correct except
-    except:
-        pass
-    return pd.Series(ret)
-
-
 def md5(fname):
     hash_md5 = hashlib.md5()
     with open(fname, 'rb') as f:
@@ -3813,11 +3794,12 @@ class Segmentation(QWidget):
             # TODO TODO TODO fix what generates broken data['odors'] in at least
             # some of the fly food cases (missing fly food b)
             '''
-            odors = pd.DataFrame([split_odor_w_conc(x) for x in (data['odors'] +
-                ['no_second_odor'])])
+            odors = pd.DataFrame([u.split_odor_w_conc(x) for x in
+                (data['odors'] + ['no_second_odor'])])
             '''
-            odors = pd.DataFrame([split_odor_w_conc(x) for x in
-                (list(set(data['odor_lists'])) + ['no_second_odor'])])
+            odors = pd.DataFrame([u.split_odor_w_conc(x) for x in
+                (list(set(data['odor_lists'])) + ['no_second_odor'])]
+            )
 
         u.to_sql_with_duplicates(odors, 'odors')
 
@@ -3867,8 +3849,9 @@ class Segmentation(QWidget):
             # trial?
             odor_ids = list(zip(odor1_ids, odor2_ids))
         else:
-            odor1_ids = [self.db_odors.at[tuple(split_odor_w_conc(o)),
-                'odor_id'] for o in odor_list]
+            odor1_ids = [self.db_odors.at[tuple(u.split_odor_w_conc(o)),
+                'odor_id'] for o in odor_list
+            ]
 
             # TODO fix db to represent arbitrary mixtures more generally,
             # so this hack isn't necessary

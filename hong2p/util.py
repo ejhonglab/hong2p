@@ -31,6 +31,12 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
 
+# TODO delete after refactoring to not require this engine.
+# flag so i can revert to old matlab-engine behavior while i'm still
+# implementing support via non-matlab-engine means
+NO_MATLAB_ENGINE = True
+#
+
 np.set_printoptions(precision=2)
 
 recording_cols = [
@@ -97,9 +103,14 @@ def data_root():
     if _data_root is None:
         # TODO separate env var for local one? or have that be the default?
         data_root_key = 'HONG_2P_DATA'
+        fallback_data_root_key = 'DATA_DIR'
 
         if data_root_key in os.environ:
             data_root = os.environ[data_root_key]
+
+        elif fallback_data_root_key in os.environ:
+            data_root = os.environ[fallback_data_root_key]
+
         else:
             nas_prefix_key = 'HONG_NAS'
             if nas_prefix_key in os.environ:
@@ -214,26 +225,29 @@ def get_matfile_var(matfile, varname, require=True):
 
     Raises KeyError if require is True and variable not found.
     """
-    global evil
+    if not NO_MATLAB_ENGINE:
+        global evil
 
-    if evil is None:
-        matlab_engine()
+        if evil is None:
+            matlab_engine()
 
-    try:
-        # TODO maybe clear workspace either before or after?
-        # or at least clear this specific variable after?
-        load_output = evil.load(matfile, varname, nargout=1)
-        var = load_output[varname]
-        if type(var) is dict:
-            return [var]
-        return var
-    except KeyError:
-        # TODO maybe check for var presence some other way than just
-        # catching this generic error?
-        if require:
-            raise
-        else:
-            return []
+        try:
+            # TODO maybe clear workspace either before or after?
+            # or at least clear this specific variable after?
+            load_output = evil.load(matfile, varname, nargout=1)
+            var = load_output[varname]
+            if type(var) is dict:
+                return [var]
+            return var
+        except KeyError:
+            # TODO maybe check for var presence some other way than just
+            # catching this generic error?
+            if require:
+                raise
+            else:
+                return []
+    else:
+        raise NotImplementedError
 
 
 # TODO maybe just wrap get_matfile_var?
@@ -242,26 +256,48 @@ def load_mat_timing_information(mat_file):
 
     Raises matlab.engine.MatlabExecutionError
     """
-    import matlab.engine
-    # TODO this sufficient w/ global above to get access to matlab engine in
-    # here?
-    global evil
+    if not NO_MATLAB_ENGINE:
+        import matlab.engine
+        # TODO this sufficient w/ global above to get access to matlab engine in
+        # here?
+        global evil
 
-    if evil is None:
-        matlab_engine()
+        if evil is None:
+            matlab_engine()
 
-    try:
-        # TODO probably switch to doing it this way
-        '''
-        evil.clear(nargout=0)
-        load_output = evil.load(mat_file, 'ti', nargout=1)
-        ti = load_output['ti']
-        '''
-        evil.evalc("clear; data = load('{}', 'ti');".format(mat_file))
+        try:
+            # TODO probably switch to doing it this way
+            '''
+            evil.clear(nargout=0)
+            load_output = evil.load(mat_file, 'ti', nargout=1)
+            ti = load_output['ti']
+            '''
+            evil.evalc("clear; data = load('{}', 'ti');".format(mat_file))
 
-    except matlab.engine.MatlabExecutionError as e:
-        raise
-    return evil.eval('data.ti')
+        except matlab.engine.MatlabExecutionError as e:
+            raise
+        return evil.eval('data.ti')
+
+    else:
+        # TODO test this path against matlab engine path before deleting old
+        # path
+        from scipy.io import loadmat
+
+        data = loadmat(mat_file, variable_names=['ti'])['ti']
+        # TODO check this is all still necessary w/ all combinations of loadmat
+        # args + latest version
+        varnames = data.dtype.names
+        assert data.shape == (1, 1)
+        assert data[0].shape == (1,)
+        vardata = data[0][0]
+        assert len(varnames) == len(vardata)
+        # TODO is it even guaranteed that order of names is same as this
+        # order? do some sanity checks (at least) until i can get an answer on
+        # this... (inspection of one example in ipdb seemed to have everything
+        # in order though)
+        ti = {n: d for n, d in zip(varnames, vardata)}
+        #
+        return ti
 
 
 # TODO TODO can to_sql with pg_upsert replace this? what extra features did this
@@ -415,32 +451,49 @@ def pg_upsert(table, conn, keys, data_iter):
         conn.execute(upsert_stmt)
 
 
-def df_to_odorset_name(df):
+def odorset_name(df_or_odornames):
     """Returns name for set of odors in DataFrame.
 
     Looks at odors in original_name1 column. Name used to lookup desired
     plotting order for the odors in the set.
     """
+    try:
+        if 'original_name1' in df_or_odornames.columns:
+            unique_odornames = df_or_odornames.original_name1.unique()
+            abbreviated = False
+        else:
+            assert 'name1' in df_or_odornames.columns, \
+                'need either original_name1 or name1 in df columns'
+            # Assuming abbreviated names now.
+            unique_odornames = df_or_odornames.name1.unique()
+            # maybe don't assume abbreviated just b/c name1?
+            # (particularly if supporting abbrev/not in iterable input
+            # case, could also check name1 contents)
+            abbreviated = True
+
+    except AttributeError:
+        unique_odornames = set(df_or_odornames)
+        # TODO maybe also support abbreviated names in this case?
+        abbreviated = False
+        
     odor_set = None
-    if 'original_name1' in df.columns:
-        unique_original_name1 = df.original_name1.unique()
-        if 'ethyl butyrate' in unique_original_name1:
+    # TODO TODO derive these diagnostic odors from odor_set2order? would that
+    # still be redundant w/ something else i hardcoded (if so, further
+    # de-dupe)?
+    # TODO at least lookup abbreviations from full names?
+    if not abbreviated:
+        if 'ethyl butyrate' in unique_odornames:
             odor_set = 'kiwi'
-        elif 'acetoin' in unique_original_name1:
+        elif 'acetoin' in unique_odornames:
             odor_set = 'flyfood'
-        elif '1-octen-3-ol' in unique_original_name1:
+        elif '1-octen-3-ol' in unique_odornames:
             odor_set = 'control'
     else:
-        assert 'name1' in df.columns, \
-            'need either original_name1 or name1 in df columns'
-
-        # Assuming abbreviated names now.
-        unique_name1 = df.name1.unique()
-        if 'eb' in unique_name1:
+        if 'eb' in unique_odornames:
             odor_set = 'kiwi'
-        elif 'atoin' in unique_name1:
+        elif 'atoin' in unique_odornames:
             odor_set = 'flyfood'
-        elif '1o3ol' in unique_name1:
+        elif '1o3ol' in unique_odornames:
             odor_set = 'control'
 
     if odor_set is None:
@@ -449,6 +502,54 @@ def df_to_odorset_name(df):
     # TODO probably just find single odor that satisfies is_mix and derive from
     # that, for more generality (would only work in original name case)
     return odor_set
+
+
+def stimfile_odorset(stimfile_path, strict=True):
+    with open(stimfile_path, 'rb') as f:
+        data = pickle.load(f)
+
+    # TODO did i use some other indicator elsewhere? anything more robust than
+    # this?
+    if 'odor_pair_list' in data.keys():
+        # Just because I don't believe the pair experiment analysis
+        # made any use of something like an odorset, so trying to
+        # get one from those stimfiles is likely a mistake.
+        if strict:
+            raise ValueError('trying to get complex mixture odor set '
+                'from old pair experiment stimfile'
+            )
+        else:
+            return None
+
+    odors = set(data['odor_lists'])
+    # TODO TODO TODO what caused this error where some fields were empty?
+    # this corrupt or test data / not intended to be saved?
+    if len(odors) == 0:
+        if strict:
+            raise ValueError(f'empty odor lists in {stimfile_path}')
+        else:
+            return None
+    assert type(data['odor_lists'][0]) is str
+
+    # TODO TODO TODO fix how stimfile generation stuff doesn't save
+    # hardcoded real stuff into odors (+ maybe other vars?)
+    '''
+    print(len(odors))
+    pprint(odors)
+    print(len(set(data['odors2pins'].keys())))
+    pprint(set(data['odors2pins'].keys()))
+    print(len(set(data['pins2odors'].values())))
+    pprint(set(data['pins2odors'].values()))
+    '''
+    #assert odors == set(data['odors'])
+    assert odors == set(data['odors2pins'].keys())
+    assert odors == set(data['pins2odors'].values())
+
+    # Not this accessor syntax, because .name is a property of all pandas
+    # objects.
+    odor_names = [split_odor_w_conc(oc)['name'] for oc in odors]
+
+    return odorset_name(odor_names)
 
 
 # TODO maybe load (on demand) + cache the abbreviated versions of these, if
@@ -505,7 +606,7 @@ def df_to_odor_order(df, observed=True, return_name1=False):
     """
     # TODO might need to use name1 if original_name1 not there...
     # (for gui case)
-    odor_set = df_to_odorset_name(df)
+    odor_set = odorset_name(df)
     order = odor_set2order[odor_set]
     observed_odors = df.original_name1.unique()
     if observed:
@@ -570,6 +671,9 @@ def gsheet_csv_export_link(file_with_edit_link):
     return gsheet_link
 
 
+# TODO TODO for this and other stuff that depends on network access (if not
+# cached), fallback to cache (unless explicitly prevented?), and warn
+# that we are doing so (unless cached version explicitly requested)
 _mb_team_gsheet = None
 def mb_team_gsheet(use_cache=False, natural_odors_only=False,
     drop_nonexistant_dirs=True, show_inferred_paths=False,
@@ -3531,6 +3635,31 @@ def format_mixture(*args):
     return title
 
 
+def split_odor_w_conc(row_or_str):
+    try:
+        odor_w_conc = row_or_str.odor_w_conc
+        include_other_row_data = True
+    except AttributeError:
+        assert type(row_or_str) is str
+        odor_w_conc = row_or_str
+        include_other_row_data = False
+
+    parts = odor_w_conc.split('@')
+    assert len(parts) == 1 or len(parts) == 2
+    if len(parts) == 1:
+        log10_conc = 0.0
+    else:
+        log10_conc = float(parts[1])
+
+    ret = {'name': parts[0].strip(), 'log10_conc_vv': log10_conc}
+    if include_other_row_data:
+        ret.update(row_or_str.to_dict())
+
+    # TODO maybe only return series if include_other_row_data (rename if),
+    # tuple/dict otherwise?
+    return pd.Series(ret)
+
+
 def format_keys(date, fly, *other_keys):
     date = date.strftime(date_fmt_str)
     fly = str(int(fly))
@@ -6036,13 +6165,13 @@ def load_template_data(err_if_missing=False):
             data = pickle.load(f)
         return data
     else:
-        if err:
+        if err_if_missing:
             raise IOError(f'template data not found at {template_cache}')
-
         return None
 
 
-def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True):
+def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
+    stimfile=None, first_block=None, last_block=None):
     """Returns list of arrays, one per continuous acquisition.
 
     Total length along time dimension should be preserved from input TIFF.
@@ -6057,30 +6186,44 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True):
     mat = matfile(*keys)
     ti = load_mat_timing_information(mat)
 
-    # TODO TODO remove use_cache. just for testing.
-    df = mb_team_gsheet(use_cache=True)
-    #
+    if stimfile is None:
+        df = mb_team_gsheet()
+        recordings = df.loc[
+            (df.date == keys.date) &
+            (df.fly_num == keys.fly_num) &
+            (df.thorimage_dir == keys.thorimage_id)
+        ]
+        del df
+        recording = recordings.iloc[0]
+        del recordings
+        if recording.project != 'natural_odors':
+            warnings.warn('project type {} not supported. skipping.'.format(
+                recording.project))
+            return
 
-    recordings = df.loc[(df.date == keys.date) &
-                        (df.fly_num == keys.fly_num) &
-                        (df.thorimage_dir == keys.thorimage_id)]
-    recording = recordings.iloc[0]
-    if recording.project != 'natural_odors':
-        warnings.warn('project type {} not supported. skipping.'.format(
-            recording.project))
-        return
+        stimfile = recording['stimulus_data_file']
+        first_block = recording['first_block']
+        last_block = recording['last_block']
+        del recording
 
-    # TODO factor this metadata handling out. fns for load / set?
-    # combine w/ remy's .mat metadata (+ my stimfile?)
+        stimfile_path = join(stimfile_root(), stimfile)
+    else:
+        warnings.warn('using hardcoded stimulus file, rather than using value '
+            'from MB team gsheet'
+        )
+        if exists(stimfile):
+            stimfile_path = stimfile
+        else:
+            stimfile_path = join(stimfile_root(), stimfile)
+            assert exists(stimfile_path), (f'stimfile {stimfile} not found '
+                f'alone or under {stimfile_root()}'
+            )
 
-    meta = metadata(*keys)
-
-    stimfile = recording['stimulus_data_file']
-    stimfile_path = join(stimfile_root(), stimfile)
     # TODO also err if not readable / valid
     if not exists(stimfile_path):
         raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
-            stimfile_root))
+            stimfile_root)
+        )
 
     with open(stimfile_path, 'rb') as f:
         data = pickle.load(f)
@@ -6112,17 +6255,17 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True):
 
     presentations_per_block = n_repeats * presentations_per_repeat
 
-    if pd.isnull(recording['first_block']):
+    if pd.isnull(first_block):
         first_block = 0
     else:
-        first_block = int(recording['first_block']) - 1
+        first_block = int(first_block) - 1
 
-    if pd.isnull(recording['last_block']):
+    if pd.isnull(last_block):
         n_full_panel_blocks = \
             int(len(odor_list) / presentations_per_block)
         last_block = n_full_panel_blocks - 1
     else:
-        last_block = int(recording['last_block']) - 1
+        last_block = int(last_block) - 1
 
     first_presentation = first_block * presentations_per_block
     last_presentation = (last_block + 1) * presentations_per_block - 1
@@ -6235,22 +6378,25 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True):
             'belong to any used block.\n').format(
             n_tossed_frames, movie.shape[0]))
 
+    # TODO factor this metadata handling out. fns for load / set?
+    # combine w/ remy's .mat metadata (+ my stimfile?)
+
+    # This will return defaults if the YAML file is not found.
+    meta = metadata(*keys)
+
     # TODO want / need to do more than just slice to free up memory from
     # other pixels? is that operation worth it?
     drop_first_n_frames = meta['drop_first_n_frames']
     # TODO TODO err if this is past first odor onset (or probably even too
     # close)
+    del meta
 
-    odor_onset_frames = [n - drop_first_n_frames
-        for n in odor_onset_frames]
-    odor_offset_frames = [n - drop_first_n_frames
-        for n in odor_offset_frames]
+    odor_onset_frames = [n - drop_first_n_frames for n in odor_onset_frames]
+    odor_offset_frames = [n - drop_first_n_frames for n in odor_offset_frames]
 
-    block_first_frames = [n - drop_first_n_frames
-        for n in block_first_frames]
+    block_first_frames = [n - drop_first_n_frames for n in block_first_frames]
     block_first_frames[0] = 0
-    block_last_frames = [n - drop_first_n_frames
-        for n in block_last_frames]
+    block_last_frames = [n - drop_first_n_frames for n in block_last_frames]
 
     assert odor_onset_frames[0] > 0
 

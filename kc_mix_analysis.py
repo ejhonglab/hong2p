@@ -390,7 +390,7 @@ def order_by_odor_sets(trace_pickles, drop_if_missing=['kiwi']):
         assert len(fly_keys) == 1
         fly_keys = tuple(fly_keys.iloc[0])
 
-        odor_set = u.df_to_odorset_name(df)
+        odor_set = u.odorset_name(df)
         # TODO delete all other add_odorset stuff?
         assert 'odor_set' not in df.columns
         df['odor_set'] = 'odor_set'
@@ -933,7 +933,7 @@ if not args.only_analyze_cached:
             o2n = {o: cu.odor2abbrev(o) for o in on1_unique}
             df.name1 = df.original_name1.map(o2n)
 
-        prefix = u.df_to_odorset_name(df)
+        prefix = u.odorset_name(df)
         odor_order = [cu.odor2abbrev(o) for o in u.df_to_odor_order(df)]
         
         parts = df_pickle[:-2].split('_')[-4:]

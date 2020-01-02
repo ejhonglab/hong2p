@@ -3,14 +3,16 @@
 """
 """
 
-from os.path import join
+from os.path import join, split, exists
+import glob
+from pprint import pprint
 
-#####import tifffile
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-#####import pyqtgraph as pg
+import tifffile
+import pyqtgraph as pg
 
 import hong2p.util as u
 
@@ -57,52 +59,96 @@ def show_centers_on_movie(movie,
 '''
 
 
-def make_test_centers(n=50, nt=100, frame_shape=(256, 256), sigma=3,
-    exlusion_radius=None, loss_probability=0.01, gain_probability=0.01,
-    round_=True):
-
-    # TODO TODO how to balance gain probability / loss probability s.t.
-    # # ROIs stays about constant? any way to do this w/o having gain
-    # probability depend on the current # of ROIs?
-    # (since loss probability must be dependent on current # of ROIs at least
-    # somewhat, since if there are 0, we can't lose more...)
-    # maybe the probability should still not be considered for each ROI,
-    # and then just do nothing when there are no ROIs left to take...
-    # (and allow multiple per time step? which distribution to use?)
+def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
+    exlusion_radius=None, p=0.05, max_n=None, round_=True, verbose=False):
+    # TODO maybe adapt p so it's the p over the course of the 
+    # nt steps, and derivce single timestep p from that?
 
     if exlusion_radius is not None:
         raise NotImplementedError
 
+    # So that we can pre-allocate the center coordinates over time
+    # (rather than having to figure out how many were added by the end,
+    # and then pad all the preceding arrays of centers w/ NaN)
+    max_n = 2 * initial_n
+
     assert len(frame_shape) == 2
     assert frame_shape[0] == frame_shape[1]
     d = frame_shape[0]
+    max_coord = d - 1
 
-    # TODO have shape (size) be consistent w/ other places that deal
-    # w/ centers. (2 first or n first?)
-    initial_centers = np.random.randint(d, size=(n, 2))
+    # Also using this for new centers gained while iterating.
+    initial_centers = np.random.randint(d, size=(max_n, 2))
 
-    # TODO TODO more idiomatic numpy way to generate cumulative noise?
+    # TODO more idiomatic numpy way to generate cumulative noise?
     # (if so, just repeat initial_centers to generate centers, and add the 
     # two) (maybe not, with my constraints...)
-    xy_steps = np.random.randn(nt - 1, n, 2) * sigma
-    
-    centers = np.empty((nt, n, 2)) * np.nan
-    centers[0] = initial_centers
-    max_coord = d - 1
+    # TODO TODor generate inside the loop (only as many as non-NaN, and only
+    # apply to non NaN)
+    xy_steps = np.random.randn(nt - 1, max_n, 2) * sigma
+
+    next_trajectory_idx = initial_n
+    centers = np.empty((nt, max_n, 2)) * np.nan
+    centers[0, :initial_n] = initial_centers[:initial_n]
     # TODO should i be generating the noise differently, so that the x and y
     # components are not independent (so that if deviation is high in one,
     # it's more likely to be lower in other coordinate, to more directly
     # constrain the distance? maybe it's just a scaling thing though...)
     for t in range(1, nt):
+        # TODO maybe handle this differently...
+        if next_trajectory_idx == max_n:
+            raise RuntimeError(f'reached max_n ({max_n}) on step {t} '
+                f'(before {nt} requested steps'
+            )
+            #break
+
         centers[t] = centers[t - 1] + xy_steps[t - 1]
+
+        # TODO make sure NaN stuff handled correctly here
+        # The centers should stay within the imaginary frame bounds.
         centers[t][centers[t] > max_coord] = max_coord
         centers[t][centers[t] < 0] = 0
-        # TODO TODO TODO also support losing / gaining centers, and have output
-        # in same format as the fns in util to associate ROIs (keeping labels
-        # const) across matchings
+
+        lose = np.random.binomial(1, p, size=max_n).astype(np.bool)
+        if verbose:
+            nonnan = ~ np.isnan(centers[t,:,0])
+            print('# non-nan:', nonnan.sum())
+            n_lost = (nonnan & lose).sum()
+            if n_lost > 0:
+                print(f't={t}, losing {n_lost}')
+        centers[t][lose] = np.nan
+
+        # TODO TODO note: if not allowed to fill NaN that come from losing
+        # stuff, then max_n might more often limit # unique rather than #
+        # concurrent tracks... (and that would prob make a format more close to
+        # what i was already implementing in association code...)
+        # maybe this all means i could benefit from a different
+        # representation...
+        # one more like id -> (start frame, end frame, coordinates)
+
+        # Currently, giving any new trajectories different indices (IDs)
+        # from any previous trajectories, by putting them in ranges that
+        # had so far only had NaN. As association code may be, this also
+        # groups new ones in the next-unused-integer-indices, rather
+        # than giving each remaining index a chance.
+        # To justify first arg (n), imagine case where initial_n=0 and
+        # max_n=1.
+        n_to_gain = np.random.binomial(max_n - initial_n, p)
+        if n_to_gain > 0:
+            if verbose:
+                print(f't={t}, gaining {n_to_gain}')
+
+            first_ic_idx = next_trajectory_idx - initial_n
+            import ipdb; ipdb.set_trace()
+            centers[t][next_trajectory_idx:next_trajectory_idx + n_to_gain] = \
+                initial_centers[first_ic_idx:first_ic_idx + n_to_gain]
+
+    assert len(centers) == nt
 
     if round_:
         centers = np.round(centers).astype(np.uint16)
+
+    # TODO check output is in same kind of format as output of my matching fns
 
     return centers
 
@@ -119,7 +165,18 @@ def make_test_centers(n=50, nt=100, frame_shape=(256, 256), sigma=3,
 
 
 def main():
-    centers = make_test_centers()
+    '''
+    stimfiles = sorted(glob.glob(join(u.stimfile_root(), '*.p')))
+    stimfile_odorsets = [u.stimfile_odorset(sf, strict=False)
+        for sf in stimfiles
+    ]
+    # TODO maybe print grouped by day
+    pprint([(split(f)[1], s) for f, s in zip(stimfiles, stimfile_odorsets)
+        if s]
+    )
+    '''
+    
+    centers = make_test_centers(verbose=True)
     import ipdb; ipdb.set_trace()
     '''
     test_movie = np.random.randn(300, 256, 256)
@@ -130,13 +187,21 @@ def main():
 
     tif = join(
         u.analysis_output_root(),
-        '2019-08-27/9/tif_stacks/fn_0001_nr.tif'
+        #'2019-08-27/9/tif_stacks/fn_0001_nr.tif'
+        '2019-11-18/3/tif_stacks/fn_0000_nr.tif'
     )
     keys = u.tiff_filename2keys(tif)
     fps = u.get_thorimage_fps(u.thorimage_dir(*keys))
     movie = tifffile.imread(tif)
     shape_before = movie.shape
-    blocks = u.movie_blocks(tif, movie=movie)
+
+    #blocks = u.movie_blocks(tif, movie=movie)
+    # TODO go back to using mb_team gsheet (not passing stimfile) for more than
+    # just testing. not sure this stimfile is the right one for this
+    # experiment...
+    blocks = u.movie_blocks(tif, movie=movie,
+        stimfile='20191118_202023_stimuli.p'
+    )
     assert movie.shape == shape_before
 
     tiff_title = u.tiff_title(tif)
