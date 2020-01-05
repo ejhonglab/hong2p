@@ -609,7 +609,7 @@ def main():
 
             centers, radii_px, _, _ = u.fit_circle_rois(
                 tif, template_data, avg=avg, debug=False, _packing_debug=False,
-                multiscale=True, min_neighbors=None,
+                multiscale=True,
                 #multiscale_strategy='random',
                 #multiscale_strategy='fixed_scale_order',
                 #scale_order=[0, 2, 1],

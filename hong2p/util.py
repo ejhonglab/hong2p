@@ -103,23 +103,28 @@ def data_root():
     if _data_root is None:
         # TODO separate env var for local one? or have that be the default?
         data_root_key = 'HONG_2P_DATA'
+        nas_prefix_key = 'HONG_NAS'
         fallback_data_root_key = 'DATA_DIR'
 
+        prefix = None
         if data_root_key in os.environ:
             data_root = os.environ[data_root_key]
-
+        elif nas_prefix_key in os.environ:
+            prefix = os.environ['HONG_NAS']
         elif fallback_data_root_key in os.environ:
             data_root = os.environ[fallback_data_root_key]
-
         else:
-            nas_prefix_key = 'HONG_NAS'
-            if nas_prefix_key in os.environ:
-                prefix = os.environ['HONG_NAS']
-            else:
-                prefix = '/mnt/nas'
+            prefix = '/mnt/nas'
+            warnings.warn('None of environment variables specifying data path '
+                f'found!\nUsing default data path of : {prefix}\n'
+                f'Set one of the following: {data_root_key}, {nas_prefix_key}, '
+                f'{fallback_data_root_key}'
+            )
 
+        if prefix is not None:
             data_root = join(prefix, data_root_name)
         _data_root = data_root
+
     # TODO err if nothing in data_root, saying which env var to set and how
     return _data_root
 
@@ -550,6 +555,17 @@ def stimfile_odorset(stimfile_path, strict=True):
     odor_names = [split_odor_w_conc(oc)['name'] for oc in odors]
 
     return odorset_name(odor_names)
+
+
+def print_all_stimfile_odorsets() -> None:
+    stimfiles = sorted(glob.glob(join(u.stimfile_root(), '*.p')))
+    stimfile_odorsets = [u.stimfile_odorset(sf, strict=False)
+        for sf in stimfiles
+    ]
+    # TODO maybe print grouped by day
+    pprint([(split(f)[1], s)
+        for f, s in zip(stimfiles, stimfile_odorsets) if s
+    ])
 
 
 # TODO maybe load (on demand) + cache the abbreviated versions of these, if
@@ -5715,7 +5731,7 @@ def plot_circles(draw_on, centers, radii):
 
 def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
     method_str='cv2.TM_CCOEFF_NORMED', thresholds=None, threshold=None,
-    exclusion_radius_frac=0.8, min_neighbors=2, debug=False,
+    exclusion_radius_frac=0.8, min_neighbors=None, debug=False,
     _packing_debug=False, show_fit=False, write_ijrois=False,
     _force_write_to=None, overwrite=False, exclude_dark_regions=None,
     max_n_rois=650, min_n_rois=150, per_scale_max_n_rois=None,

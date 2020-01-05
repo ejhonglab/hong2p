@@ -17,50 +17,11 @@ import pyqtgraph as pg
 import hong2p.util as u
 
 
-def test(a1, a2):
-    print(a1)
-    print(a2)
-
-
-def wrap_update_image(update_image_fn):
-    def wrapped_update_image(*args, **kwargs):
-        update_image_fn(*args, **kwargs)
-        # Since <ImageView object>.updateImage is a "bound method".
-        self = update_image_fn.__self__
-
-        # TODO is there some reason this only seems to go up to index
-        # 298 when there are 300 frames (last index should be 299)
-        # i found a similar diff w/ 1 vs. 2 arg fn connected to 
-        # sigTimeChange signal (only 2 arg fns seemed to let first arg
-        # [/ only arg in 1 arg case] go up to 299 [vs. 298 again])
-        print(self.currentIndex)
-
-    return wrapped_update_image
-
-
-def monkey_patch_image_window(imw, data):
-    # TODO maybe hide histogram thing / roi / roiPlot
-
-    # TODO why do all the examples take care to setZValue of roi
-    # to some positive # (like 10) to be "above image"?
-
-    imw.scatter_plot = pg.ScatterPlotItem()
-    imw.view.addItem(imw.scatter_plot)
-
-    imw.updateImage = wrap_update_image(imw.updateImage, data)
-
-
-'''
-def show_centers_on_movie(movie, 
-    imw = pg.image(movie)
-    monkey_patch_image_window(imw)
-
-    pg.QtGui.QApplication.exec_()
-'''
-
-
+# TODO add nonoverlap constraint? somehow make closer to real data?
+# TODO use this to test gui/fitting/tracking
 def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
-    exlusion_radius=None, p=0.05, max_n=None, round_=True, verbose=False):
+    exlusion_radius=None, p=0.05, max_n=None, round_=False, diam_px=20,
+    verbose=False):
     # TODO maybe adapt p so it's the p over the course of the 
     # nt steps, and derivce single timestep p from that?
 
@@ -70,7 +31,12 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     # So that we can pre-allocate the center coordinates over time
     # (rather than having to figure out how many were added by the end,
     # and then pad all the preceding arrays of centers w/ NaN)
-    max_n = 2 * initial_n
+    if p:
+        max_n = 2 * initial_n
+    else:
+        # Don't need to allocate extra space if the number of ROIs is
+        # deterministic.
+        max_n = initial_n
 
     assert len(frame_shape) == 2
     assert frame_shape[0] == frame_shape[1]
@@ -96,7 +62,7 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     # constrain the distance? maybe it's just a scaling thing though...)
     for t in range(1, nt):
         # TODO maybe handle this differently...
-        if next_trajectory_idx == max_n:
+        if p and next_trajectory_idx == max_n:
             raise RuntimeError(f'reached max_n ({max_n}) on step {t} '
                 f'(before {nt} requested steps'
             )
@@ -108,6 +74,9 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
         # The centers should stay within the imaginary frame bounds.
         centers[t][centers[t] > max_coord] = max_coord
         centers[t][centers[t] < 0] = 0
+
+        if not p:
+            continue
 
         lose = np.random.binomial(1, p, size=max_n).astype(np.bool)
         if verbose:
@@ -139,24 +108,199 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
                 print(f't={t}, gaining {n_to_gain}')
 
             first_ic_idx = next_trajectory_idx - initial_n
-            import ipdb; ipdb.set_trace()
+            #import ipdb; ipdb.set_trace()
             centers[t][next_trajectory_idx:next_trajectory_idx + n_to_gain] = \
                 initial_centers[first_ic_idx:first_ic_idx + n_to_gain]
+            next_trajectory_idx += n_to_gain
 
     assert len(centers) == nt
 
+    # This seems to convert NaN to zero...
     if round_:
         centers = np.round(centers).astype(np.uint16)
 
+    roi_diams = np.expand_dims(np.ones(centers.shape[:2]) * diam_px, -1)
+    centers = np.concatenate((centers, roi_diams), axis=-1)
+    
     # TODO check output is in same kind of format as output of my matching fns
 
     return centers
 
 
+def split_to_xyd(roi_data_xyd):
+    assert len(roi_data_xyd.shape) == 2
+    assert roi_data_xyd.shape[-1] == 3
+    return roi_data_xyd.T
 
-# TODO TODO TODO fns for generating test data. centers + gaussian updates
-# (w/ edge + non-overlap constraints) first. const radii?
-# use that to test gui + fitting + tracking
+
+def wrap_update_image(update_image_fn, roi_data_xyd, pen=None, brush=None,
+    pens_last=None, pens_next=None):
+    def wrapped_update_image(*args, **kwargs):
+        update_image_fn(*args, **kwargs)
+        # Since <ImageView object>.updateImage is a "bound method".
+        self = update_image_fn.__self__
+        # TODO TODO some way to not have to set brush and pens at each 
+        # call? maybe i should just plot all at beginning and then
+        # make stuff visible or not based on frame range (rather
+        # than calling setData here)?
+        xs, ys, diams = split_to_xyd(roi_data_xyd[self.currentIndex])
+        self.scatter_plot.setData(x=xs, y=ys, size=diams, pen=pen, brush=brush,
+            pxMode=True
+        )
+
+        if pens_last is not None:
+            if self.currentIndex >= 1:
+                xs, ys, diams = \
+                    split_to_xyd(roi_data_xyd[self.currentIndex - 1])
+
+                self.scatter_plot_last.setData(x=xs, y=ys, size=diams,
+                    pen=pens_last, brush=None, pxMode=True
+                )
+            else:
+                self.scatter_plot_last.clear()
+
+        if pens_next is not None:
+            try:
+                xs, ys, diams = \
+                    split_to_xyd(roi_data_xyd[self.currentIndex + 1])
+
+                self.scatter_plot_next.setData(x=xs, y=ys, size=diams,
+                    pen=pens_next, brush=None, pxMode=True
+                )
+            except IndexError:
+                self.scatter_plot_next.clear()
+
+    return wrapped_update_image
+
+
+def monkey_patch_image_window(imw, roi_data_xyd):
+    """
+    roi_data_xyd of shape (# timepoints, (max) # ROIs, 3 (x, y, diameter))
+        2 [or 3 if specifying diameters])
+    """
+    # TODO maybe hide histogram thing / roi / roiPlot
+
+    # TODO why do all the examples take care to setZValue of roi
+    # to some positive # (like 10) to be "above image"?
+
+    imw.scatter_plot = pg.ScatterPlotItem()
+    # TODO maybe pick colors by middle / initial positions of ROIs,
+    # so neighboring things dont share colors?
+    # (+ button to recolor from current frame [only matters if ROIs really
+    # swap positions, otherwise, any frame should probably work..., right?])
+    colors = [pg.hsvColor(np.random.rand(), sat=1.0, val=1.0, alpha=1.0)
+        for _ in range(roi_data_xyd.shape[1])
+    ]
+    # TODO if this is the approach i go with, add some kind of legend to
+    # indicate what the different linestyles mean (which time direction)
+    # (otherwise mark some way that doesn't need explanation...)
+    pens_last = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DotLine)
+        for c in colors
+    ]
+    pens = [pg.mkPen(color=c, width=1.5) for c in colors]
+    pens_next = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DashLine)
+        for c in colors
+    ]
+    brushes = None
+    xs, ys, diams = split_to_xyd(roi_data_xyd[0])
+    imw.scatter_plot.setData(x=xs, y=ys, size=diams, pen=pens, brush=brushes,
+        pens_last=pens_last, pens_next=pens_next, pxMode=True
+    )
+    imw.view.addItem(imw.scatter_plot)
+
+    imw.scatter_plot_last = pg.ScatterPlotItem()
+    imw.view.addItem(imw.scatter_plot_last)
+
+    imw.scatter_plot_next = pg.ScatterPlotItem()
+    assert len(roi_data_xyd) > 1, 'expected more than one frame'
+    xs, ys, diams = split_to_xyd(roi_data_xyd[1])
+    imw.scatter_plot_next.setData(x=xs, y=ys, size=diams, pen=pens_next,
+        brush=brushes, pxMode=True
+    )
+    imw.view.addItem(imw.scatter_plot_next)
+
+    imw.updateImage = wrap_update_image(imw.updateImage, roi_data_xyd,
+        pen=pens, brush=brushes, pens_last=pens_last, pens_next=pens_next
+    )
+
+
+# TODO take some features from floris' gui if i get time
+# (plot of # of ROIs, "interesting" points (=ROI creation/deletion, right?),
+# clickable stuff, etc)
+# TODO option to only follow one ROI (and maybe another option, or 3 states
+# total, as to whether or not to show even the current frame versions of the
+# other ROIs)
+# TODO how best to illustrate time ordering of displayed ROIs?
+def show_movie(movie, rois=None):
+    imw = pg.image(movie, title='Movie' if rois is None else 'ROIs over time')
+
+    # With these at -1 and 1, you should be able to see a one pixel border
+    # around edges, to prove that when they are both 0, no pixels are left
+    # unshown (and this is the case).
+    common_min = -1 #0
+    add_for_max = 1 #0
+    add_for_scale = 0 + add_for_max - common_min
+    frame_shape = movie.shape[1:]
+    xmax = frame_shape[0] + add_for_max
+    ymax = frame_shape[1] + add_for_max
+    # TODO play around w/ this to find something reasonable
+    min_px = 20
+
+    # there seems to be something asymmetric about x axis view box limits
+    # (no matter setting of xmin/max, cant drag small test image cleanly
+    # to either left or right edge. i checked the off by 1/2 case)
+
+    # imw.view is of type pg.ViewBox
+    imw.view.setLimits(
+        xMin=common_min, xMax=xmax,
+        yMin=common_min, yMax=ymax,
+        # off by one here or above? test
+        maxXRange=frame_shape[0] + add_for_scale,
+        maxYRange=frame_shape[1] + add_for_scale,
+        # TODO some way to fix this? bug?
+        #minXRange=min_px, minYRange=min_px
+    )
+    imw.view.setRange(xRange=(common_min, xmax), yRange=(common_min, ymax))
+
+    # TODO does autolevels work on whole movie by default? way to make it?
+    # if not, maybe setLevels from a given movies percentiles or something?
+
+    # TODO delete. just so ROIs are visible while debugging
+    #imw.setLevels(min=1.1, max=1.2)
+    #
+
+    # TODO opt to figure out max from dtype?
+    # TODO maybe use pyqtgraphs subsampling range finding if the max is slow
+    hmax = movie.max()
+
+    # TODO TODO change scale on histogram to log
+    # (may need to edit pyqtgraph to accomplish this)
+    hist = imw.getHistogramWidget()
+    # This does disable auto scaling.
+    # (maybe remove this and go back to autoscaling? I originally just wanted
+    # what the setLimits call is doing)
+    hist.item.setHistogramRange(0, hmax)
+    # actually, it might be worknig now that i also added xMin/Max
+    # TODO but try to add some padding so harder to lose sliders at edges
+    hist.item.vb.setLimits(yMin=0, yMax=hmax, xMin=0, xMax=hmax)
+
+    imw.ui.roiBtn.hide()
+    imw.ui.menuBtn.hide()
+
+    # TODO later, modify pyqtgraph so scroll wheel work to move movie time
+    # slider
+
+    # TODO TODO params (frames before, frames after) [+ / OR] region sliders to
+    # control which trajectories are visible about the current movie index
+
+    if rois is not None:
+        monkey_patch_image_window(imw, rois)
+
+    # TODO autoLevels() default on start (seems so)? at end timestep?
+    # add it? (imageview[/item? or is it viewbox?])
+    pg.QtGui.QApplication.exec_()
+
+
 # TODO other test data where centers (mostly? constraints...) satisfy
 # requirements for kalman filter to be optimal? (const accel?)
 # TODO combine w/ fns i had to generate test images in that one test
@@ -165,46 +309,34 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
 
 
 def main():
+    """
+    nt = 100
+    #test_movie = np.zeros((100, 256, 256))
+    np.random.seed(19)
+    test_movie = np.random.uniform(size=(100, 256, 256))
     '''
-    stimfiles = sorted(glob.glob(join(u.stimfile_root(), '*.p')))
-    stimfile_odorsets = [u.stimfile_odorset(sf, strict=False)
-        for sf in stimfiles
-    ]
-    # TODO maybe print grouped by day
-    pprint([(split(f)[1], s) for f, s in zip(stimfiles, stimfile_odorsets)
-        if s]
-    )
-    '''
-    
-    centers = make_test_centers(verbose=True)
-    import ipdb; ipdb.set_trace()
-    '''
-    test_movie = np.random.randn(300, 256, 256)
-    imw = pg.image(movie)
-    #imw.sigTimeChanged.connect(test)
+    imw = pg.image(test_movie)
     pg.QtGui.QApplication.exec_()
     '''
+    centers = make_test_centers(initial_n=5, nt=nt, p=None, verbose=True)
+    show_movie(test_movie, centers)
+    import sys; sys.exit()
+    """
+    #import ipdb; ipdb.set_trace()
 
     tif = join(
         u.analysis_output_root(),
         #'2019-08-27/9/tif_stacks/fn_0001_nr.tif'
         '2019-11-18/3/tif_stacks/fn_0000_nr.tif'
     )
+    tiff_title = u.tiff_title(tif)
     keys = u.tiff_filename2keys(tif)
     fps = u.get_thorimage_fps(u.thorimage_dir(*keys))
     movie = tifffile.imread(tif)
     shape_before = movie.shape
 
-    #blocks = u.movie_blocks(tif, movie=movie)
-    # TODO go back to using mb_team gsheet (not passing stimfile) for more than
-    # just testing. not sure this stimfile is the right one for this
-    # experiment...
-    blocks = u.movie_blocks(tif, movie=movie,
-        stimfile='20191118_202023_stimuli.p'
-    )
+    blocks = u.movie_blocks(tif, movie=movie)
     assert movie.shape == shape_before
-
-    tiff_title = u.tiff_title(tif)
 
 
     block = blocks[0]
@@ -216,6 +348,11 @@ def main():
     downsampled = downsampled[:10]
     #
 
+    #
+    show_movie(downsampled)
+    import sys; sys.exit()
+    #
+
     # This within block tracking may be less useful than across blocks (for me)
     n_ds_frames = len(downsampled)
     print(f'Fitting ROIs over {n_ds_frames} frames of downsampled movie:')
@@ -223,7 +360,12 @@ def main():
     withinblock_center_sequence = []
     for i in tqdm(range(n_ds_frames)):
         frame = downsampled[i]
-        centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame)
+        #centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame)
+        centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame, threshold=0.3,
+            multiscale=True, roi_diams_from_kmeans_k=2,
+            exclude_dark_regions=True,
+            debug=True, _packing_debug=True
+        )
         withinblock_center_sequence.append(centers)
 
     lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
@@ -231,12 +373,20 @@ def main():
         show=False, progress=True
     )
 
+    '''
     print('Finding ROIs stable across all timepoints...', end='', flush=True)
     withinblock_stable_cells, new_lost = u.stable_rois(lr_matches, verbose=True)
     print(' done')
+    '''
 
+    # TODO TODO TODO what is first returned value? do i need two return values?
     renumbered, new_centers = \
         u.renumber_rois(lr_matches, withinblock_center_sequence)
+
+    # TODO add diam
+    import ipdb; ipdb.set_trace()
+    show_movie(downsampled, rois_xyd)
+    import sys; sys.exit()
 
 
     # TODO TODO i think i want a pandas dataframe of
@@ -251,12 +401,6 @@ def main():
         stable = 
         np.setdiff1d(
         import ipdb; ipdb.set_trace()
-    '''
-
-    '''
-    pw = pg.image(downsampled)
-    #pw.sigTimeChanged.connect(test)
-    pg.QtGui.QApplication.exec_()
     '''
 
     import ipdb; ipdb.set_trace()
