@@ -13,118 +13,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import tifffile
 import pyqtgraph as pg
+from scipy.spatial.distance import pdist
 
 import hong2p.util as u
-
-
-# TODO add nonoverlap constraint? somehow make closer to real data?
-# TODO use this to test gui/fitting/tracking
-def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
-    exlusion_radius=None, p=0.05, max_n=None, round_=False, diam_px=20,
-    verbose=False):
-    # TODO maybe adapt p so it's the p over the course of the 
-    # nt steps, and derivce single timestep p from that?
-
-    if exlusion_radius is not None:
-        raise NotImplementedError
-
-    # So that we can pre-allocate the center coordinates over time
-    # (rather than having to figure out how many were added by the end,
-    # and then pad all the preceding arrays of centers w/ NaN)
-    if p:
-        max_n = 2 * initial_n
-    else:
-        # Don't need to allocate extra space if the number of ROIs is
-        # deterministic.
-        max_n = initial_n
-
-    assert len(frame_shape) == 2
-    assert frame_shape[0] == frame_shape[1]
-    d = frame_shape[0]
-    max_coord = d - 1
-
-    # Also using this for new centers gained while iterating.
-    initial_centers = np.random.randint(d, size=(max_n, 2))
-
-    # TODO more idiomatic numpy way to generate cumulative noise?
-    # (if so, just repeat initial_centers to generate centers, and add the 
-    # two) (maybe not, with my constraints...)
-    # TODO TODor generate inside the loop (only as many as non-NaN, and only
-    # apply to non NaN)
-    xy_steps = np.random.randn(nt - 1, max_n, 2) * sigma
-
-    next_trajectory_idx = initial_n
-    centers = np.empty((nt, max_n, 2)) * np.nan
-    centers[0, :initial_n] = initial_centers[:initial_n]
-    # TODO should i be generating the noise differently, so that the x and y
-    # components are not independent (so that if deviation is high in one,
-    # it's more likely to be lower in other coordinate, to more directly
-    # constrain the distance? maybe it's just a scaling thing though...)
-    for t in range(1, nt):
-        # TODO maybe handle this differently...
-        if p and next_trajectory_idx == max_n:
-            raise RuntimeError(f'reached max_n ({max_n}) on step {t} '
-                f'(before {nt} requested steps'
-            )
-            #break
-
-        centers[t] = centers[t - 1] + xy_steps[t - 1]
-
-        # TODO make sure NaN stuff handled correctly here
-        # The centers should stay within the imaginary frame bounds.
-        centers[t][centers[t] > max_coord] = max_coord
-        centers[t][centers[t] < 0] = 0
-
-        if not p:
-            continue
-
-        lose = np.random.binomial(1, p, size=max_n).astype(np.bool)
-        if verbose:
-            nonnan = ~ np.isnan(centers[t,:,0])
-            print('# non-nan:', nonnan.sum())
-            n_lost = (nonnan & lose).sum()
-            if n_lost > 0:
-                print(f't={t}, losing {n_lost}')
-        centers[t][lose] = np.nan
-
-        # TODO TODO note: if not allowed to fill NaN that come from losing
-        # stuff, then max_n might more often limit # unique rather than #
-        # concurrent tracks... (and that would prob make a format more close to
-        # what i was already implementing in association code...)
-        # maybe this all means i could benefit from a different
-        # representation...
-        # one more like id -> (start frame, end frame, coordinates)
-
-        # Currently, giving any new trajectories different indices (IDs)
-        # from any previous trajectories, by putting them in ranges that
-        # had so far only had NaN. As association code may be, this also
-        # groups new ones in the next-unused-integer-indices, rather
-        # than giving each remaining index a chance.
-        # To justify first arg (n), imagine case where initial_n=0 and
-        # max_n=1.
-        n_to_gain = np.random.binomial(max_n - initial_n, p)
-        if n_to_gain > 0:
-            if verbose:
-                print(f't={t}, gaining {n_to_gain}')
-
-            first_ic_idx = next_trajectory_idx - initial_n
-            #import ipdb; ipdb.set_trace()
-            centers[t][next_trajectory_idx:next_trajectory_idx + n_to_gain] = \
-                initial_centers[first_ic_idx:first_ic_idx + n_to_gain]
-            next_trajectory_idx += n_to_gain
-
-    assert len(centers) == nt
-
-    # This seems to convert NaN to zero...
-    if round_:
-        centers = np.round(centers).astype(np.uint16)
-
-    roi_diams = np.expand_dims(np.ones(centers.shape[:2]) * diam_px, -1)
-    centers = np.concatenate((centers, roi_diams), axis=-1)
-    
-    # TODO check output is in same kind of format as output of my matching fns
-
-    return centers
 
 
 def split_to_xyd(roi_data_xyd):
@@ -134,7 +25,7 @@ def split_to_xyd(roi_data_xyd):
 
 
 def wrap_update_image(update_image_fn, roi_data_xyd, pen=None, brush=None,
-    pens_last=None, pens_next=None):
+    pens_last=None, pens_next=None, text_items=None, debug=False):
     def wrapped_update_image(*args, **kwargs):
         update_image_fn(*args, **kwargs)
         # Since <ImageView object>.updateImage is a "bound method".
@@ -147,6 +38,18 @@ def wrap_update_image(update_image_fn, roi_data_xyd, pen=None, brush=None,
         self.scatter_plot.setData(x=xs, y=ys, size=diams, pen=pen, brush=brush,
             pxMode=True
         )
+
+        if debug:
+            # Assuming it is an iterable of length >= # of ROIs
+            for text, x, y in zip(text_items, xs, ys):
+                if pd.isnull(x):
+                    # TODO set not visible
+                    text.setVisible(False)
+                    continue
+                text.setPos(x, y)
+                text.setVisible(True)
+
+            print('current frame:', self.currentIndex)
 
         if pens_last is not None:
             if self.currentIndex >= 1:
@@ -173,7 +76,8 @@ def wrap_update_image(update_image_fn, roi_data_xyd, pen=None, brush=None,
     return wrapped_update_image
 
 
-def monkey_patch_image_window(imw, roi_data_xyd):
+def monkey_patch_image_window(imw, roi_data_xyd, debug=False,
+        show_surrounding_frame_rois=True):
     """
     roi_data_xyd of shape (# timepoints, (max) # ROIs, 3 (x, y, diameter))
         2 [or 3 if specifying diameters])
@@ -191,37 +95,63 @@ def monkey_patch_image_window(imw, roi_data_xyd):
     colors = [pg.hsvColor(np.random.rand(), sat=1.0, val=1.0, alpha=1.0)
         for _ in range(roi_data_xyd.shape[1])
     ]
-    # TODO if this is the approach i go with, add some kind of legend to
-    # indicate what the different linestyles mean (which time direction)
-    # (otherwise mark some way that doesn't need explanation...)
-    pens_last = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DotLine)
-        for c in colors
-    ]
     pens = [pg.mkPen(color=c, width=1.5) for c in colors]
-    pens_next = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DashLine)
-        for c in colors
-    ]
     brushes = None
     xs, ys, diams = split_to_xyd(roi_data_xyd[0])
     imw.scatter_plot.setData(x=xs, y=ys, size=diams, pen=pens, brush=brushes,
-        pens_last=pens_last, pens_next=pens_next, pxMode=True
+        pxMode=True
     )
     imw.view.addItem(imw.scatter_plot)
 
-    imw.scatter_plot_last = pg.ScatterPlotItem()
-    imw.view.addItem(imw.scatter_plot_last)
+    if debug:
+        text_items = []
+        for i, (p, x, y) in enumerate(zip(pens, xs, ys)):
+            text = pg.TextItem(text=str(i), color=p.color(), anchor=(0.5, 0.5))
+            imw.view.addItem(text)
+            # TODO setTextWidth
+            if pd.isnull(x):
+                text.setVisible(False)
+            else:
+                text.setPos(x, y)
+            text_items.append(text)
+    else:
+        text_items = None
 
-    imw.scatter_plot_next = pg.ScatterPlotItem()
-    assert len(roi_data_xyd) > 1, 'expected more than one frame'
-    xs, ys, diams = split_to_xyd(roi_data_xyd[1])
-    imw.scatter_plot_next.setData(x=xs, y=ys, size=diams, pen=pens_next,
-        brush=brushes, pxMode=True
-    )
-    imw.view.addItem(imw.scatter_plot_next)
+    if show_surrounding_frame_rois:
+        # TODO if this is the approach i go with, add some kind of legend to
+        # indicate what the different linestyles mean (which time direction)
+        # (otherwise mark some way that doesn't need explanation...)
+        pens_last = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DotLine)
+            for c in colors
+        ]
+        pens_next = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DashLine)
+            for c in colors
+        ]
 
+        imw.scatter_plot_last = pg.ScatterPlotItem()
+        imw.view.addItem(imw.scatter_plot_last)
+
+        imw.scatter_plot_next = pg.ScatterPlotItem()
+        assert len(roi_data_xyd) > 1, 'expected more than one frame'
+        xs, ys, diams = split_to_xyd(roi_data_xyd[1])
+        imw.scatter_plot_next.setData(x=xs, y=ys, size=diams, pen=pens_next,
+            brush=brushes, pxMode=True
+        )
+        imw.view.addItem(imw.scatter_plot_next)
+    else:
+        pens_last = None
+        pens_next = None
+
+    # TODO try to just call this fn once (manually specifying currentIndex=0
+    # if necessary) (rather than duplicating some plotting stuff above)
     imw.updateImage = wrap_update_image(imw.updateImage, roi_data_xyd,
-        pen=pens, brush=brushes, pens_last=pens_last, pens_next=pens_next
+        pen=pens, brush=brushes, pens_last=pens_last, pens_next=pens_next,
+        text_items=text_items, debug=debug
     )
+    #
+    #locs = [imw.view.itemBoundingRect(i) for i in imw.view.allChildren()]
+    #import ipdb; ipdb.set_trace()
+    #
 
 
 # TODO take some features from floris' gui if i get time
@@ -231,7 +161,9 @@ def monkey_patch_image_window(imw, roi_data_xyd):
 # total, as to whether or not to show even the current frame versions of the
 # other ROIs)
 # TODO how best to illustrate time ordering of displayed ROIs?
-def show_movie(movie, rois=None):
+def show_movie(movie, rois=None, show_surrounding_frame_rois=True,
+        debug_rois=False):
+
     imw = pg.image(movie, title='Movie' if rois is None else 'ROIs over time')
 
     # With these at -1 and 1, you should be able to see a one pixel border
@@ -266,7 +198,8 @@ def show_movie(movie, rois=None):
     # if not, maybe setLevels from a given movies percentiles or something?
 
     # TODO delete. just so ROIs are visible while debugging
-    #imw.setLevels(min=1.1, max=1.2)
+    if debug_rois:
+        imw.setLevels(min=1.1, max=1.2)
     #
 
     # TODO opt to figure out max from dtype?
@@ -294,7 +227,9 @@ def show_movie(movie, rois=None):
     # control which trajectories are visible about the current movie index
 
     if rois is not None:
-        monkey_patch_image_window(imw, rois)
+        monkey_patch_image_window(imw, rois, debug=debug_rois,
+            show_surrounding_frame_rois=show_surrounding_frame_rois
+        )
 
     # TODO autoLevels() default on start (seems so)? at end timestep?
     # add it? (imageview[/item? or is it viewbox?])
@@ -309,19 +244,21 @@ def show_movie(movie, rois=None):
 
 
 def main():
-    """
-    nt = 100
-    #test_movie = np.zeros((100, 256, 256))
-    np.random.seed(19)
-    test_movie = np.random.uniform(size=(100, 256, 256))
-    '''
-    imw = pg.image(test_movie)
-    pg.QtGui.QApplication.exec_()
-    '''
-    centers = make_test_centers(initial_n=5, nt=nt, p=None, verbose=True)
-    show_movie(test_movie, centers)
+    np.random.seed(7)
+
+    #"""
+    nt = 4
+    #nt = 2
+    #test_movie = np.zeros((nt, 256, 256))
+    test_movie = np.random.uniform(size=(nt, 256, 256))
+    centers = u.make_test_centers(initial_n=3, nt=nt, p=None, verbose=True)
+    #'''
+    show_movie(test_movie, centers, show_surrounding_frame_rois=False,
+        debug_rois=True
+    )
     import sys; sys.exit()
-    """
+    #'''
+    #"""
     #import ipdb; ipdb.set_trace()
 
     tif = join(
@@ -345,12 +282,13 @@ def main():
     print(f'new_fps: {new_fps:.2f}')
 
     # TODO delete. just to speed up testing.
-    downsampled = downsampled[:10]
+    downsampled = downsampled[:4]
+    #downsampled = downsampled[:10]
     #
 
     #
-    show_movie(downsampled)
-    import sys; sys.exit()
+    #show_movie(downsampled)
+    #import sys; sys.exit()
     #
 
     # This within block tracking may be less useful than across blocks (for me)
@@ -361,29 +299,21 @@ def main():
     for i in tqdm(range(n_ds_frames)):
         frame = downsampled[i]
         #centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame)
+        # TODO fix how location where script is run from influences where
+        # auto_rois is?
         centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame, threshold=0.3,
             multiscale=True, roi_diams_from_kmeans_k=2,
             exclude_dark_regions=True,
-            debug=True, _packing_debug=True
+            debug=True, _packing_debug=True, show_fit=False
         )
         withinblock_center_sequence.append(centers)
+    del n_ds_frames
 
-    lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
-        u.correspond_rois(withinblock_center_sequence, max_cost=radius,
-        show=False, progress=True
+    renumbered, new_centers = u.correspond_and_renumber_rois(
+        withinblock_center_sequence, max_cost=max_cost, progress=False
     )
 
-    '''
-    print('Finding ROIs stable across all timepoints...', end='', flush=True)
-    withinblock_stable_cells, new_lost = u.stable_rois(lr_matches, verbose=True)
-    print(' done')
-    '''
-
-    # TODO TODO TODO what is first returned value? do i need two return values?
-    renumbered, new_centers = \
-        u.renumber_rois(lr_matches, withinblock_center_sequence)
-
-    # TODO add diam
+    # TODO add diam (or just preserve throughout last two fns?)
     import ipdb; ipdb.set_trace()
     show_movie(downsampled, rois_xyd)
     import sys; sys.exit()
@@ -446,7 +376,7 @@ def main():
     lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
         u.correspond_rois(center_sequence, max_cost=radius + 1,
         draw_on=avg, title=tiff_title,
-        pairwise_plots=True, roi_numbers=roi_numbers
+        pairwise_plots=True, roi_numbers=roi_numbers, show=True
     )
     stable_cells, new_lost = u.stable_rois(lr_matches)
 

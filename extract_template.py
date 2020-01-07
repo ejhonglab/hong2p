@@ -645,7 +645,7 @@ def main():
             lr_matches, unmatched_left, unmatched_right, total_cost, _ = \
                 u.correspond_rois(centers, true_centers, max_cost=max_cost,
                 left_name='Automatic', right_name='Manual', draw_on=draw_on,
-                title=title
+                title=title, show=True
             )
 
             print('center matching cost: {:.2f}'.format(total_cost))

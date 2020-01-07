@@ -15,3 +15,6 @@ old_test_scripts/
 *.svg
 *.png
 *.pdf
+*.roi
+*.tif
+

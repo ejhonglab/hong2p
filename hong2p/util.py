@@ -5732,7 +5732,7 @@ def plot_circles(draw_on, centers, radii):
 def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
     method_str='cv2.TM_CCOEFF_NORMED', thresholds=None, threshold=None,
     exclusion_radius_frac=0.8, min_neighbors=None, debug=False,
-    _packing_debug=False, show_fit=False, write_ijrois=False,
+    _packing_debug=False, show_fit=None, write_ijrois=False,
     _force_write_to=None, overwrite=False, exclude_dark_regions=None,
     max_n_rois=650, min_n_rois=150, per_scale_max_n_rois=None,
     per_scale_min_n_rois=None, threshold_update_factor=0.7,
@@ -5756,7 +5756,7 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
     import ijroi
     from scipy.cluster.vq import vq
 
-    if debug:
+    if debug and show_fit is None:
         show_fit = True
 
     method_str2default_thresh = {
@@ -6607,10 +6607,10 @@ def to_filename(title):
 
 
 def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
-    max_cost=9, show=True, left_name='Left', right_name='Right', name_prefix='',
-    draw_on=None, title='', colors=None, connect_centers=True,
-    pairwise_plots=True, pairwise_same_style=False, roi_numbers=False,
-    jitter=True, progress=False):
+    max_cost=9, show=False, write_plots=True, left_name='Left',
+    right_name='Right', name_prefix='', draw_on=None, title='', colors=None,
+    connect_centers=True, pairwise_plots=True, pairwise_same_style=False,
+    roi_numbers=False, jitter=True, progress=False, squeeze=True):
     """
     Args:
     left_centers_or_seq (list): (length n_timepoints) list of (n_rois x 2)
@@ -6667,15 +6667,20 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
         if colors is None:
             colors = sns.color_palette('hls', len(sequence_of_centers))
 
+    # TODO don't copy after removing need for flip
+    # Copying so that flip doesn't screw with input data.
+    new_sequence_of_centers = []
     for i, centers in enumerate(sequence_of_centers):
         # Otherwise it should be an ndarray representing centers
         # TODO assertion on dims in ndarray case
         if type(centers) is list:
-            sequence_of_centers[i] = roi_centers(centers)
+            centers = roi_centers(centers)
 
         # This is just to make them display right (not transposed).
         # Should not change any of the matching.
-        sequence_of_centers[i] = np.flip(sequence_of_centers[i], axis=1)
+        # TODO remove need for this flip
+        new_sequence_of_centers.append(np.flip(centers, axis=1))
+    sequence_of_centers = new_sequence_of_centers
 
     fig = None
     if show:
@@ -6839,7 +6844,7 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
                 # better dir
                 # TODO separate dir for these figs? or at least place where some
                 # of other figs currently go?
-                if pairwise_plots:
+                if pairwise_plots and write_plots:
                     fname = to_filename(ptitle) + plot_format
                     print(f'writing to {fname}')
                     pfig.savefig(fname)
@@ -6877,18 +6882,20 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
         ax.legend()
         ax.set_title(title)
 
-        # TODO and delete this extra hack
-        if len(sequence_of_centers) > 2:
-            extra = '_acrossblocks'
-        else:
-            extra = ''
-        fname = to_filename(title + extra) + plot_format
-        #
-        print(f'writing to {fname}')
-        fig.savefig(fname)
-        #
+        if write_plots:
+            # TODO and delete this extra hack
+            if len(sequence_of_centers) > 2:
+                extra = '_acrossblocks'
+            else:
+                extra = ''
+            fname = to_filename(title + extra) + plot_format
+            #
+            print(f'writing to {fname}')
+            fig.savefig(fname)
+            #
 
-    if len(sequence_of_centers) == 2:
+    # TODO TODO change all parts that require squeeze=True to squeeze=False?
+    if squeeze and len(sequence_of_centers) == 2:
         lr_matches = lr_matches[0]
         unmatched_left = unmatched_left[0]
         unmatched_right = unmatched_right[0]
@@ -6998,19 +7005,11 @@ def renumber_rois(matches_list, centers_list):
     Returns lists of IDs in each element of input list and centers,
     re-indexed with new IDs.
     """
-    # TODO TODO pad w/ NaN / UNLABELLED so that each element in 
-    # output list can be made of equal length (# of unique IDs across all)
-    # and then fit it all into an array
-    # TODO TODO do the same with centers
-
     # TODO use this function inside stable_rois / delete that function
     # altogether (?)
 
     if type(matches_list) is not list or type(centers_list) is not list:
         raise ValueError('both input arguments must be lists')
-
-    if len(matches_list) == 1:
-        raise NotImplementedError
 
     assert len(centers_list) == len(matches_list) + 1
 
@@ -7019,143 +7018,230 @@ def renumber_rois(matches_list, centers_list):
     centers_list = [c.copy() for c in centers_list]
 
     ids_list = []
-    first_ids = matches_list[0][:, 0]
-    next_new_id = first_ids.max() + 1
-    # This also checks it's sorted, b/c unique sorts.
-    # Because these are sorted, don't need to re-order centers_list[0].
-    assert np.array_equal(np.unique(first_ids), first_ids)
+    first_ids = np.arange(len(centers_list[0]))
+    assert len(np.setdiff1d(matches_list[0][:,0], first_ids)) == 0
     ids_list.append(first_ids)
+    next_new_id = first_ids.max() + 1
 
-    # TODO correct?
-    '''
-    # don't think so... it should be something usable to index centers
-    # (though prob also indep need something to fill in ids... ?)
-    '''
-
-    # To handle case where loop isn't entered
-    # (len(matches_list) == 1)
-    last_column_idx = np.arange(len(matches_list[0]))
-
-    for i in range(len(matches_list) - 1):
-        matches1 = matches_list[i]
-        matches2 = matches_list[i + 1]
-
-        # TODO TODO maybe assert that first column of matches1 is always sorted?
-        # (should it be? i mean we have re-ordered centers, and wasn't that kind
-        # of the point? or should propagated ids not have that value for some
-        # reason...?)
-
-        # These two columns should have the ROI / center numbers
-        # represent the same real ROI / point coordinates.
-        shared_center_ids, shared_m1_idx, shared_m2_idx = np.intersect1d(
-            matches1[:,1], matches2[:,0], return_indices=True)
-
-        assert np.array_equal(
-            matches1[shared_m1_idx, 1],
-            matches2[shared_m2_idx, 0]
-        )
-
+    for i in range(len(matches_list)):
         # These centers are referred to by the IDs in matches_list[i + 1][:, 1],
         # and (if it exists) matches_list[i + 2][:, 1]
         centers = centers_list[i + 1]
-        assert len(matches2) <= len(centers)
+        matches1 = matches_list[i]
+
+        # This includes stuff shared and stuff lost by m2.
+        # The only thing this should not include is stuff that should get
+        # a new ID in m2.
+        centers_in_m1 = matches1[:,1]
 
         # These include both things in matches2 (those not shared with matches1)
         # and things we need to generate new IDs for.
-        #other_m2_center_ids = np.setdiff1d(np.arange(len(centers)),
-        #    shared_m2_idx)
-        other_m2_center_ids = np.setdiff1d(np.arange(len(centers)),
-            shared_center_ids)
-
+        only_new_centers_idx = np.setdiff1d(
+            np.arange(len(centers)),
+            centers_in_m1
+        )
         # This should be of the same length as centers and should index each
         # value, just in a different order.
-        #new_center_idx = np.concatenate((shared_m2_idx, other_m2_center_ids))
-        new_center_idx = np.concatenate((shared_center_ids,
-            other_m2_center_ids))
-        assert np.array_equal(np.arange(len(centers)),
-            np.unique(new_center_idx))
+        new_center_idx = np.concatenate((
+            centers_in_m1,
+            only_new_centers_idx
+        ))
+        assert np.array_equal(
+            np.arange(len(centers)),
+            np.unique(new_center_idx)
+        )
 
         # We are re-ordering the centers, so that they are in the same order
         # as the IDs (both propagated and new) at this timestep (curr_ids).
-        reordered_centers = centers[new_center_idx]
-        # (loop starts at i=0 and we do not need to re-order first array of
-        # centers. centers_list is also 1 longer than matches_list, so (i + 1)
-        # will never index the last element of centers_list.)
-        centers_list[i + 1] = reordered_centers
+        centers_list[i + 1] = centers[new_center_idx]
 
-        n_new_ids = len(other_m2_center_ids)
+        n_new_ids = len(only_new_centers_idx)
         # Not + 1 because arange does not include the endpoint.
         stop = next_new_id + n_new_ids
         new_ids = np.arange(next_new_id, stop)
         next_new_id = stop
 
-        prior_ids_of_shared = matches1[shared_m1_idx, 0]
-        matches2[shared_m2_idx, 0] = prior_ids_of_shared
-
-        # TODO TODO may need to fix
-        '''
-        nonshared_m2_idx = other_m2_center_ids[
-            other_m2_center_ids < len(matches2)]
-        # ROIs unmatched in matches2 get any remaining higher IDs in new_ids
-        matches2[nonshared_m2_idx, 0] = new_ids[:len(nonshared_m2_idx)]
-        '''
-
-        assert len(np.intersect1d(shared_m2_idx, nonshared_m2_idx)) == 0
-
-        curr_ids = np.concatenate((prior_ids_of_shared, new_ids))
-        assert len(curr_ids) == len(centers_list[i + 1])
+        curr_ids = np.concatenate((matches1[:, 0], new_ids))
+        assert len(curr_ids) == len(centers)
         assert len(curr_ids) == len(np.unique(curr_ids))
-
         ids_list.append(curr_ids)
 
-        last_column_idx = np.concatenate(shared_m2_idx, nonshared_m2_idx)
-        # TODO some assert on what last col indexed by last_column_idx is?
+        if i + 1 < len(matches_list):
+            matches2 = matches_list[i + 1]
+            assert len(matches2) <= len(centers)
 
-    last_matches = matches_list[-1]
-    last_centers = centers_list[-1]
-    assert len(last_matches) <= len(last_centers)
-    n_new_ids = len(last_centers) - len(last_matches)
+            # These two columns should have the ROI / center numbers
+            # represent the same real ROI / point coordinates.
+            _, shared_m1_idx, shared_m2_idx = np.intersect1d(
+                matches1[:,1], matches2[:,0], return_indices=True
+            )
+            assert np.array_equal(
+                matches1[shared_m1_idx, 1],
+                matches2[shared_m2_idx, 0]
+            )
+            prior_ids_of_shared = matches1[shared_m1_idx, 0]
+            matches2[shared_m2_idx, 0] = prior_ids_of_shared
 
-    stop = next_new_id + n_new_ids
-    new_ids = np.arange(next_new_id, stop)
-    # Not + 1 because arange does not include the endpoint.
-    next_new_id = stop
+            nonshared_m2_idx = np.setdiff1d(np.arange(len(matches2)),
+                shared_m2_idx
+            )
+            # ROIs unmatched in matches2 get any remaining higher IDs in new_ids
+            # It is possible for there to be new_ids without any
+            # nonshared_m2_idx.
+            matches2[nonshared_m2_idx, 0] = new_ids[:len(nonshared_m2_idx)]
 
-    '''
-    other_m2_center_ids = np.setdiff1d(np.arange(len(last_centers)),
-        )
-    '''
+    for i, (ids, cs) in enumerate(zip(ids_list, centers_list)):
+        assert len(ids) == len(cs), f'(i={i}) {len(ids)} != {len(cs)}'
 
-    # TODO uncomment
-    '''
-    # TODO TODO reorder last centers
-    last_center_idx = 
-    centers_list[-1] = last_centers[last_center_idx]
-
-    # TODO TODO 
-    ids_list.append(
-    '''
-
-    # TODO TODO need to special case end? (yes, just a matter of how)
-    # TODO how to reorder centers there?
-
-    # TODO TODO some more reasonable representation besides mask?
-    # (id, start, stop) tuples (if no re-assignment to ID after losing it...)?
-    # TODO should this be boolean (true for presence?)
-    #ids_array = np.empty((next_new_id, len(centers_list))) * np.nan
-    ids_array = np.zeros((next_new_id, len(centers_list)), dtype=bool)
-
-    centers_array = np.empty((next_new_id, len(centers_list), 2)) * np.nan
-
+    # TODO last part of shape should be 3 if input had it (diam info)
+    centers_array = np.empty((len(centers_list), next_new_id, 2)) * np.nan
     for i, (ids, centers) in enumerate(zip(ids_list, centers_list)):
-        ids_array[ids, i] = True
-        centers_array[ids, i, :] = centers
+        centers_array[i, ids, :] = centers
 
-    # TODO pad stuff / fill the above in
+    return centers_array
 
-    import ipdb; ipdb.set_trace()
 
-    return ids_array, centers_array
+def correspond_and_renumber_rois(center_sequence, debug=False,
+    **kwargs):
+
+    lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
+        correspond_rois(center_sequence, squeeze=False, 
+            show=False, write_plots=False, **kwargs)
+    '''
+            show=True, write_plots=False, **kwargs)
+    plt.show()
+    '''
+    #
+    if debug:
+        print('Indexes into centers[t] and corresponding indexes in '
+            'centers[t+1]:'
+        )
+        for m in lr_matches:
+            print(m)
+
+        #print('center_sequence:')
+        #for c in center_sequence:
+        #    print(c)
+        #
+
+    '''
+    print('Finding ROIs stable across all timepoints...', end='', flush=True)
+    withinblock_stable_cells, new_lost = stable_rois(lr_matches, verbose=True)
+    print(' done')
+    '''
+    new_centers = renumber_rois(lr_matches, center_sequence)
+    return new_centers
+
+
+# TODO add nonoverlap constraint? somehow make closer to real data?
+# TODO use this to test gui/fitting/tracking
+def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
+    exlusion_radius=None, p=0.05, max_n=None, round_=False, diam_px=20,
+    add_diameters=True, verbose=False):
+    # TODO maybe adapt p so it's the p over the course of the 
+    # nt steps, and derivce single timestep p from that?
+
+    if exlusion_radius is not None:
+        raise NotImplementedError
+
+    # So that we can pre-allocate the center coordinates over time
+    # (rather than having to figure out how many were added by the end,
+    # and then pad all the preceding arrays of centers w/ NaN)
+    if p:
+        max_n = 2 * initial_n
+    else:
+        # Don't need to allocate extra space if the number of ROIs is
+        # deterministic.
+        max_n = initial_n
+
+    assert len(frame_shape) == 2
+    assert frame_shape[0] == frame_shape[1]
+    d = frame_shape[0]
+    max_coord = d - 1
+
+    # Also using this for new centers gained while iterating.
+    initial_centers = np.random.randint(d, size=(max_n, 2))
+
+    # TODO more idiomatic numpy way to generate cumulative noise?
+    # (if so, just repeat initial_centers to generate centers, and add the 
+    # two) (maybe not, with my constraints...)
+    # TODO TODor generate inside the loop (only as many as non-NaN, and only
+    # apply to non NaN)
+    xy_steps = np.random.randn(nt - 1, max_n, 2) * sigma
+
+    next_trajectory_idx = initial_n
+    centers = np.empty((nt, max_n, 2)) * np.nan
+    centers[0, :initial_n] = initial_centers[:initial_n]
+    # TODO should i be generating the noise differently, so that the x and y
+    # components are not independent (so that if deviation is high in one,
+    # it's more likely to be lower in other coordinate, to more directly
+    # constrain the distance? maybe it's just a scaling thing though...)
+    for t in range(1, nt):
+        # TODO maybe handle this differently...
+        if p and next_trajectory_idx == max_n:
+            raise RuntimeError(f'reached max_n ({max_n}) on step {t} '
+                f'(before {nt} requested steps'
+            )
+            #break
+
+        centers[t] = centers[t - 1] + xy_steps[t - 1]
+
+        # TODO make sure NaN stuff handled correctly here
+        # The centers should stay within the imaginary frame bounds.
+        centers[t][centers[t] > max_coord] = max_coord
+        centers[t][centers[t] < 0] = 0
+
+        if not p:
+            continue
+
+        lose = np.random.binomial(1, p, size=max_n).astype(np.bool)
+        if verbose:
+            nonnan = ~ np.isnan(centers[t,:,0])
+            print('# non-nan:', nonnan.sum())
+            n_lost = (nonnan & lose).sum()
+            if n_lost > 0:
+                print(f't={t}, losing {n_lost}')
+        centers[t][lose] = np.nan
+
+        # TODO TODO note: if not allowed to fill NaN that come from losing
+        # stuff, then max_n might more often limit # unique rather than #
+        # concurrent tracks... (and that would prob make a format more close to
+        # what i was already implementing in association code...)
+        # maybe this all means i could benefit from a different
+        # representation...
+        # one more like id -> (start frame, end frame, coordinates)
+
+        # Currently, giving any new trajectories different indices (IDs)
+        # from any previous trajectories, by putting them in ranges that
+        # had so far only had NaN. As association code may be, this also
+        # groups new ones in the next-unused-integer-indices, rather
+        # than giving each remaining index a chance.
+        # To justify first arg (n), imagine case where initial_n=0 and
+        # max_n=1.
+        n_to_gain = np.random.binomial(max_n - initial_n, p)
+        if n_to_gain > 0:
+            if verbose:
+                print(f't={t}, gaining {n_to_gain}')
+
+            first_ic_idx = next_trajectory_idx - initial_n
+            #import ipdb; ipdb.set_trace()
+            centers[t][next_trajectory_idx:next_trajectory_idx + n_to_gain] = \
+                initial_centers[first_ic_idx:first_ic_idx + n_to_gain]
+            next_trajectory_idx += n_to_gain
+
+    assert len(centers) == nt
+
+    # This seems to convert NaN to zero...
+    if round_:
+        centers = np.round(centers).astype(np.uint16)
+
+    if add_diameters:
+        roi_diams = np.expand_dims(np.ones(centers.shape[:2]) * diam_px, -1)
+        centers = np.concatenate((centers, roi_diams), axis=-1)
+    
+    # TODO check output is in same kind of format as output of my matching fns
+
+    return centers
 
 
 # Adapted from Vishal's answer at https://stackoverflow.com/questions/287871
