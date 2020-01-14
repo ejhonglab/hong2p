@@ -2631,6 +2631,9 @@ class Segmentation(QWidget):
             print('writing dataframe to {}...'.format(df_filename), end='',
                 flush=True
             )
+            # TODO TODO write a dict pointing to this, to also include PID
+            # information in another variable?? or at least stuff to index
+            # the PID information?
             comparison_df.to_pickle(df_filename)
             print(' done', flush=True)
 

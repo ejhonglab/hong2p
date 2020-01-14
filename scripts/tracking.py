@@ -6,6 +6,7 @@
 from os.path import join, split, exists
 import glob
 from pprint import pprint
+import time
 
 import numpy as np
 import pandas as pd
@@ -14,61 +15,66 @@ from tqdm import tqdm
 import tifffile
 import pyqtgraph as pg
 from scipy.spatial.distance import pdist
+import multiprocessing as mp
 
 import hong2p.util as u
 
 
-def split_to_xyd(roi_data_xyd):
+def split_to_xydm(roi_data_xyd, unmasked=False):
     assert len(roi_data_xyd.shape) == 2
     assert roi_data_xyd.shape[-1] == 3
-    return roi_data_xyd.T
+    xs, ys, ds = roi_data_xyd.T
+    mask = ~ np.isnan(xs)
+    if unmasked:
+        return xs, ys, ds, mask
+    else:
+        return xs[mask], ys[mask], ds[mask], mask
 
 
-def wrap_update_image(update_image_fn, roi_data_xyd, pen=None, brush=None,
-    pens_last=None, pens_next=None, text_items=None, debug=False):
+pxMode = False
+def wrap_update_image(update_image_fn, roi_data_xyd, pens=None,
+    pens_last=None, pens_next=None, text_items=None):
+
     def wrapped_update_image(*args, **kwargs):
         update_image_fn(*args, **kwargs)
         # Since <ImageView object>.updateImage is a "bound method".
         self = update_image_fn.__self__
-        # TODO TODO some way to not have to set brush and pens at each 
-        # call? maybe i should just plot all at beginning and then
-        # make stuff visible or not based on frame range (rather
-        # than calling setData here)?
-        xs, ys, diams = split_to_xyd(roi_data_xyd[self.currentIndex])
-        self.scatter_plot.setData(x=xs, y=ys, size=diams, pen=pen, brush=brush,
-            pxMode=True
+        xs, ys, diams, mask = split_to_xydm(roi_data_xyd[self.currentIndex],
+            unmasked=True
+        )
+        mpens = pens[mask]
+        self.scatter_plot.setData(x=xs[mask], y=ys[mask], size=diams[mask],
+            pen=mpens, brush=None, pxMode=pxMode
         )
 
-        if debug:
+        if text_items is not None:
             # Assuming it is an iterable of length >= # of ROIs
-            for text, x, y in zip(text_items, xs, ys):
-                if pd.isnull(x):
+            for i, (text, x, y) in enumerate(zip(text_items, xs, ys)):
+                if not mask[i]:
                     # TODO set not visible
                     text.setVisible(False)
                     continue
                 text.setPos(x, y)
                 text.setVisible(True)
 
-            print('current frame:', self.currentIndex)
-
         if pens_last is not None:
             if self.currentIndex >= 1:
-                xs, ys, diams = \
-                    split_to_xyd(roi_data_xyd[self.currentIndex - 1])
-
+                xs, ys, diams, mask = \
+                    split_to_xydm(roi_data_xyd[self.currentIndex - 1])
+                mpens_last = pens_last[mask]
                 self.scatter_plot_last.setData(x=xs, y=ys, size=diams,
-                    pen=pens_last, brush=None, pxMode=True
+                    pen=mpens_last, brush=None, pxMode=pxMode
                 )
             else:
                 self.scatter_plot_last.clear()
 
         if pens_next is not None:
             try:
-                xs, ys, diams = \
-                    split_to_xyd(roi_data_xyd[self.currentIndex + 1])
-
+                xs, ys, diams, mask = \
+                    split_to_xydm(roi_data_xyd[self.currentIndex + 1])
+                mpens_next = pens_next[mask]
                 self.scatter_plot_next.setData(x=xs, y=ys, size=diams,
-                    pen=pens_next, brush=None, pxMode=True
+                    pen=mpens_next, pxMode=pxMode
                 )
             except IndexError:
                 self.scatter_plot_next.clear()
@@ -76,8 +82,8 @@ def wrap_update_image(update_image_fn, roi_data_xyd, pen=None, brush=None,
     return wrapped_update_image
 
 
-def monkey_patch_image_window(imw, roi_data_xyd, debug=False,
-        show_surrounding_frame_rois=True):
+def monkey_patch_image_window(imw, roi_data_xyd,
+    show_surrounding_frame_rois=True):
     """
     roi_data_xyd of shape (# timepoints, (max) # ROIs, 3 (x, y, diameter))
         2 [or 3 if specifying diameters])
@@ -88,6 +94,9 @@ def monkey_patch_image_window(imw, roi_data_xyd, debug=False,
     # to some positive # (like 10) to be "above image"?
 
     imw.scatter_plot = pg.ScatterPlotItem()
+
+    # So colors are always the same.
+    np.random.seed(7)
     # TODO maybe pick colors by middle / initial positions of ROIs,
     # so neighboring things dont share colors?
     # (+ button to recolor from current frame [only matters if ROIs really
@@ -95,47 +104,47 @@ def monkey_patch_image_window(imw, roi_data_xyd, debug=False,
     colors = [pg.hsvColor(np.random.rand(), sat=1.0, val=1.0, alpha=1.0)
         for _ in range(roi_data_xyd.shape[1])
     ]
-    pens = [pg.mkPen(color=c, width=1.5) for c in colors]
-    brushes = None
-    xs, ys, diams = split_to_xyd(roi_data_xyd[0])
-    imw.scatter_plot.setData(x=xs, y=ys, size=diams, pen=pens, brush=brushes,
-        pxMode=True
+    pens = np.array([pg.mkPen(color=c, width=1.5) for c in colors])
+    xs, ys, diams, mask = split_to_xydm(roi_data_xyd[0], unmasked=True)
+    imw.scatter_plot.setData(x=xs[mask], y=ys[mask], size=diams[mask],
+        pen=pens[mask], brush=None, pxMode=pxMode
     )
     imw.view.addItem(imw.scatter_plot)
 
-    if debug:
-        text_items = []
-        for i, (p, x, y) in enumerate(zip(pens, xs, ys)):
-            text = pg.TextItem(text=str(i), color=p.color(), anchor=(0.5, 0.5))
-            imw.view.addItem(text)
-            # TODO setTextWidth
-            if pd.isnull(x):
-                text.setVisible(False)
-            else:
-                text.setPos(x, y)
-            text_items.append(text)
-    else:
-        text_items = None
+    text_items = []
+    for i, (p, x, y) in enumerate(zip(pens, xs, ys)):
+        text = pg.TextItem(text=str(i), color=p.color(), anchor=(0.5, 0.5))
+        imw.view.addItem(text)
+        # TODO setTextWidth
+        if not mask[i]:
+            text.setVisible(False)
+        else:
+            text.setPos(x, y)
+        text_items.append(text)
+    text_items = np.array(text_items)
 
     if show_surrounding_frame_rois:
         # TODO if this is the approach i go with, add some kind of legend to
         # indicate what the different linestyles mean (which time direction)
         # (otherwise mark some way that doesn't need explanation...)
-        pens_last = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DotLine)
+        pens_last = np.array([
+            pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DotLine)
             for c in colors
-        ]
-        pens_next = [pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DashLine)
+        ])
+        pens_next = np.array([
+            pg.mkPen(color=c, width=1.0, style=pg.QtCore.Qt.DashLine)
             for c in colors
-        ]
+        ])
 
         imw.scatter_plot_last = pg.ScatterPlotItem()
         imw.view.addItem(imw.scatter_plot_last)
 
         imw.scatter_plot_next = pg.ScatterPlotItem()
         assert len(roi_data_xyd) > 1, 'expected more than one frame'
-        xs, ys, diams = split_to_xyd(roi_data_xyd[1])
-        imw.scatter_plot_next.setData(x=xs, y=ys, size=diams, pen=pens_next,
-            brush=brushes, pxMode=True
+        xs, ys, diams, mask = split_to_xydm(roi_data_xyd[1])
+        mpens_next = pens_next[mask]
+        imw.scatter_plot_next.setData(x=xs, y=ys, size=diams, pen=mpens_next,
+            brush=None, pxMode=pxMode
         )
         imw.view.addItem(imw.scatter_plot_next)
     else:
@@ -145,13 +154,9 @@ def monkey_patch_image_window(imw, roi_data_xyd, debug=False,
     # TODO try to just call this fn once (manually specifying currentIndex=0
     # if necessary) (rather than duplicating some plotting stuff above)
     imw.updateImage = wrap_update_image(imw.updateImage, roi_data_xyd,
-        pen=pens, brush=brushes, pens_last=pens_last, pens_next=pens_next,
-        text_items=text_items, debug=debug
+        pens=pens, pens_last=pens_last, pens_next=pens_next,
+        text_items=text_items
     )
-    #
-    #locs = [imw.view.itemBoundingRect(i) for i in imw.view.allChildren()]
-    #import ipdb; ipdb.set_trace()
-    #
 
 
 # TODO take some features from floris' gui if i get time
@@ -226,14 +231,22 @@ def show_movie(movie, rois=None, show_surrounding_frame_rois=True,
     # TODO TODO params (frames before, frames after) [+ / OR] region sliders to
     # control which trajectories are visible about the current movie index
 
+    def mouse_click_fn(event):
+        view_point = imw.view.mapSceneToView(event.scenePos())
+        print('clicked:', (int(round(view_point.x())),
+            int(round(view_point.y())))
+        )
+    imw.view.scene().sigMouseClicked.connect(mouse_click_fn)
+
     if rois is not None:
-        monkey_patch_image_window(imw, rois, debug=debug_rois,
+        monkey_patch_image_window(imw, rois,
             show_surrounding_frame_rois=show_surrounding_frame_rois
         )
 
     # TODO autoLevels() default on start (seems so)? at end timestep?
     # add it? (imageview[/item? or is it viewbox?])
     pg.QtGui.QApplication.exec_()
+
 
 
 # TODO other test data where centers (mostly? constraints...) satisfy
@@ -243,23 +256,32 @@ def show_movie(movie, rois=None, show_surrounding_frame_rois=True,
 # (to generate movie)
 
 
+# could maybe use this directly w/ starmap
+#def fit_frame(frame_num, frame, tif):
+def fit_frame(args):
+    frame_num, frame, tif = args
+
+    centers, radii, _, _ = u.fit_circle_rois(tif, avg=frame)
+    rois_xyd = np.concatenate((centers,
+        np.expand_dims(radii * 2, -1)), axis=-1
+    )
+    return frame_num, rois_xyd
+
+
 def main():
     np.random.seed(7)
-
-    #"""
+    '''
     nt = 4
     #nt = 2
     #test_movie = np.zeros((nt, 256, 256))
     test_movie = np.random.uniform(size=(nt, 256, 256))
     centers = u.make_test_centers(initial_n=3, nt=nt, p=None, verbose=True)
-    #'''
+    print(centers[0])
     show_movie(test_movie, centers, show_surrounding_frame_rois=False,
         debug_rois=True
     )
     import sys; sys.exit()
-    #'''
-    #"""
-    #import ipdb; ipdb.set_trace()
+    '''
 
     tif = join(
         u.analysis_output_root(),
@@ -275,48 +297,127 @@ def main():
     blocks = u.movie_blocks(tif, movie=movie)
     assert movie.shape == shape_before
 
-
     block = blocks[0]
     target_fps = 1.0
     downsampled, new_fps = u.downsample_movie(block, target_fps, fps)
     print(f'new_fps: {new_fps:.2f}')
 
     # TODO delete. just to speed up testing.
-    downsampled = downsampled[:4]
-    #downsampled = downsampled[:10]
+    downsampled = downsampled[:5] #:10]
     #
 
-    #
-    #show_movie(downsampled)
-    #import sys; sys.exit()
-    #
+    # TODO check if any time saved by rewriting to get um_per_pixel_xy
+    # from first call (all tif should be used for), then passing that 
+    # instead of tif (before splitting across processes)
 
-    # This within block tracking may be less useful than across blocks (for me)
     n_ds_frames = len(downsampled)
     print(f'Fitting ROIs over {n_ds_frames} frames of downsampled movie:')
-    # TODO try to parallelize this?
-    withinblock_center_sequence = []
-    for i in tqdm(range(n_ds_frames)):
-        frame = downsampled[i]
-        #centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame)
-        # TODO fix how location where script is run from influences where
-        # auto_rois is?
-        centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame, threshold=0.3,
-            multiscale=True, roi_diams_from_kmeans_k=2,
-            exclude_dark_regions=True,
-            debug=True, _packing_debug=True, show_fit=False
-        )
-        withinblock_center_sequence.append(centers)
+    before = time.time()
+    pool = mp.Pool()
+    # TODO chunksize affect runtime (test on larger data)?
+    # tqdm (grandularity at least)?
+    ret_vals = list(tqdm(pool.imap_unordered(fit_frame,
+        [x + (tif,) for x in enumerate(downsampled)]), total=n_ds_frames)
+    )
+    # Sort by frame number (first variable in return value).
+    withinblock_center_sequence = [
+        x[1] for x in sorted(ret_vals, key=lambda x: x[0])
+    ]
+    print('fitting frames took {:.1f}s'.format(time.time() - before))
     del n_ds_frames
 
-    renumbered, new_centers = u.correspond_and_renumber_rois(
-        withinblock_center_sequence, max_cost=max_cost, progress=False
-    )
 
-    # TODO add diam (or just preserve throughout last two fns?)
+    # TODO TODO TODO fix possible correspond_roi problems (ROIs seem close in
+    # adjacent frames in GUI, but IDs change...): (from downsampled[:10])
+    # 1/266 -> 2/268 (and same color... just chance?)
+    # (w/ max_cost=10 or 20) 1/266 -> 2/265
+    # 1/269 -> 2/267
+    # 3/277 -> 4/275
+    '''
+    debug_points = {
+        # TODO and musn't 268 have also been on first screen then, since it's a
+        # lower number??? where? that jump must be incorrect, if it happened,
+        # right? (likewise 266 must have been at roi_xyd[1])
+        # tuple(roi_xyd[1][266, :2]) = (76, 122)
+        # tuple(roi_xyd[2][268, :2]) = (nan, nan)
+        1: [
+            {'name': '268', 'xy0': (161, 148)},
+            {'name': '266', 'xy0:': (76, 122)}
+        ],
+        2: [
+            {'name': '266', 'xy0': (162, 148)}
+        ]
+    }
+    '''
+    # generated w/ u.roi_jumps
+    debug_points = {
+        1: [{'name': '265', 'xy0': (153, 116), 'xy1': (76, 122)},
+             {'name': '266', 'xy0': (76, 122), 'xy1': (162, 148)},
+             {'name': '267', 'xy0': (184, 154), 'xy1': (129, 110)}],
+    }
+    '''
+        3: [{'name': '275', 'xy0': (162, 71), 'xy1': (168, 95)},
+            {'name': '276', 'xy0': (153, 116), 'xy1': (204, 105)},
+            {'name': '277', 'xy0': (167, 95), 'xy1': (174, 185)}],
+        4: [{'name': '281', 'xy0': (236, 170), 'xy1': (185, 154)},
+            {'name': '282', 'xy0': (69, 40), 'xy1': (156, 209)},
+            {'name': '283', 'xy0': (120, 26), 'xy1': (186, 122)}],
+        6: [{'name': '292', 'xy0': (69, 41), 'xy1': (94, 84)}],
+        8: [{'name': '302', 'xy0': (68, 64), 'xy1': (247, 82)},
+            {'name': '303', 'xy0': (247, 82), 'xy1': (60, 186)},
+            {'name': '304', 'xy0': (236, 132), 'xy1': (164, 218)},
+            {'name': '305', 'xy0': (58, 187), 'xy1': (244, 93)},
+            {'name': '306', 'xy0': (136, 54), 'xy1': (98, 58)},
+            {'name': '307', 'xy0': (164, 218), 'xy1': (174, 219)},
+            {'name': '308', 'xy0': (164, 114), 'xy1': (42, 138)},
+            {'name': '309', 'xy0': (244, 93), 'xy1': (166, 198)},
+            {'name': '310', 'xy0': (139, 78), 'xy1': (36, 136)},
+            {'name': '311', 'xy0': (148, 58), 'xy1': (136, 161)},
+            {'name': '312', 'xy0': (134, 88), 'xy1': (160, 190)},
+            {'name': '313', 'xy0': (227, 124), 'xy1': (84, 105)},
+            {'name': '314', 'xy0': (170, 56), 'xy1': (184, 153)},
+            {'name': '315', 'xy0': (138, 43), 'xy1': (77, 93)}]
+    }
+    '''
+    #
+    #debug_points = None
+
+    # TODO take min over all of withinblock_center_sequence radii?
+    # TODO test whether this value of max_cost leads to OK output
+    # (used max_cost=10 before) could also try max_cost=radii.max()
+
+    # TODO time this to see whether it's worth parallelizing
+    before = time.time()
+    roi_xyd = u.correspond_and_renumber_rois(
+        withinblock_center_sequence, debug=True, debug_points=debug_points,
+        progress=False, # if len(downsampled) < 10 else True
+        #checks=False
+        checks=True
+    )
+    print('matching ROIs across frames took {:.1f}s'.format(
+        time.time() - before
+    ))
+
+    max_cost = 5
+    jump_debug_points = u.roi_jumps(roi_xyd, max_cost)
+    '''
+    if len(jump_debug_points) > 0:
+        print('debug_points = ', end='')
+        pprint(jump_debug_points)
+        for k, v in jump_debug_points.items():
+            print(f'ci={k}, {len(v)} jumped')
+        import ipdb; ipdb.set_trace()
+    '''
+    #import ipdb; ipdb.set_trace()
+
+    nan_frac_per_frame = \
+        np.sum(np.isnan(roi_xyd[:, :, 0]), axis=1) / roi_xyd.shape[1]
+    print('Fraction of NaN ROIs per frame:')
+    print(nan_frac_per_frame)
+
+    show_movie(downsampled, roi_xyd)
     import ipdb; ipdb.set_trace()
-    show_movie(downsampled, rois_xyd)
-    import sys; sys.exit()
+    #import sys; sys.exit()
 
 
     # TODO TODO i think i want a pandas dataframe of
@@ -326,12 +427,6 @@ def main():
     # quickly)
     # where cell_id is constant for the stable cells, and assigned increasing
     # for each other cell (s.t. only one cell "tracklet" ever gets one cell_id)
-    '''
-    for i, centers in enumerate(withinblock_center_sequence):
-        stable = 
-        np.setdiff1d(
-        import ipdb; ipdb.set_trace()
-    '''
 
     import ipdb; ipdb.set_trace()
     #

@@ -1655,6 +1655,12 @@ def tiff_filename2keys(tiff_filename):
     })
 
 
+def recording_df2keys(df):
+    dupes = df[recording_cols].drop_duplicates()
+    assert len(dupes) == 1
+    return tuple(dupes.iloc[0])
+
+
 def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
     """List motion corrected TIFFs in conventional directory structure on NAS.
     """
@@ -4118,6 +4124,42 @@ def fix_facetgrid_axis_labels(facet_grid, shared_in_center=False,
                     ax.set_ylabel('')
 
 
+def set_facetgrid_legend(facet_grid, **kwargs) -> None:
+    """
+    In cases where different axes have different subsets of the hue levels,
+    the legend may not contain the artists for the union of hue levels across
+    all axes. This sets a legend from the hue artists across all axes.
+    """
+    #from matplotlib.collections import PathCollection
+    legend_data = dict()
+    for ax in facet_grid.axes.flat:
+        handles, labels = ax.get_legend_handles_labels()
+        for label, h in zip(labels, handles):
+            #if type(h) is PathCollection:
+            # From inspecting facet_grid._legend_data in cases where some labels
+            # pointed to empty lines (the phenotype in the case where things
+            # weren't behaving as I wanted), the empty lines had this empty
+            # facecolor.
+            facecolor = h.get_facecolor()
+            if len(facecolor) == 0:
+                continue
+            #else:
+            #    print(type(h))
+            #    import ipdb; ipdb.set_trace()
+
+            if label in legend_data:
+                # TODO maybe assert a wide variety of properties of the
+                # matplotlib.collections.PathCollection objects are the same
+                # (line width, dash, etc)
+                past_facecolor = legend_data[label].get_facecolor()
+                assert np.array_equal(facecolor, past_facecolor), \
+                    f'{facecolor} != {past_facecolor}'
+            else:
+                legend_data[label] = h
+
+    facet_grid.add_legend(legend_data, **kwargs)
+
+
 # TODO test when ax actually is passed in now that I made it a kwarg
 # (also works as optional positional arg, right?)
 def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
@@ -4956,7 +4998,11 @@ def template_match(scene, template, method_str='cv2.TM_CCOEFF', hist=False,
 
 
 def euclidean_dist(v1, v2):
-    return np.linalg.norm(np.array(v1) - np.array(v2))
+    # Without the conversions to float 64 (or at least something else signed),
+    # uint inputs lead to wraparound -> big distances occasionally.
+    return np.linalg.norm(np.array(v1).astype(np.float64) -
+        np.array(v2).astype(np.float64)
+    )
 
 
 def u8_color(draw_on):
@@ -5730,17 +5776,20 @@ def plot_circles(draw_on, centers, radii):
 
 
 def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
-    method_str='cv2.TM_CCOEFF_NORMED', thresholds=None, threshold=None,
-    exclusion_radius_frac=0.8, min_neighbors=None, debug=False,
-    _packing_debug=False, show_fit=None, write_ijrois=False,
-    _force_write_to=None, overwrite=False, exclude_dark_regions=None,
-    max_n_rois=650, min_n_rois=150, per_scale_max_n_rois=None,
+    method_str='cv2.TM_CCOEFF_NORMED', thresholds=None,
+    exclusion_radius_frac=0.8, min_neighbors=None,
+    debug=False, _packing_debug=False, show_fit=None,
+    write_ijrois=False, _force_write_to=None, overwrite=False,
+    exclude_dark_regions=None, dark_fraction_beyond_dhist_min=0.6,
+    max_n_rois=650, min_n_rois=150,
+    per_scale_max_n_rois=None,
     per_scale_min_n_rois=None, threshold_update_factor=0.7,
     update_factor_shrink_factor=0.7, max_threshold_tries=4,
-    _um_per_pixel_xy=None, multiscale=False, roi_diams_px=None,
+    _um_per_pixel_xy=None, multiscale=True, roi_diams_px=None,
     roi_diams_um=None, roi_diams_from_kmeans_k=None,
     multiscale_strategy='one_order', template_d2match_value_scale_fn=None,
-    allow_duplicate_px_scales=False, _show_scaled_templates=False, **kwargs):
+    allow_duplicate_px_scales=False, _show_scaled_templates=False, 
+    verbose=False, **kwargs):
     """
     Even if movie or avg is passed in, tif is used to find metadata and
     determine where to save ImageJ ROIs.
@@ -5759,20 +5808,29 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
     if debug and show_fit is None:
         show_fit = True
 
-    method_str2default_thresh = {
+    # TODO update all kwargs to go through a dict (store existing defaults as
+    # dict at module level?) + need to handle passing of remaining to greedy_...
+    # appropriately (don't pass stuff it won't take / don't unwrap and modify
+    # so it only uses relevant ones)
+    method_str2defaults = {
         # Though this does not work at all scales
         # (especially sensitive since not normed)
-        'cv2.TM_CCOEFF': 4000.0,
-        'cv2.TM_CCOEFF_NORMED': 0.9
+        'cv2.TM_CCOEFF': {'threshold': 4000.0, 'exclude_dark_regions': False},
+        'cv2.TM_CCOEFF_NORMED': {'threshold': 0.3, 'exclude_dark_regions': True}
     }
-    if threshold is None:
-        threshold = method_str2default_thresh[method_str]
+    if method_str in method_str2defaults:
+        for k, v in method_str2defaults[method_str].items():
+            if k not in kwargs or kwargs[k] is None:
+                kwargs[k] = v
+
+    threshold = kwargs.pop('threshold')
+    exclude_dark_regions = kwargs.pop('exclude_dark_regions')
 
     # Will divide rather than multiply by this,
     # if we need to increase threshold.
     assert threshold_update_factor < 1 and threshold_update_factor > 0
 
-    # TODO TODO TODO TODO also provide fitting for this fn in extract_template!
+    # TODO also provide fitting for this fn in extract_template?
     mvw_key = 'match_value_weights'
     if template_d2match_value_scale_fn is not None:
         assert multiscale and multiscale_strategy == 'one_scale'
@@ -5813,14 +5871,19 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
             roi_diams_um = [rd_px * um_per_pixel_xy for rd_px in roi_diams_px]
 
         if roi_diams_um is None and roi_diams_from_kmeans_k is None:
-            roi_diams_from_kmeans_k = 3
+            roi_diams_from_kmeans_k = 2
 
         if roi_diams_um is None:
             roi_diams_um = kmeans_k2cluster_cell_diams[roi_diams_from_kmeans_k]
 
-            print(f'Using ROI diameters {roi_diams_um} (um) from K-means (k='
-                f'{roi_diams_from_kmeans_k}) on data used to generate template.'
-            )
+            if verbose:
+                in_px = roi_diams_um / um_per_pixel_xy
+                print(f'Using ROI diameters {roi_diams_um} um ({in_px} px) from'
+                    f' K-means (k={roi_diams_from_kmeans_k}) on data used to '
+                    'generate template.'
+                )
+                del in_px
+
             if multiscale_strategy == 'random':
                 all_cell_diams_um = template_data['all_cell_diams_um']
                 clusters, _ = vq(all_cell_diams_um, roi_diams_um)
@@ -5872,7 +5935,7 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
         # in that hidden file)
         elif not overwrite and exists(fname):
             print(fname, 'already existed. returning.')
-            return None, None
+            return None, None, None, None
 
     if avg is None:
         if movie is None:
@@ -5907,7 +5970,24 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
         hv_deltas = np.diff(histvals)
         # TODO get the + 3 from a parameter controller percentage beyond 
         # count delta min
-        dark_thresh = bins[np.argmin(hv_deltas) + 4]
+        # min from: histvals[idx + 1] - histvals[idx]
+        idx = np.argmin(hv_deltas)
+
+        # TODO if this method of calculating dark_thresh doesn't seem robust,
+        # compare robustness to thresholds from percetile of overal image,
+        # or fixed thresholds on image scaled to [0,1], or fixed fractional
+        # adjustment from delta hist threshold
+
+        # Originally, dark_thresh was from bins[idx + 4], and that seemed to
+        # work OK, so on one image, I calculated initial value (~0.5 -> 0.5)
+        # of this from: ((scaled_avg <= bins[idx + 4]).sum() -
+        # (scaled_avg <= bins[idx]).sum()) / scaled_avg.size (=0.543...)
+        #dark_thresh = bins[idx + 4]
+        dh_min_fractile = (scaled_avg <= bins[idx]).sum() / scaled_avg.size
+        dark_thresh = np.percentile(scaled_avg,
+            100 * (dark_fraction_beyond_dhist_min + dh_min_fractile)
+        )
+
         exclusion_mask = scaled_avg >= dark_thresh
         if debug:
             fig, axs = plt.subplots(ncols=2)
@@ -6136,6 +6216,7 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
 
         roi_plot_dir = 'auto_rois'
         if not exists(roi_plot_dir):
+            print(f'making directory {roi_plot_dir} for plots of ROI fits')
             os.makedirs(roi_plot_dir)
 
         roi_plot_fname = join(roi_plot_dir, title.replace('/','_') + '.png')
@@ -6606,11 +6687,26 @@ def to_filename(title):
         '.','') + '.'
 
 
+def point_idx(xys_to_check, pt_xy, swap_xy=False):
+    if not swap_xy:
+        x, y = pt_xy
+    else:
+        y, x = pt_xy
+
+    matching_pt = (
+        (xys_to_check[:,0] == x) &
+        (xys_to_check[:,1] == y)
+    )
+    assert matching_pt.sum() == 1
+    return np.argwhere(matching_pt)[0][0]
+
+
 def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
-    max_cost=9, show=False, write_plots=True, left_name='Left',
+    max_cost=None, show=False, write_plots=True, left_name='Left',
     right_name='Right', name_prefix='', draw_on=None, title='', colors=None,
     connect_centers=True, pairwise_plots=True, pairwise_same_style=False,
-    roi_numbers=False, jitter=True, progress=False, squeeze=True):
+    roi_numbers=False, jitter=True, progress=None, squeeze=True,
+    verbose=False, debug_points=None):
     """
     Args:
     left_centers_or_seq (list): (length n_timepoints) list of (n_rois x 2)
@@ -6635,8 +6731,6 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
 
     from scipy.optimize import linear_sum_assignment
     import seaborn as sns
-    if progress:
-        from tqdm import tqdm
 
     # TODO maybe unsupport two args case to be more concise
     if len(right_centers) == 0:
@@ -6649,8 +6743,16 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
     else:
         raise ValueError('wrong number of arguments')
 
+    if progress is None:
+        progress = len(sequence_of_centers) >= 10
+    if progress:
+        from tqdm import tqdm
+
     if max_cost is None:
         raise ValueError('max_cost must not be None')
+
+    if verbose:
+        print(f'max_cost: {max_cost:.2f}')
 
     default_two_colors = ['red', 'blue']
     if len(sequence_of_centers) == 2:
@@ -6712,10 +6814,11 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
     else:
         centers_iter = range(len(sequence_of_centers) - 1)
 
-    for k in centers_iter:
+    for ci, k in enumerate(centers_iter):
         left_centers = sequence_of_centers[k]
         right_centers = sequence_of_centers[k + 1]
 
+        # TODO TODO use pdist / something else under scipy.spatial.distance?
         # TODO other / better ways to generate cost matrix?
         # pairwise jacard (would have to not take centers then)?
         # TODO why was there a "RuntimeWarning: invalid valid encounterd in
@@ -6727,9 +6830,39 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
                 # TODO short circuit as appropriate? better way to loop over
                 # coords we need?
                 cost = cost_fn(cl, cr)
-                if cost > max_cost:
-                    cost = max_cost
                 costs[i,j] = cost
+
+        '''
+        if verbose:
+            print(f'(iteration {ci}) fraction of costs >= max_cost:',
+                '{:.3f}'.format((costs >= max_cost).sum() / costs.size)
+            )
+        '''
+
+        # TODO delete. problem does not seem to be in this fn.
+        '''
+        if debug_points and ci in debug_points:
+            print(f'iteration {ci}:')
+            ln = 3
+            for pt_info in debug_points[ci]:
+                name = pt_info['name']
+                xy0 = pt_info['xy0']
+                # TODO print cost wrt this point
+                xy1 = pt_info['xy1']
+
+                # swap_xy etc b/c of flip earlier
+                idx = point_idx(left_centers, xy0, swap_xy=True)
+                print(f'lowest {ln} costs for point {name} in '
+                    'left_centers:'
+                )
+                # TODO also print to which other points (x,y)
+                # correspond to these ln lowest costs
+                print(np.sort(costs[idx, :])[:ln])
+        '''
+
+        # TODO TODO TODO test that setting these to an arbitrarily large number
+        # produces matching equivalent to setting them to max_cost here
+        costs[costs >= max_cost] = max_cost
 
         # TODO was Kellan's method of matching points not equivalent to this?
         # or per-timestep maybe it was (or this was better), but he also
@@ -6858,9 +6991,86 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
 
         to_unmatch = match_costs >= max_cost
         # For checking consistent w/ draw output above
-        if n_not_drawn is not None:
+        if verbose or n_not_drawn is not None:
             n_unmatched = to_unmatch.sum()
-            assert n_not_drawn == n_unmatched, f'{n_not_drawn} != {n_unmatched}'
+            if n_not_drawn is not None:
+                assert n_not_drawn == n_unmatched, \
+                    f'{n_not_drawn} != {n_unmatched}'
+            if verbose:
+                print(f'(iteration={ci}) unmatched {n_unmatched} for exceeding'
+                    ' max_cost'
+                )
+
+        if debug_points and ci in debug_points:
+            l_idxs = []
+            r_idxs = []
+            for pt_info in debug_points[ci]:
+                name = pt_info['name']
+                # swap_xy etc b/c of flip earlier
+                xy0 = pt_info['xy0']
+                xy1 = pt_info['xy1']
+                print(f'name: {name}, xy0: {xy0}, xy1: {xy1}')
+
+                lidx = point_idx(left_centers, xy0, swap_xy=True)
+                assert left_idx.max() <= len(left_centers)
+
+                midx0 = np.where(left_idx == lidx)[0]
+                if len(midx0) > 0:
+                    assert len(midx0) == 1
+                    midx0 = midx0[0]
+                    assert left_idx[midx0] == lidx
+                    lpt = left_centers[left_idx[midx0]]
+                    assert tuple(lpt)[::-1] == xy0
+                    # since by the time debug_points are generated, point
+                    # matching seems off, rpt will not necessarily be
+                    # equal to lpt.
+                    rpt_idx = right_idx[midx0]
+                    rpt = right_centers[rpt_idx]
+                    mcost0 = match_costs[midx0]
+                    print(f'xy0 matched ({lidx}:{lpt} -> {rpt_idx}:{rpt}) '
+                        f'at cost {mcost0:.3f}'
+                    )
+                    if to_unmatch[midx0]:
+                        print('xy0 will be unmatched for cost >= max_cost!')
+                    else:
+                        l_idxs.append((name, lidx))
+                        # For use debugging downstream of this function.
+                        pt_info['xy0_lidx'] = lidx
+                        pt_info['xy0_ridx'] = rpt_idx
+                        pt_info['xy0_lpt'] = lpt[::-1]
+                        pt_info['xy0_rpt'] = rpt[::-1]
+                else:
+                    print(f'xy0 not matched!')
+
+                ridx = point_idx(right_centers, xy1, swap_xy=True)
+                assert right_idx.max() <= len(right_centers)
+                midx1 = np.where(right_idx == ridx)[0]
+                if len(midx1) > 0:
+                    assert len(midx1) == 1
+                    midx1 = midx1[0]
+                    assert right_idx[midx1] == ridx
+                    rpt = right_centers[right_idx[midx1]]
+                    assert tuple(rpt)[::-1] == xy1
+                    # likewise, this is not necessarily equal to xy0, by the
+                    # time downstream functions screw up propagating the matches
+                    lpt_idx = left_idx[midx1]
+                    lpt = left_centers[lpt_idx]
+                    mcost1 = match_costs[midx1]
+                    print(f'xy1 matched ({ridx}:{rpt} <- {lpt_idx}:{lpt}) '
+                        f'at cost {mcost1:.3f}'
+                    )
+                    if to_unmatch[midx1]:
+                        print('xy1 will be unmatched for cost >= max_cost!')
+                    else:
+                        r_idxs.append((name, ridx))
+                        # For use debugging downstream of this function.
+                        pt_info['xy1_lidx'] = lpt_idx
+                        pt_info['xy1_ridx'] = ridx
+                        pt_info['xy1_lpt'] = lpt[::-1]
+                        pt_info['xy1_rpt'] = rpt[::-1]
+                else:
+                    print(f'xy1 not matched!')
+                print('')
 
         k_unmatched_left.update(left_idx[to_unmatch])
         k_unmatched_right.update(right_idx[to_unmatch])
@@ -6871,12 +7081,31 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
 
         total_cost += max_cost * n_unassigned
         # TODO better way to normalize error?
-        total_cost = total_cost / max(len(left_centers), len(right_centers))
+        total_cost = total_cost / min(len(left_centers), len(right_centers))
+
+        # TODO maybe compute costs for all unmatched w/ pdist, and check
+        # nothing is < max_cost
 
         unmatched_left.append(np.array(list(k_unmatched_left)))
         unmatched_right.append(np.array(list(k_unmatched_right)))
-        lr_matches.append(np.stack([left_idx, right_idx], axis=-1))
         cost_totals.append(total_cost)
+        lr_matches.append(np.stack([left_idx, right_idx], axis=-1))
+
+        # These just need to be consistent w/ numbers printed before colons
+        # above (and they are).
+        if debug_points and ci in debug_points:
+            lrm = lr_matches[-1]
+            for name, li in l_idxs:
+                midx = np.argwhere(lrm[:, 0] == li)[0]
+                assert len(midx) == 1
+                midx = midx[0]
+                print(f'name: {name}, xy0 match row {midx}:', lrm[midx, :])
+            for name, ri in r_idxs:
+                midx = np.argwhere(lrm[:, 1] == ri)[0]
+                assert len(midx) == 1
+                midx = midx[0]
+                print(f'name: {name}, xy1 match row {midx}:', lrm[midx, :])
+            print('')
 
     if show:
         ax.legend()
@@ -6994,10 +7223,91 @@ def stable_rois(lr_matches, verbose=False):
     return stable_cells, new_lost
 
 
+# TODO try to numba this
+def renumber_rois2(matches_list, centers_list):
+    id2frame_bounds = dict()
+    id2indices = dict()
+    next_id = 0
+    seen_at_i = dict()
+    for i in range(len(matches_list) + 1):
+        if i not in seen_at_i:
+            seen_at_i[i] = set()
+
+        m = matches_list[min(i, len(matches_list) - 1)]
+        for left, right in m:
+            if i < len(matches_list):
+                if left in seen_at_i[i]:
+                    continue
+                seen_at_i[i].add(left)
+                roi_indices_across_frames = [left]
+            else:
+                if right in seen_at_i[i]:
+                    continue
+                roi_indices_across_frames = []
+
+            first_frame = i
+            # So that the frame counter increments as soon as we have one
+            # "right" element (every match row must correspond to at least
+            # two timepoints).
+            j = i + 1
+            while j <= len(matches_list):
+                roi_indices_across_frames.append(right)
+                last_frame = j
+
+                if j in seen_at_i:
+                    seen_at_i[j].add(right)
+                else:
+                    seen_at_i[j] = set()
+
+                if j == len(matches_list):
+                    break
+
+                next_matches = matches_list[j]
+                next_row_idx = np.argwhere(next_matches[:, 0] == right)
+                if len(next_row_idx) == 0:
+                    break
+
+                next_row_idx = next_row_idx[0][0]
+                left, right = next_matches[next_row_idx]
+                j += 1
+
+            assert (last_frame - first_frame + 1 ==
+                len(roi_indices_across_frames)
+            )
+            id2frame_bounds[next_id] = (first_frame, last_frame)
+            id2indices[next_id] = roi_indices_across_frames
+            next_id += 1
+
+        if i < len(matches_list):
+            unmatched = np.setdiff1d(np.arange(len(centers_list[i])), m[:,0])
+        else:
+            unmatched = np.setdiff1d(np.arange(len(centers_list[i])), m[:,1])
+
+        for u in unmatched:
+            # TODO never need to check whether this is in seen, do i?
+            id2frame_bounds[next_id] = (i, i)
+            id2indices[next_id] = [u]
+            next_id += 1
+
+    assert set(id2frame_bounds.keys()) == set(id2indices.keys())
+    centers_array = np.empty((len(centers_list), next_id,
+        centers_list[0].shape[1])) * np.nan
+
+    for roi_id in id2frame_bounds.keys():
+        start, end = id2frame_bounds[roi_id]
+        indices = id2indices[roi_id]
+        centers_array[start:end+1, roi_id, :] = \
+            [c[i] for c, i in zip(centers_list[start:end+1], indices)]
+
+    # TODO assert min / max non-nan cover full frame for reasonable test data
+
+    return centers_array
+
+
 # TODO TODO should either this fn or correspond_rois try to handle the case
 # where a cell drifts out of plane and then back into plane???
 # possible? some kind of filtering?
-def renumber_rois(matches_list, centers_list):
+def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
     """
     Each sequence of matched ROIs gets an increasing integer identifier
     (including length-1 sequences, i.e. unmatched stuff).
@@ -7017,11 +7327,36 @@ def renumber_rois(matches_list, centers_list):
     matches_list = [m.copy() for m in matches_list]
     centers_list = [c.copy() for c in centers_list]
 
+    # TODO test case where input is not == np.arange(input.max())
+    # (both just missing some less and w/ ids beyond len(centers) - 1)
     ids_list = []
     first_ids = np.arange(len(centers_list[0]))
     assert len(np.setdiff1d(matches_list[0][:,0], first_ids)) == 0
     ids_list.append(first_ids)
     next_new_id = first_ids.max() + 1
+    print('next_new_id (after making first_ids):', next_new_id)
+    ##next_new_id = matches_list[0][:,0].max() + 1
+
+    #if len(centers_list[0]) > len(matches_list[0]):
+    #    import ipdb; ipdb.set_trace()
+
+    # TODO delete / put behind something like a `checks` flag
+    assert max_cost is not None
+    id2last_xy = {i: c for i, c in zip(first_ids, centers_list[0][:,:2])}
+    id2src_history = {i:
+        ['first_match' if i in matches_list[0][:,0] else 'new_first']
+        for i in first_ids
+    }
+    id2idx_history = dict()
+    for i in first_ids:
+        try:
+            idx = matches_list[0][i,0]
+        except IndexError:
+            idx = None
+        id2idx_history[i] = [idx]
+    assert set(id2src_history.keys()) == set(id2idx_history.keys())
+    nonshared_m2_idx_list = []
+    #
 
     for i in range(len(matches_list)):
         # These centers are referred to by the IDs in matches_list[i + 1][:, 1],
@@ -7029,10 +7364,11 @@ def renumber_rois(matches_list, centers_list):
         centers = centers_list[i + 1]
         matches1 = matches_list[i]
 
+        '''
         # This includes stuff shared and stuff lost by m2.
         # The only thing this should not include is stuff that should get
         # a new ID in m2.
-        centers_in_m1 = matches1[:,1]
+        centers_in_m1 = matches1[:, 1]
 
         # These include both things in matches2 (those not shared with matches1)
         # and things we need to generate new IDs for.
@@ -7054,17 +7390,143 @@ def renumber_rois(matches_list, centers_list):
         # We are re-ordering the centers, so that they are in the same order
         # as the IDs (both propagated and new) at this timestep (curr_ids).
         centers_list[i + 1] = centers[new_center_idx]
+        '''
 
-        n_new_ids = len(only_new_centers_idx)
+        # TODO TODO TODO i think this is the heart of the problem
+        # (b/c all problem indices were in the new_ids that got cut off
+        # when trying to fit into smaller space of nonshared_m2_idx
+        existing_ids = matches1[:, 0]
+        #next_new_id = existing_ids.max() + 1
+        ###n_new_ids = len(only_new_centers_idx)
+        ##assert len(centers) - len(matches1) == n_new_ids
+        n_new_ids = len(centers) - len(matches1)
         # Not + 1 because arange does not include the endpoint.
         stop = next_new_id + n_new_ids
         new_ids = np.arange(next_new_id, stop)
+        for i, idl in enumerate(ids_list[::-1]):
+            print(- (i + 1))
+            overlap = set(new_ids) & set(idl)
+            if len(overlap) > 0:
+                print('overlap:', overlap)
+                import ipdb; ipdb.set_trace()
+        #
+        print('i:', i)
+        print('n_new_ids:', n_new_ids)
+        print('stop:', stop)
+        print('next_new_id:', next_new_id)
+        print('next_new_id - existing_ids.max():',
+            next_new_id - existing_ids.max()
+        )
         next_new_id = stop
 
-        curr_ids = np.concatenate((matches1[:, 0], new_ids))
+        curr_ids = np.concatenate((existing_ids, new_ids))
         assert len(curr_ids) == len(centers)
         assert len(curr_ids) == len(np.unique(curr_ids))
+
+        # TODO this is the necessary condition for having current centers not
+        # get mis-ordered, right?
+        #assert np.array_equal(np.argsort(curr_ids), np.argsort(new_center_idx))
+        #
+        #import ipdb; ipdb.set_trace()
+
+        #'''
+        for j, (_id, cxy) in enumerate(zip(curr_ids, centers_list[i+1][:,:2])):
+            if _id in id2last_xy:
+                last_xy = id2last_xy[_id]
+                dist = euclidean_dist(cxy, last_xy)
+                try:
+                    assert dist < max_cost
+                except AssertionError:
+                    print('')
+                    #print(max_cost)
+                    #print(dist)
+                    print('id:', _id)
+                    #print(last_xy)
+                    #print(cxy)
+                    if _id in new_ids:
+                        fr = 'new'
+                    elif _id in existing_ids:
+                        fr = 'old'
+                    else:
+                        assert False
+                    print(fr)
+
+                    print(id2src_history[_id])
+                    prev_idx = id2idx_history[_id]
+                    print(prev_idx)
+                    if len(prev_idx) > 0:
+                        prev_idx = prev_idx[-1]
+                        if prev_idx is not None:
+                            # (previous entry in ids_list)
+                            assert (np.argwhere(ids_list[i] == _id)[0][0] ==
+                                prev_idx
+                            )
+
+                    import ipdb; ipdb.set_trace()
+
+            id2last_xy[_id] = cxy
+            # TODO delete these after debugging
+            assert (_id in id2src_history) == (_id in id2idx_history)
+            src_hist = 'new' if _id in new_ids else 'old'
+            if _id in id2src_history:
+                id2src_history[_id].append(src_hist)
+                id2idx_history[_id].append(j)
+            else:
+                id2src_history[_id] = [src_hist]
+                id2idx_history[_id] = [j]
+            #
+        #'''
+
         ids_list.append(curr_ids)
+
+        # TODO TODO TODO some assertion that re-ordered centers are still
+        # fully equiv to old centers, when indexing as they get indexed below?
+        # though ordering across centers is what really matters...
+
+        # TODO `i` as well?
+        '''
+        if debug_points and i + 1 in debug_points:
+            print(f'I + 1 = {i + 1}')
+            for pt_info in debug_points[i + 1]:
+                roi_id = int(pt_info['name'])
+                xy0 = pt_info['xy0']
+                xy1 = pt_info['xy1']
+                print('roi_id:', roi_id)
+                print('xy0:', xy0)
+
+                # TODO turn into assertion
+                # shouldn't happen?
+                if roi_id not in curr_ids:
+                    print('not in curr_ids')
+                    import ipdb; ipdb.set_trace()
+                #
+
+                if roi_id in matches1[:,0]:
+                    print('in matches1[:,0] (old IDs)')
+                elif roi_id in new_ids:
+                    print('in new_ids!')
+                else:
+                    assert False, 'neither in old nor new ids'
+
+                id_idx = np.argmax(curr_ids == roi_id)
+                cxy = tuple(centers_list[i + 1][id_idx][:2])
+                assert cxy == xy0
+                lidx = pt_info.get('xy0_lidx')
+                if lidx is not None:
+                    xy0_was_matched = True
+                    lpt = pt_info.get('xy0_lpt')
+                    # so we can still index in to the non-re-ordered centers
+                    assert tuple(centers[lidx, :2]) == xy0
+                    print('xy0_lidx:', lidx)
+                else:
+                    xy0_was_matched = False
+
+                #if xy0_was_matched:
+                #    assert 
+                #import ipdb; ipdb.set_trace()
+
+            #import ipdb; ipdb.set_trace()
+        '''
 
         if i + 1 < len(matches_list):
             matches2 = matches_list[i + 1]
@@ -7080,7 +7542,9 @@ def renumber_rois(matches_list, centers_list):
                 matches2[shared_m2_idx, 0]
             )
             prior_ids_of_shared = matches1[shared_m1_idx, 0]
+            print(len(np.unique(matches2[:,0])) == len(matches2[:,0]))
             matches2[shared_m2_idx, 0] = prior_ids_of_shared
+            print(len(np.unique(matches2[:,0])) == len(matches2[:,0]))
 
             nonshared_m2_idx = np.setdiff1d(np.arange(len(matches2)),
                 shared_m2_idx
@@ -7088,49 +7552,119 @@ def renumber_rois(matches_list, centers_list):
             # ROIs unmatched in matches2 get any remaining higher IDs in new_ids
             # It is possible for there to be new_ids without any
             # nonshared_m2_idx.
+            # TODO TODO TODO will we ever need to map from these new_ids that
+            # run off the end to specific centers later?
+            print('new_ids:', new_ids)
+            print('new_ids[:len(nonshared_m2_idx)]:',
+                new_ids[:len(nonshared_m2_idx)]
+            )
+            print('nonshared_m2_idx:', nonshared_m2_idx)
+            print('matches2[nonshared_m2_idx, 0]:',
+                matches2[nonshared_m2_idx, 0]
+            )
+            import ipdb; ipdb.set_trace()
             matches2[nonshared_m2_idx, 0] = new_ids[:len(nonshared_m2_idx)]
+            assert len(np.unique(matches2[:,0])) == len(matches2[:,0])
 
     for i, (ids, cs) in enumerate(zip(ids_list, centers_list)):
         assert len(ids) == len(cs), f'(i={i}) {len(ids)} != {len(cs)}'
 
-    # TODO last part of shape should be 3 if input had it (diam info)
-    centers_array = np.empty((len(centers_list), next_new_id, 2)) * np.nan
+    centers_array = np.empty((len(centers_list), next_new_id,
+        centers_list[0].shape[1])) * np.nan
+
     for i, (ids, centers) in enumerate(zip(ids_list, centers_list)):
         centers_array[i, ids, :] = centers
+
+        if debug_points:
+            if i in debug_points:
+                for pt_info in debug_points[i]:
+                    roi_id = int(pt_info['name'])
+                    xy0 = pt_info['xy0']
+                    cidx = point_idx(centers_array[i], xy0)
+                    assert cidx == roi_id
 
     return centers_array
 
 
-def correspond_and_renumber_rois(center_sequence, debug=False,
-    **kwargs):
+def roi_jumps(roi_xyd, max_cost):
+    """
+    Returns dict of first_frame -> list of (x, y, str(point idx)) for each
+    time an ROI jumps by >= max_cost on consecutive frames.
 
-    lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
-        correspond_rois(center_sequence, squeeze=False, 
-            show=False, write_plots=False, **kwargs)
-    '''
-            show=True, write_plots=False, **kwargs)
-    plt.show()
-    '''
-    #
-    if debug:
-        print('Indexes into centers[t] and corresponding indexes in '
-            'centers[t+1]:'
+    correspond_rois should have not matched these points.
+
+    Output suitable for debug_points kwarg to correspond_rois
+    """
+    diffs = np.diff(roi_xyd[:, :, :2], axis=0)
+    dists = np.sqrt((np.diff(roi_xyd[:, :, :2], axis=0) ** 2).sum(axis=2))
+    # to avoid NaN comparison warning on >= (dists must be positive anyway)
+    dists[np.isnan(dists)] = -1
+    jumps = np.argwhere(dists >= max_cost)
+    dists[dists == -1] = np.nan
+
+    first_frames = set(jumps[:,0])
+    debug_points = dict()
+    for ff in first_frames:
+        ff_rois = jumps[jumps[:,0] == ff, 1]
+        # switching frame and roi axes so iteration is over rois
+        # (zippable w/ ff_rois below)
+        xys = np.swapaxes(np.round(roi_xyd[ff:ff+2, ff_rois, :2]
+            ).astype(np.uint16), 0, 1
         )
-        for m in lr_matches:
-            print(m)
+        ff_info = []
+        for roi, roi_xys in zip(ff_rois, xys):
+            xy0, xy1 = roi_xys
+            pt_info = {'name': str(roi), 'xy0': tuple(xy0), 'xy1': tuple(xy1)}
+            ff_info.append(pt_info)
+        debug_points[ff] = ff_info
 
-        #print('center_sequence:')
-        #for c in center_sequence:
-        #    print(c)
-        #
+    return debug_points
 
+
+# TODO TODO use in unit tests of roi tracking w/ some real data as input
+def check_no_roi_jumps(roi_xyd, max_cost):
+    assert len(roi_jumps(roi_xyd, max_cost)) == 0
+
+
+# TODO TODO TODO re-enable checks!!!
+def correspond_and_renumber_rois(roi_xyd_sequence, debug=False, checks=False,
+    use_renumber_rois2=True, **kwargs):
+
+    max_cost = kwargs.get('max_cost')
+    if max_cost is None:
+        # TODO maybe switch to max / check current approach yields results
+        # just as reasonable as those w/ larger max_cost
+        min_diam = min([xyd[:, 2].min() for xyd in roi_xyd_sequence])
+        # + 1 b/c cost == max_cost is thrown out
+        max_cost = min_diam / 2 + 1
+        kwargs['max_cost'] = max_cost
+
+    # TODO fix what seems to be making correspond_rois fail in case where
+    # diameter info is also passed in (so it can be used here and elsewhere
+    # w/o having to toss that data first)
+    roi_xy_seq = [xyd[:, :2] for xyd in roi_xyd_sequence]
+
+    lr_matches, _, _, _, _ = correspond_rois(roi_xy_seq, squeeze=False,
+    #    verbose=debug, show=debug, write_plots=False, **kwargs
+        verbose=debug, show=False, write_plots=False, **kwargs
+    )
     '''
-    print('Finding ROIs stable across all timepoints...', end='', flush=True)
-    withinblock_stable_cells, new_lost = stable_rois(lr_matches, verbose=True)
-    print(' done')
+    if debug:
+        # For stuff plotted in correspond_rois
+        plt.show()
     '''
-    new_centers = renumber_rois(lr_matches, center_sequence)
-    return new_centers
+
+    debug_points = kwargs.get('debug_points')
+    if use_renumber_rois2:
+        new_roi_xyd = renumber_rois2(lr_matches, roi_xyd_sequence)
+    else:
+        new_roi_xyd = renumber_rois(lr_matches, roi_xyd_sequence,
+            debug_points=debug_points, max_cost=max_cost
+        )
+    if checks:
+        check_no_roi_jumps(new_roi_xyd, max_cost)
+
+    return new_roi_xyd
 
 
 # TODO add nonoverlap constraint? somehow make closer to real data?
@@ -7224,7 +7758,6 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
                 print(f't={t}, gaining {n_to_gain}')
 
             first_ic_idx = next_trajectory_idx - initial_n
-            #import ipdb; ipdb.set_trace()
             centers[t][next_trajectory_idx:next_trajectory_idx + n_to_gain] = \
                 initial_centers[first_ic_idx:first_ic_idx + n_to_gain]
             next_trajectory_idx += n_to_gain

@@ -607,21 +607,8 @@ def main():
             movie = tifffile.imread(tif)
             avg = movie.mean(axis=0)
 
-            centers, radii_px, _, _ = u.fit_circle_rois(
-                tif, template_data, avg=avg, debug=False, _packing_debug=False,
-                multiscale=True,
-                #multiscale_strategy='random',
-                #multiscale_strategy='fixed_scale_order',
-                #scale_order=[0, 2, 1],
-                #scale_order=[2, 0, 1],
-                threshold=0.3,
-                #thresholds=[0.4, 0.85, 0.5],
-                #thresholds=[0.4, 0.85, 0.5],
-                #roi_diams_from_kmeans_k=3,
-                #threshold=0.5,
-                roi_diams_from_kmeans_k=2,
-                #roi_diams_px=[6.0, 7.125]
-                exclude_dark_regions=True
+            centers, radii_px, _, _ = u.fit_circle_rois(tif, template_data,
+                avg=avg
             )
             # TODO delete
             #plt.show()

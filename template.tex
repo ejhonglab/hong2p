@@ -95,6 +95,16 @@ Used extracted fluorescence traces in these files:
 \end{verbatim}
 \BLOCK{ endif }
 
+\BLOCK{ if fly_id2key_str }
+\subsection{Fly ID key}
+% TODO maybe convert this to a (potentially multi-page) table
+\begin{itemize}
+\BLOCK{ for fly_id, key_str in fly_id2key_str.items() }
+  \item \VAR{fly_id}: \VAR{key_str}
+\BLOCK{ endfor }
+\end{itemize}
+\BLOCK{ endif }
+
 \BLOCK{ if params or codelink or outputs_pickle or input_trace_pickles }
 \pagebreak
 \BLOCK{ endif }

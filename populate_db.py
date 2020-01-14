@@ -507,8 +507,7 @@ if fit_rois:
 
                 try:
                     u.fit_circle_rois(tif, template_data, write_ijrois=True,
-                        overwrite=True, multiscale=True, threshold=0.3,
-                        roi_diams_from_kmeans_k=2, exclude_dark_regions=True
+                        overwrite=True
                     )
                 except RuntimeError as e:
                     print(e)

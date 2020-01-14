@@ -233,7 +233,8 @@ def test_single_template_knownoffset():
                 min_n_rois=1, max_n_rois=1,
                 max_threshold_tries=1,
                 threshold=0.999,
-                debug=interactive, _packing_debug=interactive
+                debug=interactive, _packing_debug=interactive,
+                multiscale=False
             )
             assert len(set(radii_px)) == 1
             if interactive:
@@ -277,7 +278,8 @@ def test_ordering_wellseparated_centers():
                 min_n_rois=2, max_n_rois=2,
                 max_threshold_tries=1,
                 threshold=0.9,
-                _packing_debug=interactive
+                _packing_debug=interactive,
+                multiscale=False
             )
             assert len(ij_centers) == len(centers)
 
@@ -328,7 +330,6 @@ def test_multiscale_packing():
             per_scale_min_n_rois=[1, 1, 1],
             per_scale_max_n_rois=[1, 1, 1],
 
-            multiscale=True,
             roi_diams_px=np.array(float_roi_radii_px) * 2,
             multiscale_strategy='one_order',
 
