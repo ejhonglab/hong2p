@@ -1305,6 +1305,10 @@ if not args.only_analyze_cached:
                         odors_in_order=odor_order,
                         title_suffix=title_suffix
                     )
+                    # TODO TODO crop as much as possible from this (and other
+                    # above) (w/ tight_layout??), so that they can be fit
+                    # side-by-side in PDF w/ minimum amount of whitespace
+                    # between!
                     savefigs(oorder_corr_max_fig, 'oorder_corr_max', fname,
                         section='Trial-max response correlations',
                         # A large number to put this at the end.
