@@ -26,6 +26,8 @@ import seaborn as sns
 import h5py
 
 import chemutils as cu
+import olfsysm as osm
+from drosolf.orns import orns
 
 import hong2p.util as u
 # TODO what does the first mean if these are not equivalent?
@@ -1911,6 +1913,7 @@ fly_colors = sns.color_palette('hls', n_flies)
 # could also try ':' or '-.'
 odorset2linestyle = {'kiwi': '-', 'control': '--', 'flyfood': 'dotted'}
 
+# what did _with_dupes mean again? doesn't seem like any duplicates...
 odor_set2order_with_dupes = {s: [cu.odor2abbrev(o) for o in os] for s, os
     in u.odor_set2order.items()
 }
@@ -2409,6 +2412,193 @@ new_fly_keys2fly_id = frac_responder_df[keys].drop_duplicates().set_index(
 # then we are good.
 assert new_fly_keys2fly_id.equals(fly_keys2fly_id)
 del new_fly_keys2fly_id, keys
+
+
+# With add_spontaneous=False, it should just return the deltas...
+orn_deltas = orns(add_spontaneous=False, drop_sfr=False).T
+sfr = orn_deltas['spontaneous firing rate']
+orn_deltas = orn_deltas.iloc[:, :-1]
+
+tmp_mp = osm.ModelParams()
+osm.load_hc_data(tmp_mp, 'hc_data.csv')
+skip_idx = None
+for i, osm_one_orn_deltas in enumerate(tmp_mp.orn.data.delta):
+    my_one_orn_deltas = orn_deltas.iloc[i]
+    if not np.array_equal(osm_one_orn_deltas, my_one_orn_deltas):
+        assert np.array_equal(orn_deltas.iloc[i + 1], osm_one_orn_deltas)
+        skip_idx = i
+        break
+assert skip_idx is not None
+
+# TODO TODO print which receptor(?) is being removed
+
+shared_idx = np.setdiff1d(np.arange(len(orn_deltas)), [skip_idx])
+sfr = sfr[shared_idx]
+orn_deltas = orn_deltas.iloc[shared_idx]
+assert np.array_equal(sfr, tmp_mp.orn.data.spont[:, 0])
+assert np.array_equal(orn_deltas, tmp_mp.orn.data.delta)
+kc_cxn_distrib = tmp_mp.kc.cxn_distrib.copy()
+del tmp_mp
+
+# TODO TODO i guess acetoin isn't in hallem?? maybe i'm misunderstanding
+# some other naming convention? try stripping inchi?
+hc_inchi = cu.convert(orn_deltas.columns, from_type='name')
+assert len(hc_inchi) == len(set(hc_inchi))
+
+mean_frac_responding = frac_responder_df.groupby(['odor_set','name1']
+    ).frac_responding.mean()
+
+new_odor_series = []
+target_response_fracs = []
+for oset, odors in u.odor_set2order.items():
+    # Skipping this for now so as not to have to worry about acetoin.
+    if oset == 'flyfood':
+        continue
+
+    abbrevs = odor_set2order_with_dupes[oset]
+    assert len(abbrevs) == len(odors)
+    for o, abbrev in zip(odors, abbrevs):
+        if o == 'pfo' or o == 'water':
+            continue
+
+        # Anything after mix is either a mix or real as I have it now.
+        #if cu.odor_is_mix(o):
+        if abbrev == 'mix':
+            break
+
+        inchi = cu.convert(o, from_type='name')
+        assert inchi in hc_inchi
+
+        new_ser = orn_deltas.T[hc_inchi == inchi].iloc[0].copy()
+        new_ser.name = f'{oset} {new_ser.name}'
+        new_odor_series.append(new_ser)
+        target_response_fracs.append(mean_frac_responding.loc[oset, abbrev])
+
+del mean_frac_responding
+target_response_fracs = np.array(target_response_fracs)
+
+len_before = len(orn_deltas)
+assert orn_deltas.shape[1] == 110
+orn_deltas = pd.concat([orn_deltas] + new_odor_series, axis=1)
+assert len(orn_deltas) == len_before
+
+# This will give the the "1" at the end of its shape that Matt's code
+# may be expecting.
+sfr = sfr.to_frame()
+
+mp = osm.ModelParams()
+
+# Set memory-related params
+# The data matrices can be edited later, but can't change size
+# (nglom x 1 matrix of spontaneous firing rates)
+mp.orn.data.spont = sfr
+# (nglom x nodor matrix of odor-evoked rate deltas)
+mp.orn.data.delta = orn_deltas
+mp.kc.cxn_distrib = kc_cxn_distrib
+
+mp.kc.save_spike_recordings = True # spike timings are thrown out by default
+
+# Allocate memory
+rv = osm.RunVars(mp)
+
+# TODO or should i just disable tuning?
+# Set other params
+mp.kc.tune_from = range(110) # tune thresholds/the APL to the Hallem odors only
+mp.kc.seed = 12345 # non-zero for consistent PN-KC connectivity generation
+
+before = time.time()
+print('running initial sims.', end='', flush=True)
+# Run a 1st simulation to tune KC thresholds and APL weights
+osm.run_ORN_LN_sims(mp, rv)
+print('.', end='', flush=True)
+osm.run_PN_sims(mp, rv)
+print('.', end='', flush=True)
+osm.run_KC_sims(mp, rv, True) # True -> (re)gen connectivity, retune stuff
+print(' done ({:.1f}s)'.format(time.time() - before), flush=True)
+
+# TODO TODO TODO do synthetic mixture studies at ORNs using any data i can
+# find on the fruits they use (could maybe use our own peach / mango / banana
+# data)
+
+# TODO TODO TODO actually tune scale of input such that KC intensity is as
+# expected
+
+# TODO what does "*** Not yet returned!" mean when i try rv.kc.responses???
+# (seems to only come up when i try to access the value in ipdb. Matt have any
+# idea why this would be?)
+
+# TODO TODO TODO compute max across all ORN activations and prevent them from
+# exceeding that when modifying all ORN activations for a particular odor
+# TODO TODO TODO same with a min and negative activations
+
+# TODO TODO TODO check whether any of my odors are among the set of odors with
+# measurements at multiple concentrations (could maybe use that data to inform
+# modifications to ORN representation)
+
+
+# After this point the responses to the Hallem set won't change
+assert orn_deltas.shape[1] > 110, 'no new odors to sim'
+mp.sim_only = range(110, orn_deltas.shape[1]) #[110]
+rs = np.mean(rv.kc.responses[:,110:], axis=0)
+'''
+mp.sim_only = [110]
+rs = np.mean(rv.kc.responses[:,110:111], axis=0)
+target_response_fracs = target_response_fracs[0:1]
+'''
+
+# TODO what's reasonable for this? make error relative?
+bound = 0.01
+# TODO make step size smaller too, to avoid oscillations?
+# should i just use some other optimizer?
+#relative_step = 0.2
+relative_step = 0.1
+deltas = mp.orn.data.delta.copy()
+n = 0
+#while np.any(np.abs(rs - target_response_fracs) > bound):
+while True:
+    print('iteration:', n)
+    diff = target_response_fracs - rs
+    not_done = np.where(np.abs(diff) > bound)[0]
+    if len(not_done) == 0:
+        break
+    #not_done = not_done + 110
+    print(diff)
+    print(len(not_done))
+    # TODO len(not_done) should always be decreasing, right? fix!
+    # does that mean sim_only is not working as i intended?
+
+    # TODO TODO should i add something at each step or multiply????
+    # (multiplying will change distance between negative and positive things!)
+
+    # TODO maybe randomize steps to see how wide a variety of scales
+    # leads to the same target sparsities? (across runs of this optimization
+    # procedure)
+
+    for i in not_done:
+        #curr = mp.orn.data.delta[:, 110 + i].copy()
+        curr = deltas[:, 110 + i]
+        if diff[i] > 0:
+            curr_step = 1 + relative_step
+        else:
+            curr_step = 1 - relative_step
+        curr_gt_zero = curr > 0
+        curr[curr_gt_zero] = curr[curr_gt_zero] * curr_step
+        deltas[:, 110 + i] = curr
+        # errs w/ ValueError: assignment destination is read-only
+        #mp.orn.data.delta[:, 110 + i] = curr
+
+    mp.orn.data.delta = deltas
+    # TODO does this actually need to be a list rather than an array or
+    # something? i mean range() objects work...
+    mp.sim_only = not_done + 110
+
+    osm.run_ORN_LN_sims(mp, rv)
+    osm.run_PN_sims(mp, rv)
+    osm.run_KC_sims(mp, rv, False)
+    rs = np.mean(rv.kc.responses[:,110:])
+    n += 1
+
+import ipdb; ipdb.set_trace()
 
 # TODO TODO more checks possible after the fact, to catch cases where a bug
 # might have led to data being entered in a place not consistent w/ the
