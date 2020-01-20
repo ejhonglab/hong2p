@@ -14,7 +14,7 @@ from collections import deque
 import subprocess
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, brute
 from scipy.stats import linregress
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -628,7 +628,7 @@ def one_scale_one_offset_model_err(scale, offset, component_sum, mix):
     return np.linalg.norm(scale * component_sum + offset - mix)**2
 
 
-def minimize_multiple_init(fn, initial_param_list, args, squeeze=True,
+def minimize_multiple_init(fn, initial_param_list, args=tuple(), squeeze=True,
     allow_failures=True, **kwargs):
     """
     Finds params to minimize fn, checking outputs are consistent across
@@ -2414,191 +2414,310 @@ assert new_fly_keys2fly_id.equals(fly_keys2fly_id)
 del new_fly_keys2fly_id, keys
 
 
-# With add_spontaneous=False, it should just return the deltas...
-orn_deltas = orns(add_spontaneous=False, drop_sfr=False).T
-sfr = orn_deltas['spontaneous firing rate']
-orn_deltas = orn_deltas.iloc[:, :-1]
+# TODO probably refactor to break this into its own script
+# (need to save sparsity data / other data needed for fitting to some file
+# first)
+model_mixture_responses = False
+if model_mixture_responses:
+    # With add_spontaneous=False, it should just return the deltas...
+    orn_deltas = orns(add_spontaneous=False, drop_sfr=False).T
+    sfr = orn_deltas['spontaneous firing rate']
+    orn_deltas = orn_deltas.iloc[:, :-1]
 
-tmp_mp = osm.ModelParams()
-osm.load_hc_data(tmp_mp, 'hc_data.csv')
-skip_idx = None
-for i, osm_one_orn_deltas in enumerate(tmp_mp.orn.data.delta):
-    my_one_orn_deltas = orn_deltas.iloc[i]
-    if not np.array_equal(osm_one_orn_deltas, my_one_orn_deltas):
-        assert np.array_equal(orn_deltas.iloc[i + 1], osm_one_orn_deltas)
-        skip_idx = i
-        break
-assert skip_idx is not None
+    tmp_mp = osm.ModelParams()
+    osm.load_hc_data(tmp_mp, 'hc_data.csv')
+    skip_idx = None
+    for i, osm_one_orn_deltas in enumerate(tmp_mp.orn.data.delta):
+        my_one_orn_deltas = orn_deltas.iloc[i]
+        if not np.array_equal(osm_one_orn_deltas, my_one_orn_deltas):
+            assert np.array_equal(orn_deltas.iloc[i + 1], osm_one_orn_deltas)
+            skip_idx = i
+            break
+    assert skip_idx is not None
 
-# TODO TODO print which receptor(?) is being removed
+    # TODO TODO print which receptor(?) is being removed
 
-shared_idx = np.setdiff1d(np.arange(len(orn_deltas)), [skip_idx])
-sfr = sfr[shared_idx]
-orn_deltas = orn_deltas.iloc[shared_idx]
-assert np.array_equal(sfr, tmp_mp.orn.data.spont[:, 0])
-assert np.array_equal(orn_deltas, tmp_mp.orn.data.delta)
-kc_cxn_distrib = tmp_mp.kc.cxn_distrib.copy()
-del tmp_mp
+    shared_idx = np.setdiff1d(np.arange(len(orn_deltas)), [skip_idx])
+    sfr = sfr[shared_idx]
+    orn_deltas = orn_deltas.iloc[shared_idx]
+    assert np.array_equal(sfr, tmp_mp.orn.data.spont[:, 0])
+    assert np.array_equal(orn_deltas, tmp_mp.orn.data.delta)
+    kc_cxn_distrib = tmp_mp.kc.cxn_distrib.copy()
+    del tmp_mp
 
-# TODO TODO i guess acetoin isn't in hallem?? maybe i'm misunderstanding
-# some other naming convention? try stripping inchi?
-hc_inchi = cu.convert(orn_deltas.columns, from_type='name')
-assert len(hc_inchi) == len(set(hc_inchi))
+    # TODO TODO i guess acetoin isn't in hallem?? maybe i'm misunderstanding
+    # some other naming convention? try stripping inchi?
+    hc_inchi = cu.convert(orn_deltas.columns, from_type='name')
+    assert len(hc_inchi) == len(set(hc_inchi))
 
-mean_frac_responding = frac_responder_df.groupby(['odor_set','name1']
-    ).frac_responding.mean()
+    mean_frac_responding = frac_responder_df.groupby(['odor_set','name1']
+        ).frac_responding.mean()
 
-new_odor_series = []
-target_response_fracs = []
-for oset, odors in u.odor_set2order.items():
-    # Skipping this for now so as not to have to worry about acetoin.
-    if oset == 'flyfood':
-        continue
-
-    abbrevs = odor_set2order_with_dupes[oset]
-    assert len(abbrevs) == len(odors)
-    for o, abbrev in zip(odors, abbrevs):
-        if o == 'pfo' or o == 'water':
+    new_odor_series = []
+    target_response_fracs = []
+    for oset, odors in u.odor_set2order.items():
+        # Skipping this for now so as not to have to worry about acetoin.
+        if oset == 'flyfood':
             continue
 
-        # Anything after mix is either a mix or real as I have it now.
-        #if cu.odor_is_mix(o):
-        if abbrev == 'mix':
-            break
+        # So we know we can later use these prefixes to pull out just the data
+        # for each odor set.
+        assert not orn_deltas.columns.map(lambda c: c.startswith(oset)).any()
 
-        inchi = cu.convert(o, from_type='name')
-        assert inchi in hc_inchi
+        abbrevs = odor_set2order_with_dupes[oset]
+        assert len(abbrevs) == len(odors)
+        for o, abbrev in zip(odors, abbrevs):
+            if o == 'pfo' or o == 'water':
+                continue
 
-        new_ser = orn_deltas.T[hc_inchi == inchi].iloc[0].copy()
-        new_ser.name = f'{oset} {new_ser.name}'
-        new_odor_series.append(new_ser)
-        target_response_fracs.append(mean_frac_responding.loc[oset, abbrev])
+            # Anything after mix is either a mix or real as I have it now.
+            #if cu.odor_is_mix(o):
+            if abbrev == 'mix':
+                # These will be filled in (potentially followed by another
+                # optimization step) AFTER the single components are optimized
+                # to produce model KC activations are similar levels to the
+                # data.
+                new_ser = pd.Series(
+                    index=sfr.index,
+                    data=np.full(sfr.shape, np.nan),
+                    name=f'{oset} mix'
+                )
+                new_odor_series.append(new_ser)
+                target_response_fracs.append(
+                    mean_frac_responding.loc[oset, abbrev]
+                )
+                break
 
-del mean_frac_responding
-target_response_fracs = np.array(target_response_fracs)
+            inchi = cu.convert(o, from_type='name')
+            assert inchi in hc_inchi
 
-len_before = len(orn_deltas)
-assert orn_deltas.shape[1] == 110
-orn_deltas = pd.concat([orn_deltas] + new_odor_series, axis=1)
-assert len(orn_deltas) == len_before
+            new_ser = orn_deltas.T[hc_inchi == inchi].iloc[0].copy()
+            new_ser.name = f'{oset} {new_ser.name}'
+            # Because we will use this later to identify the mix columns.
+            assert not new_ser.name.endswith('mix')
+            new_odor_series.append(new_ser)
+            target_response_fracs.append(mean_frac_responding.loc[oset, abbrev])
 
-# This will give the the "1" at the end of its shape that Matt's code
-# may be expecting.
-sfr = sfr.to_frame()
+    del mean_frac_responding
+    target_response_fracs = np.array(target_response_fracs)
 
-mp = osm.ModelParams()
+    len_before = len(orn_deltas)
+    assert orn_deltas.shape[1] == 110
+    orn_deltas = pd.concat([orn_deltas] + new_odor_series, axis=1)
+    assert len(orn_deltas) == len_before
 
-# Set memory-related params
-# The data matrices can be edited later, but can't change size
-# (nglom x 1 matrix of spontaneous firing rates)
-mp.orn.data.spont = sfr
-# (nglom x nodor matrix of odor-evoked rate deltas)
-mp.orn.data.delta = orn_deltas
-mp.kc.cxn_distrib = kc_cxn_distrib
+    # This will give the the "1" at the end of its shape that Matt's code
+    # may be expecting.
+    sfr = sfr.to_frame()
 
-mp.kc.save_spike_recordings = True # spike timings are thrown out by default
+    mp = osm.ModelParams()
 
-# Allocate memory
-rv = osm.RunVars(mp)
+    # Set memory-related params
+    # The data matrices can be edited later, but can't change size
+    # (nglom x 1 matrix of spontaneous firing rates)
+    mp.orn.data.spont = sfr
+    # (nglom x nodor matrix of odor-evoked rate deltas)
+    mp.orn.data.delta = orn_deltas
+    mp.kc.cxn_distrib = kc_cxn_distrib
 
-# TODO or should i just disable tuning?
-# Set other params
-mp.kc.tune_from = range(110) # tune thresholds/the APL to the Hallem odors only
-mp.kc.seed = 12345 # non-zero for consistent PN-KC connectivity generation
+    mp.kc.save_spike_recordings = True # spike timings are thrown out by default
 
-before = time.time()
-print('running initial sims.', end='', flush=True)
-# Run a 1st simulation to tune KC thresholds and APL weights
-osm.run_ORN_LN_sims(mp, rv)
-print('.', end='', flush=True)
-osm.run_PN_sims(mp, rv)
-print('.', end='', flush=True)
-osm.run_KC_sims(mp, rv, True) # True -> (re)gen connectivity, retune stuff
-print(' done ({:.1f}s)'.format(time.time() - before), flush=True)
+    # Allocate memory
+    rv = osm.RunVars(mp)
 
-# TODO TODO TODO do synthetic mixture studies at ORNs using any data i can
-# find on the fruits they use (could maybe use our own peach / mango / banana
-# data)
+    # TODO or should i just disable tuning?
+    # Tune thresholds/the APL to the Hallem odors only
+    mp.kc.tune_from = range(110)
+    # non-zero for consistent PN-KC connectivity generation
+    mp.kc.seed = 12345
 
-# TODO TODO TODO actually tune scale of input such that KC intensity is as
-# expected
+    # TODO TODO should i set sim_only to exclude new stuff here?
+    # (particularly if i'm gonna have null stuff for mixture response)
+    # (any reason not to?)
+    mp.sim_only = range(110)
 
-# TODO what does "*** Not yet returned!" mean when i try rv.kc.responses???
-# (seems to only come up when i try to access the value in ipdb. Matt have any
-# idea why this would be?)
-
-# TODO TODO TODO compute max across all ORN activations and prevent them from
-# exceeding that when modifying all ORN activations for a particular odor
-# TODO TODO TODO same with a min and negative activations
-
-# TODO TODO TODO check whether any of my odors are among the set of odors with
-# measurements at multiple concentrations (could maybe use that data to inform
-# modifications to ORN representation)
-
-
-# After this point the responses to the Hallem set won't change
-assert orn_deltas.shape[1] > 110, 'no new odors to sim'
-mp.sim_only = range(110, orn_deltas.shape[1]) #[110]
-rs = np.mean(rv.kc.responses[:,110:], axis=0)
-'''
-mp.sim_only = [110]
-rs = np.mean(rv.kc.responses[:,110:111], axis=0)
-target_response_fracs = target_response_fracs[0:1]
-'''
-
-# TODO what's reasonable for this? make error relative?
-bound = 0.01
-# TODO make step size smaller too, to avoid oscillations?
-# should i just use some other optimizer?
-#relative_step = 0.2
-relative_step = 0.1
-deltas = mp.orn.data.delta.copy()
-n = 0
-#while np.any(np.abs(rs - target_response_fracs) > bound):
-while True:
-    print('iteration:', n)
-    diff = target_response_fracs - rs
-    not_done = np.where(np.abs(diff) > bound)[0]
-    if len(not_done) == 0:
-        break
-    #not_done = not_done + 110
-    print(diff)
-    print(len(not_done))
-    # TODO len(not_done) should always be decreasing, right? fix!
-    # does that mean sim_only is not working as i intended?
-
-    # TODO TODO should i add something at each step or multiply????
-    # (multiplying will change distance between negative and positive things!)
-
-    # TODO maybe randomize steps to see how wide a variety of scales
-    # leads to the same target sparsities? (across runs of this optimization
-    # procedure)
-
-    for i in not_done:
-        #curr = mp.orn.data.delta[:, 110 + i].copy()
-        curr = deltas[:, 110 + i]
-        if diff[i] > 0:
-            curr_step = 1 + relative_step
-        else:
-            curr_step = 1 - relative_step
-        curr_gt_zero = curr > 0
-        curr[curr_gt_zero] = curr[curr_gt_zero] * curr_step
-        deltas[:, 110 + i] = curr
-        # errs w/ ValueError: assignment destination is read-only
-        #mp.orn.data.delta[:, 110 + i] = curr
-
-    mp.orn.data.delta = deltas
-    # TODO does this actually need to be a list rather than an array or
-    # something? i mean range() objects work...
-    mp.sim_only = not_done + 110
-
+    before = time.time()
+    print('running initial sims.', end='', flush=True)
+    # Run a 1st simulation to tune KC thresholds and APL weights
     osm.run_ORN_LN_sims(mp, rv)
+    print('.', end='', flush=True)
     osm.run_PN_sims(mp, rv)
-    osm.run_KC_sims(mp, rv, False)
-    rs = np.mean(rv.kc.responses[:,110:])
-    n += 1
+    print('.', end='', flush=True)
+    osm.run_KC_sims(mp, rv, True) # True -> (re)gen connectivity, retune stuff
+    print(' done ({:.1f}s)'.format(time.time() - before), flush=True)
 
-import ipdb; ipdb.set_trace()
+    # TODO TODO TODO do synthetic mixture studies at ORNs using any data i can
+    # find on the fruits they use (could maybe use our own peach / mango /
+    # banana data)
+
+    # TODO what does "*** Not yet returned!" mean when i try rv.kc.responses???
+    # (seems to only come up when i try to access the value in ipdb. Matt have
+    # any idea why this would be?)
+
+    # TODO TODO TODO check whether any of my odors are among the set of odors
+    # with measurements at multiple concentrations (could maybe use that data to
+    # inform modifications to ORN representation)
+
+    # After this point the responses to the Hallem set won't change
+    assert orn_deltas.shape[1] > 110, 'no new odors to sim'
+
+    sfr = sfr.iloc[:, 0]
+    # TODO could also try using one max firing rate across all
+    # (maybe they do all have a similar max firing rate, and some odors just
+    # didn't have particularly activating odors found for them?)
+    orn_maxes = orn_deltas.max(axis=1) + sfr
+
+    def constrain_hallem_deltas(odor_deltas):
+        odor_orn_rates = sfr + odor_deltas
+        odor_orn_rates[odor_orn_rates < 0] = 0
+        over_max = odor_orn_rates > orn_maxes
+        odor_orn_rates[over_max] = orn_maxes[over_max]
+        odor_deltas = odor_orn_rates - sfr
+        return odor_deltas
+
+    def scale_hallem_odor_deltas(odor_deltas, scale):
+        # TODO does matt's code behave appropriately if deltas would send 
+        # spont negative (should either err or be treated same as if sum
+        # were a 0 firing rate)?
+        # TODO maybe subtract lowest value in delta before multiplying
+        # by scale?
+        return constrain_hallem_deltas(odor_deltas * scale)
+
+    def one_odor_model_response_fraction(scale, oi):
+        deltas = orn_deltas.copy()
+
+        # for a pandas dataframe of the same dimensions
+        curr = deltas.iloc[:, oi]
+        deltas.iloc[:, oi] = scale_hallem_odor_deltas(curr, scale)
+        mp.orn.data.delta = deltas
+
+        verbose = False
+        if verbose:
+            print(f'running sims for scale={scale[0]:.3f}', flush=True)
+
+        mp.sim_only = [oi]
+        osm.run_ORN_LN_sims(mp, rv)
+        osm.run_PN_sims(mp, rv)
+        osm.run_KC_sims(mp, rv, False)
+        r = np.mean(rv.kc.responses[:, oi], axis=0)
+
+        if verbose:
+            print(f'response rate: {r:.3f}', flush=True)
+
+        return r
+
+    def err_fn(rt, r):
+        #return (rt - r)**2
+        return abs(rt - r)
+
+    scales = []
+    for oi, rt in zip(range(110, orn_deltas.shape[1]), target_response_fracs):
+        def one_odor_sparsity_err(scale):
+            r = one_odor_model_response_fraction(scale, oi)
+            return err_fn(rt, r)
+
+        name = orn_deltas.iloc[:, oi].name
+        if name.endswith('mix'):
+            parts = name.split()
+            assert len(parts) == 2
+            oset = parts[0]
+
+            # TODO TODO TODO when is the appropriate time to constrain this?
+            # normalize before doing so? some other scaling fn?
+            # TODO TODO TODO also try w/ max here rather than sum -> some
+            # scaling (that would avoid need for normalizing...)
+            model_orn_mix = orn_deltas.loc[:, orn_deltas.columns.map(
+                lambda c: c.startswith('kiwi') and not c.endswith('mix'))
+                ].sum(axis=1)
+
+            # TODO TODO TODO do mix stuff here. asserts to ensure this is last
+            # thing seen from this odorset
+            import ipdb; ipdb.set_trace()
+            continue
+
+        print(name)
+        #print(f'oi={oi}')
+        #print(orn_deltas.iloc[:, oi])
+        print(f'rt={rt:.3f}')
+
+        # TODO can this minimize closures, or do i need to specify other
+        # necessary variables by the args= argument to minimize?
+        # (to use multiple workers (for brute, for example), probably need func
+        # not to be a closure...)
+
+        # This was necessary to find a suitable scale for this particular odor.
+        if oi == 111:
+            rmin = 2
+            rmax = 4
+        else:
+            rmin = 0.1
+            rmax = 2
+
+        # TODO any similar fn that can be configured to return as soon as
+        # error is sufficiently low?
+        # TODO something that makes grid increasingly more fine around minima
+        # from previous searches?
+        ret, fval, _, _ = brute(one_odor_sparsity_err, ((rmin, rmax),),
+            finish=None, full_output=True, Ns=50
+        )
+        print(f'(brute) best scale: {ret:.3f}')
+        print(f'(brute) best error: {fval:.3f}')
+        # would at least need to increase Ns to do better than those for all
+        # odors (if even possible, given realities of model)
+        assert fval <= 0.02
+
+        # TODO why doesn't minimize work? it doesn't seem to update parameter
+        # at all... (i mean these gradient methods will not work w/o some
+        # kind of modification for my problem w/o meaningful gradients.
+        # though see: https://arxiv.org/abs/1706.04698 )
+        # tried x0 an array and w/ values of x0=0.5,1,2
+        # of all the methods available, only Nelder-Mead, Powell, and COBYLA
+        # work, with the first seeming to perhaps converge the fastest
+        # (but all of these fail in some of the cases. kiwi 3-methylbutanol, for
+        # whatever reason)
+
+        # TODO could try using line_search here
+        # TODO (linear?) constraint to keep scale positive?
+        # TODO [maybe implement max activation constraint this way too?]
+        '''
+        x0 = 1.0
+        mret = minimize(one_odor_sparsity_err, x0, method='COBYLA')
+        assert mret.success
+        # since at least 'Powell' method will return something with an empty
+        # shape
+        # (cannot be indexed w/ x[0]))
+        mret = mret.x.reshape((1,))[0]
+        print(f'(nm) best scale: {mret:.3f}')
+        rel_err = abs(mret - ret) / max(abs(mret), abs(ret))
+        print(f'relative error between two scales: {rel_err:.4f}')
+        #assert np.isclose(mret, ret, rtol=0.05)
+        '''
+        print('')
+
+        # TODO TODO look at which / how many of ORN responses are
+        # at min / max
+        orn_deltas.iloc[:, oi] = \
+            scale_hallem_odor_deltas(orn_deltas.iloc[:, oi], ret)
+
+        scales.append(ret)
+
+    # TODO TODO TODO scale everything by scales above + construct model mixture
+    # responses
+    # TODO TODO TODO run sims w/ all of above (w/ diff weight draws?)
+    # TODO TODO TODO convert output to something suitable for use as my real
+    # data
+    import ipdb; ipdb.set_trace()
+
+    # TODO TODO TODO maybe first check what total output of
+    # linear-sum-at-periphery is in model kcs?
+    # TODO TODO TODO maybe then try scaling sum to equal real mix scale in KCs?
+    # TODO TODO TODO try each of linear models at periphery? (but how to fit if
+    # minimize not working...)
+
+    # TODO TODO TODO somehow test goodness of linearity scaling fit for across
+    # concentration data? or come up with a better method of scaling knowing
+    # that? possible? may very well not be...
+
 
 # TODO TODO more checks possible after the fact, to catch cases where a bug
 # might have led to data being entered in a place not consistent w/ the
