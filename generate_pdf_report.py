@@ -5,6 +5,9 @@ import glob
 from datetime import date, datetime
 from collections import OrderedDict
 from pprint import pprint
+import sys
+import argparse
+import pickle
 
 from jinja2.loaders import FileSystemLoader
 from latex import build_pdf, escape, LatexBuildError
@@ -27,12 +30,29 @@ def clean_generated_latex(latex_str):
 
 
 pdfdir = abspath(normpath(join('mix_figs', 'pdf')))
+matched_file2longest_glob_str = dict()
 def glob_plots(glob_str, filenames_to_use):
+    """Returns list of filenames of PDF plots to use (no directories).
+
+    If second argument is a list, only paths also in this list are returned.
+    """
     matching_files = [split(p)[1] for p in glob.glob(join(pdfdir, glob_str))]
-    if filenames_to_use is None:
-        return matching_files
-    else:
-        return [f for f in matching_files if f in filenames_to_use]
+    if filenames_to_use is not None:
+        matching_files = [f for f in matching_files if f in filenames_to_use]
+
+    for f in matching_files:
+        if f in matched_file2longest_glob_str:
+            last_glob_str = matched_file2longest_glob_str[f]
+
+            # Can't disambiguate in this case.
+            assert len(glob_str) != len(last_glob_str)
+
+            if len(glob_str) > len(last_glob_str):
+                matched_file2longest_glob_str[f] = glob_str
+        else:
+            matched_file2longest_glob_str[f] = glob_str
+
+    return matching_files
 
 
 def plot_files_in_order(glob_str, filenames_to_use):
@@ -213,12 +233,67 @@ def agg_within_sections(sec_names_and_files):
     return list(name2files.items())
 
 
+def compile_tex_to_pdf(latex_str, pdf_fname, verbose, gen_latex_msg=None):
+    current_dir = abspath(dirname(__file__))
+    try:
+        # Current dir needs to be passed so that 'template.tex', and any 
+        # other dependencies in current directory, can be accessed in the
+        # temporary build dir created by the latex package.
+        # The empty string as the last element retains any default search paths
+        # TeX builder would have.
+        pdf = build_pdf(latex_str, texinputs=[current_dir, ''])
+        print('Writing output to {}'.format(pdf_fname))
+        pdf.save_to(pdf_fname)
+
+    except LatexBuildError as err:
+        if gen_latex_msg is not None and not verbose:
+            print(gen_latex_msg)
+        raise
+
+
 def main(*args, **kwargs):
+    debug = False
     verbose = False
-    only_print_latex = False
     write_latex_for_testing = False
+    only_print_latex = False
     write_latex_like_pdf = False
     date_in_pdf_name = True
+    last_inputs_pickle_fname = 'last_inputs_genpdfreport.p'
+    if debug:
+        verbose = True
+        write_latex_for_testing = True
+
+    # TODO some more idiomatic / cleaner way to pass cli args to main?
+
+    if 'rerun_last_inputs' in kwargs:
+        rerun_last_inputs = kwargs.pop('rerun_last_inputs')
+    else:
+        rerun_last_inputs = False
+
+    if rerun_last_inputs:
+        with open(last_inputs_pickle_fname, 'rb') as f:
+            data = pickle.load(f)
+        args = data['args']
+        kwargs = data['kwargs']
+
+    elif debug:
+        with open(last_inputs_pickle_fname, 'wb') as f:
+            pickle.dump({'args': args, 'kwargs': kwargs}, f)
+
+    test_tex_fname = 'test.tex'
+    if 'only_recompile_test_tex' in kwargs:
+        only_recompile_test_tex = kwargs.pop('only_recompile_test_tex')
+    else:
+        only_recompile_test_tex = False
+
+    if only_recompile_test_tex:
+        print(f'Reading test TeX from {test_tex_fname}')
+        with open(test_tex_fname, 'r') as f:
+            latex_str = f.read()
+        pdf_fname = 'test.pdf'
+        # TODO maybe remove test.pdf before starting
+        compile_tex_to_pdf(latex_str, pdf_fname, verbose)
+        sys.exit()
 
     if 'filenames' in kwargs:
         filenames_to_use = kwargs.pop('filenames')
@@ -255,6 +330,36 @@ def main(*args, **kwargs):
     sections = [(n, glob_plots(gs, filenames_to_use)) for n, gs
         in section_names_and_globstrs
     ]
+
+    matched_file_set_before = set()
+    for _, fs in sections:
+        for f in fs:
+            matched_file_set_before.add(f)
+
+    # Only the most specific glob str should point to a file.
+    sections = [(n, [f for f in fs if matched_file2longest_glob_str[f] == gs])
+        for (n, fs), (_, gs) in zip(sections, section_names_and_globstrs)
+    ]
+
+    matched_file_set_after = set()
+    for _, fs in sections:
+        for f in fs:
+            matched_file_set_after.add(f)
+    # To make sure the above filtering is not removing all references
+    # to any plots.
+    assert matched_file_set_after == matched_file_set_before
+    del matched_file_set_after, matched_file_set_before
+
+    seen_plots = set()
+    for _, fs in sections:
+        for f in fs:
+            assert f not in seen_plots, f'{f} was referred to multiple times!'
+            seen_plots.add(f)
+    del seen_plots
+
+    # TODO assert no glob strs in this line point to same file / also
+    # assign files only to longest matching glob str here
+    # (this can cause plots to be included twice, in unpredictable order)
     paired_sections = [(n, plot_files_in_order(gs, filenames_to_use)) for n, gs
         in paired_section_names_and_globstrs
     ]
@@ -428,23 +533,20 @@ def main(*args, **kwargs):
     # types of figures to expect at top. maybe even bulleted.
 
     latex_str = template.render(pdfdir=pdfdir, sections=sections,
-        paired_sections=paired_sections, filename_captions=False, **kwargs
+        paired_sections=paired_sections, filename_captions=debug, **kwargs
     )
     latex_str = clean_generated_latex(latex_str)
 
     if write_latex_for_testing:
-        tex_fname = 'test.tex'
-        print('Writing LaTeX to {} (for testing)'.format(tex_fname))
-        with open(tex_fname, 'w') as f:
+        print('Writing LaTeX to {} (for testing)'.format(test_tex_fname))
+        with open(test_tex_fname, 'w') as f:
             f.write(latex_str)
 
     gen_latex_msg = 'Rendered TeX:\n{}\n'.format(latex_str)
     if only_print_latex or verbose:
         print(gen_latex_msg)
     if only_print_latex:
-        import sys; sys.exit()
-
-    current_dir = abspath(dirname(__file__))
+        sys.exit()
 
     # TODO maybe make this share less of a prefix w/ kc_mix_analysis.py
     # could be annoying
@@ -466,24 +568,24 @@ def main(*args, **kwargs):
     # this is visible in plt.show(), but not in saved figure...
     fig.savefig('empty_placeholder.pdf')#, facecolor='red')
 
-    try:
-        # Current dir needs to be passed so that 'template.tex', and any 
-        # other dependencies in current directory, can be accessed in the
-        # temporary build dir created by the latex package.
-        # The empty string as the last element retains any default search paths
-        # TeX builder would have.
-        pdf = build_pdf(latex_str, texinputs=[current_dir, ''])
-        print('Writing output to {}'.format(pdf_fname))
-        pdf.save_to(pdf_fname)
-
-    except LatexBuildError as err:
-        if not verbose:
-            print(gen_latex_msg)
-        raise
+    compile_tex_to_pdf(latex_str, pdf_fname, verbose, gen_latex_msg)
 
     return pdf_fname
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-r', '--only-recompile', default=False,
+        action='store_true'
+    )
+    parser.add_argument('-l', '--rerun-last-inputs', default=False,
+        action='store_true'
+    )
+    args = parser.parse_args()
+    # TODO just pass dict of all args to kwargs?
+    kwargs = dict(
+        only_recompile_test_tex=args.only_recompile,
+        rerun_last_inputs=args.rerun_last_inputs
+    )
+    main(**kwargs)
 

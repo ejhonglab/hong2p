@@ -17,18 +17,18 @@
 %\captionsetup[figure]{labelformat=empty}
 \captionsetup[sub]{labelformat=empty}
 
+%# Some stack overflow comment said that although the \verb functionality
+%# is in LaTeX by default, the implementations in this package are "better",
+%# and override the defaults.
 \BLOCK{ if filename_captions }
-    % Some stack overflow comment said that although the \verb functionality
-    % is in LaTeX by default, the implementations in this package are "better"
-    % , and override the defaults.
-    \usepackage{cprotect}
+\usepackage{verbatimbox}
 \BLOCK{ endif }
 
 \usepackage{hyperref}
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
-    filecolor=magenta,      
+    filecolor=magenta, 
     urlcolor=cyan,
 }
 \urlstyle{same}
@@ -72,6 +72,7 @@ The code for this analysis can be found at:
 \url{\VAR{codelink}}
 \linebreak
 %# Since the a block with "else" in it did not seem to be working.
+%# TODO need to remove an extra space here?
 The version of the code that generated this report \BLOCK{ if uncommitted_changes } had some changes not yet in version control. \BLOCK{ endif } \BLOCK{ if not uncommitted_changes } is the exact version of the code behind the link.
 \BLOCK{ endif }
 
@@ -125,8 +126,11 @@ Used extracted fluorescence traces in these files:
 \figureSeriesHere{\VAR{section[0]}}
 
 \BLOCK{ for figpdf in section[1] }
+\BLOCK{ if filename_captions }
+\begin{verbbox}\VAR{figpdf}\end{verbbox}
+\BLOCK{ endif }
 \figureSeriesRow{
-\figureSeriesElement{}{\includegraphics[width=\textwidth,keepaspectratio]{\VAR{figpdf}}}
+\figureSeriesElement{\BLOCK{ if filename_captions }\theverbbox\BLOCK{ endif }}{\includegraphics[width=\textwidth,keepaspectratio]{\VAR{figpdf}}}
 }
 \BLOCK{ endfor }
 \pagebreak
@@ -159,6 +163,7 @@ Used extracted fluorescence traces in these files:
 % BLOCK directives. (Previously I had empty lines here to visually
 % separate the two if statements, and that seemed sufficient to cause
 % failure of grouping figures into rows.)
+%# TODO copy verbbox filename_caption handling from above to this loop too
 \BLOCK{ for row_figpdfs in section[1]|batch(3) }
 \figureSeriesRow{
 \BLOCK{ for figpdf in row_figpdfs }
@@ -171,14 +176,6 @@ Used extracted fluorescence traces in these files:
 \BLOCK{ endfor }
 }
 \BLOCK{ endfor }
-
-%# Was previously in a single figure definition in loop over figpdfs:
-%# % https://tex.stackexchange.com/questions/8810
-%# \BLOCK{ if filename_captions }
-%# \cprotect\caption{\verb=\VAR{figpdf}=}
-%# \BLOCK{ endif }
-%# See: https://tex.stackexchange.com/questions/122786
-%# if trying to adapt to subfloat case.
 
 \pagebreak
 
