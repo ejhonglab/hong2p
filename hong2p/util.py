@@ -4105,6 +4105,8 @@ def plot_pair_n(df, *args):
     imgkit.from_string(html, 'natural_odors_pair_n.png')
 
 
+# TODO get x / y from whether they were declared share<x/y> in facetgrid
+# creation?
 def fix_facetgrid_axis_labels(facet_grid, shared_in_center=False,
     x=True, y=True) -> None:
     """Modifies a FacetGrid to not duplicate X and Y axis text labels.
