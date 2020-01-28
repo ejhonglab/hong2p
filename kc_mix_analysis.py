@@ -9,7 +9,7 @@ import time
 import pickle
 import argparse
 import shutil
-from itertools import zip_longest, product, combinations
+from itertools import zip_longest, product, combinations, starmap
 from collections import deque
 import subprocess
 import multiprocessing as mp
@@ -234,6 +234,17 @@ nondiagnostic_odors = {o for o, c in odor_counts.items() if c > 1}
 del odor_counts
 
 
+def in_worker_process():
+    pname = mp.current_process().name
+    # Despite Bakuriu's answer here,https://stackoverflow.com/questions/18216050
+    # this seems to be reliable as I've tested it.
+    if pname == 'MainProcess':
+        return False
+    else:
+        assert 'PoolWorker' in pname
+        return True
+
+
 # TODO also move this if i move solvents + natural definitions?
 def is_component(name):
     return name not in (('mix',) + u.natural + u.solvents)
@@ -282,7 +293,11 @@ def matshow(ax, data, as_row=False, **kwargs):
 
 # So that the last few figs open can still be shown interactively while
 # debugging, in contrast to show_plots_interactively case, where all are shown.
-max_open_noninteractive = args.max_open_saved_figs
+if in_worker_process():
+    # TODO 0 works for this right?
+    max_open_noninteractive = 0
+else:
+    max_open_noninteractive = args.max_open_saved_figs
 fig_queue = deque()
 
 # TODO any cases where a per-figure note would also be useful enough to support
@@ -310,6 +325,7 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
     # TODO TODO test case where we actually do want both a section title and
     # fig title (in adaptation case now, not actually making fig titles)
 
+    out_strs = []
     if save_figs and (args.save_nonreport_figs or not exclude_from_latex):
         if len(vargs) == 1:
             recording_info_suffix = vargs[0]
@@ -329,18 +345,24 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
         plot_type = '_'.join(plot_type_parts)
 
         if verbose_savefig:
-            print(f'writing plots for {plot_type}')
+            out_s = f'writing plots for {plot_type}'
+            if not in_worker_process():
+                print(out_s)
+            out_strs.append(out_s)
 
         for pf in plot_formats:
             plot_fname = join(fig_dir, pf, plot_type + '.' + pf)
             if print_full_plot_paths:
-                print(plot_fname)
+                if not in_worker_process():
+                    print(plot_fname)
+                out_strs.append(plot_fname)
 
             # This probably means we are unintentionally saving two different
             # things to the same filename.
             if args.delete_existing_figs and exists(plot_fname):
                 raise IOError('likely saving two different things to '
-                    f'{plot_fname}! fix code.')
+                    f'{plot_fname}! fix code.'
+                )
 
             # This should be redundant with check above, but just to be sure.
             assert plot_fname not in plots_made_this_run
@@ -349,7 +371,9 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
                 plots_made_this_run.add(plot_fname)
 
         if print_full_plot_paths:
-            print('')
+            if not in_worker_process():
+                print('')
+            out_strs.append('')
 
         if not exclude_from_latex:
             paired = recording_info_suffix is not None
@@ -398,6 +422,11 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
             # n_open.
             except IndexError:
                 break
+
+    # So that functions parallelizing stuff that calls savefigs can print all of
+    # the usual output in the same order as it would be printed when not
+    # parallelized.
+    return '\n'.join(out_strs)
 
 
 def load_pid_data(df):
@@ -504,7 +533,8 @@ def read_pickle(trace_pickle):
     return df, other_data
 
 
-def order_by_odor_sets(trace_pickles, drop_if_missing={'kiwi'}):
+def order_by_odor_sets(trace_pickles, drop_if_missing={'kiwi'},
+    odorset_first=True):
     """
     Returns re-ordered list of pickle filenames, with data from within flys now
     appearing in a fixed order.
@@ -528,16 +558,25 @@ def order_by_odor_sets(trace_pickles, drop_if_missing={'kiwi'}):
         odor_set = u.odorset_name(df)
         # TODO delete all other add_odorset stuff?
         assert 'odor_set' not in df.columns
-        df['odor_set'] = 'odor_set'
+        # TODO what if anything depended on this being set?
+        # (because it used to be incorrect, w/ rhs = 'odor_set', so anything
+        # dependent may have also behaved incorrectly...
+        # and if nothing is dependent on this, delete it
+        df['odor_set'] = odor_set
+        #
 
-        keys = fly_keys + (odor_set2order[odor_set],) 
-        fname2keys[tp] = keys
         if fly_keys not in fly_keys2odor_sets:
             fly_keys2odor_sets[fly_keys] = {odor_set}
             fly_keys2fnames[fly_keys] = [tp]
         else:
             fly_keys2odor_sets[fly_keys].add(odor_set)
             fly_keys2fnames[fly_keys].append(tp)
+
+        if odorset_first:
+            keys = (odor_set2order[odor_set],) + fly_keys
+        else:
+            keys = fly_keys + (odor_set2order[odor_set],) 
+        fname2keys[tp] = keys
 
     if drop_if_missing is None or len(drop_if_missing) == 0:
         raise NotImplementedError('no support for missing ref odor')
@@ -1340,16 +1379,26 @@ def add_odor_id(df):
     return df
 
 
-def process_traces(df_pickle):
+# TODO TODO probably try to move as much of the plotting as possible to the loop
+# below this (or move the few remaining single fly plots from there here?)
+# want to be able to calulate responders w/ different thresholds easily though /
+# compute linearity props, etc w/ diff params
+def process_traces(df_pickle, fly2response_threshold):
     """Computes responders and does initial analyses on one recording's traces.
 
     Args:
     df_pickle (str): filename of pickled DataFrame with cell dF/F traces
-
-    Returns:
-
     """
+    verbose = True
+    being_parallelized = not type(fly2response_threshold) is dict
+
+    # TODO maybe factor if verbose: print(out_s); if being_parallelized: ...
+    # to internal fn?
+    if being_parallelized:
+        verbose = False
+
     ret_dict = dict()
+    out_strs = []
 
     # TODO also support case here pickle has a dict
     # (w/ this df behind a trace_df key & maybe other data, like PID, behind
@@ -1369,7 +1418,11 @@ def process_traces(df_pickle):
     title = '/'.join([parts[0], parts[1], '_'.join(parts[2:])])
     del parts
     fname = odor_set.replace(' ','') + '_' + title.replace('/','_')
-    print(fname)
+    if verbose:
+        print(fname)
+
+    if being_parallelized:
+        out_strs.append(fname)
 
     fly_nums = df.fly_num.unique()
     assert len(fly_nums) == 1
@@ -1424,20 +1477,46 @@ def process_traces(df_pickle):
 
     used_for_thresh = False
     if fix_ref_odor_response_fracs:
-        if fly_key not in fly2response_threshold:
+        #if fly_key not in fly2response_threshold:
+        if ref_odor in scalar_response_criteria.index.unique(level='name1'):
+            assert fly_key not in fly2response_threshold
             mean_zchange_response_thresh = np.percentile(
                 scalar_response_criteria.loc[(ref_odor,)],
                 100 - ref_response_percent
             )
             fly2response_threshold[fly_key] = mean_zchange_response_thresh
             # TODO maybe print for all flies in one place at the end?
-            print(('Calculated mean Z-scored response threshold, from '
+            out_s = ('Calculated mean Z-scored response threshold, from '
                 'reference response percentage of {:.1f} to {}: '
-                '{:.2f}').format(ref_response_percent, ref_odor,
-                mean_zchange_response_thresh)
+                '{:.2f}').format(
+                ref_response_percent, ref_odor, mean_zchange_response_thresh
             )
+            if verbose:
+                print(out_s)
+
+            if being_parallelized:
+                out_strs.append(out_s)
+
             used_for_thresh = True
         else:
+            # If data with ref_odor happens to finish processing after data
+            # requiring that threshold reaches this point, we will need to
+            # wait for the threshold to be computed from the data with the
+            # ref_odor.
+            if being_parallelized:
+                total_seconds_slept = 0
+                sleep_s = 0.5
+                max_sleep_s = 20.0
+                while fly_key not in fly2response_threshold:
+                    time.sleep(sleep_s)
+                    total_seconds_slept += sleep_s
+                    if total_seconds_slept > max_sleep_s:
+                        raise RuntimeError('worker waited too long '
+                            f'(>{max_sleep_s:.0f}s waiting for fly_key in '
+                            'fly2response_threshold'
+                        )
+            assert fly_key in fly2response_threshold
+
             unique_name1s = scalar_response_criteria.index.get_level_values(
                 'name1').unique()
             assert ref_odor not in unique_name1s
@@ -1456,7 +1535,14 @@ def process_traces(df_pickle):
             warnings.warn('AND this recording was used to set the threshold'
                 ' for this fly!'
             )
-        return None
+
+        if being_parallelized:
+            # So there is always a consistent number of returned arguments in
+            # the `being_parallelized` case.
+            return None, None, None, None
+        else:
+            return None
+
     del used_for_thresh
 
     # Since we also excluded rejects when assigning fly_ids, need to check
@@ -1490,9 +1576,10 @@ def process_traces(df_pickle):
         # TODO maybe pick thresh from some kind of max of derivative (to
         # find an elbow)?
         # TODO could also use on one / a few flies for tuning, then disable?
-        savefigs(thr_fig, 'threshold_sensitivity', fname,
+        out_s = savefigs(thr_fig, 'threshold_sensitivity', fname,
             section='Threshold sensitivity'
         )
+        out_strs.append(out_s)
 
     # TODO not sure why it seems i need such a high threshold here, to get
     # reasonable sparseness... was the fly i'm testing it with just super
@@ -1500,9 +1587,14 @@ def process_traces(df_pickle):
     trial_responders = \
         scalar_response_criteria >= mean_zchange_response_thresh
 
-    print(('Fraction of cells trials counted as responses (mean z-scored '
-        'dff > {:.2f}): {:.2f}').format(mean_zchange_response_thresh, 
-        trial_responders.sum() / len(trial_responders)))
+    out_s = ('Fraction of cells trials counted as responses (mean z-scored '
+        'dff > {:.2f}): {:.2f}').format(mean_zchange_response_thresh,
+        trial_responders.sum() / len(trial_responders)
+    )
+    if verbose:
+        print(out_s)
+    if being_parallelized:
+        out_strs.append(out_s)
 
     # TODO delete after getting refactoring in to process_traces to work.
     # commented to show original position.
@@ -1518,9 +1610,14 @@ def process_traces(df_pickle):
         trial_responders.groupby(['name1','cell']).sum() >= 2
 
     if print_reliable_responder_frac:
-        print(('Mean fraction of cells responding to at least 2/3 trials:'
+        out_s = ('Mean fraction of cells responding to at least 2/3 trials:'
             ' {:.3f}').format(
-            reliable_responders.sum() / len(reliable_responders)))
+            reliable_responders.sum() / len(reliable_responders)
+        )
+        if verbose:
+            print(out_s)
+        if being_parallelized:
+            out_strs.append(out_s)
 
     n_cells = len(df.cell.unique())
     frac_odor_trial_responders = trial_responders.groupby(
@@ -1530,20 +1627,29 @@ def process_traces(df_pickle):
     # (in the loop over the outputs)
 
     if print_responder_frac_by_trial:
-        print('Fraction of cells responding to each trial of each odor:')
-        # TODO TODO TODO is the population becoming silent to kiwi more
-        # quickly? is that consistent?
-
         # TODO maybe just set float output format once up top
         # (like i could w/ numpy in thing i was working w/ Han on)?
-        print(frac_odor_trial_responders.to_string(float_format='%.3f'))
+        out_s = ('Fraction of cells responding to each trial of each odor:\n' +
+            frac_odor_trial_responders.to_string(float_format='%.3f')
+        )
+        # TODO TODO TODO is the population becoming silent to kiwi more
+        # quickly? is that consistent?
+        if verbose:
+            print(out_s)
+        if being_parallelized:
+            out_strs.append(out_s)
 
     if print_mean_responder_frac:
         mean_frac_odor_responders = \
             frac_odor_trial_responders.groupby('name1').mean()
 
-        print('Mean fraction of cells responding to each odor:')
-        print(mean_frac_odor_responders.to_string(float_format='%.3f'))
+        out_s = ('Mean fraction of cells responding to each odor:' +
+            mean_frac_odor_responders.to_string(float_format='%.3f')
+        )
+        if verbose:
+            print(out_s)
+        if being_parallelized:
+            out_strs.append(out_s)
 
     # The shuffling with 'cell' is just so it is the last level in the
     # index.
@@ -1597,26 +1703,29 @@ def process_traces(df_pickle):
                 porder_corr_mean_fig = u.plot_odor_corrs(
                     odor_corrs_from_means, title_suffix=title_suffix
                 )
-                savefigs(porder_corr_mean_fig, 'porder_corr_mean', fname,
-                    exclude_from_latex=True
+                out_s = savefigs(porder_corr_mean_fig, 'porder_corr_mean',
+                    fname, exclude_from_latex=True
                 )
+                out_strs.append(out_s)
 
                 porder_corr_max_fig = u.plot_odor_corrs(
                     odor_corrs_from_maxes, trial_stat='max',
                     title_suffix=title_suffix
                 )
-                savefigs(porder_corr_max_fig, 'porder_corr_max', fname,
+                out_s = savefigs(porder_corr_max_fig, 'porder_corr_max', fname,
                     exclude_from_latex=True
                 )
+                out_strs.append(out_s)
 
             if odor_order_correlations:
                 oorder_corr_mean_fig = u.plot_odor_corrs(
                     odor_corrs_from_means, odors_in_order=odor_order,
                     title_suffix=title_suffix
                 )
-                savefigs(oorder_corr_mean_fig, 'oorder_corr_mean', fname,
-                    exclude_from_latex=True
+                out_s = savefigs(oorder_corr_mean_fig, 'oorder_corr_mean',
+                    fname, exclude_from_latex=True
                 )
+                out_strs.append(out_s)
 
                 oorder_corr_max_fig = u.plot_odor_corrs(
                     odor_corrs_from_maxes, trial_stat='max',
@@ -1627,11 +1736,12 @@ def process_traces(df_pickle):
                 # above) (w/ tight_layout??), so that they can be fit
                 # side-by-side in PDF w/ minimum amount of whitespace
                 # between!
-                savefigs(oorder_corr_max_fig, 'oorder_corr_max', fname,
+                out_s = savefigs(oorder_corr_max_fig, 'oorder_corr_max', fname,
                     section='Trial-max response correlations',
                     # A large number to put this at the end.
                     section_order=200
                 )
+                out_strs.append(out_s)
 
         tidy_corrs_from_means = melt_symmetric(odor_corrs_from_means,
             name='corr'
@@ -1716,7 +1826,8 @@ def process_traces(df_pickle):
         )
         ax = plt.gca()
         ax.set_aspect(0.1)
-        savefigs(f1, 'trials', fname)
+        out_s = savefigs(f1, 'trials', fname)
+        out_strs.append(out_s)
 
     odor_cell_stats = trial_by_cell_stats.groupby('name1').mean()
 
@@ -1957,7 +2068,8 @@ def process_traces(df_pickle):
         )
         ax = plt.gca()
         ax.set_aspect(0.1)
-        savefigs(f2, 'avg', fname)
+        out_s = savefigs(f2, 'avg', fname)
+        out_strs.append(out_s)
 
     if odor_and_fit_matrices:
         odor_and_fit_plot(odor_cell_stats, weighted_sum, order[:top_n],
@@ -1976,9 +2088,18 @@ def process_traces(df_pickle):
         plot_ds_factor = (np.floor(max_plotting_td / frame_delta) - 
             frame_delta / (max_n_frames + 1))
         plotting_td = pd.Timedelta(plot_ds_factor * frame_delta, unit='s')
-        print('median frame_delta:', frame_delta)
-        print('plot_ds_factor:', plot_ds_factor)
-        print('plotting_td:', plotting_td)
+
+        out_s = '\n'.join([
+            f'median frame_delta: {frame_delta}',
+            f'plot_ds_factor: {plot_ds_factor}',
+            f'plotting_td: {plotting_td}'
+        ])
+        if verbose:
+            print(out_s)
+
+        if being_parallelized:
+            out_strs.append(out_s)
+
         '''
 
         # TODO could also using rolling window if just wanting it to look
@@ -2086,7 +2207,8 @@ def process_traces(df_pickle):
             a.axis('off')
 
         g.fig.subplots_adjust(top=0.9, left=0.05)
-        savefigs(g.fig, 'avg_traces', fname)
+        out_s = savefigs(g.fig, 'avg_traces', fname)
+        out_strs.append(out_s)
 
     # TODO TODO TODO plot pid too
 
@@ -2116,15 +2238,22 @@ def process_traces(df_pickle):
             # TODO would need to at least check that pairing in report
             # generation also works w/ arbitrary extra parts (beyond
             # glob str, maybe), to also pair on the odor here
-            savefigs(fs, 'avg', fname + ss, exclude_from_latex=True)
+            out_s = savefigs(fs, 'avg', fname + ss, exclude_from_latex=True)
+            out_strs.append(out_s)
 
         if odor_and_fit_matrices:
             odor_and_fit_plot(odor_cell_stats, weighted_sum, order[:top_n],
                 fname + ss, title, sort_odor_labels, cbar_label
             )
 
-    print('')
-    return ret_dict
+    if verbose:
+        print('')
+
+    if being_parallelized:
+        out_str = '\n'.join([s for s in out_strs if len(s) > 0] + [''])
+        return ret_dict, plot_prefix2latex_data, plots_made_this_run, out_str
+    else:
+        return ret_dict
 
 
 pickle_outputs_dir = 'output_pickles'
@@ -2217,12 +2346,68 @@ if not args.only_analyze_cached:
         ref_odor = None
         ref_response_percent = None
 
-    #'''
+    # TODO maybe assert all outputs are same running w/ mp vs in loop here?
+    # (pdfs / pngs & cached stuff) (in case it's possible diff scope causes
+    # differences? is it though?) (and ideally compare to output before
+    # factoring loop contents to fn above / argument for why output would
+    # not be expected to change ...which it shouldn't, right?)
+    '''
     ret_dicts = []
     for df_pickle in pickles:
         ret_dicts.append(process_traces(df_pickle))
-    #'''
-    #with mp.Manager(
+    '''
+
+    # TODO some existing solution to output stdout output of workers in order
+    # after map finishes? explore trying to make one w/ redirecting stdout,
+    # like: https://stackoverflow.com/questions/5884517 at some point
+    parallel_process_traces = True
+    if parallel_process_traces:
+        with mp.Manager() as manager:
+            # TODO also handle case where fix_ref_odor_response_fracs == False!
+            # (or delete code supporting that case)
+            fly2response_threshold = manager.dict()
+            # The multiprocessing docs say this is the default value if the
+            # `processes` kwarg is not specified in the Pool constructor.
+            print(f'Processing traces with {os.cpu_count()} workers')
+            # TODO maybe make calls to multiprocessing stuff that allows me
+            # to explicitly specify ordering? in case waiting for some ref_odor
+            # data inside calls is making some things take too long. could maybe
+            # order to avoid / minimize any need for waiting.
+            with manager.Pool() as pool:
+                ret = pool.starmap(
+                    process_traces, product(pickles, [fly2response_threshold])
+                )
+        assert len(ret) == len(pickles)
+
+        # Note, as the second two elements here are just worker variables that
+        # are returned, they can grow across across calls to process_traces
+        # within a particular worker.
+        # "Zip is its own inverse" https://stackoverflow.com/questions/12974474
+        ret_dicts, plot_pfx2ltx_data_list, plots_made_list, out_strs = zip(*ret)
+
+        plot_pfx2ltx_data_list = [x for x in plot_pfx2ltx_data_list if x]
+        assert all([
+            x == plot_pfx2ltx_data_list[0] for x in plot_pfx2ltx_data_list
+        ])
+        plot_prefix2latex_data = plot_pfx2ltx_data_list[0]
+        del plot_pfx2ltx_data_list
+
+        plots_made_list = [x for x in plots_made_list if x]
+
+        plots_made_this_run = set().union(*plots_made_list)
+        # A crude check that would catch some ways different plot_traces
+        # calls might make different numbers of plots.
+        assert len(plots_made_this_run) % len(plots_made_list) == 0
+        del plots_made_list
+
+        for out_str in out_strs:
+            if out_str is not None:
+                print(out_str)
+        del out_strs
+    else:
+        ret_dicts = list(starmap(
+            process_traces, product(pickles, [fly2response_threshold])
+        ))
 
     # This filters out any recordings that were used to set some threshold, but
     # were otherwise intentionally skipped from the rest of the analysis.
@@ -2254,7 +2439,6 @@ if not args.only_analyze_cached:
             x['correlation_ser_from_maxes'] for x in ret_dicts
         ]
         corr_ser_from_maxes = pd.concat(correlation_sers_from_maxes)
-
     else:
         corr_ser_from_means = None
         corr_ser_from_maxes = None
@@ -2298,7 +2482,8 @@ if not args.only_analyze_cached:
         mean_zchange_response_thresh = None
     else:
         pickle_outputs_name = pickle_outputs_fstr.format(
-            mean_zchange_response_thresh, '')
+            mean_zchange_response_thresh, ''
+        )
 
     print(f'Writing computed outputs to {pickle_outputs_name}')
     # TODO TODO maybe save code version into df too? but diff name than one
@@ -2334,7 +2519,7 @@ if not args.only_analyze_cached:
         pickle.dump(data, f)
 
     after_raw_calc_time_s = time.time()
-    print('Calculations on raw data took {:.0f}s'.format(
+    print('Loading and processing traces took {:.0f}s'.format(
         after_raw_calc_time_s - start_time_s
     ))
 
