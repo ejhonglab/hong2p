@@ -251,24 +251,30 @@ def compile_tex_to_pdf(latex_str, pdf_fname, verbose, gen_latex_msg=None):
         raise
 
 
+def pop_with_default(d, k, default=None):
+    if k in d:
+        return d.pop(k)
+    else:
+        return default
+
+
+test_tex_fname = 'test.tex'
 def main(*args, **kwargs):
-    debug = False
     verbose = False
     write_latex_for_testing = False
     only_print_latex = False
     write_latex_like_pdf = False
     date_in_pdf_name = True
-    last_inputs_pickle_fname = 'last_inputs_genpdfreport.p'
+    last_inputs_pickle_fname = '.last_inputs_genpdfreport.p'
+
+    debug = pop_with_default(kwargs, 'debug', False)
     if debug:
         verbose = True
         write_latex_for_testing = True
 
-    # TODO some more idiomatic / cleaner way to pass cli args to main?
+    rerun_last_inputs = pop_with_default(kwargs, 'rerun_last_inputs', False)
 
-    if 'rerun_last_inputs' in kwargs:
-        rerun_last_inputs = kwargs.pop('rerun_last_inputs')
-    else:
-        rerun_last_inputs = False
+    only_recompile_test_tex = pop_with_default(kwargs, 'only_recompile', False)
 
     if rerun_last_inputs:
         with open(last_inputs_pickle_fname, 'rb') as f:
@@ -276,15 +282,12 @@ def main(*args, **kwargs):
         args = data['args']
         kwargs = data['kwargs']
 
-    elif debug:
+    # We are only interested in saving the auto-generated inputs when this
+    # script is called from kc_mix_analysis.py (or elsewhere), so don't save
+    # them in this case.
+    elif not only_recompile_test_tex:
         with open(last_inputs_pickle_fname, 'wb') as f:
             pickle.dump({'args': args, 'kwargs': kwargs}, f)
-
-    test_tex_fname = 'test.tex'
-    if 'only_recompile_test_tex' in kwargs:
-        only_recompile_test_tex = kwargs.pop('only_recompile_test_tex')
-    else:
-        only_recompile_test_tex = False
 
     if only_recompile_test_tex:
         print(f'Reading test TeX from {test_tex_fname}')
@@ -295,16 +298,15 @@ def main(*args, **kwargs):
         compile_tex_to_pdf(latex_str, pdf_fname, verbose)
         sys.exit()
 
-    if 'filenames' in kwargs:
-        filenames_to_use = kwargs.pop('filenames')
-        if filenames_to_use is not None:
-            # Any matching files will have to also be present in here.
-            filenames_to_use = {split(p)[1] for p in filenames_to_use}
-            # TODO maybe print which files are excluded as they are? (if
-            # verbose?)
-    else:
-        # This means to use all matching files.
-        filenames_to_use = None
+    # Here and below, popping from kwargs rather than using an explicit separate
+    # keyword argument so that it is still saved in last inputs in above
+    # pickling. Default of None means to use all matching files.
+    filenames_to_use = pop_with_default(kwargs, 'filenames')
+    if filenames_to_use is not None:
+        # Any matching files will have to also be present in here.
+        filenames_to_use = {split(p)[1] for p in filenames_to_use}
+        # TODO maybe print which files are excluded as they are? (if
+        # verbose?)
 
     env = make_env(loader=FileSystemLoader('.'))
     template = env.get_template('template.tex')
@@ -313,19 +315,16 @@ def main(*args, **kwargs):
 
     # TODO test that auto finding + ordering missing stuff is still working when
     # these are not passed in kwargs
-    # These will all be stacked top to bottom.
-    if 'section_names_and_globstrs' in kwargs:
-        section_names_and_globstrs = kwargs.pop('section_names_and_globstrs')
-    else:
-        section_names_and_globstrs = []
 
+    # These will all be stacked top to bottom.
+    section_names_and_globstrs = pop_with_default(
+        kwargs, 'section_names_and_globstrs', []
+    )
     # These will be lined up in two columns, with one odor_set in left column
     # and the other in the right column.
-    if 'paired_section_names_and_globstrs' in kwargs:
-        paired_section_names_and_globstrs = \
-            kwargs.pop('paired_section_names_and_globstrs')
-    else:
-        paired_section_names_and_globstrs = []
+    paired_section_names_and_globstrs = pop_with_default(
+        kwargs, 'paired_section_names_and_globstrs', []
+    )
 
     sections = [(n, glob_plots(gs, filenames_to_use)) for n, gs
         in section_names_and_globstrs
@@ -470,9 +469,7 @@ def main(*args, **kwargs):
         'pca*',
         'pca_unstandardized*',
         'porder_corr_max*',
-        'porder_corr_mean*',
-        'skree*',
-        'skree_unstandardized*'
+        'porder_corr_mean*'
     }
     unclaimed_file_globstr_set = {g for g in unclaimed_files2globstrs.values()}
     unclaimed_file_globstr_set -= globstrs_to_exclude
@@ -576,16 +573,15 @@ def main(*args, **kwargs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-r', '--only-recompile', default=False,
-        action='store_true'
+        action='store_true', help=f'only recompiles {test_tex_fname} to PDF'
     )
     parser.add_argument('-l', '--rerun-last-inputs', default=False,
         action='store_true'
     )
-    args = parser.parse_args()
-    # TODO just pass dict of all args to kwargs?
-    kwargs = dict(
-        only_recompile_test_tex=args.only_recompile,
-        rerun_last_inputs=args.rerun_last_inputs
+    parser.add_argument('-d', '--debug', default=False, action='store_true',
+        help=f'more verbose and writes generated LaTeX to {test_tex_fname}'
     )
+    # vars(...) apparently converts argparse Namespace to a regular dict
+    kwargs = vars(parser.parse_args())
     main(**kwargs)
 

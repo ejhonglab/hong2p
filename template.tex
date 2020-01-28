@@ -1,7 +1,14 @@
 
 \documentclass{article}
 \usepackage{verbatim}
-\usepackage{graphicx}
+
+% https://tex.stackexchange.com/questions/6073
+% https://tex.stackexchange.com/questions/195521
+% I'm just using this package to add the "max width" optional key to
+% includegraphics. Otherwise, it just wraps graphicx as far as I'm
+% concerned.
+\usepackage[export]{adjustbox}
+
 \usepackage{figureSeries}
 
 \usepackage{geometry}
@@ -130,7 +137,7 @@ Used extracted fluorescence traces in these files:
 \begin{verbbox}\VAR{figpdf}\end{verbbox}
 \BLOCK{ endif }
 \figureSeriesRow{
-\figureSeriesElement{\BLOCK{ if filename_captions }\theverbbox\BLOCK{ endif }}{\includegraphics[width=\textwidth,keepaspectratio]{\VAR{figpdf}}}
+\figureSeriesElement{\BLOCK{ if filename_captions }\theverbbox\BLOCK{ endif }}{\includegraphics[max width=\textwidth,keepaspectratio]{\VAR{figpdf}}}
 }
 \BLOCK{ endfor }
 \pagebreak
@@ -163,12 +170,30 @@ Used extracted fluorescence traces in these files:
 % BLOCK directives. (Previously I had empty lines here to visually
 % separate the two if statements, and that seemed sufficient to cause
 % failure of grouping figures into rows.)
-%# TODO copy verbbox filename_caption handling from above to this loop too
 \BLOCK{ for row_figpdfs in section[1]|batch(3) }
+
+\BLOCK{ if filename_captions }
+\BLOCK{ for figpdf in row_figpdfs }
+\BLOCK{ if figpdf }
+%# Converting from int loop counter to letter because \v1 and \v2 led to
+%# seemingly incorrect PDF output in a test case, but \va and \vb worked.
+%# I also tried this, but chr is undefined within the templater context.
+%# \VAR{ chr(97 + loop.index0) }
+%# TODO possible to factor stuff to get char into a fn somehow, so
+%# i don't need to redefine it three times?
+\begin{myverbbox}[\tiny]{\v\VAR{'abcdefghijklmnopqrstuvwxyz'[loop.index0]}}\VAR{figpdf}\end{myverbbox}
+\BLOCK{ endif }
+
+\BLOCK{ if not figpdf }
+\begin{myverbbox}{\v\VAR{'abcdefghijklmnopqrstuvwxyz'[loop.index0]}}\end{myverbbox}
+\BLOCK{ endif }
+\BLOCK{ endfor }
+
+\BLOCK{ endif }
 \figureSeriesRow{
 \BLOCK{ for figpdf in row_figpdfs }
 \BLOCK{ if figpdf }
-\figureSeriesElement{}{\includegraphics[width=0.32\textwidth,height=0.25\textheight,keepaspectratio]{\VAR{figpdf}}}
+\figureSeriesElement{\BLOCK{ if filename_captions }\v\VAR{'abcdefghijklmnopqrstuvwxyz'[loop.index0]}\BLOCK{ endif }}{\includegraphics[width=0.32\textwidth,height=0.25\textheight,keepaspectratio]{\VAR{figpdf}}}
 \BLOCK{ endif }
 \BLOCK{ if not figpdf }
 \figureSeriesElement{}{\includegraphics[width=0.32\textwidth]{empty_placeholder.pdf}}
