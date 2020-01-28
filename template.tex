@@ -139,6 +139,12 @@ Used extracted fluorescence traces in these files:
 \figureSeriesRow{
 \figureSeriesElement{\BLOCK{ if filename_captions }\theverbbox\BLOCK{ endif }}{\includegraphics[max width=\textwidth,keepaspectratio]{\VAR{figpdf}}}
 }
+
+%# TODO is this a valid test in this context?
+\BLOCK{ if figpdf in pagebreak_after }
+\pagebreak
+\BLOCK{ endif }
+
 \BLOCK{ endfor }
 \pagebreak
 
@@ -200,6 +206,14 @@ Used extracted fluorescence traces in these files:
 \BLOCK{ endif }
 \BLOCK{ endfor }
 }
+
+%# TODO uncomment and get working after getting similar section above working
+%# TODO is figpdf still defined here (from loop above)
+%# if not, how to accomplish this?
+%#\BLOCK{ if figpdf in pagebreak_after }
+%#\pagebreak
+%#\BLOCK{ endif }
+
 \BLOCK{ endfor }
 
 \pagebreak

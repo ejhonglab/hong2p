@@ -217,6 +217,10 @@ def plot_files_in_order(glob_str, filenames_to_use):
     return files_with_fillers
 
 
+# TODO maybe also move enforcement of stuff within subsections staying adjacent
+# from kc_mix_analysis to here, since i want to have this script tell the
+# templater to pagebreak after subsections, and right now this script and the
+# template both have no knowledge of subsections
 def agg_within_sections(sec_names_and_files):
     """
     Returns new list of sections and files, with no duplicate section names,
@@ -325,6 +329,8 @@ def main(*args, **kwargs):
     paired_section_names_and_globstrs = pop_with_default(
         kwargs, 'paired_section_names_and_globstrs', []
     )
+
+    pagebreak_after = pop_with_default(kwargs, 'pagebreak_after', set())
 
     sections = [(n, glob_plots(gs, filenames_to_use)) for n, gs
         in section_names_and_globstrs
@@ -518,19 +524,37 @@ def main(*args, **kwargs):
             new_plots.extend(plots[3*i:3*i + 3] + [None])
         assert len(new_plots) % 4 == 0
         new_paired_sections.append((name, new_plots))
-    #
+
+    '''
+    pprint({p: p + '.pdf' in set(f for s, fs in sections for f in fs)
+        for p in pagebreak_after}
+    )
+    '''
+    # TODO update to split on extension rather than harcode pdf or some
+    # length of extension. also fix code here + in kc_mix_analysis as needed
+    # to support things filtered here, if i want to pagebreak after any of them
+    pagebreak_after = {p + '.pdf' for p in pagebreak_after
+        if p + '.pdf' in {f for s, fs in sections for f in fs}
+    }
+
     if verbose:
         print('Section names and input files:')
         pprint(sections)
+        # TODO TODO probably rename all "Paired" references here and in
+        # kc_mix_analysis to "Grouped", or something else inclusive of
+        # n_odorsets > 2
         print('Paired section names and input files:')
         pprint(paired_sections)
+        print('Pagebreak after:')
+        pprint(pagebreak_after)
         print('')
 
     # TODO even if not using sections in latex, maybe include quick list of
     # types of figures to expect at top. maybe even bulleted.
 
     latex_str = template.render(pdfdir=pdfdir, sections=sections,
-        paired_sections=paired_sections, filename_captions=debug, **kwargs
+        paired_sections=paired_sections, pagebreak_after=pagebreak_after,
+        filename_captions=debug, **kwargs
     )
     latex_str = clean_generated_latex(latex_str)
 

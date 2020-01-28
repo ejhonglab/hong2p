@@ -300,19 +300,19 @@ else:
     max_open_noninteractive = args.max_open_saved_figs
 fig_queue = deque()
 
-# TODO any cases where a per-figure note would also be useful enough to support
-# it?
-# TODO include a section kwarg that is more broad than current section,
-# rename current section to subsection, and use new section to group for
-# table of contents (e.g. so all adaptation stuff can be put together)?
-
 # Currently putting in LaTeX report in the order saved here, though still
 # with all paired stuff coming after non-paired stuff.
 
 plot_prefix2latex_data = dict()
 plots_made_this_run = set()
+# TODO do i need to include any of these in what gets [un]pickled now?
+manual_section2order = dict()
+section2order = dict()
+section2subsection_orders = dict()
+#
 def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
-    subsection=None, note=None, exclude_from_latex=False, section_order=None):
+    subsection=None, note=None, exclude_from_latex=False, section_order=None,
+    order=None):
     """
     section_order (None or int): If an int, it is used as a sort key to order
         this section relative to the others. Default order start at 0 and
@@ -383,20 +383,74 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
                 section = ''
             if subsection is None:
                 subsection = ''
+
+            # TODO should this subsection_order stuff be in if below? or can i
+            # remove if below / move some of order stuff up here?
+            if section not in section2subsection_orders:
+                section2subsection_orders[section] = dict()
+
+            if subsection not in section2subsection_orders[section]:
+                # This is to order subsections within a section.
+                # I have not had a need to manually specify this yet.
+                subsection_order = len(section2subsection_orders[section])
+                section2subsection_orders[section][subsection] = \
+                    subsection_order
+            else:
+                subsection_order = \
+                    section2subsection_orders[section][subsection]
+            #
+
             if plot_type_prefix not in plot_prefix2latex_data:
                 if section_order is None:
-                    n_before = len([(s,d) for s, d in
-                        plot_prefix2latex_data.items() if d['paired'] == paired
+                    # TODO handle case where manual section order specified
+                    # after an automatic one. want to apply manual order
+                    # back to any previous instances of the section
+                    if section in manual_section2order:
+                        section_order = manual_section2order[section]
+
+                    elif section in section2order:
+                        section_order = section2order[section]
+
+                    else:
+                        # TODO modify this to only count sections before, not
+                        # all items before (shouldt affect function though as
+                        # long as section_order is constant w/in a section)
+                        n_before = len([
+                            (s,d) for s, d in plot_prefix2latex_data.items()
+                            if d['paired'] == paired
+                        ])
+                        section_order = n_before
+                        section2order[section] = section_order
+                else:
+                    if section in manual_section2order:
+                        assert section_order == manual_section2order[section]
+                    else:
+                        manual_section2order[section] = section_order
+
+                # TODO maybe replace this with a scalar / arbitrary length
+                # sequence of keys or sort by? or detect groups within a section
+                # / subsection and only apply one of these ordering keys within
+                # those groups? (so as to not mix linearity analysis looking at
+                # cell subsets with analysis on all cells/responders)
+
+                # For now, using this to order within both sections AND
+                # subsections.
+                if order is None:
+                    n_before_in_subsection = len([
+                        (s,d) for s, d in plot_prefix2latex_data.items()
+                        if d['paired'] == paired and d['section'] == section and
+                        d['subsection'] == subsection
                     ])
-                    section_order = n_before
+                    order = n_before_in_subsection
+
                 latex_data = {
                     'section': section,
                     'subsection': subsection,
                     'note': note,
                     'paired': paired,
-                    # TODO TODO TODO implement an 'order' key that works like
-                    # section_order, but for order within a section
-                    'section_order': section_order
+                    'section_order': section_order,
+                    'subsection_order': subsection_order,
+                    'order': order
                 }
                 plot_prefix2latex_data[plot_type_prefix] = latex_data
             else:
@@ -2567,10 +2621,6 @@ else:
 n_flies = len(responders.index.to_frame()[fly_keys].drop_duplicates())
 fly_colors = sns.color_palette('hls', n_flies)
 
-# TODO delete this if not used after cleaning up n_ro_hist stuff
-# could also try ':' or '-.'
-odorset2linestyle = {'kiwi': '-', 'control': '--', 'flyfood': 'dotted'}
-
 odor_set_odors_nosolvent = [os - set(u.solvents) for os in odor_set_odors]
 
 # TODO fix cause of warnings that first plt call generates, e.g.:
@@ -2636,8 +2686,8 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             raise ValueError('odor set not recognized')
         del unique_odors
 
+        # TODO still needed?
         rec_keys2odor_set[fly_gn + (rec_gn,)] = odorset
-        linestyle = odorset2linestyle[odorset]
 
         # old style title
         old_title = (odorset + ', ' +
@@ -3081,7 +3131,7 @@ def tuning_breadth_vs_shuffle(fly=None):
     g.fig.subplots_adjust(top=top, hspace=hspace)
     u.fix_facetgrid_axis_labels(g)
     set_shuffle_facet_titles(g)
-    savefigs(g.fig, curr_fname, section=section)
+    savefigs(g.fig, curr_fname, section=section, order=200 if fly else None)
 
 tuning_breadth_vs_shuffle()
 for fly in n_ros_df.fly_id.unique():
@@ -3460,8 +3510,11 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
     assert (len(curr_odor_set_order) == 1 or
         len(curr_odor_set_order) == len(odor_set_order)
     )
-    # TODO increase title size (maybe odors too, but would prob need
-    # to rotate)
+    # TODO TODO maybe keep aspect ratio of each facet constant, indep. of
+    # whether there is one or three. lack of this property seems to be why
+    # these next two facetgrid plots get split onto two pages for the
+    # cell-category-specific stuff, while only taking up one page for the
+    # across-all-cells/responders stuff
     g = sns.FacetGrid(mean_rmag_df, col='odor_set', height=6.5,
         col_order=curr_odor_set_order, sharex=False, dropna=False
     )
@@ -3521,8 +3574,8 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
         #g.fig.subplots_adjust(top=top)
 
     savefigs(g.fig, f'flymean_simple_linearity_{cell_subset_fname_str}',
-        section='Linearity', subsection='Simple linearity within each fly, '
-        f'{cell_subset_title_str}'
+        section='Linearity',
+        subsection=f'Simple linearity, {cell_subset_title_str}'
     )
 
     assert reliable_to_any is not None, 'must pass kwarg reliable_to_any'
@@ -3667,20 +3720,17 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
             if fly is not None:
                 cfname = f'{cfname}_fly{fly}'
 
-            # TODO TODO option to start a new page after this subsection
+            # TODO option to start a new page after this subsection
             # (to avoid confusion as to which subsection plots belong to,
             # particularly as long as there are not subsection headings).
             # and maybe that should be the default behavior?
             savefigs(fig, cfname, section='Linearity',
                 subsection=f'({n_params} parameter) linearity distributions, '
-                f'{cell_subset_title_str}'
+                f'{cell_subset_title_str}', order=200 if fly else None
             )
         # End compare_odorset_residual_dists def.
 
         compare_odorset_residual_dists()
-        # TODO TODO TODO re-order, so it's the above plot, then the dists w/ one
-        # facet per odorset (and multiple flies in each facet), then the
-        # below
         if odorsets_within_fly:
             # TODO TODO make a subsection w/ link and everything for these fly
             # specific dists. also maybe make figures a little smaller,
@@ -3699,10 +3749,10 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
         g = sns.FacetGrid(lin_df, row='odor_set', row_order=curr_odor_set_order,
             hue='fly_id', palette=fly_id_palette, aspect=2
         )
-        # TODO TODO TODO maybe don't exactly norm_hist here, but maybe scale
+        # TODO TODO maybe don't exactly norm_hist here, but maybe scale
         # so flies that contribute less cells to a particular category have
         # a shorter summed bar height?
-        # TODO TODO TODO maybe this means i'll have to plot the all cells /
+        # TODO TODO maybe this means i'll have to plot the all cells /
         # cells reliable to any plots w/o distplot, scaling to match the scale
         # of the summed count of cells w/in whatever subset being plotted?
         # TODO maybe rugplot?
@@ -3850,6 +3900,11 @@ for at_least_n_trials in (1, 2, 3):
         title_and_fname_strs = False
         title_str = f'on {name}s'
 
+    if at_least_n_trials == 1:
+        subsection = 'At least 1 trial'
+    else:
+        subsection = f'At least {at_least_n_trials} trials'
+
     if print_classification_rankings:
         print(f'\nOdorset AND fly {name} responder classification:')
 
@@ -3953,7 +4008,9 @@ for at_least_n_trials in (1, 2, 3):
         g.map(plt.bar, 'odors_str', 'cell_fraction')
         set_odors_cell_fraction_plot_props(g)
         # TODO maybe order this section so it's just before linearity section
-        savefigs(g.fig, fname, section='Responder breakdown')
+        savefigs(g.fig, fname, section='Responder breakdown',
+            subsection=subsection
+        )
 
         g = sns.FacetGrid(data=per_fly_df, sharex=False, hue='fly_id',
             palette=fly_id_palette, **fg_kwargs
@@ -3963,7 +4020,9 @@ for at_least_n_trials in (1, 2, 3):
         g.map(sns.stripplot, 'odors_str', 'cell_fraction', alpha=0.5)
         set_odors_cell_fraction_plot_props(g)
         g.add_legend(title=fly_id_legend_title)
-        savefigs(g.fig, 'per_fly_' + fname, section='Responder breakdown')
+        savefigs(g.fig, 'per_fly_' + fname, section='Responder breakdown',
+            subsection=subsection
+        )
 
 assert largest_reliable_groups is not None
 
@@ -4588,8 +4647,22 @@ if not args.no_report_pdf:
     # now...
 
     plot_prefix2latex_data_list = sorted(plot_prefix2latex_data.items(),
-        key=lambda x: x[1]['section_order']
+        key=lambda x: (x[1]['section_order'], x[1]['subsection_order'],
+        x[1]['order'])
     )
+
+    # Downstream stuff may be more well behaved with less thought
+    # if this assertion is True.
+    assert (len(plot_prefix2latex_data_list) ==
+        len({k for k, v in plot_prefix2latex_data_list})
+    )
+    section_and_subsec2last_plot_prefix = dict()
+    for k, v in plot_prefix2latex_data_list:
+        s = v['section']
+        ss = v['subsection']
+        section_and_subsec2last_plot_prefix[(s, ss)] = k
+    pagebreak_after = set(section_and_subsec2last_plot_prefix.values())
+
     section_names_and_globstrs = [(d['section'], p + '*') for p, d in
         plot_prefix2latex_data_list if not d['paired']
     ]
@@ -4609,7 +4682,7 @@ if not args.no_report_pdf:
     paired_section_names_and_globstrs = [(n, g) for n, g in
         paired_section_names_and_globstrs if g not in exclude_globstrs
     ]
-    # TODO TODO change latex report generation to actually include per-section
+    # TODO change latex report generation to actually include per-section
     # notes, and then don't just throw them away here
     '''
     print('\nsection_names_and_globstrs:')
@@ -4634,7 +4707,8 @@ if not args.no_report_pdf:
         outputs_pickle=outputs_pickle,
         filenames=plots_made_this_run,
         section_names_and_globstrs=section_names_and_globstrs,
-        paired_section_names_and_globstrs=paired_section_names_and_globstrs
+        paired_section_names_and_globstrs=paired_section_names_and_globstrs,
+        pagebreak_after=pagebreak_after
     )
 
     # Linux specific.
