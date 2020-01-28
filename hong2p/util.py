@@ -568,6 +568,8 @@ def print_all_stimfile_odorsets() -> None:
     ])
 
 
+solvents = ('pfo', 'water')
+natural = ('kiwi', 'fly food')
 # TODO maybe load (on demand) + cache the abbreviated versions of these, if
 # chemutils is available?
 odor_set2order = {
