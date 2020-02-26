@@ -170,6 +170,10 @@ def analysis_fly_dir(date, fly):
     return join(analysis_output_root(), _fly_dir(date, fly))
 
 
+# Holding on to old excepthook, rather than using always-available default at
+# sys.__excepthook__, so global modifications to sys.excepthook in Python
+# startup (like with a PYTHONSTARTUP script) are maintained.
+old_excepthook = sys.excepthook
 def matlab_exit_except_hook(exctype, value, traceback):
     if exctype == TypeError:
         args = value.args
@@ -177,7 +181,11 @@ def matlab_exit_except_hook(exctype, value, traceback):
         if (len(args) == 1 and
             args[0] == 'exit expected at most 1 arguments, got 2'):
             return
-    sys.__excepthook__(exctype, value, traceback)
+
+    old_excepthook(exctype, value, traceback)
+
+    # TODO delete this after confirming holding onto old excepthook works
+    #sys.__excepthook__(exctype, value, traceback)
 
 
 # TODO maybe rename to init_matlab and return nothing, to be more clear that
