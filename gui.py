@@ -83,7 +83,8 @@ df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
 # TODO rename to indicate it's for pair experiments
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', verify_integrity=True,
-    inplace=True)
+    inplace=True
+)
 
 def md5(fname):
     hash_md5 = hashlib.md5()
@@ -278,7 +279,8 @@ class Segmentation(QWidget):
             # to populate in a cheaper way than actually listing them, so we can
             # only show the expansion symbol when there are children
             recording_node.setChildIndicatorPolicy(
-                QTreeWidgetItem.ShowIndicator)
+                QTreeWidgetItem.ShowIndicator
+            )
 
             recording_node.setData(0, Qt.UserRole, False)
 
@@ -291,7 +293,8 @@ class Segmentation(QWidget):
         # or extra space (is this a matter of child size policies not being set
         # correctly?)
         self.data_tree.setSizePolicy(
-            QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+            QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        )
 
         # TODO TODO TODO disable this when appropriate (when running cnmf or
         # loading something else) (or just return under those conditions in this
@@ -311,7 +314,8 @@ class Segmentation(QWidget):
         # TODO maybe search indep of cwd?
         if exists(self.default_json_params):
             print('Loading default parameters from {}'.format(
-                self.default_json_params))
+                self.default_json_params
+            ))
             self.params = \
                 params.CNMFParams.from_json_file(self.default_json_params)
         else:
@@ -419,31 +423,35 @@ class Segmentation(QWidget):
         # TODO TODO also include display params in default param json?
         # just save automatically but separately?
         self.plot_intermediates_btn = QCheckBox('Intermediate footprints',
-            display_params)
+            display_params
+        )
         self.plot_intermediates = False
         self.plot_intermediates_btn.setChecked(self.plot_intermediates)
         self.plot_intermediates_btn.stateChanged.connect(partial(
-            self.set_boolean, 'plot_intermediates'))
+            self.set_boolean, 'plot_intermediates')
+        )
         display_params_layout.addWidget(self.plot_intermediates_btn)
 
         self.plot_corrs_btn = QCheckBox('Correlations', display_params)
         self.plot_correlations = False
         self.plot_corrs_btn.setChecked(self.plot_correlations)
         self.plot_corrs_btn.stateChanged.connect(partial(
-            self.set_boolean, 'plot_correlations'))
+            self.set_boolean, 'plot_correlations')
+        )
         display_params_layout.addWidget(self.plot_corrs_btn)
 
         self.plot_traces_btn = QCheckBox('Traces', display_params)
         self.plot_traces = False
         self.plot_traces_btn.setChecked(self.plot_traces)
         self.plot_traces_btn.stateChanged.connect(partial(
-            self.set_boolean, 'plot_traces'))
+            self.set_boolean, 'plot_traces')
+        )
         display_params_layout.addWidget(self.plot_traces_btn)
 
         # TODO TODO warn if would run analysis on same data w/ same params as
         # had previously led to a rejection (actually just same params period)
 
-        # TODO TODO TODO provide the opportunity to compare outputs of sets of
+        # TODO TODO provide the opportunity to compare outputs of sets of
         # parameters, either w/ same displays side by side, or overlayed?
 
         # TODO TODO maybe some button to automatically pick best set of
@@ -498,8 +506,8 @@ class Segmentation(QWidget):
         else:
             curr_param_tabs = self.param_widget_stack.widget(si).param_tabs
             curr_tab_name = curr_param_tabs.tabText(
-                curr_param_tabs.currentIndex())
-
+                curr_param_tabs.currentIndex()
+            )
             for i in range(param_tabs.count()):
                 if param_tabs.tabText(i) == curr_tab_name:
                     param_tabs.setCurrentIndex(i)
@@ -521,8 +529,6 @@ class Segmentation(QWidget):
     # (play nice w/ version changes, i.e. the cases above)
     # TODO maybe do the above tab-by-tab as well?
     def make_cnmf_param_widget(self, cnmf_params, editable=False):
-        """
-        """
         # TODO TODO need to make sure that if non-editable are connected to save
         # param callback, they use the correct data
         cnmf_ctrl_widget = QWidget(self)
@@ -681,7 +687,8 @@ class Segmentation(QWidget):
 
                     if editable and not is_data_param:
                         w.stateChanged.connect(
-                            partial(self.cnmf_set_boolean, group_key, k))
+                            partial(self.cnmf_set_boolean, group_key, k)
+                        )
 
                 elif type(v) is int:
                     # TODO set step relative to magnitude?
@@ -698,7 +705,8 @@ class Segmentation(QWidget):
 
                     if editable and not is_data_param:
                         w.valueChanged.connect(
-                            partial(self.cnmf_set_from_spinbox, group_key, k))
+                            partial(self.cnmf_set_from_spinbox, group_key, k)
+                        )
 
                 elif type(v) is float:
                     # TODO set step and decimal relative to default size?
@@ -723,7 +731,8 @@ class Segmentation(QWidget):
 
                     if editable and not is_data_param:
                         w.valueChanged.connect(
-                            partial(self.cnmf_set_from_spinbox, group_key, k))
+                            partial(self.cnmf_set_from_spinbox, group_key, k)
+                        )
 
                 # TODO TODO if type is list (tuple?) try recursively looking up
                 # types? (or just handle numbers?) -> place in
@@ -752,7 +761,8 @@ class Segmentation(QWidget):
 
                     if editable and not is_data_param:
                         w.currentIndexChanged[str].connect(
-                            partial(self.cnmf_set_from_list, group_key, k))
+                            partial(self.cnmf_set_from_list, group_key, k)
+                        )
 
                 else:
                     print_stuff = True
@@ -762,7 +772,8 @@ class Segmentation(QWidget):
                         # TODO TODO if using eval, use setValidator to set some
                         # validator that eval call works?
                         w.editingFinished.connect(
-                            partial(self.cnmf_set_from_text, group_key, k, w))
+                            partial(self.cnmf_set_from_text, group_key, k, w)
+                        )
 
                 if formgen_print and print_stuff:
                     print(k, v, type(v))
@@ -819,7 +830,8 @@ class Segmentation(QWidget):
             mk_current_params_btn = QPushButton('Use These Parameters')
             param_btns_layout.addWidget(mk_current_params_btn)
             mk_current_params_btn.clicked.connect(lambda:
-                self.change_cnmf_params(param_json_str))
+                self.change_cnmf_params(param_json_str)
+            )
 
         mk_default_params_btn = QPushButton('Make Parameters Default')
         param_btns_layout.addWidget(mk_default_params_btn)
@@ -827,13 +839,15 @@ class Segmentation(QWidget):
             # Wrapped with lambda to try to prevent qt from adding some
             # bool value to the *args.
             mk_default_params_btn.clicked.connect(lambda:
-                self.save_default_params())
+                self.save_default_params()
+            )
         else:
             assert param_json_str is not None
             # TODO have this notify + avoid saving if params are already
             # default (read just before)
             mk_default_params_btn.clicked.connect(lambda:
-                self.save_default_params(param_json_str))
+                self.save_default_params(param_json_str)
+            )
 
         if editable:
             # TODO support this?
@@ -849,7 +863,8 @@ class Segmentation(QWidget):
             # TODO why didn't lambdas work before again? this case suffer from
             # the same problem?
             save_params_btn.clicked.connect(
-                lambda: self.save_json(param_json_str))
+                lambda: self.save_json(param_json_str)
+            )
             # this didn't work, seemingly b/c interaction w/ *args
             # (it'd pass in (False,) for args)
             #    partial(self.save_json, param_json_str))
@@ -892,7 +907,8 @@ class Segmentation(QWidget):
         self.param_widget_stack.removeWidget(self.cnmf_ctrl_widget)
         sip.delete(self.cnmf_ctrl_widget)
         self.cnmf_ctrl_widget = self.make_cnmf_param_widget(json_str,
-            editable=True)
+            editable=True
+        )
         self.param_widget_stack.addWidget(self.cnmf_ctrl_widget)
         self.param_widget_stack.addWidget(self.param_display_widget)
         self.param_widget_stack.setCurrentIndex(0)
@@ -924,14 +940,16 @@ class Segmentation(QWidget):
         last_from1 = self.last_block + 1
         i_from1, ok_pressed = QInputDialog.getInt(self, 'Start block',
             'Start block ({}-{}):'.format(first_from1, last_from1),
-            value=first_from1, min=first_from1, max=last_from1)
+            value=first_from1, min=first_from1, max=last_from1
+        )
         # TODO this check right?
         if not ok_pressed:
             return
 
         j_from1, ok_pressed = QInputDialog.getInt(self, 'End block',
             'End block ({}-{}):'.format(i_from1, last_from1),
-            value=i_from1, min=i_from1, max=last_from1)
+            value=i_from1, min=i_from1, max=last_from1
+        )
         if not ok_pressed:
             return
 
@@ -945,7 +963,8 @@ class Segmentation(QWidget):
             cor_type = 'rig'
 
         new_thorimage_id = '{}_{}b{}_from_{}'.format(self.thorimage_id,
-            i_from1, j_from1, cor_type)
+            i_from1, j_from1, cor_type
+        )
 
         date_dir = self.date.strftime('%Y-%m-%d')
         fly_dir = str(self.fly_num)
@@ -976,7 +995,8 @@ class Segmentation(QWidget):
         # TODO put this def centrally somewhere?
         ts_xml_name = 'ThorRealTimeDataSettings.xml'
         src_sync_xml = join(self.recordings.iloc[0].thorsync_path,
-            ts_xml_name)
+            ts_xml_name
+        )
         new_sync_xml = join(fake_raw_ts_dir, ts_xml_name)
         if not exists(new_sync_xml):
             print('\nCopying ThorSync XML:\nfrom =', src_sync_xml)
@@ -985,9 +1005,11 @@ class Segmentation(QWidget):
 
         analysis_dir = join(analysis_output_root, date_dir, fly_dir)
         src_matfile = join(analysis_dir,
-            'cnmf', self.thorimage_id + '_cnmf.mat')
+            'cnmf', self.thorimage_id + '_cnmf.mat'
+        )
         linked_matfile = join(analysis_dir,
-            'cnmf', new_thorimage_id + '_cnmf.mat')
+            'cnmf', new_thorimage_id + '_cnmf.mat'
+        )
         # TODO this check work w/ symlinks?
         if not exists(linked_matfile):
             print('\nSymlinking to MAT file with timing information:')
@@ -1004,7 +1026,8 @@ class Segmentation(QWidget):
 
         # TODO share more code between this and avg...
         tiff_path = join(analysis_dir, 'tif_stacks',
-            '{}_{}.tif'.format(new_thorimage_id, cor_type))
+            '{}_{}.tif'.format(new_thorimage_id, cor_type)
+        )
 
         start_frame = self.block_first_frames[new_first]
         end_frame = self.block_last_frames[new_last]
@@ -1024,14 +1047,15 @@ class Segmentation(QWidget):
         sliced_movie = self.movie[start_frame:(end_frame + 1)]
         if not exists(tiff_path):
             print('\nSaving to TIFF {}...'.format(tiff_path), flush=True,
-                end='')
+                end=''
+            )
             tifffile.imsave(tiff_path, sliced_movie, imagej=True)
             print(' done\n')
 
         avg_tiff_path = join(analysis_dir, 'tif_stacks', 'AVG',
             'nonrigid' if cor_type == 'nr' else 'rigid',
-            'AVG{}_{}.tif'.format(new_thorimage_id, cor_type))
-
+            'AVG{}_{}.tif'.format(new_thorimage_id, cor_type)
+        )
         if not exists(avg_tiff_path):
             print('\nSaving average TIFF to {}'.format(avg_tiff_path))
             sliced_movie_avg = np.mean(sliced_movie, axis=0)
@@ -1057,7 +1081,8 @@ class Segmentation(QWidget):
         if self.ijroi_file_path is not None:
             assert self.parameter_json is None
             print(('Current footprints were loaded from ImageJ output. '
-                'Writing ImageJ ROIs not supported in this case.'))
+                'Writing ImageJ ROIs not supported in this case.'
+            ))
             return
 
         row = self.current_segrun_widget.data(0, Qt.UserRole)
@@ -1119,7 +1144,8 @@ class Segmentation(QWidget):
         tiff_dir = split(tiff)[0]
         thorimage_id = u.tiff_thorimage_id(tiff)
         roi_filename = (thorimage_id + self.run_at.strftime('_%Y%m%d_%H%M%S') +
-            '_ijroi.zip')
+            '_ijroi.zip'
+        )
         roi_filepath = join(tiff_dir, roi_filename)
 
         print('Writing ImageJ ROIs to {}'.format(roi_filepath))
@@ -1138,7 +1164,8 @@ class Segmentation(QWidget):
         # TODO check that *.zip glob still matches in case where it is the empty
         # string (fix if it doesn't)
         possible_ijroi_files = glob.glob(join(curr_tiff_dir,
-            self.thorimage_id + '*.zip'))
+            self.thorimage_id + '*.zip')
+        )
 
         ijroiset_filename = None
         # TODO fix automatic first choice in _NNN naming convention case
@@ -1149,8 +1176,8 @@ class Segmentation(QWidget):
 
             confirmation_choice = QMessageBox.question(self, 'Confirm ROI file',
                 'Use ImageJ ROIs in {}?'.format(ijroiset_filename),
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
             if confirmation_choice != QMessageBox.Yes:
                 ijroiset_filename = None
 
@@ -1165,8 +1192,8 @@ class Segmentation(QWidget):
 
             ijroiset_filename, _ = QFileDialog.getOpenFileName(self,
                 'Select ImageJ ROI zip...', curr_tiff_dir,
-                'ImageJ ROIs (*.zip)', options=options)
-
+                'ImageJ ROIs (*.zip)', options=options
+            )
             if len(ijroiset_filename) == 0:
                 print('No ImageJ ROI zipfile selected.')
                 return
@@ -1186,7 +1213,8 @@ class Segmentation(QWidget):
             date_str = '_'.join(parts[-3:-1])
             try:
                 ijroi_cnmf_run = datetime.strptime(date_str,
-                    '%Y%m%d_%H%M%S')
+                    '%Y%m%d_%H%M%S'
+                )
             except ValueError:
                 pass
 
@@ -1203,8 +1231,8 @@ class Segmentation(QWidget):
                 orig_cnmf_footprints = pd.read_sql_query('''
                     SELECT * FROM cells WHERE segmentation_run = '{}'
                     '''.format(pd.Timestamp(ijroi_cnmf_run)),
-                    conn, index_col='cell')
-
+                    conn, index_col='cell'
+                )
                 if len(orig_cnmf_footprints) == 0:
                     warnings.warn(('No footprints found in db for CNMF run {}'
                         ).format(format_timestamp(ijroi_cnmf_run)))
@@ -1213,7 +1241,8 @@ class Segmentation(QWidget):
                         u.db_footprints2array(orig_cnmf_footprints, frame_shape)
             else:
                 warnings.warn('Segmentation run {} not found in db'.format(
-                    format_timestamp(ijroi_cnmf_run)))
+                    format_timestamp(ijroi_cnmf_run))
+                )
 
         # TODO display a note about ij params if loading ijroi analysis from db
         # TODO TODO make it so output side of qsplitter gets bigger when this
@@ -1342,8 +1371,8 @@ class Segmentation(QWidget):
         confirmation_choice = QMessageBox.question(self, 'Confirm delete',
             'Remove analysis run from {} from database?'.format(
             format_timestamp(run_at)),
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
         if confirmation_choice == QMessageBox.Yes:
             # TODO TODO maybe also delete figures? with prompt?
             # that's probably usually the behavior i want... (even w/o prompt)
@@ -1423,7 +1452,8 @@ class Segmentation(QWidget):
             recording_widget.setBackground(0, QColor(self.accepted_color))
         elif any_partially_accepted:
             recording_widget.setBackground(0,
-                QColor(self.partially_accepted_color))
+                QColor(self.partially_accepted_color)
+            )
         else:
             recording_widget.setBackground(0, QColor(self.rejected_color))
             # TODO maybe at least color this way when no children?
@@ -1481,7 +1511,8 @@ class Segmentation(QWidget):
             any_accepted = any(node.data(0, Qt.UserRole).blocks_accepted)
             if any_accepted:
                 menu.addAction('Make canonical',
-                    lambda: self.make_canonical(node))
+                    lambda: self.make_canonical(node)
+                )
             '''
 
             menu.exec_(QCursor.pos())
@@ -1678,7 +1709,8 @@ class Segmentation(QWidget):
 
     def run_cnmf(self) -> None:
         print('Running CNMF ({})'.format(format_timestamp(self.run_at)),
-            flush=True)
+            flush=True
+        )
         # TODO TODO TODO if i'm going to null self.cnm in imagej thing, should
         # also probably null any ijroi related instance variables here
         # (more important too, as those may be directly uploaded)
@@ -1718,7 +1750,8 @@ class Segmentation(QWidget):
             # "images : mapped np.ndarray of shape (t,x,y[,z])"
             # (thought it doesn't actually need to be a memory mapped file)
             self.cnm.fit(self.movie,
-                intermediate_footprints=self.plot_intermediates)
+                intermediate_footprints=self.plot_intermediates
+            )
 
         # TODO test this case
         except MemoryError as err:
@@ -1755,18 +1788,22 @@ class Segmentation(QWidget):
         n_too_small = (~ big_enough).sum()
         if n_too_small > 0:
             print('Tossing {} components that had less than {} pixels'.format(
-                n_too_small, min_component_pixels))
+                n_too_small, min_component_pixels
+            ))
         else:
             print('No components had less than minimum {} pixels'.format(
-                min_component_pixels))
+                min_component_pixels
+            ))
 
         n_too_big = (~ small_enough).sum()
         if n_too_big > 0:
             print(('Tossing {} components that had more than {} pixels'
-                ).format(n_too_big, max_component_pixels))
+                ).format(n_too_big, max_component_pixels
+            ))
         else:
             print('No components had more than maximum {} pixels'.format(
-                max_component_pixels))
+                max_component_pixels
+            ))
 
         # TODO TODO TODO renumber components within the remaining ones!!!
         import ipdb; ipdb.set_trace()
@@ -1802,7 +1839,8 @@ class Segmentation(QWidget):
         # TODO TODO TODO maybe now this will need to be changed, since i've
         # untransposed x_coords and y_coords in the db?
         self.footprints = np.reshape(self.footprints,
-            (pixels_per_side, pixels_per_side, n_footprints))
+            (pixels_per_side, pixels_per_side, n_footprints)
+        )
 
         # TODO could maybe compute my own df/f from this if i'm worried...
         # frame number, cell -> value
@@ -1827,6 +1865,7 @@ class Segmentation(QWidget):
         print('CNMF took {:.1f}s'.format(self.run_len_seconds))
 
 
+    # TODO TODO TODO factor to util
     def assign_frames_to_trials(self) -> None:
         # TODO finish doc
         """
@@ -1849,7 +1888,8 @@ class Segmentation(QWidget):
         # TODO delete this hack, after implementing more robust frame-to-trial
         # assignment described below
         b2o_offsets = sorted([o - b for b, o in zip(self.block_first_frames,
-            self.odor_onset_frames[::self.presentations_per_block])])
+            self.odor_onset_frames[::self.presentations_per_block])
+        ])
         assert len(b2o_offsets) >= 3
         # TODO might need to allow for some error here...? frame or two?
         # (in resonant scanner case, w/ frame averaging maybe)
@@ -1876,9 +1916,11 @@ class Segmentation(QWidget):
         # frames
 
         trial_start_frames = np.append(0,
-            self.odor_onset_frames[1:] - onset_frame_offset)
+            self.odor_onset_frames[1:] - onset_frame_offset
+        )
         trial_stop_frames = np.append(
-            self.odor_onset_frames[1:] - onset_frame_offset - 1, n_frames - 1)
+            self.odor_onset_frames[1:] - onset_frame_offset - 1, n_frames - 1
+        )
 
         # TODO same checks are made for blocks, so factor out?
         total_trial_frames = 0
@@ -2151,18 +2193,20 @@ class Segmentation(QWidget):
                     bA = u.footprints_to_flat_cnmf_dims(self.before_ijroi_cycle)
                     caiman.utils.visualization.plot_contours(bA, img,
                         ax=contour_ax, display_numbers=False, colors='y',
-                        linewidth=1.5)
+                        linewidth=1.5
+                    )
                 except AttributeError:
                     pass
                 '''
                 #
                 if self.orig_cnmf_footprints is not None:
                     orig_A = u.footprints_to_flat_cnmf_dims(
-                        self.orig_cnmf_footprints)
-
+                        self.orig_cnmf_footprints
+                    )
                     caiman.utils.visualization.plot_contours(orig_A, img,
                         ax=contour_ax, display_numbers=False, colors='g',
-                        linewidth=1.0)
+                        linewidth=1.0
+                    )
             else:
                 A = self.cnm.estimates.A
 
@@ -2172,7 +2216,8 @@ class Segmentation(QWidget):
             if i == n_footprint_axes - 1 and not only_init:
                 if self.ijroi_file_path is not None:
                     title = 'ImageJ ROIs from {}'.format(
-                        split(self.ijroi_file_path)[-1])
+                        split(self.ijroi_file_path)[-1]
+                    )
                 else:
                     title = 'Final estimate'
                 contour_ax.set_title(title)
@@ -2181,7 +2226,8 @@ class Segmentation(QWidget):
                 contour_ax.set_title('Initialization')
 
             caiman.utils.visualization.plot_contours(A, img, ax=contour_ax,
-                display_numbers=False, colors='r', linewidth=1.0)
+                display_numbers=False, colors='r', linewidth=1.0
+            )
             # TODO TODO TODO also call evaluate_components and include that in
             # Final estimate (maybe w/ a separate subplot to show what gets
             # filtered?)
@@ -2267,8 +2313,8 @@ class Segmentation(QWidget):
                 ax = self.fig.add_subplot(footprint_gs[i])
             else:
                 ax = self.fig.add_subplot(footprint_gs[i],
-                    sharex=ax0, sharey=ax0)
-
+                    sharex=ax0, sharey=ax0
+                )
             axs.append(ax)
 
         contour_axes = np.array(axs)
@@ -2334,8 +2380,8 @@ class Segmentation(QWidget):
             # 2 rows: one for correlation matrices ordered as in experiment,
             # and the other for matrices ordered by odor
             corr_gs = corr_slice.subgridspec(2, n_blocks,
-                hspace=0.4, wspace=0.1)
-
+                hspace=0.4, wspace=0.1
+            )
             axs = []
             for i in range(corr_gs._nrows):
                 axs.append([])
@@ -2360,7 +2406,8 @@ class Segmentation(QWidget):
             # subplots, so space for shared title above the two is separate from
             # space between the two (e.g. the "Top components" thing)
             all_blocks_trace_gs = gs[4:-1, :].subgridspec(trace_rows,
-                n_blocks, hspace=0.3, wspace=0.15)
+                n_blocks, hspace=0.3, wspace=0.15
+            )
 
         if plot_odor_abbreviation_key:
             abbrev_key_ax = self.fig.add_subplot(gs[-1, :])
@@ -2415,7 +2462,8 @@ class Segmentation(QWidget):
                 # (could implement other order by just reorder name1_unique)
 
             odor2abbrev = cu.odor2abbrev_dict(name1_unique,
-                single_letter_abbrevs=single_letter_abbrevs)
+                single_letter_abbrevs=single_letter_abbrevs
+            )
 
             # TODO rewrite later stuff to avoid need for this.
             # it just adds a bit of confusion at this point.
@@ -2560,7 +2608,8 @@ class Segmentation(QWidget):
                         next_filler_temp_id += 1
 
             frame2order = {f: o for o, f in
-                enumerate(sorted(presentation_df.odor_onset_frame.unique()))}
+                enumerate(sorted(presentation_df.odor_onset_frame.unique()))
+            }
             presentation_df['order'] = \
                 presentation_df.odor_onset_frame.map(frame2order)
             del frame2order
@@ -2655,12 +2704,12 @@ class Segmentation(QWidget):
                 # into next loop and aggregate, or index into this stuff from
                 # within that loop?)
                 in_response_window = ((comparison_df.from_onset > 0.0) &
-                    (comparison_df.from_onset <= response_calling_s))
-
+                    (comparison_df.from_onset <= response_calling_s)
+                )
                 # TODO TODO include from_onset col then compute mean?
                 window_df = comparison_df.loc[in_response_window,
-                    cell_cols + ['order','from_onset','df_over_f']]
-
+                    cell_cols + ['order','from_onset','df_over_f']
+                ]
                 # TODO maybe move this to bottom, around example trace plotting
                 window_by_trial = \
                     window_df.groupby(cell_cols + ['order'])['df_over_f']
@@ -2711,12 +2760,13 @@ class Segmentation(QWidget):
                     # (then just use self.movie)
                     u.plot_traces(pdf, show_footprints=False,
                         gridspec=odor_order_trace_gs, n=n,
-                        title='Top components')
-
+                        title='Top components'
+                    )
                     presentation_order_trace_gs = all_blocks_trace_gs[1, i]
                     u.plot_traces(pdf, show_footprints=False,
                         gridspec=presentation_order_trace_gs,
-                        order_by='presentation_order', n=n)
+                        order_by='presentation_order', n=n
+                    )
 
                 if random_components:
                     if top_components:
@@ -2729,18 +2779,18 @@ class Segmentation(QWidget):
                     odor_order_trace_gs = all_blocks_trace_gs[orow, i]
                     u.plot_traces(comparison_df, footprints=footprints,
                         gridspec=odor_order_trace_gs, n=n, random=True,
-                        title='Random components')
-
+                        title='Random components'
+                    )
                     presentation_order_trace_gs = all_blocks_trace_gs[prow, i]
                     u.plot_traces(comparison_df, footprints=footprints,
                         gridspec=presentation_order_trace_gs,
-                        order_by='presentation_order', n=n, random=True)
+                        order_by='presentation_order', n=n, random=True
+                    )
 
             if plot_correlations:
-                missing_dff = comparison_df[
-                    comparison_df.df_over_f.isnull()][
-                    window_trial_means.index.names + ['df_over_f']]
-
+                missing_dff = comparison_df[comparison_df.df_over_f.isnull()][
+                    window_trial_means.index.names + ['df_over_f']
+                ]
                 # This + pivot_table w/ dropna=False won't work until this bug:
                 # https://github.com/pandas-dev/pandas/issues/18030 is fixed.
                 '''
@@ -2755,8 +2805,8 @@ class Segmentation(QWidget):
                 # confusion
                 trial_by_cell_means = window_trial_means.to_frame().pivot_table(
                     index=['name1','name2','repeat_num','order'],
-                    columns='cell', values='df_over_f').T
-
+                    columns='cell', values='df_over_f'
+                ).T
 
                 # Hack to workaround pivot NaN behavior bug mentioned above.
                 assert missing_dff.df_over_f.isnull().all()
@@ -2768,14 +2818,14 @@ class Segmentation(QWidget):
                 extra_cols.iloc[:] = np.nan
 
                 assert (len(trial_by_cell_means.columns.drop_duplicates()) ==
-                    len(trial_by_cell_means.columns))
-
+                    len(trial_by_cell_means.columns)
+                )
                 trial_by_cell_means = pd.concat([trial_by_cell_means,
-                    extra_cols], axis=1)
-
+                    extra_cols], axis=1
+                )
                 assert (len(trial_by_cell_means.columns.drop_duplicates()) ==
-                    len(trial_by_cell_means.columns))
-
+                    len(trial_by_cell_means.columns)
+                )
                 # TODO modify to follow global-order-across-experiments that B
                 # wanted + that i think i have an implementation of in
                 # kc_mix_analysis.py
@@ -2786,19 +2836,21 @@ class Segmentation(QWidget):
                 trial_mean_presentation_order = \
                     trial_by_cell_means.sort_index(axis=1, level='order')
 
-                corr_cbar_label = (r'Mean response $\frac{\Delta F}{F}$' +
-                        ' correlation')
+                corr_cbar_label = (r'Mean response $\frac{\Delta F}{F}$'
+                    ' correlation'
+                )
 
                 odor_order_trial_mean_corrs = trial_by_cell_means.corr()
 
                 if odor_order is not None:
                     odor_order_trial_mean_corrs = \
                         odor_order_trial_mean_corrs.reindex(odor_order,
-                            level='name1', axis=0)
-
+                            level='name1', axis=0
+                        )
                     odor_order_trial_mean_corrs = \
                         odor_order_trial_mean_corrs.reindex(odor_order,
-                            level='name1', axis=1)
+                            level='name1', axis=1
+                        )
 
                 # TODO maybe just re-order odor_order_... corrs...
                 presentation_order_trial_mean_corrs = \
@@ -2806,23 +2858,27 @@ class Segmentation(QWidget):
 
                 odor_order_ax = corr_axes[0, i]
                 ticklabels = u.matlabels(odor_order_trial_mean_corrs,
-                    u.format_mixture)
+                    u.format_mixture
+                )
                 u.matshow(odor_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     group_ticklabels=True,
                     colorbar_label=corr_cbar_label,
                     ax=odor_order_ax,
-                    fontsize=6)
+                    fontsize=6
+                )
                 self.mpl_canvas.draw()
 
                 presentation_order_ax = corr_axes[1, i]
                 ticklabels = u.matlabels(presentation_order_trial_mean_corrs,
-                    u.format_mixture)
+                    u.format_mixture
+                )
                 u.matshow(presentation_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     colorbar_label=corr_cbar_label,
                     ax=presentation_order_ax,
-                    fontsize=6)
+                    fontsize=6
+                )
                 self.mpl_canvas.draw()
 
                 print(' done', flush=True)
@@ -2846,7 +2902,8 @@ class Segmentation(QWidget):
 
             abbrev_key_ax.axis('off')
             abbrev_key_ax.table(cellText=cell_text, cellLoc='center',
-                colLabels=['Abbreviation', 'Odor'], loc='center', bbox=None)
+                colLabels=['Abbreviation', 'Odor'], loc='center', bbox=None
+            )
 
         # TODO maybe delete this...
         self.fig.tight_layout()#rect=[0, 0.03, 1, 0.95])
@@ -2882,7 +2939,8 @@ class Segmentation(QWidget):
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
             output_filename, _ = QFileDialog.getSaveFileName(self, 'Save to...',
-                '', 'JSON (*.json)', options=options)
+                '', 'JSON (*.json)', options=options
+            )
         elif len(args) == 1:
             output_filename = args[0]
         else:
@@ -2950,7 +3008,8 @@ class Segmentation(QWidget):
         # not exist, and that read shows insert worked in w/ method case
         if self.ACTUALLY_UPLOAD:
             run.to_sql('analysis_runs', conn, if_exists='append',
-                method=u.pg_upsert)
+                method=u.pg_upsert
+            )
 
         # TODO worth preventing (attempts to) insert code versions and
         # pairings with analysis_runs, or is that premature optimization?
@@ -2968,16 +3027,16 @@ class Segmentation(QWidget):
         # in open_recording, so there are no surprises
         ti_code_version = u.get_matfile_var(self.matfile, 'ti_code_version')
         mocorr_code_versions = u.get_matfile_var(self.matfile,
-            mocorr_version_varname, require=False)
-
+            mocorr_version_varname, require=False
+        )
         code_versions = [this_code_version]
         if self.parameter_json is not None:
             code_versions.append(caiman_code_version)
         else:
             assert self.ijroi_file_path is not None
         code_versions = (code_versions + ti_code_version +
-            mocorr_code_versions)
-
+            mocorr_code_versions
+        )
         # TODO maybe impute missing mocorr version in some cases?
 
         if self.ACTUALLY_UPLOAD:
@@ -2997,12 +3056,14 @@ class Segmentation(QWidget):
         pickle.dump(self.fig, fig_buff)
 
         # TODO delete. for debugging.
+        '''
         print('png_buff nbytes:', png_buff.getbuffer().nbytes)
         print('svg_buff nbytes:', svg_buff.getbuffer().nbytes)
         print('fig_buff nbytes:', fig_buff.getbuffer().nbytes)
         print('png_buff sizeof:', sys.getsizeof(png_buff))
         print('svg_buff sizeof:', sys.getsizeof(svg_buff))
         print('fig_buff sizeof:', sys.getsizeof(fig_buff))
+        '''
         #
 
         # TODO TODO failed a few times on this insert, possibly b/c fig size
@@ -3141,7 +3202,8 @@ class Segmentation(QWidget):
                     columns='temp_presentation_id'), 'presentations')
 
                 db_presentations = pd.read_sql('presentations', conn,
-                    columns=(key_cols + ['presentation_id']))
+                    columns=(key_cols + ['presentation_id'])
+                )
 
                 presentation_ids = (db_presentations[key_cols] ==
                     presentation_df[key_cols].iloc[0]).all(axis=1)
@@ -3159,7 +3221,8 @@ class Segmentation(QWidget):
                 # table "temp_responses" does not exist
                 # SQL: DROP TABLE temp_responses
                 u.to_sql_with_duplicates(comparison_df.drop(
-                    columns='temp_presentation_id'), 'responses')
+                    columns='temp_presentation_id'), 'responses'
+                )
 
         self.uploaded_block_info[block_num] = True
 
@@ -3178,7 +3241,8 @@ class Segmentation(QWidget):
             # blocks? (or indicate in block which were?)
 
             fig_filename = (self.run_at.strftime('%Y%m%d_%H%M_') +
-                self.recording_title.replace('/','_'))
+                self.recording_title.replace('/','_')
+            )
             fig_path = join(analysis_output_root, 'figs')
 
             # TODO TODO save the initial traces (+ in future pixel corr plot) as
@@ -3213,7 +3277,8 @@ class Segmentation(QWidget):
             self.to_be_accepted)):
             #
             print('i: {}, already accepted: {}, target accepted: {}'.format(
-                i, curr, target), flush=True)
+                i, curr, target), flush=True
+            )
             #
 
             if curr == target:
@@ -3498,7 +3563,8 @@ class Segmentation(QWidget):
         db_presentations = pd.read_sql_query(
             'SELECT presentation_id, comparison, presentation_accepted FROM' +
             " presentations WHERE analysis = '{}'".format(
-            pd.Timestamp(self.run_at)), conn)
+            pd.Timestamp(self.run_at)), conn
+        )
         if len(db_presentations) > 0:
             print('Presentations in db for this segmentation run:')
             print(db_presentations)
@@ -3512,7 +3578,8 @@ class Segmentation(QWidget):
         self.ijroi_file_path = None
         self.footprint_df = pd.read_sql_query('''SELECT * FROM cells
             WHERE segmentation_run = '{}' '''.format(pd.Timestamp(self.run_at)),
-            conn, index_col='cell')
+            conn, index_col='cell'
+        )
         assert len(self.footprint_df) > 0
 
         self.accepted = u.accepted_blocks(self.run_at)
@@ -3534,8 +3601,8 @@ class Segmentation(QWidget):
         if not pd.isnull(row.parameters):
             self.delete_other_param_widgets()
             self.param_display_widget = self.make_cnmf_param_widget(
-                row.parameters, editable=False)
-
+                row.parameters, editable=False
+            )
             self.param_widget_stack.addWidget(self.param_display_widget)
             self.param_widget_stack.setCurrentIndex(1)
 
@@ -3594,7 +3661,8 @@ class Segmentation(QWidget):
         # TODO TODO smooth, just don't have that cause artifacts at the edges
         '''
         smoothed_ff_avg_trace = u.smooth(self.full_frame_avg_trace,
-            window_len=7)
+            window_len=7
+        )
         ax.plot(smoothed_ff_avg_trace)
         '''
         ax.plot(self.full_frame_avg_trace)
@@ -3637,7 +3705,8 @@ class Segmentation(QWidget):
 
                 # correct?
                 self.make_block_labelling_btns(self.accepted,
-                    self.to_be_accepted)
+                    self.to_be_accepted
+                )
 
             self.relabeling_db_segrun = False
             return
@@ -3671,15 +3740,20 @@ class Segmentation(QWidget):
 
         mat = u.tiff_matfile(tiff)
         ti = u.load_mat_timing_information(mat)
+        # TODO why did i have this here?
         import ipdb; ipdb.set_trace()
+        #
 
-        recordings = df.loc[(df.date == date) &
-                            (df.fly_num == fly_num) &
-                            (df.thorimage_dir == thorimage_id)]
+        recordings = df.loc[
+            (df.date == date) &
+            (df.fly_num == fly_num) &
+            (df.thorimage_dir == thorimage_id)
+        ]
         recording = recordings.iloc[0]
         if recording.project != 'natural_odors':
             warnings.warn('project type {} not supported. skipping.'.format(
-                recording.project))
+                recording.project
+            ))
             return
 
         raw_fly_dir = join(raw_data_root, date_dir, fly_dir)
@@ -3691,7 +3765,8 @@ class Segmentation(QWidget):
         # TODO also err if not readable / valid
         if not exists(stimfile_path):
             raise ValueError('copy missing stimfile {} to {}'.format(stimfile,
-                stimfile_root))
+                stimfile_root
+            ))
 
         with open(stimfile_path, 'rb') as f:
             data = pickle.load(f)
@@ -3773,10 +3848,11 @@ class Segmentation(QWidget):
         # updated w/ pg_upsert based solution
         ####u.to_sql_with_duplicates(self.recordings, 'recordings')
         self.recordings.set_index('started_at').to_sql('recordings', conn,
-            if_exists='append', method=u.pg_upsert)
-
+            if_exists='append', method=u.pg_upsert
+        )
         db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
-            "started_at = '{}'".format(pd.Timestamp(started_at)), conn)
+            "started_at = '{}'".format(pd.Timestamp(started_at)), conn
+        )
         db_recording = db_recording[self.recordings.columns]
         assert self.recordings.equals(db_recording)
 
@@ -3798,11 +3874,12 @@ class Segmentation(QWidget):
             # some of the fly food cases (missing fly food b)
             '''
             odors = pd.DataFrame([u.split_odor_w_conc(x) for x in
-                (data['odors'] + ['no_second_odor'])])
+                (data['odors'] + ['no_second_odor'])
+            ])
             '''
             odors = pd.DataFrame([u.split_odor_w_conc(x) for x in
-                (list(set(data['odor_lists'])) + ['no_second_odor'])]
-            )
+                (list(set(data['odor_lists'])) + ['no_second_odor'])
+            ])
 
         u.to_sql_with_duplicates(odors, 'odors')
 
@@ -3811,8 +3888,8 @@ class Segmentation(QWidget):
 
         self.db_odors = pd.read_sql('odors', conn)
         self.db_odors.set_index(['name', 'log10_conc_vv'],
-            verify_integrity=True, inplace=True)
-
+            verify_integrity=True, inplace=True
+        )
         first_presentation = first_block * presentations_per_block
         last_presentation = (last_block + 1) * presentations_per_block - 1
 
@@ -3833,9 +3910,11 @@ class Segmentation(QWidget):
                 ).log10_conc_vv.round(decimals=5)
 
             odor1_ids = [self.db_odors.at[(o1, o2c[o1]), 'odor_id']
-                for o1, _ in odor_list]
+                for o1, _ in odor_list
+            ]
             odor2_ids = [self.db_odors.at[(o2, o2c[o2]), 'odor_id']
-                for _, o2 in odor_list]
+                for _, o2 in odor_list
+            ]
 
             # TODO make unique first. only need order for filling in the
             # values in responses. (?)
@@ -3859,7 +3938,8 @@ class Segmentation(QWidget):
             # TODO fix db to represent arbitrary mixtures more generally,
             # so this hack isn't necessary
             no_second_odor_id = self.db_odors.at[
-                ('no_second_odor', 0.0), 'odor_id']
+                ('no_second_odor', 0.0), 'odor_id'
+            ]
             odor2_ids = [no_second_odor_id] * len(odor1_ids)
 
             mixtures = pd.DataFrame({
@@ -3891,15 +3971,17 @@ class Segmentation(QWidget):
         n_blocks_from_thorsync = len(block_first_frames)
 
         assert (len(odor_list) == (last_block - first_block + 1) *
-            presentations_per_block)
-
+            presentations_per_block
+        )
         n_presentations = n_blocks_from_gsheet * presentations_per_block
 
         err_msg = ('{} blocks ({} to {}, inclusive) in Google sheet {{}} {} ' +
             'blocks from ThorSync.').format(n_blocks_from_gsheet,
-            first_block + 1, last_block + 1, n_blocks_from_thorsync)
-        fail_msg = (' Fix in Google sheet, turn off ' +
-            'cache if necessary, and rerun.')
+            first_block + 1, last_block + 1, n_blocks_from_thorsync
+        )
+        fail_msg = (' Fix in Google sheet, turn off '
+            'cache if necessary, and rerun.'
+        )
 
         allow_gsheet_to_restrict_blocks = True
 
@@ -3912,20 +3994,23 @@ class Segmentation(QWidget):
             if allow_gsheet_to_restrict_blocks:
                 warnings.warn(err_msg.format('<') + (' This is ONLY ok if you '+
                     'intend to exclude the LAST {} blocks in the Thor output.'
-                    ).format(n_blocks_from_thorsync - n_blocks_from_gsheet))
+                    ).format(n_blocks_from_thorsync - n_blocks_from_gsheet)
+                )
             else:
                 raise ValueError(err_msg.format('<') + fail_msg)
 
         # TODO maybe factor this printing stuff out?
         if self.pair_case:
             print(('{} comparisons ({{A, B, A+B}} in random order x ' +
-                '{} repeats)') .format(n_blocks_from_gsheet, n_repeats))
+                '{} repeats)').format(n_blocks_from_gsheet, n_repeats)
+            )
         else:
             mix_names = {x for x in odor_list if '@' not in x}
             assert len(mix_names) == 1
             mix_name = mix_names.pop()
             print('{} randomized blocks of "{}" and its components'.format(
-                n_blocks_from_gsheet, mix_name))
+                n_blocks_from_gsheet, mix_name
+            ))
 
         # stim_on is a number as above, but for the frame of the odor
         # onset.
@@ -4012,19 +4097,20 @@ class Segmentation(QWidget):
             # do i assert that first_block is 0 then? probably should...
             # TODO TODO TODO shouldnt it be first_block:last_block+1?
             block_first_frames = block_first_frames[
-                :(last_block - first_block + 1)]
+                :(last_block - first_block + 1)
+            ]
             block_last_frames = block_last_frames[
-                :(last_block - first_block + 1)]
-
+                :(last_block - first_block + 1)
+            ]
             assert len(block_first_frames) == n_blocks_from_gsheet
             assert len(block_last_frames) == n_blocks_from_gsheet
 
             odor_onset_frames = odor_onset_frames[
-                :(last_presentation - first_presentation + 1)]
-
+                :(last_presentation - first_presentation + 1)
+            ]
             odor_offset_frames = odor_offset_frames[
-                :(last_presentation - first_presentation + 1)]
-
+                :(last_presentation - first_presentation + 1)
+            ]
             frame_times = frame_times[:(block_last_frames[-1] + 1)]
 
         # TODO TODO TODO need to adjust odor_onset_frames to exclude last
@@ -4044,8 +4130,8 @@ class Segmentation(QWidget):
             #self.n_missing_per_block = n_missing_per_block
 
             warnings.warn('{} missing presentations per block!'.format(
-                n_missing_per_block))
-
+                n_missing_per_block
+            ))
             n_deleted = 0
             for i in range(n_blocks_from_gsheet):
                 end_plus_one = presentations_per_block * (i + 1) - n_deleted
@@ -4055,8 +4141,8 @@ class Segmentation(QWidget):
                 to_delete = odor_list[del_start:(del_stop + 1)]
                 warnings.warn('presentations {} to {} ({}) were missing'.format(
                     del_start + 1 + n_deleted, del_stop + 1 + n_deleted,
-                    to_delete)
-                )
+                    to_delete
+                ))
                 n_deleted += len(to_delete)
                 del odor_list[del_start:(del_stop + 1)]
                 del odor_ids[del_start:(del_stop + 1)]
@@ -4064,9 +4150,11 @@ class Segmentation(QWidget):
             presentations_per_block -= n_missing_per_block
 
         assert (len(odor_onset_frames) ==
-            (n_presentations - n_missing_presentations))
+            (n_presentations - n_missing_presentations)
+        )
         assert (len(odor_offset_frames) ==
-            (n_presentations - n_missing_presentations))
+            (n_presentations - n_missing_presentations)
+        )
 
         assert len(odor_onset_frames) == len(odor_list)
         assert len(odor_ids) == len(odor_list)
@@ -4147,7 +4235,8 @@ class Segmentation(QWidget):
         if n_tossed_frames != 0:
             print(('Tossing trailing {} of {} frames of movie, which did not ' +
                 'belong to any used block.\n').format(
-                n_tossed_frames, movie.shape[0]))
+                n_tossed_frames, movie.shape[0]
+            ))
 
         # TODO want / need to do more than just slice to free up memory from
         # other pixels? is that operation worth it?
@@ -4156,16 +4245,19 @@ class Segmentation(QWidget):
         # close)
 
         self.odor_onset_frames = [n - drop_first_n_frames
-            for n in self.odor_onset_frames]
+            for n in self.odor_onset_frames
+        ]
         self.odor_offset_frames = [n - drop_first_n_frames
-            for n in self.odor_offset_frames]
+            for n in self.odor_offset_frames
+        ]
 
         block_first_frames = [n - drop_first_n_frames
-            for n in block_first_frames]
+            for n in block_first_frames
+        ]
         block_first_frames[0] = 0
         block_last_frames = [n - drop_first_n_frames
-            for n in block_last_frames]
-
+            for n in block_last_frames
+        ]
         assert self.odor_onset_frames[0] > 0
 
         frame_times = frame_times[drop_first_n_frames:]
@@ -4178,15 +4270,16 @@ class Segmentation(QWidget):
         '''
         if self.movie.shape[0] != len(frame_times):
             warnings.warn('{} != {}'.format(
-                self.movie.shape[0], len(frame_times)))
+                self.movie.shape[0], len(frame_times)
+            ))
         #
 
         # TODO maybe move this and the above checks on block start/end frames
         # + frametimes into assign_frames_to_trials
         n_frames = self.movie.shape[0]
         total_block_frames = sum([e - s + 1 for s, e in
-            zip(block_first_frames, block_last_frames)])
-
+            zip(block_first_frames, block_last_frames)
+        ])
         assert total_block_frames == n_frames, \
             '{} != {}'.format(total_block_frames, n_frames)
 
@@ -4216,9 +4309,9 @@ class Segmentation(QWidget):
         # run, as is
         self.make_block_labelling_btns()
 
-        # TODO TODO TODO fix 'fr'. it should be a float! (<- fixed, but...
+        # TODO TODO fix 'fr'. it should be a float! (<- fixed, but...
         # more generally, if type change in CNMF params, that type change
-        # should be reflect indep of default param type, right?)
+        # should be reflect indep of default param type, right?) (?)
         # TODO maybe in the meantime, err if trying to set float to int field?
         for i in range(self.data_group_layout.count()):
             # TODO TODO does it always alternate qlabel / widget for that label?
