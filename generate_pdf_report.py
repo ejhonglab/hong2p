@@ -276,10 +276,16 @@ def main(*args, **kwargs):
         verbose = True
         write_latex_for_testing = True
 
+    filename_captions = pop_with_default(kwargs, 'filename_captions', debug)
+
     rerun_last_inputs = pop_with_default(kwargs, 'rerun_last_inputs', False)
-
     only_recompile_test_tex = pop_with_default(kwargs, 'only_recompile', False)
-
+    pdf_fname = pop_with_default(kwargs, 'file')
+    # TODO TODO TODO add some test to check output is same w/ this as if call
+    # comes as it just did from kc_mix_analysis. they seem to differ in the 
+    # "Input" section now (at least in some cases)
+    # w/ rerun_last_inputs yielding a list of the trace pickle files, and 
+    # the call from kc_mix_analysis referencing the output_pickles/....p file
     if rerun_last_inputs:
         with open(last_inputs_pickle_fname, 'rb') as f:
             data = pickle.load(f)
@@ -554,7 +560,7 @@ def main(*args, **kwargs):
 
     latex_str = template.render(pdfdir=pdfdir, sections=sections,
         paired_sections=paired_sections, pagebreak_after=pagebreak_after,
-        filename_captions=debug, **kwargs
+        filename_captions=filename_captions, **kwargs
     )
     latex_str = clean_generated_latex(latex_str)
 
@@ -569,12 +575,13 @@ def main(*args, **kwargs):
     if only_print_latex:
         sys.exit()
 
-    # TODO maybe make this share less of a prefix w/ kc_mix_analysis.py
-    # could be annoying
-    # the fact that the date prefix avoided that was kinda nice i guess...
-    pdf_fname = 'kc_mix_analysis.pdf'
-    if date_in_pdf_name:
-        pdf_fname = date.today().strftime(u.date_fmt_str) + f'_{pdf_fname}'
+    if pdf_fname is None:
+        # TODO maybe make this share less of a prefix w/ kc_mix_analysis.py
+        # could be annoying
+        # the fact that the date prefix avoided that was kinda nice i guess...
+        pdf_fname = 'kc_mix_analysis.pdf'
+        if date_in_pdf_name:
+            pdf_fname = date.today().strftime(u.date_fmt_str) + f'_{pdf_fname}'
 
     if write_latex_like_pdf:
         tex_fname = pdf_fname[:-len('.pdf')] + '.tex'
@@ -604,6 +611,14 @@ if __name__ == '__main__':
     )
     parser.add_argument('-d', '--debug', default=False, action='store_true',
         help=f'more verbose and writes generated LaTeX to {test_tex_fname}'
+    )
+    parser.add_argument('-f', '--file', action='store', help='Writes PDF output'
+        'here. If not specified, name constructed from date.'
+    )
+    parser.add_argument('-c', '--filename-captions', default=False,
+        action='store_true', help='Whether to add captions with filename to '
+        'input figures under each figure inserted into the PDF. Enabled if '
+        '--debug is passed.'
     )
     # vars(...) apparently converts argparse Namespace to a regular dict
     kwargs = vars(parser.parse_args())
