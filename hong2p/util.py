@@ -57,7 +57,7 @@ trial_cols = recording_cols + trial_only_cols
 date_fmt_str = '%Y-%m-%d'
 dff_latex = r'$\frac{\Delta F}{F}$'
 
-db_hostname = 'atlas'
+db_hostname = os.getenv('HONG_POSTGRES_HOST', 'atlas')
 
 # TODO TODO probably just move all stuff that uses db conn into it's own module
 # under this package, and then just get the global conn upon that module import
@@ -112,10 +112,16 @@ def data_root():
         prefix = None
         if data_root_key in os.environ:
             data_root = os.environ[data_root_key]
+            source = data_root_key
+
         elif nas_prefix_key in os.environ:
-            prefix = os.environ['HONG_NAS']
+            prefix = os.environ[nas_prefix_key]
+            source = nas_prefix_key
+
         elif fallback_data_root_key in os.environ:
             data_root = os.environ[fallback_data_root_key]
+            source = fallback_data_root_key
+
         else:
             prefix = '/mnt/nas'
             warnings.warn('None of environment variables specifying data path '
@@ -123,10 +129,19 @@ def data_root():
                 f'Set one of the following: {data_root_key}, {nas_prefix_key}, '
                 f'{fallback_data_root_key}'
             )
+            source = None
 
         if prefix is not None:
             data_root = join(prefix, data_root_name)
         _data_root = data_root
+
+        if not isdir(_data_root):
+            emsg = (f'data root expected at {_data_root}, but no directory '
+                'exists there!'
+            )
+            if source is not None:
+                emsg += f'\nDirectory chosen from environment variable {source}'
+            raise IOError(emsg)
 
     # TODO err if nothing in data_root, saying which env var to set and how
     return _data_root
@@ -9583,6 +9598,8 @@ def latest_trace_pickles():
     keys = ['date', 'fly_num', 'thorimage_id']
     tp_root = join(analysis_output_root(), 'trace_pickles')
     tp_data = [vars_from_filename(f) for f in glob.glob(join(tp_root, '*.p'))]
+    if len(tp_data) == 0:
+        raise IOError(f'no trace pickles found under {tp_root}')
 
     df = pd.DataFrame(columns=keys + ['run_at', 'trace_pickle_path'],
         data=tp_data

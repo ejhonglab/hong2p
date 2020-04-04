@@ -29,10 +29,6 @@ import h5py
 import chemutils as cu
 
 import hong2p.util as u
-from model_mix_responses import fit_model
-# TODO what does the first mean if these are not equivalent?
-#from . import generate_pdf_report
-import generate_pdf_report
 
 
 parser = argparse.ArgumentParser(description='Analyzes calcium imaging traces '
@@ -3099,6 +3095,9 @@ del new_fly_keys2fly_id, keys
 # to model?)
 model_mixture_responses = False
 if model_mixture_responses:
+    # So we don't depend on `olfsysm` otherwise.
+    from model_mix_responses import fit_model
+
     # TODO save something about input in filename?
     model_output_cache = 'model_responses.p'
     if exists(model_output_cache):
@@ -4820,6 +4819,12 @@ else:
 # TODO and support all of these in latex template
 
 if not args.no_report_pdf:
+    # So that we don't depend on the `latex` module this requires unless we
+    # actually want to make a PDF report.
+    import generate_pdf_report
+    # TODO what does this mean if these are not equivalent?
+    #from . import generate_pdf_report
+
     if args.no_save_figs:
         warnings.warn('--report-pdf was passed despite --no-save-figs! '
             'The report generated will ONLY contain any figures already in the '
