@@ -49,9 +49,9 @@ calc_timing_info = True
 # TODO if this is False, still check that ti_code_version is there?
 update_timing_info = False
 convert_raw_to_tiffs = True
-motion_correct = True
+motion_correct = False
 only_motion_correct_for_analysis = True
-fit_rois = True
+fit_rois = False
 
 process_time_averages = False
 upload_matlab_cnmf_output = False
@@ -89,7 +89,7 @@ analyzed_at = datetime.fromtimestamp(time.time())
 # i had?
 #future = matlab.engine.start_matlab(async=True)
 #evil = None
-evil = u.matlab_engine()
+evil = u.matlab_engine(force=True)
 
 # To get Git version information to have a record of what analysis was
 # performed.
@@ -374,7 +374,8 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
             from_raw = u.read_movie(thorimage_dir)
             print('Writing TIFF to {}... '.format(tiff_filename), end='',
-                flush=True)
+                flush=True
+            )
             u.write_tiff(tiff_filename, from_raw)
             print('done.')
 
@@ -883,7 +884,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             raw_f = np.array(evil.eval('data.CNM.C')).T
 
         try:
-            ti = u.load_mat_timing_information(mat)
+            ti = u.load_mat_timing_info(mat)
         except matlab.engine.MatlabExecutionError as e:
             print(e)
             # TODO recording outcome? or just fail here?
