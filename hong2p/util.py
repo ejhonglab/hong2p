@@ -18,6 +18,8 @@ import warnings
 from pprint import pprint
 import glob
 import re
+import hashlib
+import time
 
 import numpy as np
 from numpy.ma import MaskedArray
@@ -53,6 +55,7 @@ trial_only_cols = [
 trial_cols = recording_cols + trial_only_cols
 
 date_fmt_str = '%Y-%m-%d'
+dff_latex = r'$\frac{\Delta F}{F}$'
 
 db_hostname = 'atlas'
 
@@ -166,6 +169,10 @@ def thorimage_dir(date, fly, thorimage_id):
     return join(raw_fly_dir(date, fly), thorimage_id)
 
 
+def thorsync_dir(date, fly, base_thorsync_dir):
+    return join(raw_fly_dir(date, fly), base_thorsync_dir)
+
+
 def analysis_fly_dir(date, fly):
     return join(analysis_output_root(), _fly_dir(date, fly))
 
@@ -191,15 +198,24 @@ def matlab_exit_except_hook(exctype, value, traceback):
 # TODO maybe rename to init_matlab and return nothing, to be more clear that
 # other fns here are using it behind the scenes?
 evil = None
-def matlab_engine():
+def matlab_engine(force=False):
     """
     Gets an instance of MATLAB engine w/ correct paths for Remy's single plane
-    code.
+    code (my version in `ejhonglab/matlab_kc_plane`).
+
+    Args:
+    force (bool): If True, will load engine even if `NO_MATLAB_ENGINE=True`.
     
-    Tries to undo Ctrl-C capturing that MATLAB seems to do.
+    Tries to undo Ctrl-C capturing that MATLAB seems to do, by modifying
+    `sys.excepthook`.
     """
-    import matlab.engine
     global evil
+
+    if NO_MATLAB_ENGINE and not force:
+        warnings.warn('not loading MATLAB engine because NO_MATLAB_ENGINE set')
+        return None
+
+    import matlab.engine
 
     evil = matlab.engine.start_matlab()
     # TODO TODO this doesn't seem to kill parallel workers... it should
@@ -263,20 +279,52 @@ def get_matfile_var(matfile, varname, require=True):
         raise NotImplementedError
 
 
+# TODO unit test
+def is_array_sorted(array):
+    """Returns whether 1-dimensional np.ndarray is sorted."""
+    # could implement an `axis` kwarg if i wanted to support multidimensional
+    # arrays
+    assert len(array.shape) == 1, 'only 1-dimensional arrays supported'
+    # https://stackoverflow.com/questions/47004506
+    return np.all(array[:-1] <= array[1:])
+
+
 # TODO maybe just wrap get_matfile_var?
-def load_mat_timing_information(mat_file):
+def load_mat_timing_info(mat_file, use_matlab_engine=None):
     """Loads and returns timing information from .mat output of Remy's script.
 
-    Raises matlab.engine.MatlabExecutionError
+    Args:
+    mat_file (str): filename of a .mat file with timing information.
+    use_matlab_engine (bool or None): If a bool, overrides `NO_MATLAB_ENGINE`.
+
+    Returns a dict with the following keys, each pointing to a numpy array:
+    - 'frame_times'
+    - 'block_first_frames'
+    - 'block_last_frames'
+    - 'odor_onset_frames'
+    - 'odor_offset_frames'
+
+    All `*_frames` variables use 0 to refer to the first frame, and so on from
+    there.
+
+    Raises `AssertionError` if the data seems inconsistent with itself.
+    Raises `matlab.engine.MatlabExecutionError` when MATLAB engine calls do.
     """
-    if not NO_MATLAB_ENGINE:
+    from scipy import stats
+
+    if use_matlab_engine is None:
+        use_matlab_engine = not NO_MATLAB_ENGINE
+
+    if use_matlab_engine:
         import matlab.engine
         # TODO this sufficient w/ global above to get access to matlab engine in
-        # here?
-        global evil
+        # here? (necessary? delete?)
+        #global evil
 
         if evil is None:
-            matlab_engine()
+            # `force=True` is just for case when `use_matlab_engine` is
+            # overriding `NO_MATLAB_ENGINE`
+            matlab_engine(force=True)
 
         try:
             # TODO probably switch to doing it this way
@@ -289,11 +337,16 @@ def load_mat_timing_information(mat_file):
 
         except matlab.engine.MatlabExecutionError as e:
             raise
-        return evil.eval('data.ti')
 
+        ti = evil.eval('data.ti')
+        # If any of the types initially loaded as smaller types end up
+        # overflowing, would probably need to set appropriate dtype here
+        # (could do through a lookup table of names -> dtypes), rather than
+        # just casting with `.astype(...)` below
+        for k in ti.keys():
+            # Converting from type `mlarray.double`
+            ti[k] = np.array(ti[k])
     else:
-        # TODO test this path against matlab engine path before deleting old
-        # path
         from scipy.io import loadmat
 
         data = loadmat(mat_file, variable_names=['ti'])['ti']
@@ -309,8 +362,167 @@ def load_mat_timing_information(mat_file):
         # this... (inspection of one example in ipdb seemed to have everything
         # in order though)
         ti = {n: d for n, d in zip(varnames, vardata)}
-        #
-        return ti
+
+    # TODO check on first element? subtract first element so it starts at t=0.0?
+    frame_times = ti['frame_times'].astype('float64').flatten()
+    assert len(frame_times.shape) == 1 and len(frame_times) > 1
+    # TODO assert that all things that refer to frame indices do not have max
+    # value above number of entries in frame_times (- 1)
+
+    # TODO just fix all existing saved to new naming convention in a script
+    # like populate_db? (for vars that produce block_<first/last>_frames)
+
+    # Frame indices for CNMF output.
+    # Of length equal to number of blocks. Each element is the frame
+    # index (from 1) in CNMF output that starts the block, where
+    # block is defined as a period of continuous acquisition.
+    try:
+        block_first_frames = ti['block_start_frame']
+    except KeyError:
+        # This was the old name for it.
+        block_first_frames = ti['trial_start']
+    try:
+        block_last_frames = ti['block_end_frame']
+    except KeyError:
+        # This was the old name for it.
+        block_last_frames = ti['trial_end']
+
+    block_last_frames = block_last_frames.astype(np.uint32).flatten() - 1
+    block_first_frames = block_first_frames.astype(np.uint32).flatten() - 1
+
+    odor_onset_frames = ti['stim_on'].astype(np.uint32).flatten() - 1
+    odor_offset_frames = ti['stim_off'].astype(np.uint32).flatten() - 1
+
+    # TODO maybe warn if there are keys in `ti` that will not be returned? opt?
+
+    assert len(block_first_frames) == len(block_last_frames)
+    assert len(odor_onset_frames) == len(odor_offset_frames)
+
+    assert block_first_frames[0] >= 0
+    # Without equality since there should be some frames before first of each.
+    assert block_last_frames[0] > 0
+    assert odor_onset_frames[0] > 0
+    assert odor_offset_frames[0] > 0
+
+    assert is_array_sorted(frame_times)
+
+    for frame_index_arr in [block_first_frames, block_last_frames,
+        odor_onset_frames, odor_offset_frames]:
+        assert is_array_sorted(frame_index_arr)
+        assert frame_index_arr.max() < len(frame_times)
+
+    for o_start, o_end in zip(odor_onset_frames, odor_offset_frames):
+        # TODO could also check this without equality if we can tell from
+        # other info that the frame rate should have been high enough
+        # to get two separate frames for the start and end
+        # (would probably need odor pulse length to be manually entered)
+        assert o_start <= o_end
+
+    # TODO break odor_<onset/offset>_frames into blocks and check they are
+    # all within the bounds specified by the corresponding elements of
+    # block_<first/last>_frames?
+
+    for i, (b_start, b_end) in enumerate(
+        zip(block_first_frames, block_last_frames)):
+
+        assert b_start < b_end
+        if i != 0:
+            last_b_end = block_last_frames[i - 1]
+            assert last_b_end == (b_start - 1)
+
+        block_frametimes = frame_times[b_start:b_end]
+        dts = np.diff(block_frametimes)
+        # np.max(np.abs(dts - np.mean(dts))) / np.mean(dts)
+        # was 0.000148... in one case I tested w/ data from the older
+        # system, so the check below w/ rtol=1e-4 would fail.
+        mode = stats.mode(dts)[0]
+
+        # TODO see whether triggering in 2019-05-03/6/fn_0002 case is fault of
+        # data or loading code?
+        # (seems to trigger in sub-recording cases, but those may no longer
+        # be relevant...)
+        # (above case also triggers when not loading a sub-recording, so that's
+        # not a complete explanation...)
+
+        # If this fails, method for extracting block frames as likely failed,
+        # as blocks are defined as continuous periods of acquisition, so
+        # adjacent frames should be close in time.
+        # Had to increase rtol from 3e-4 to 3e-3 for 2020-03-09/1/fn_007, and
+        # presumably other volumetric data too.
+        assert np.allclose(dts, mode, rtol=3e-3), \
+            'block first/last frames likely wrong'
+
+    return {
+        'frame_times': frame_times,
+        'block_first_frames': block_first_frames,
+        'block_last_frames': block_last_frames,
+        'odor_onset_frames': odor_onset_frames,
+        'odor_offset_frames': odor_offset_frames,
+    }
+
+
+# TODO use in unit test on a representative subset of my data so far
+# (comparing matlab engine and scipy.io.loadmat ways to load the data)
+def _check_timing_info_equal(ti0, ti1):
+    """Raises `AssertionError` if timing info in `ti0` and `ti1` is not equal.
+    
+    Assumes all values are numpy array-like.
+    """
+    assert ti0.keys() == ti1.keys()
+    for k in ti0.keys():
+        assert np.array_equal(ti0[k], ti1[k])
+
+
+def check_movie_timing_info(movie, frame_times, block_first_frames,
+    block_last_frames):
+    """Checks that `movie` and `ti` refer to the same number of frames.
+
+    Raises `AssertionError` if the check fails.
+    """
+    total_block_frames = sum([e - s + 1 for s, e in
+        zip(block_first_frames, block_last_frames)
+    ])
+    n_frames = movie.shape[0]
+    # TODO may need to replace this with a warning (at least optionally), given
+    # comment in gui.py that did so because failure (described in cthulhu:190520
+    # bug text file)
+    assert len(frame_times) == n_frames
+    # TODO may need to remove this assert to handle cases where there is a
+    # partial block (stopped early). leave assert after slicing tho.
+    # (warn instead, probably)
+    assert total_block_frames == n_frames, \
+        '{} != {}'.format(total_block_frames, n_frames)
+
+
+def print_block_frames(block_first_frames, block_last_frames):
+    """Prints block numbers and the corresponding start / stop frames.
+
+    For subsetting TIFF in ImageJ / other manual analysis.
+
+    Prints frame numbers 1-indexed, but takes 0-indexed frames.
+    """
+    print('Block frames:')
+    for i, (b_first, b_last) in enumerate(zip(block_first_frames,
+        block_last_frames)):
+        # Adding one to index frames as in ImageJ.
+        print('{}: {} - {}'.format(i, b_first + 1, b_last + 1))
+    print('')
+
+
+def md5(fname):
+    """Calculates MD5 hash on file with name `fname`.
+    """
+    hash_md5 = hashlib.md5()
+    with open(fname, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b''):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def format_timestamp(timestamp):
+    """Returns human-readable str for timestamp accepted by `pd.Timestamp`.
+    """
+    return str(pd.Timestamp(timestamp))[:16]
 
 
 # TODO TODO can to_sql with pg_upsert replace this? what extra features did this
@@ -517,9 +729,1338 @@ def odorset_name(df_or_odornames):
     return odor_set
 
 
-def stimfile_odorset(stimfile_path, strict=True):
+def load_stimfile(stimfile_path):
+    """Loads odor metadata stored in a pickle.
+
+    These metadata files are generated by scripts under
+    `ejhonglab/cutpast_arduino_stimuli`.
+    """
+    # TODO better check for path already containing stimfile_root?
+    # string prefix check might be too fragile...
+    if not stimfile_path.startswith(stimfile_root()):
+        stimfile_path = join(stimfile_root(), stimfile_path)
+
+    # TODO also err if not readable / valid
+    if not exists(stimfile_path):
+        stimfile_just_fname = split(stimfile_path)[1]
+        raise ValueError('copy missing stimfile {} to {}'.format(
+            stimfile_just_fname, stimfile_root
+        ))
+
     with open(stimfile_path, 'rb') as f:
         data = pickle.load(f)
+    return data
+
+
+# TODO delete (subsuming contents into load_experiment) if i'd never want to
+# call this in other circumstances
+def load_odor_metadata(stimfile_path):
+    """Returns odor metadata loaded from pickle and additional computed values.
+
+    Additional values are added into the dictionary loaded from the pickle.
+    In some cases, this can overwrite the loaded values.
+    """
+    data = load_stimfile(stimfile_path)
+    # TODO infer from data if no stimfile and not specified in
+    # metadata (is there actually any value in this? maybe if we have
+    # a sufficient amount of other data about the odor order in metadata
+    # yaml (though this is not supported now...)?)
+
+    # TODO delete this hack (which is currently just using new pickle
+    # format as a proxy for the experiment being a supermixture experiment)
+    if 'odor_lists' not in data:
+        pair_case = True
+
+        # The 3 is because 3 odors are compared in each repeat for the
+        # natural_odors odor-pair experiments.
+        presentations_per_repeat = 3
+        odor_list = data['odor_pair_list']
+
+        # could delete eventually. b/c originally i was casting to int,
+        # though it's likely it was always int anyway...
+        assert type(data['n_repeats']) is int
+    else:
+        pair_case = False
+
+        n_expected_real_blocks = 3
+        odor_list = data['odor_lists']
+        # because of "block" def in arduino / get_stiminfo code
+        # not matching def in randomizer / stimfile code
+        # (scopePin pulses vs. randomization units, depending on settings)
+        presentations_per_repeat = len(odor_list) // n_expected_real_blocks
+        assert len(odor_list) % n_expected_real_blocks == 0
+
+        # Hardcode to break up into more blocks, to align defs of blocks.
+        # TODO (maybe just for experiments on 2019-07-25 ?) or change block
+        # handling in here? make more flexible?
+
+        # Will overwrite existing value.
+        assert 'n_repeats' in data.keys()
+        data['n_repeats'] = 1
+
+        # TODO check that overwriting of presentations_per_block with newest
+        # data in this case is still accurate (post fixing some of the values
+        # in pickle data) (also check similar values)
+
+    presentations_per_block = data['n_repeats'] * presentations_per_repeat
+
+    # Overwriting exisiting value.
+    assert 'presentations_per_block' in data.keys()
+    data['presentations_per_block'] = presentations_per_block
+
+    # NOT overwriting an existing value.
+    assert 'pair_case' not in data.keys()
+    data['pair_case'] = pair_case
+
+    # NOT overwriting existing value.
+    assert 'presentations_per_repeat' not in data.keys()
+    data['presentations_per_repeat'] = presentations_per_repeat
+
+    # NOT overwriting an existing value.
+    assert 'odor_list' not in data.keys()
+    data['odor_list'] = odor_list
+
+    return data
+
+
+def print_trial_odors(data, odor_onset_frames=None):
+    """
+    data should be as the output of `load_odor_metadata`
+    """
+    import chemutils as cu
+
+    n_repeats = data['n_repeats']
+    odor_list = data['odor_list']
+    presentations_per_block = data['presentations_per_block']
+    pair_case = data['pair_case']
+
+    n_blocks, remainder = divmod(len(odor_list), presentations_per_block)
+    assert remainder == 0
+
+    # TODO add extra input data / add extra values to `data` in fn that already
+    # augments that as necessary, for all values used below to still be defined
+    if pair_case:
+        print(('{} comparisons ({{A, B, A+B}} in random order x ' +
+            '{} repeats)').format(n_blocks, n_repeats)
+        )
+    else:
+        mix_names = {x for x in odor_list if '@' not in x}
+        if len(mix_names) == 1:
+            mix_name = mix_names.pop()
+            print('{} randomized blocks of "{}" and its components'.format(
+                n_blocks, mix_name
+            ))
+        else:
+            assert len(mix_names) == 0
+            print('No mixtures, so presumably this is a calibration experiment')
+            print(f'{n_blocks} randomized blocks')
+
+    # TODO maybe print this in tabular form?
+    trial = 0
+    for i in range(n_blocks):
+        p_start = presentations_per_block * i
+        p_end = presentations_per_block * (i + 1)
+        cline = '{}: '.format(i)
+
+        odor_strings = []
+        for o in odor_list[p_start:p_end]:
+            # TODO maybe always have odor_list hold str repr?
+            # or unify str repr generation -> don't handle use odor_lists
+            # for str representation in supermixture case?
+            # would also be a good time to unify name + *concentration*
+            # handling
+            if pair_case:
+                # TODO odor2abbrev here too probably... be more uniform
+                if o[1] == 'paraffin':
+                    odor_string = o[0]
+                else:
+                    odor_string = ' + '.join(o)
+            else:
+                assert type(o) is str
+
+                parts = o.split('@')
+                odor_name = parts[0].strip()
+                abbrev = None
+                try:
+                    abbrev = cu.odor2abbrev(odor_name)
+                # For a chemutils conversion failure.
+                except ValueError:
+                    pass
+
+                if abbrev is None:
+                    abbrev = odor_name
+
+                odor_string = abbrev
+                # TODO also don't append stuff if conc is @ 0.0 (log)
+                if len(parts) > 1:
+                    assert len(parts) == 2
+                    odor_string += ' @' + parts[1]
+
+            # Adding one to index frames as in ImageJ.
+            if odor_onset_frames is not None:
+                odor_string += ' ({})'.format(odor_onset_frames[trial] + 1)
+
+            trial += 1
+            odor_strings.append(odor_string)
+
+        print(cline + ', '.join(odor_strings))
+
+
+def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
+    odor_onset_frames):
+    """Returns arrays trial_start_frames, trial_stop_frames
+    """
+    n_frames = movie.shape[0]
+    # TODO maybe just add metadata['drop_first_n_frames'] to this?
+    # (otherwise, that variable screws things up, right?)
+    #onset_frame_offset = \
+    #    odor_onset_frames[0] - block_first_frames[0]
+
+    # TODO delete this hack, after implementing more robust frame-to-trial
+    # assignment described below
+    b2o_offsets = sorted([o - b for b, o in zip(block_first_frames,
+        odor_onset_frames[::presentations_per_block])
+    ])
+    assert len(b2o_offsets) >= 3
+    # TODO TODO TODO re-enable after fixing frame_times based issues w/
+    # volumetric data
+    # TODO might need to allow for some error here...? frame or two?
+    # (in resonant scanner case, w/ frame averaging maybe)
+    #assert b2o_offsets[-1] == b2o_offsets[-2]
+    onset_frame_offset = b2o_offsets[-1]
+    #
+    
+    # TODO TODO TODO instead of this frame # strategy for assigning frames
+    # to trials, maybe do this:
+    # 1) find ~max # frames from block start to onset, as above
+    # TODO but maybe still warn if some offset deviates from max by more
+    # than a frame or two...
+    # 2) paint all frames before odor onsets up to this max # frames / time
+    #    (if frames have a time discontinuity between them indicating
+    #     acquisition did not proceed continuously between them, do not
+    #     paint across that boundary)
+    # 3) paint still-unassigned frames following odor onset in the same
+    #    fashion (again stopping at boundaries of > certain dt)
+    # [4)] if not using max in #1 (but something like rounded mean)
+    #      may still have unassigned frames at block starts. assign those to
+    #      trials.
+    # TODO could just assert everything within block regions i'm painting
+    # does not have time discontinuities, and then i could just deal w/
+    # frames
+
+    trial_start_frames = np.append(0,
+        odor_onset_frames[1:] - onset_frame_offset
+    )
+    trial_stop_frames = np.append(
+        odor_onset_frames[1:] - onset_frame_offset - 1, n_frames - 1
+    )
+
+    # TODO same checks are made for blocks, so factor out?
+    total_trial_frames = 0
+    for i, (t_start, t_end) in enumerate(
+        zip(trial_start_frames, trial_stop_frames)):
+
+        if i != 0:
+            last_t_end = trial_stop_frames[i - 1]
+            assert last_t_end == (t_start - 1)
+
+        total_trial_frames += t_end - t_start + 1
+
+    assert total_trial_frames == n_frames, \
+        '{} != {}'.format(total_trial_frames, n_frames)
+    #
+
+    # TODO warn if all block/trial lens are not the same? (by more than some
+    # threshold probably)
+
+    return trial_start_frames, trial_stop_frames
+
+
+def tiff_ijroi_filename(tiff, confirm=None,
+    gui_confirm=False, gui_fallback=False, gui='qt5'):
+    """
+    Takes a tiff path to corresponding ImageJ ROI file.
+
+    Automatic search for ROI will only check same folder as the TIFF passed in.
+
+    Options for fallback to manual selection / confirmation of appropriate
+    ROI file.
+    """
+    if gui_confirm and confirm:
+        raise ValueError('only specify either gui_confirm or confirm')
+
+    if gui_confirm or gui_fallback:
+        if gui == 'qt5':
+            from PyQt5.QtWidgets import QMessageBox, QFileDialog
+
+        # TODO maybe implement some version w/ a builtin python gui like
+        # tkinter?
+        else:
+            raise NotImplementedError(f'gui {gui} not supported. see function.')
+    else:
+        if confirm is None:
+            confirm = True
+
+    curr_tiff_dir = split(tiff)[0]
+    # TODO check that *.zip glob still matches in case where it is the empty
+    # string (fix if it doesn't)
+    thorimage_id = tiff_thorimage_id(tiff)
+    possible_ijroi_files = glob.glob(join(curr_tiff_dir,
+        thorimage_id + '*.zip'
+    ))
+
+    ijroiset_filename = None
+    # TODO fix automatic first choice in _NNN naming convention case
+    # (seemed to not work on 2019-07-25/2/_008)
+    # but actually it did work in */_007 case... so idk what's happening
+    if len(possible_ijroi_files) == 1:
+        ijroiset_filename = possible_ijroi_files[0]
+
+        if confirm:
+            # TODO factor into a fn to always get a Yy/Nn answer?
+            prompt = (format_keys(*tiff_filename2keys(tiff) +
+                f': use ImageJ ROIs in {ijroiset_filename}? [y/n] '
+            ))
+            response = None
+            while response not in ('y', 'n'):
+                response = input(prompt).lower()
+
+            if response == 'n':
+                ijroiset_filename = None
+                # TODO manual text entry of appropriate filename in this case?
+                # ...or maybe just totally unsupport terminal interaction?
+
+        elif gui_confirm:
+            confirmation_choice = QMessageBox.question(self, 'Confirm ROI file',
+                f'Use ImageJ ROIs in {ijroiset_filename}?',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if confirmation_choice != QMessageBox.Yes:
+                ijroiset_filename = None
+
+    elif not gui_fallback and len(possible_ijroi_files) > 1:
+        raise IOError('too many candidate ImageJ ROI files')
+
+    elif not gui_fallback and len(possible_ijroi_files) == 0:
+        raise IOError('no candidate ImageJ ROI files')
+
+    if gui_fallback and ijroiset_filename is None:
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+
+        # TODO restrict *.zip files shown to those also following some
+        # naming convention (to indicate it's for the currently loaded TIFF,
+        # and not a TIFF from some other experiment on the same fly)?
+        # maybe checkbox / diff option to show all?
+
+        # TODO need to pass in parent widget (what `self` was) or leave null if
+        # that works? / define in here?
+        raise NotImplementedError('see comment above')
+        ijroiset_filename, _ = QFileDialog.getOpenFileName(self,
+            'Select ImageJ ROI zip...', curr_tiff_dir,
+            'ImageJ ROIs (*.zip)', options=options
+        )
+        # TODO (opt?) to not allow no selection? (so downstream code can assume
+        # it's defined...) (should also probably change confirmation behavior
+        # above)
+        if len(ijroiset_filename) == 0:
+            print('No ImageJ ROI zipfile selected.')
+            ijroiset_filename = None
+
+    return ijroiset_filename
+
+
+# TODO TODO TODO may want to change how this fn operates (so it operates on
+# blocks rather than all of them concatenated + to provide different baselining
+# options)
+def calculate_df_over_f(raw_f, trial_start_frames, odor_onset_frames,
+    trial_stop_frames):
+    # TODO TODO maybe factor this into some kind of util fn that applies
+    # another fn (perhaps inplace, perhaps onto new array) to each
+    # (cell, block) (or maybe just each block, if smooth can be vectorized,
+    # so it could also apply in frame-shape-preserved case?)
+    '''
+    for b_start, b_end in zip(block_first_frames, block_last_frames):
+
+        for c in range(n_footprints):
+            # TODO TODO TODO TODO need to be (b_end + 1) since not
+            # inclusive? (<-fixed) other problems like this elsewhere?????
+            # TODO maybe smooth less now that df/f is being calculated more
+            # sensibly...
+            raw_f[b_start:(b_end + 1), c] = smooth(
+                raw_f[b_start:(b_end + 1), c], window_len=11
+            )
+    '''
+    df_over_f = np.empty_like(raw_f) * np.nan
+    for t_start, odor_onset, t_end in zip(trial_start_frames, odor_onset_frames,
+        trial_stop_frames):
+
+        # TODO TODO maybe use diff way of calculating baseline
+        # (include stuff at end of response? just some percentile over a big
+        # window or something?)
+        # TODO kwargs to control method of calculating baseline
+
+        # TODO maybe display baseline period on plots for debugging?
+        # maybe frame numbers got shifted?
+        baselines = np.mean(raw_f[t_start:(odor_onset + 1), :], axis=0)
+        trial_f = raw_f[t_start:(t_end + 1), :]
+        df_over_f[t_start:(t_end + 1), :] = (trial_f - baselines) / baselines
+
+    # TODO some check that no value in df_over_f are currently NaN?
+
+    return df_over_f
+
+
+def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
+    allow_missing_odor_presentations=False, verbose=True):
+    # TODO summarize the various errors this could possibly raise
+    # probably at least valueerror, assertionerror, ioerror (?), & tifffile
+    # memory error
+    # TODO TODO try to add a flag to force/allow this fn to operate
+    # independently of the postgres database
+    """
+    May raise errors if some part of the loading fails.
+    """
+    import tifffile
+    import ijroi
+    from scipy.sparse import coo_matrix
+
+    import chemutils as cu
+
+    # TODO test that all of this works w/ both raw & motion corrected tiffs
+    # (named and placed according to convention)
+    keys = tiff_filename2keys(tiff)
+    recording_title = format_keys(*keys)
+    if verbose:
+        print(recording_title)
+
+    start = time.time()
+
+    mat = matfile(*keys)
+    # For some of the older data, need to either modify scipy loadmat call or
+    # revert to use_matlab_engine=True call.
+    ti = load_mat_timing_info(mat)
+    frame_times = ti['frame_times']
+    block_first_frames = ti['block_first_frames']
+    block_last_frames = ti['block_last_frames']
+    odor_onset_frames = ti['odor_onset_frames']
+    odor_offset_frames = ti['odor_offset_frames']
+    del ti
+    # Copying so we can subset while still checking the original values
+    # against the freshly loaded movie.
+    orig_frame_times = frame_times.copy()
+    orig_block_first_frames = block_first_frames.copy()
+    orig_block_last_frames = block_last_frames.copy()
+
+    # TODO TODO also store (the contents of this) in db?
+    # This will return defaults if the YAML file is not found.
+    meta = metadata(*keys)
+    drop_first_n_frames = meta['drop_first_n_frames']
+    # TODO TODO err if this is past first odor onset (or probably even too
+    # close)
+    del meta
+
+    df = mb_team_gsheet()
+    recordings = df.loc[
+        (df.date == keys.date) &
+        (df.fly_num == keys.fly_num) &
+        (df.thorimage_dir == keys.thorimage_id)
+    ]
+    del df
+    recording = recordings.iloc[0]
+    del recordings
+    if recording.project != 'natural_odors':
+        raise ValueError('project type {} not supported'.format(
+            recording.project
+        ))
+
+    stimfile = recording['stimulus_data_file']
+    first_block = recording['first_block']
+    last_block = recording['last_block']
+    sync_dir = thorsync_dir(*keys[:2], recording['thorsync_dir'])
+    image_dir = thorimage_dir(*keys[:2], recording['thorimage_dir'])
+    del recording
+
+    data = load_odor_metadata(stimfile)
+    odor_list = data['odor_list']
+    n_repeats = data['n_repeats']
+    presentations_per_repeat = data['presentations_per_repeat']
+    presentations_per_block = data['presentations_per_block']
+    pair_case = data['pair_case']
+
+    # TODO TODO maybe `allow_gsheet_to_restrict` block should also influence
+    # whether the values in `recording` are used? (unless i want to just
+    # unsupport the False case...)
+    if pd.isnull(first_block):
+        first_block = 0
+    else:
+        first_block = int(first_block) - 1
+
+    if pd.isnull(last_block):
+        n_full_panel_blocks = \
+            int(len(odor_list) / presentations_per_block)
+        last_block = n_full_panel_blocks - 1
+    else:
+        last_block = int(last_block) - 1
+
+    xml = get_thorimage_xmlroot(image_dir)
+    started_at = get_thorimage_time_xml(xml)
+
+    # TODO upload full_frame_avg_trace like in populate_db?
+    recording_df = pd.DataFrame({
+        'started_at': [started_at],
+        'thorsync_path': [sync_dir],
+        'thorimage_path': [image_dir],
+        'stimulus_data_path': [stimfile],
+        'first_block': [first_block],
+        'last_block': [last_block],
+        'n_repeats': [n_repeats],
+        'presentations_per_repeat': [presentations_per_repeat]
+        # TODO but do i want the trace of the full movie or slice?
+        # if full movie, probably should just calculate once, then
+        # slice that for the trace i use here
+        #'full_frame_avg_trace': 
+    })
+    # TODO at least put behind ACTUALLY_UPLOAD?
+    # TODO maybe defer this to accepting?
+    # TODO TODO also replace other cases that might need to be
+    # updated w/ pg_upsert based solution
+    # TODO just completely delete this fn at this point?
+    ##to_sql_with_duplicates(recording_df, 'recordings')
+    recording_df.set_index('started_at').to_sql('recordings', conn,
+        if_exists='append', method=pg_upsert
+    )
+    db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
+        "started_at = '{}'".format(pd.Timestamp(started_at)), conn
+    )
+    db_recording = db_recording[recording_df.columns]
+    assert recording_df.equals(db_recording)
+    del db_recording
+
+    # TODO maybe use subset here too, to be consistent w/ which mixtures get
+    # entered... (according to the blocks that are ultimately used, right?
+    # something else?)
+    if pair_case:
+        odors = pd.DataFrame({
+            'name': data['odors'],
+            'log10_conc_vv': [0 if x == 'paraffin' else
+                natural_odors_concentrations.at[x,
+                'log10_vial_volume_fraction'] for x in data['odors']]
+        })
+    else:
+        # TODO fix db to represent arbitrary mixtures more generally,
+        # so this hack isn't necessary
+        # TODO TODO fix entries already in db w/ trailing / leading
+        # whitespace (split_odor_w_conc didn't used to strip returned name)
+        # TODO TODO TODO fix what generates broken data['odors'] in at least
+        # some of the fly food cases (missing fly food b)
+        '''
+        odors = pd.DataFrame([split_odor_w_conc(x) for x in
+            (data['odors'] + ['no_second_odor'])
+        ])
+        '''
+        odors = pd.DataFrame([split_odor_w_conc(x) for x in
+            (list(set(data['odor_lists'])) + ['no_second_odor'])
+        ])
+
+    to_sql_with_duplicates(odors, 'odors')
+
+    # TODO make unique id before insertion? some way that wouldn't require
+    # the IDs, but would create similar tables?
+
+    first_presentation = first_block * presentations_per_block
+    last_presentation = (last_block + 1) * presentations_per_block - 1
+
+    odor_list = odor_list[first_presentation:(last_presentation + 1)]
+    assert (len(odor_list) % (presentations_per_repeat * n_repeats) == 0)
+
+    # TODO set gui segmentation widget self.db_odors w/ this value at return /
+    # recompute out there
+    db_odors = pd.read_sql('odors', conn)
+    db_odors.set_index(['name', 'log10_conc_vv'],
+        verify_integrity=True, inplace=True
+    )
+
+    # TODO invert to check
+    # TODO is this sql table worth anything if both keys actually need to be
+    # referenced later anyway? (?)
+
+    # TODO TODO TODO modify to work w/ any output of cutpaste generator
+    # (arbitrary len lists in odor_lists) (see cutpaste code for similar
+    # problem?)
+    # TODO only add as many as there were blocks from thorsync timing info?
+    if pair_case:
+        # TODO this rounding to 5 decimal places always work?
+        o2c = odors.set_index('name', verify_integrity=True
+            ).log10_conc_vv.round(decimals=5)
+
+        odor1_ids = [db_odors.at[(o1, o2c[o1]), 'odor_id']
+            for o1, _ in odor_list
+        ]
+        odor2_ids = [db_odors.at[(o2, o2c[o2]), 'odor_id']
+            for _, o2 in odor_list
+        ]
+        del o2c
+    else:
+        odor1_ids = [db_odors.at[tuple(split_odor_w_conc(o)),
+            'odor_id'] for o in odor_list
+        ]
+
+        # TODO fix db to represent arbitrary mixtures more generally,
+        # so this hack isn't necessary
+        no_second_odor_id = db_odors.at[
+            ('no_second_odor', 0.0), 'odor_id'
+        ]
+        odor2_ids = [no_second_odor_id] * len(odor1_ids)
+
+    # TODO make unique first. only need order for filling in the
+    # values in responses. (?)
+    # TODO wait, how is this associated w/ anything else in this run?
+    # is this table even used?
+    mixtures = pd.DataFrame({
+        'odor1': odor1_ids,
+        'odor2': odor2_ids
+    })
+    # TODO maybe defer this to accepting...
+    to_sql_with_duplicates(mixtures, 'mixtures')
+
+    # TODO rename to indicate it's for each presentation / stimulus / trial?
+    odor_ids = list(zip(odor1_ids, odor2_ids))
+
+    n_blocks_from_gsheet = last_block - first_block + 1
+    assert len(odor_list) == n_blocks_from_gsheet * presentations_per_block
+
+    n_blocks_from_thorsync = len(block_first_frames)
+    err_msg = ('{} blocks ({} to {}, inclusive) in Google sheet {{}} {} ' +
+        'blocks from ThorSync.').format(n_blocks_from_gsheet,
+        first_block + 1, last_block + 1, n_blocks_from_thorsync
+    )
+    fail_msg = (' Fix in Google sheet, turn off '
+        'cache if necessary, and rerun.'
+    )
+
+    if n_blocks_from_gsheet > n_blocks_from_thorsync:
+        raise ValueError(err_msg.format('>') + fail_msg)
+
+    elif n_blocks_from_gsheet < n_blocks_from_thorsync:
+        if allow_gsheet_to_restrict_blocks:
+            warnings.warn(err_msg.format('<') + (' This is ONLY ok if you '+
+                'intend to exclude the LAST {} blocks in the Thor output.'
+                ).format(n_blocks_from_thorsync - n_blocks_from_gsheet)
+            )
+        else:
+            raise ValueError(err_msg.format('<') + fail_msg)
+
+    if allow_gsheet_to_restrict_blocks:
+        # TODO unit test for case where first_block != 0 and == 0
+        # w/ last_block == first_block and > first_block
+        # TODO TODO doesn't this only support dropping blocks at end?
+        # do i assert that first_block is 0 then? probably should...
+        # TODO TODO TODO shouldnt it be first_block:last_block+1?
+        block_first_frames = block_first_frames[
+            :(last_block - first_block + 1)
+        ]
+        block_last_frames = block_last_frames[
+            :(last_block - first_block + 1)
+        ]
+        assert len(block_first_frames) == n_blocks_from_gsheet
+        assert len(block_last_frames) == n_blocks_from_gsheet
+
+        odor_onset_frames = odor_onset_frames[
+            :(last_presentation - first_presentation + 1)
+        ]
+        odor_offset_frames = odor_offset_frames[
+            :(last_presentation - first_presentation + 1)
+        ]
+        del first_presentation, last_presentation
+        frame_times = frame_times[:(block_last_frames[-1] + 1)]
+
+    # TODO TODO TODO need to adjust odor_onset_frames to exclude last
+    # presentations missing at end of each block, if not same len as odor
+    # list
+    n_missing_presentations = len(odor_list) - len(odor_onset_frames)
+    assert n_missing_presentations >= 0
+
+    if allow_missing_odor_presentations and n_missing_presentations > 0:
+        # MATLAB code also assumes equal number missing in each block.
+        assert n_missing_presentations % n_blocks_from_gsheet == 0
+        n_missing_per_block = \
+            n_missing_presentations // n_blocks_from_gsheet
+
+        warnings.warn('{} missing presentations per block!'.format(
+            n_missing_per_block
+        ))
+        n_deleted = 0
+        for i in range(n_blocks_from_gsheet):
+            end_plus_one = presentations_per_block * (i + 1) - n_deleted
+            del_start = end_plus_one - n_missing_per_block
+            del_stop = end_plus_one - 1
+
+            to_delete = odor_list[del_start:(del_stop + 1)]
+            warnings.warn('presentations {} to {} ({}) were missing'.format(
+                del_start + 1 + n_deleted, del_stop + 1 + n_deleted,
+                to_delete
+            ))
+            n_deleted += len(to_delete)
+            del odor_list[del_start:(del_stop + 1)]
+            del odor_ids[del_start:(del_stop + 1)]
+
+        presentations_per_block -= n_missing_per_block
+
+    # TODO move these three checks to a fn that checks timing info against
+    # stimfile
+    n_presentations = n_blocks_from_gsheet * presentations_per_block
+    assert (len(odor_onset_frames) ==
+        (n_presentations - n_missing_presentations)
+    )
+    assert (len(odor_offset_frames) ==
+        (n_presentations - n_missing_presentations)
+    )
+    del n_presentations, n_missing_presentations
+
+    assert len(odor_onset_frames) == len(odor_list)
+
+    assert len(odor_ids) == len(odor_list)
+
+    if verbose:
+        print_trial_odors(data, odor_onset_frames)
+        print('')
+
+    end = time.time()
+    print('Loading metadata took {:.3f} seconds'.format(end - start))
+
+    # TODO TODO any way to only del existing movie if required to have
+    # enough memory to load the new one (referring to how this code worked when
+    # it was still a part of gui.py)?
+    print('Loading TIFF {}...'.format(tiff), end='', flush=True)
+    start = time.time()
+    # TODO maybe just load a range of movie (if not all blocks/frames used)?
+    # TODO is cnmf expecting float to be in range [0,1], like skimage?
+    movie = tifffile.imread(tiff).astype('float32')
+    end = time.time()
+    print(' done')
+    print('Loading TIFF took {:.3f} seconds'.format(end - start))
+
+    # TODO TODO TODO fix what is causing more elements in frame_times than i
+    # expect (in matlab/matlab_kc_plane/get_stiminfo.m) and delete this hack 
+    n_flyback_frames = get_thorimage_n_flyback_xml(xml)
+    del xml
+    if n_flyback_frames > 0:
+        assert len(movie.shape) == 4
+        z_total = movie.shape[1] + n_flyback_frames
+
+        # this should be effectively taking the min within each stride
+        frame_times = frame_times[::z_total]
+        
+        # these are the bigger opportunity for error
+        frame_times = frame_times[:movie.shape[0]]
+        # assuming frame_times was not modified earlier. if keeping this hack,
+        # would want to at least move it before earlier possible modifications,
+        # and then delete this line.
+        orig_frame_times = frame_times.copy()
+
+        step = int(len(frame_times) / 3)
+        block_first_frames = np.arange(len(frame_times) - step + 1, step=step)
+        block_last_frames = np.arange(step - 1, len(frame_times), step=step)
+
+        orig_block_first_frames = block_first_frames.copy()
+        orig_block_last_frames = block_last_frames.copy()
+
+        odor_onset_frames = np.round(odor_onset_frames / z_total
+            ).astype(np.uint16)
+        odor_offset_frames = np.round(odor_offset_frames / z_total
+            ).astype(np.uint16)
+
+    # TODO may need to remove this assert to handle cases where there is a
+    # partial block (stopped early). still check after slicing tho.
+    # (warn instead, probably) (add a flag to just warn?)
+    check_movie_timing_info(movie, orig_frame_times,
+        orig_block_first_frames, orig_block_last_frames
+    )
+    del orig_frame_times, orig_block_first_frames, orig_block_last_frames
+
+    # TODO probably delete after i come up w/ a better way to handle splitting
+    # movies and analyzing subsets of them.  this is just to get the frame #s to
+    # subset tiff in imagej
+    # Printing before `drop_first_n_frames` is subtracted, otherwise frame
+    # numbers would not be correct.
+    # TODO shouldn't i move this before movie loading if possible, as some of
+    # the other prints? (flag to loading fn to do this?)
+    if verbose:
+        print_block_frames(block_first_frames, block_last_frames)
+
+    last_frame = block_last_frames[-1]
+    # TODO TODO should they really not be considered part of the last block
+    # in this case...?
+    n_tossed_frames = movie.shape[0] - (last_frame + 1)
+    if n_tossed_frames != 0:
+        warnings.warn(('Tossing trailing {} of {} frames of movie, which'
+            ' did not belong to any used block.\n').format(
+            n_tossed_frames, movie.shape[0]
+        ))
+    del n_tossed_frames
+
+    odor_onset_frames = [n - drop_first_n_frames
+        for n in odor_onset_frames
+    ]
+    odor_offset_frames = [n - drop_first_n_frames
+        for n in odor_offset_frames
+    ]
+    block_first_frames = [n - drop_first_n_frames
+        for n in block_first_frames
+    ]
+    # TODO TODO TODO why was i doing this? after subtracting one, is this
+    # still not true??? (fix!)
+    # i feel like this might mean the rest of my handling of this case might
+    # be incorrect...
+    #block_first_frames[0] = 0
+    # TODO delete after addressing the above. maybe move a check like this
+    # to `load_mat_timing_info`
+    assert block_first_frames[0] == 0
+    #
+
+    block_last_frames = [n - drop_first_n_frames
+        for n in block_last_frames
+    ]
+
+    frame_times = frame_times[drop_first_n_frames:]
+    # TODO TODO TODO is it correct that we were using the last_frame defined
+    # before drop_first_n_frames wasa subtracted from everything???
+    # TODO want / need to do more than just slice to free up memory from
+    # other pixels? is that operation worth it?
+    movie = movie[drop_first_n_frames:(last_frame + 1)]
+
+    # This check is now an assert in check_movie_timing_info call below.
+    # May need to allow that to be switched to a warning, if this failure
+    # mode still exists.
+    '''
+    if movie.shape[0] != len(frame_times):
+        warnings.warn('{} != {}'.format(movie.shape[0], len(frame_times)))
+    '''
+    check_movie_timing_info(movie, frame_times, block_first_frames,
+        block_last_frames
+    )
+
+    trial_start_frames, trial_stop_frames = assign_frames_to_trials(
+        movie, presentations_per_block, block_first_frames, odor_onset_frames
+    )
+    # TODO probably do want a fn that can return movie and metadata, so that
+    # other segmentation functions can be connected to that...
+    # (not clear on what best representation would be, however)
+    ############################################################################
+    # End what originally happened in gui.py/Segmentation.open_recording
+    ############################################################################
+
+    ############################################################################
+    # Copied from gui load_ijois
+    ############################################################################
+
+    # TODO delete this hardcode hack
+    if len(movie.shape) == 4:
+        assert tiff.startswith(raw_data_root())
+        ijroiset_filename = join(image_dir, 'rois.zip')
+        assert exists(ijroiset_filename)
+    #
+    else:
+        # TODO maybe factor this getting roi filname, reading rois, making masks
+        # [, extracting traces] into a fn?
+        ijroiset_filename = tiff_ijroi_filename(tiff)
+        if ijroiset_filename is None:
+            raise IOError('tiff_ijroi_filename returned None')
+
+    # TODO may need to use this mtime later (particularly if we enter into
+    # db as before in gui)
+    # (was set into self.run_at)
+    # (also set parameter_json and run_len_seconds to None)
+    ijroiset_mtime = datetime.fromtimestamp(getmtime(ijroiset_filename))
+
+    ijrois = ijroi.read_roi_zip(ijroiset_filename)
+
+    frame_shape = movie.shape[1:]
+    footprints = ijrois2masks(ijrois, frame_shape)
+
+    raw_f = extract_traces_boolean_footprints(movie, footprints)
+    #n_footprints = raw_f.shape[1]
+
+    df_over_f = calculate_df_over_f(raw_f, trial_start_frames,
+        odor_onset_frames, trial_stop_frames
+    )
+
+    ############################################################################
+    # What was originally in gui.py/Segmentation.get_recording_dfs
+    ############################################################################
+    n_frames, n_cells = df_over_f.shape
+    # would have to pass footprints back / read from sql / read # from sql
+    #assert n_cells == n_footprints
+    # TODO bring back after fixing this indexing issue,
+    # whatever it is. as with other check in open_recording
+    # (mostly redundant w/ assert comparing movie frames and frame_times in
+    # end of open_recording...)
+    #assert frame_times.shape[0] == n_frames
+
+    presentation_dfs = []
+    comparison_dfs = []
+    comparison_num = -1
+
+    # TODO consider deleting this conditional if i'm not actually going to
+    # support else case (not used now, see where repeat_num is set in loop)
+    if pair_case:
+        repeats_across_real_blocks = False
+    else:
+        repeats_across_real_blocks = True
+        repeat_nums = {id_group: 0 for id_group in odor_ids}
+
+    print('processing presentations...', end='', flush=True)
+    for i in range(len(trial_start_frames)):
+        if i % presentations_per_block == 0:
+            comparison_num += 1
+            if not repeats_across_real_blocks:
+                repeat_nums = {id_group: 0 for id_group in odor_ids}
+
+        start_frame = trial_start_frames[i]
+        stop_frame = trial_stop_frames[i]
+        onset_frame = odor_onset_frames[i]
+        offset_frame = odor_offset_frames[i]
+
+        assert start_frame < onset_frame
+        assert onset_frame < offset_frame
+        assert offset_frame < stop_frame
+
+        # If either of these is out of bounds, presentation_frametimes will
+        # just be shorter than it should be, but it would not immediately
+        # make itself apparent as an error.
+        assert start_frame < len(frame_times)
+        assert stop_frame < len(frame_times)
+
+        onset_time = frame_times[onset_frame]
+        # TODO TODO check these don't jump around b/c discontinuities
+        # TODO TODO TODO honestly, i forget now, have i ever had acquisition
+        # stop any time other than between "blocks"? do i want to stick to
+        # that definition?
+        # if it did only ever stop between blocks, i suppose i'm gonna have
+        # to paint frames between trials within a block as belonging to one
+        # trial or the other, for purposes here...
+        presentation_frametimes = \
+            frame_times[start_frame:stop_frame] - onset_time
+
+        curr_odor_ids = odor_ids[i]
+        # TODO update if odor ids are ever actually allowed to be arbitrary
+        # len list (and not just forced to be length-2 as they are now, b/c
+        # of the db mixture table design)
+        odor1, odor2 = curr_odor_ids
+        #
+
+        if pair_case:
+            repeat_num = repeat_nums[curr_odor_ids]
+            repeat_nums[curr_odor_ids] = repeat_num + 1
+
+        # See note in missing odor handling portion of
+        # process_segmentation_output to see reasoning behind this choice.
+        else:
+            repeat_num = comparison_num
+
+        # TODO check that all frames go somewhere and that frames aren't
+        # given to two presentations. check they stay w/in block boundaries.
+        # (they don't right now. fix!)
+
+        date, fly_num = keys[:2]
+
+        # TODO share more of this w/ dataframe creation below, unless that
+        # table is changed to just reference presentation table
+        presentation = pd.DataFrame({
+            # TODO fix hack (what was this for again? it really a problem?)
+            'temp_presentation_id': [i],
+            'prep_date': [date],
+            'fly_num': fly_num,
+            'recording_from': started_at,
+            'analysis': ijroiset_mtime, #run_at,
+            # TODO get rid of this hack after fixing earlier association of
+            # blocks / repeats (or fixing block structure for future
+            # recordings)
+            'comparison': comparison_num if pair_case else 0,
+            'real_block': comparison_num,
+            'odor1': odor1,
+            'odor2': odor2,
+            #'repeat_num': repeat_num if pair_case else comparison_num,
+            'repeat_num': repeat_num,
+            'odor_onset_frame': onset_frame,
+            'odor_offset_frame': offset_frame,
+            'from_onset': [[float(x) for x in presentation_frametimes]],
+            # TODO now that this isn't in the gui, probably make this start
+            # NULL / False?
+            'presentation_accepted': True
+        })
+
+        # TODO TODO assert that len(presentation_frametimes)
+        # == stop_frame - start_frame (off-by-one?)
+        # TODO (it would fail now) fix!!
+        # maybe this is a failure to merge correctly later???
+        # b/c presentation frametimes seems to be defined to be same length
+        # above... same indices...
+        # (unless maybe frame_times is sometimes shorter than df_over_f, etc)
+
+        '''
+        presentation_dff = df_over_f[start_frame:stop_frame, :]
+        presentation_raw_f = raw_f[start_frame:stop_frame, :]
+        '''
+        # TODO TODO fix / delete hack!!
+        # TODO probably just need to more correctly calculate stop_frame?
+        # (or could also try expanding frametimes to include that...)
+        actual_frametimes_slice_len = len(presentation_frametimes)
+        stop_frame = start_frame + actual_frametimes_slice_len
+        presentation_dff = df_over_f[start_frame:stop_frame, :]
+        presentation_raw_f = raw_f[start_frame:stop_frame, :]
+
+        # Assumes that cells are indexed same here as in footprints.
+        cell_dfs = []
+        for cell_num in range(n_cells):
+
+            cell_dff = presentation_dff[:, cell_num].astype('float32')
+            cell_raw_f = presentation_raw_f[:, cell_num].astype('float32')
+
+            cell_dfs.append(pd.DataFrame({
+                # TODO maybe rename / do in a less hacky way
+                'temp_presentation_id': [i],
+                ###'presentation_id': [presentation_id],
+                'recording_from': [started_at],
+                'segmentation_run': [ijroiset_mtime], #run_at],
+                'cell': [cell_num],
+                'df_over_f': [[float(x) for x in cell_dff]],
+                'raw_f': [[float(x) for x in cell_raw_f]]
+            }))
+        response_df = pd.concat(cell_dfs, ignore_index=True)
+
+        # TODO maybe draw correlations from each of these, as i go?
+        # (would still need to do block by block, not per trial)
+
+        presentation_dfs.append(presentation)
+        # TODO rename...
+        comparison_dfs.append(response_df)
+    print(' done', flush=True)
+
+    # TODO would need to fix coo_matrix handling in 3d+t case
+    # (may not be possible w/ coo_matrix...)
+    ''''
+    n_footprints = footprints.shape[-1]
+    footprint_dfs = []
+    for cell_num in range(n_footprints):
+        # TODO could use tuple of slice objects to accomodate arbitrary dims
+        # here (x,y,Z). change all places like this.
+        sparse = coo_matrix(footprints[:,:,cell_num])
+        footprint_dfs.append(pd.DataFrame({
+            'recording_from': [started_at],
+            'segmentation_run':  [ijroiset_mtime], #run_at],
+            'cell': [cell_num],
+            # Can be converted from lists of Python types, but apparently
+            # not from numpy arrays or lists of numpy scalar types.
+            # TODO check this doesn't transpose things
+            # TODO just move appropriate casting to my to_sql function,
+            # and allow having numpy arrays (get type info from combination
+            # of that and the database, like in other cases)
+            # TODO TODO TODO TODO was sparse.col for x_* and sparse.row for
+            # y_*. I think this was why I needed to tranpose footprints
+            # sometimes. fix everywhere.
+            'x_coords': [[int(x) for x in sparse.row.astype('int16')]],
+            'y_coords': [[int(x) for x in sparse.col.astype('int16')]],
+            'weights': [[float(x) for x in sparse.data.astype('float32')]]
+        }))
+    footprint_df = pd.concat(footprint_dfs, ignore_index=True)
+    '''
+
+    ############################################################################
+    # From gui.py/process_segmentation_output
+    ############################################################################
+    presentations_df = pd.concat(presentation_dfs, ignore_index=True)
+
+    # TODO TODO TODO do i really need to recalculate these?
+
+    # TODO TODO TODO probably just fix self.n_blocks earlier
+    # in supermixture case
+    # (so there is only one button for accepting and stuff...)
+    if pair_case:
+        n_blocks = n_blocks
+        presentations_per_block = presentations_per_block
+    else:
+        # TODO delete (though check commented and new are equiv on all
+        # non pair_case experiments)
+        '''
+        n_blocks = presentations_df.comparison.max() + 1
+        n_repeats = n_expected_repeats(presentations_df)
+        n_stim = len(presentations_df[['odor1','odor2']].drop_duplicates())
+        presentations_per_block = n_stim * n_repeats
+        '''
+        #
+        # TODO TODO TODO is this really what i want?
+        n_blocks = 1
+        presentations_per_block = len(odor_ids)
+
+    presentations_df = merge_odors(presentations_df, db_odors.reset_index())
+
+    # TODO maybe adapt to case where name2 might have only occurence of 
+    # an odor, or name1 might be paraffin.
+    # TODO TODO check this is actually in the order i want across blocks
+    # (idk if name1,name2 are sorted / re-ordered somewhere)
+    name1_unique = presentations_df.name1.unique()
+    name2_unique = presentations_df.name2.unique()
+    # TODO should fail earlier (rather than having to wait for cnmf
+    # to finish)
+    assert (set(name2_unique) == {'no_second_odor'} or 
+        set(name2_unique) - set(name1_unique) == {'paraffin'}
+    )
+    # TODO TODO TODO factor all abbreviation into its own function
+    # (which transforms dataframe w/ full odor names / ids maybe to
+    # df w/ the additional abbreviated col (or renamed col))
+    single_letter_abbrevs = False
+    abbrev_in_presentation_order = True
+    if single_letter_abbrevs:
+        if not abbrev_in_presentation_order:
+            # TODO would (again) need to look up fixed desired order, as
+            # in kc_mix_analysis, to support this
+            raise NotImplementedError
+    else:
+        if abbrev_in_presentation_order:
+            warnings.warn('abbrev_in_presentation_order can only '
+                'be False if not using single_letter_abbrevs'
+            )
+
+    if not abbrev_in_presentation_order:
+        # TODO would (again) need to look up fixed desired order, as
+        # in kc_mix_analysis, to support this
+        raise NotImplementedError
+        # (could implement other order by just reorder name1_unique)
+
+    # TODO probably move this fn from chemutils to hong2p.utils
+    odor2abbrev = cu.odor2abbrev_dict(name1_unique,
+        single_letter_abbrevs=single_letter_abbrevs
+    )
+
+    # TODO rewrite later stuff to avoid need for this.
+    # it just adds a bit of confusion at this point.
+    # TODO need to deal w/ no_second_odor in here?
+    # So that code detecting which combinations of name1+name2 are
+    # monomolecular does not need to change.
+    # TODO TODO doesn't chemutils do this at this point? test
+    odor2abbrev['paraffin'] = 'paraffin'
+    # just so name2 isn't all NaN for now...
+    odor2abbrev['no_second_odor'] = 'no_second_odor'
+
+    block_iter = list(range(n_blocks))
+
+    for i in block_iter:
+        # TODO maybe concat and only set whole df as instance variable in
+        # get_recording_df? then use just as in kc_analysis all throughout
+        # here? (i.e. subset from presentationS_df above...)
+        presentation_dfs = presentation_dfs[
+            (presentations_per_block * i):
+            (presentations_per_block * (i + 1))
+        ]
+        presentation_df = pd.concat(presentation_dfs,
+            ignore_index=True
+        )
+        comparison_dfs = comparison_dfs[
+            (presentations_per_block * i):
+            (presentations_per_block * (i + 1))
+        ]
+
+        # Using this in place of NaN, so frame nums will still always have
+        # int dtype. maybe NaN would be better though...
+        # TODO maybe i want something unlikely to be system dependent
+        # though... if i'm ever going to serialize something containing
+        # this value...
+        INT_NO_REAL_FRAME = sys.maxsize
+        last_real_temp_id = presentation_df.temp_presentation_id.max()
+
+        # Not supporting filling in missing odor presentations in pair case
+        # (it hasn't happened yet). (and would need to consider within
+        # comparisons, since odors be be shared across)
+        if not pair_case:
+            # TODO maybe add an 'actual_block' column or something in
+            # paircase? or in both?
+            assert presentation_df.comparison.nunique() == 1
+            n_full_repeats = presentation_df.odor1.value_counts().max()
+            assert len(presentation_df) % n_full_repeats == 0
+
+            odor1_set = set(presentation_df.odor1)
+            n_odors = len(odor1_set)
+
+            # n_blocks and n_pres_per_actual_block currently have different
+            # meanings in pair_case and not here, w/ blocks in this case not
+            # matching actual "scopePin high" blocks.
+            # In this case, "actual blocks" have each odor once.
+            n_pres_per_actual_block = len(presentation_df) // n_full_repeats
+
+            n_missed_per_block = n_odors - n_pres_per_actual_block
+
+            # TODO TODO add a flag for whether we should fill in missing
+            # data like this, and maybe fail if the flag is false and we
+            # have missing data (b/c plot labels get screwed up)
+            # (don't i already have a flag in open_recording? make more
+            # global (or an instance variable)?)
+
+            # TODO may want to assert all odor id lookups work in merge
+            # (if it doesn't already functionally do that), because
+            # technically it's possible that it just so happens the last
+            # odor (the missed one) is always the same
+
+            if n_missed_per_block > 0:
+                # Could modify loop below to iterate over missed odors if
+                # want to support this.
+                assert n_missed_per_block == 1, 'for simplicity'
+
+                # from_onset is not hashable so nunique on everything fails
+                const_cols = presentation_df.columns[[
+                    (False if c == 'from_onset' else
+                    presentation_df[c].nunique() == 1)
+                    for c in presentation_df.columns
+                ]]
+                const_vals = presentation_df[const_cols].iloc[0].to_dict()
+
+                # TODO if i were to support where n_cells being different in
+                # each block, would need to subset comparison df to block
+                # and get unique values from there (in loop below)
+                cells = comparison_dfs[0].cell.unique()
+                rec_from = const_vals['recording_from']
+                filler_seg_run = pd.NaT
+
+                pdf_in_order = \
+                    presentation_df.sort_values('odor_onset_frame')
+
+                next_filler_temp_id = last_real_temp_id + 1
+                for b in range(n_full_repeats):
+                    start = b * n_pres_per_actual_block
+                    stop = (b + 1) * n_pres_per_actual_block
+                    bdf = pdf_in_order[start:stop]
+
+                    row_data = dict(const_vals)
+                    row_data['from_onset'] = [np.nan]
+                    # Careful! This should be cleared after frame2order def.
+                    row_data['odor_onset_frame'] = \
+                        bdf.odor_onset_frame.max() + 1
+                    row_data['odor_offset_frame'] = INT_NO_REAL_FRAME
+
+                    real_block_nums = bdf.real_block.unique()
+                    assert len(real_block_nums) == 1
+                    real_block_num = real_block_nums[0]
+                    row_data['real_block'] = real_block_num
+
+                    # The question here is whether I want to start the
+                    # repeat numbering with presentations that actually have
+                    # frames, or whether I want to keep the numbering as it
+                    # would have been...
+
+                    # Since in !pair_case, real_block num should be
+                    # equal to the intended repeat_num.
+                    row_data['repeat_num'] = real_block_num
+                    # TODO would need to fix this case to handle multiple
+                    # missing of one odor, if i did want to have repeat_num
+                    # numbering start with presentations that actually have
+                    # frames
+                    # (- 1 since 0 indexed)
+                    #row_data['repeat_num'] = n_full_repeats - 1
+
+                    missing_odor1s = list(odor1_set - set(bdf.odor1))
+                    assert len(missing_odor1s) == 1
+                    missing_odor1 = missing_odor1s.pop()
+                    row_data['odor1'] = missing_odor1
+
+                    row_data['temp_presentation_id'] = next_filler_temp_id
+
+                    presentation_df = \
+                        presentation_df.append(row_data, ignore_index=True)
+
+                    # TODO what's the np.nan stuff here for?
+                    # why not left to get_recording_dfs?
+                    comparison_dfs.append(pd.DataFrame({
+                        'temp_presentation_id': next_filler_temp_id,
+                        'recording_from': rec_from,
+                        'segmentation_run': filler_seg_run,
+                        'cell': cells,
+                        'raw_f': [[np.nan] for _ in range(len(cells))],
+                        'df_over_f': [[np.nan] for _ in range(len(cells))]
+                    }))
+                    next_filler_temp_id += 1
+
+    frame2order = {f: o for o, f in
+        enumerate(sorted(presentation_df.odor_onset_frame.unique()))
+    }
+    presentation_df['order'] = \
+        presentation_df.odor_onset_frame.map(frame2order)
+    del frame2order
+
+    # This does nothing if there were no missing odor presentations.
+    presentation_df.loc[
+        presentation_df.temp_presentation_id > last_real_temp_id,
+        'odor_onset_frame'] = INT_NO_REAL_FRAME
+
+    comparison_df = pd.concat(comparison_dfs, ignore_index=True,
+        sort=False
+    )
+
+    # TODO don't have separate instance variables for presentation_dfs
+    # and comparison_dfs if i'm always going to merge here.
+    # just merge before and then put in one instance variable.
+    # (probably just keep name comparison_dfs)
+    presentation_df['from_onset'] = presentation_df['from_onset'].apply(
+        lambda x: np.array(x)
+    )
+    presentation_df = merge_odors(presentation_df, db_odors.reset_index())
+
+    # TODO maybe only abbreviate at end? this approach break upload to
+    # database? maybe redo so abbrev only happens before plot?
+    # (may want a consistent order across experiments anyway)
+    presentation_df['original_name1'] = presentation_df.name1.copy()
+    presentation_df['original_name2'] = presentation_df.name2.copy()
+
+    presentation_df['name1'] = presentation_df.name1.map(odor2abbrev)
+    presentation_df['name2'] = presentation_df.name2.map(odor2abbrev)
+
+    presentation_df = merge_recordings(presentation_df, recording_df)
+
+    # TODO TODO TODO assert here, and earlier if necessary, that
+    # each odor has all repeat_num + ordering of repeat_num matches
+    # that of 'order' column
+    #comparison_df[['name1','repeat_num','order']
+    #].drop_duplicates().sort_values(['name1','repeat_num','order'])
+
+    # Just including recording_from so it doesn't get duplicated in
+    # output (w/ '_x' and '_y' suffixes). This checks recording_from
+    # values are all equal, rather than just dropping one.
+    # No other columns should be common.
+    comparison_df = comparison_df.merge(presentation_df,
+        left_on=['recording_from', 'temp_presentation_id'],
+        right_on=['recording_from', 'temp_presentation_id']
+    )
+    comparison_df.drop(columns='temp_presentation_id', inplace=True)
+    del presentation_df
+
+    comparison_df = expand_array_cols(comparison_df)
+
+    # TODO TODO make this optional
+    # (and probably move to upload where fig gets saved.
+    # just need to hold onto a ref to comparison_df)
+    #df_filename = (run_at.strftime('%Y%m%d_%H%M_') +
+    df_filename = (ijroiset_mtime.strftime('%Y%m%d_%H%M_') +
+        recording_title.replace('/','_') + '.p'
+    )
+    df_filename = join(analysis_output_root(), 'trace_pickles',
+        df_filename
+    )
+
+    print('writing dataframe to {}...'.format(df_filename), end='',
+        flush=True
+    )
+    # TODO TODO write a dict pointing to this, to also include PID
+    # information in another variable?? or at least stuff to index
+    # the PID information?
+    comparison_df.to_pickle(df_filename)
+    print(' done', flush=True)
+
+    # TODO TODO TODO only return dataframes?
+    return comparison_df
+
+
+def stimfile_odorset(stimfile_path, strict=True):
+    data = load_stimfile(stimfile_path)
 
     # TODO did i use some other indicator elsewhere? anything more robust than
     # this?
@@ -528,6 +2069,8 @@ def stimfile_odorset(stimfile_path, strict=True):
         # made any use of something like an odorset, so trying to
         # get one from those stimfiles is likely a mistake.
         if strict:
+            # TODO maybe this err should happen whether or not strict is
+            # true...?
             raise ValueError('trying to get complex mixture odor set '
                 'from old pair experiment stimfile'
             )
@@ -566,8 +2109,8 @@ def stimfile_odorset(stimfile_path, strict=True):
 
 
 def print_all_stimfile_odorsets() -> None:
-    stimfiles = sorted(glob.glob(join(u.stimfile_root(), '*.p')))
-    stimfile_odorsets = [u.stimfile_odorset(sf, strict=False)
+    stimfiles = sorted(glob.glob(join(stimfile_root(), '*.p')))
+    stimfile_odorsets = [stimfile_odorset(sf, strict=False)
         for sf in stimfiles
     ]
     # TODO maybe print grouped by day
@@ -1157,9 +2700,10 @@ def merge_gsheet(df, *args, use_cache=False):
     for i, row in gsdf.iterrows():
         date_dir = row.date.strftime(date_fmt_str)
         fly_num = str(int(row.fly_num))
-        thorimage_dir = join(raw_data_root(),
-            date_dir, fly_num, row.thorimage_dir)
-        thorimage_xml_path = join(thorimage_dir, 'Experiment.xml')
+        image_dir = join(raw_data_root(),
+            date_dir, fly_num, row.thorimage_dir
+        )
+        thorimage_xml_path = join(image_dir, 'Experiment.xml')
 
         try:
             xml_root = _xmlroot(thorimage_xml_path)
@@ -1589,10 +3133,21 @@ def tiff_thorimage_id(tiff_filename):
     """
     Takes a path to a TIFF and returns ID to identify recording within
     (date, fly). Relies on naming convention.
+
+    Works for input that is either a raw TIFF or a motion corrected TIFF,
+    the latter of which should have a conventional suffix indicating the
+    type of motion correction ('_nr' / '_rig').
     """
     # Behavior of os.path.split makes this work even if tiff_filename does not
     # have any directories in it.
-    return '_'.join(split(tiff_filename[:-len('.tif')])[1].split('_')[:2])
+    parts = split(tiff_filename[:-len('.tif')])[1].split('_')
+
+    # Last part of the filename, which I use to indicate the type of motion
+    # correction applied. Should only apply in TIFFs under analysis directory.
+    if parts[-1] in ('nr', 'rig'):
+        parts = parts[:-1]
+
+    return '_'.join(parts)
 
 
 # TODO don't expose this if i can refactor other stuff to not use it
@@ -1654,11 +3209,23 @@ def tiff_filename2keys(tiff_filename):
 
     TIFF must be placed and named according to convention, because the
     date and fly_num are taken from names of some of the containing directories.
+
+    Works with TIFFs either under `raw_data_root` or `analysis_output_root`.
     """
-    parts = tiff_filename.split(sep)[-4:]
-    date = pd.Timestamp(datetime.strptime(parts[0], date_fmt_str))
-    fly_num = int(parts[1])
-    # parts[2] will be 'tif_stacks'
+    parts = tiff_filename.split(sep)[-5:]
+    date = None
+    for i, p in enumerate(parts):
+        try:
+            date = pd.Timestamp(datetime.strptime(p, date_fmt_str))
+            fly_num_idx = i + 1
+            break
+        except ValueError:
+            pass
+
+    if date is None:
+        raise ValueError('no date directory found in TIFF path')
+
+    fly_num = int(parts[fly_num_idx])
     thorimage_id = tiff_thorimage_id(tiff_filename)
     return pd.Series({
         'date': date, 'fly_num': fly_num, 'thorimage_id': thorimage_id
@@ -1731,7 +3298,8 @@ def list_segmentations(tif_path):
     seg_runs = []
     for run_at in analysis_start_times:
         seg_runs.append(pd.read_sql_query('SELECT * FROM segmentation_runs ' +
-            "WHERE run_at = '{}'".format(pd.Timestamp(run_at)), conn))
+            "WHERE run_at = '{}'".format(pd.Timestamp(run_at)), conn
+        ))
 
         # TODO maybe merge w/ analysis_code (would have to yield multiple rows
         # per segmentation run when multiple code versions referenced)
@@ -1786,7 +3354,8 @@ def is_thorimage_dir(d, verbose=False):
     for f in files:
         if f == 'Experiment.xml':
             have_xml = True
-        elif f == 'Image_0001_0001.raw':
+        # Needs to match at least 'Image_0001_0001.raw' and 'Image_001_001.raw'
+        elif f.startswith('Image_00') and f.endswith('001.raw'):
             have_raw = True
         #elif f == split(d)[-1] + '_ChanA.tif':
         #    have_processed_tiff = True
@@ -1913,8 +3482,8 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
             raise ValueError('can only pair with ranking when equal # dirs')
 
     thorimage_times = {d: get_thorimage_time(d, use_mtime=use_mtime)
-        for d in thorimage_dirs}
-
+        for d in thorimage_dirs
+    }
     thorsync_times = {d: get_thorsync_time(d) for d in thorsync_dirs}
 
     thorimage_dirs = np.array(
@@ -2465,13 +4034,30 @@ def get_thorimage_dims_xml(xml):
     lsm_attribs = xml.find('LSM').attrib
     x = int(lsm_attribs['pixelX'])
     y = int(lsm_attribs['pixelY'])
-    xy = (x,y)
+    xy = (x, y)
 
-    # TODO make this None unless z-stepping seems to be enabled
-    # + check this variable actually indicates output steps
-    #int(xml.find('ZStage').attrib['steps'])
-    z = None
+    # what is Streaming -> flybackLines? (we already have flybackFrames...)
+
+    # TODO maybe either subtract flyback frames here or return that separately?
+    # (for now, just leaving it out of this fn)
+    z = int(xml.find('ZStage').attrib['steps'])
+    # may break on my existing single plane data if value of z not meaningful
+    # there
+
+    if z != 1:
+        streaming = xml.find('Streaming')
+        assert streaming.attrib['enable'] == '1'
+        # Not true, see: 2020-03-09/1/fn (though another run of populate_db.py
+        # seemed to indicate this dir was passed over for tiff creation
+        # anyway??? i'm confused...)
+        #assert streaming.attrib['zFastEnable'] == '1'
+        if streaming.attrib['zFastEnable'] != '1':
+            z = 1
+
+    # still not sure how this is encoded in the XML...
     c = None
+
+    # may want to add ZStage -> stepSizeUM to TIFF metadata?
 
     return xy, z, c
 
@@ -2500,6 +4086,10 @@ def get_thorimage_fps_xml(xml):
     if average_mode == 0:
         n_averaged_frames = 1
     else:
+        # TODO TODO TODO does this really not matter in the volumetric streaming
+        # case, as Remy said? (it's still displayed in the software, and still
+        # seems enabled in that averageMode=1...)
+        # (yes it does seem to matter TAKE INTO ACCOUNT!)
         n_averaged_frames = int(lsm_attribs['averageNum'])
     saved_fps = raw_fps / n_averaged_frames
     return saved_fps
@@ -2561,23 +4151,53 @@ def cnmf_metadata_from_thor(filename):
     return {'fr': fps, 'dxy': dxy}
 
 
-def load_thorimage_metadata(thorimage_directory):
-    """Returns (fps, xy, z, c, raw_output_path) for ThorImage dir.
+def get_thorimage_n_flyback_xml(xml):
+    streaming = xml.find('Streaming')
+    assert streaming.attrib['enable'] == '1'
+    if streaming.attrib['zFastEnable'] == '1':
+        n_flyback_frames = int(streaming.attrib['flybackFrames'])
+    else:
+        # may fail in non-streaming volume case? though might then also not want
+        # to assert first streaming object is enabled?
+        assert z == 1
+        n_flyback_frames = 0
+
+    return n_flyback_frames
+
+
+def load_thorimage_metadata(thorimage_directory, return_xml=False):
+    """Returns (fps, xy, z, c, n_flyback, raw_output_path) for ThorImage dir.
+
+    Returns xml as an additional final return value if `return_xml` is True.
     """
     xml = get_thorimage_xmlroot(thorimage_directory)
 
     fps = get_thorimage_fps_xml(xml)
     xy, z, c = get_thorimage_dims_xml(xml)
-    imaging_file = join(thorimage_directory, 'Image_0001_0001.raw')
 
-    return fps, xy, z, c, imaging_file
+    n_flyback_frames = get_thorimage_n_flyback_xml(xml)
+
+    # So far, I have seen this be one of:
+    # - Image_0001_0001.raw
+    # - Image_001_001.raw
+    # ...but not sure if there any meaning behind the differences.
+    imaging_files = glob.glob(join(thorimage_directory, 'Image_*.raw'))
+    assert len(imaging_files) == 1, 'multiple possible imaging files'
+    imaging_file = imaging_files[0]
+
+    if not return_xml:
+        return fps, xy, z, c, n_flyback_frames, imaging_file
+    else:
+        return fps, xy, z, c, n_flyback_frames, imaging_file, xml
 
 
 # TODO rename to indicate a thor (+raw?) format
-def read_movie(thorimage_dir):
-    """Returns (t,x,y) indexed timeseries.
+def read_movie(thorimage_dir, discard_flyback=True):
+    """Returns (t,[z,]x,y) indexed timeseries as a numpy array.
     """
-    fps, xy, z, c, imaging_file = load_thorimage_metadata(thorimage_dir)
+    fps, xy, z, c, n_flyback, imaging_file, xml = \
+        load_thorimage_metadata(thorimage_dir, return_xml=True)
+
     x, y = xy
 
     # From ThorImage manual: "unsigned, 16-bit, with little-endian byte-order"
@@ -2586,11 +4206,34 @@ def read_movie(thorimage_dir):
     with open(imaging_file, 'rb') as f:
         data = np.fromfile(f, dtype=dtype)
 
+    # TODO maybe just don't read the data known to be flyback frames?
+
     n_frame_pixels = x * y
     n_frames = len(data) // n_frame_pixels
     assert len(data) % n_frame_pixels == 0, 'apparent incomplete frames'
 
-    data = np.reshape(data, (n_frames, x, y))
+    # This does not fail in the volumetric case, because 'frames' here
+    # refers to XY frames there too.
+    assert n_frames == int(xml.find('Streaming').attrib['frames'])
+
+    # TODO how to reshape if there are also multiple channels?
+
+    if z > 0:
+        # TODO TODO some way to set pockel power to zero during flyback frames?
+        # not sure why that data is even wasting space in the file...
+
+        z_total = z + n_flyback
+        n_frames, remainder = divmod(n_frames, z_total)
+        assert remainder == 0
+        # TODO check this against method by reshaping as before and slicing w/
+        # appropriate strides [+ concatenating?]
+        data = np.reshape(data, (n_frames, z_total, x, y))
+
+        if discard_flyback:
+            data = data[:, :z, :, :]
+    else:
+        data = np.reshape(data, (n_frames, x, y))
+
     return data
 
 
@@ -2599,6 +4242,8 @@ def write_tiff(tiff_filename, movie):
 
     TIFFs are written in big-endian byte order to be readable by `imread_big`
     from MATLAB file exchange.
+
+    Dimensions of input should be (t,[z,],x,y).
 
     Metadata may not be correct.
     """
@@ -2621,6 +4266,9 @@ def write_tiff(tiff_filename, movie):
         movie = movie.byteswap().newbyteorder()
     else:
         assert dtype.byteorder == '>'
+
+    # TODO TODO maybe change so ImageJ considers appropriate dimension the time
+    # dimension (both in 2d x T and 3d x T cases)
     
     # TODO actually make sure any metadata we use is the same
     # TODO maybe just always do test from test_readraw here?
@@ -2629,7 +4277,7 @@ def write_tiff(tiff_filename, movie):
 
 
 def full_frame_avg_trace(movie):
-    """Takes a (t,x,y[,z]) movie to t-length vector of frame averages.
+    """Takes a (t,[z,]x,y) movie to t-length vector of frame averages.
     """
     # Averages all dims but first, which is assumed to be time.
     return np.mean(movie, axis=tuple(range(1, movie.ndim)))
@@ -2725,10 +4373,43 @@ def ijrois2masks(ijrois, shape):
     of dimensions (shape + (n_rois,)).
     """
     # TODO maybe index final pandas thing by ijroi name (before .roi prefix)
-    # (or just return np array indexed as CNMF "A" is)
-    assert len(shape) == 2
-    masks = [imagej2py_coords(contour2mask(c, shape[::-1])) for _, c in ijrois]
-    masks = np.stack(masks, axis=-1)
+    # (or just return np array indexed as CNMF "A" is) (?)
+    if len(shape) == 2:
+        # TODO TODO why was i reversing the shape again...? maybe i shouldn't?
+        masks = [imagej2py_coords(contour2mask(c, shape[::-1]))
+            for _, c in ijrois
+        ]
+        # This concatenates along the last element of the new shape
+        masks = np.stack(masks, axis=-1)
+
+    # TODO TODO TODO actually make sure this works in the len(shape) == 3 case
+    elif len(shape) == 3:
+        # NOTE: only supporting case of one volumetric mask for now
+        # (probably make dimension that used to correspond to n_footprints
+        # singleton here)
+        mask = np.zeros(shape, np.uint8).astype('bool')
+        xy_shape = shape[1:]
+        # to not have to worry about reversing this part of shape for now
+        assert xy_shape[0] == xy_shape[1]
+        index_set = set()
+        for name, contour in ijrois:
+            # Uses automatic ROI naming convention from TIFFs created by my
+            # write_tiff (where what is really Z seems to be treated as C by
+            # ImageJ)
+            z_index = int(name.split('-')[0]) - 1
+            index_set.add(z_index)
+
+            # TODO may also need to reverse part of shape here, if really was
+            # necessary above (test would probably need to be in asymmetric
+            # case...)
+            z_mask = imagej2py_coords(contour2mask(contour, xy_shape))
+            mask[z_index, :, :] = z_mask
+
+        assert index_set == set(range(shape[0])), 'some z slices missing ijrois'
+        masks = np.stack([mask], axis=-1)
+    else:
+        raise ValueError('shape must have length 2 or 3')
+
     # TODO maybe normalize here?
     # (and if normalizing, might as well change dtype to match cnmf output?)
     # and worth casting type to bool, rather than keeping 0/1 uint8 array?
@@ -2741,6 +4422,8 @@ def imagej2py_coords(array):
     """
     Since ijroi source seems to have Y as first coord and X as second.
     """
+    # TODO how does this behave in the 3d case...?
+    # still what i want, or should i exclude the z dimension somehow?
     return array.T
 
 
@@ -2781,13 +4464,13 @@ def extract_traces_boolean_footprints(movie, footprints,
     assert np.any(footprints, axis=spatial_dims).all(), 'some zero footprints'
     slices = (slice(None),) * n_spatial_dims
     n_frames = movie.shape[0]
-    # TODO vectorized way to do this?
     n_footprints = footprints.shape[-1]
     traces = np.empty((n_frames, n_footprints)) * np.nan
 
     if verbose:
         print('extracting traces from boolean masks...', end='', flush=True)
 
+    # TODO vectorized way to do this?
     for i in range(n_footprints):
         mask = footprints[slices + (i,)]
         # TODO compare time of this to sparse matrix dot product?
@@ -3642,11 +5325,29 @@ def format_mixture(*args):
         n1, n2, log10_c1, log10_c2 = args
     elif len(args) == 1:
         row = args[0]
-        n1 = row['name1']
+
+        # TODO maybe refactor to use this fn in plot_odor_corr fn too
+        def single_var_with_prefix(prefix):
+            single_var = None
+            for v in row.keys():
+                if type(v) is str and v.startswith(prefix):
+                    if single_var is not None:
+                        raise ValueError(f'multiple vars w/ prefix {prefix}')
+                    single_var = v
+
+            if single_var is None:
+                raise KeyError(f'no vars w/ prefix {prefix}')
+
+            return single_var
+        #
+
+        n1 = row[single_var_with_prefix('name1')]
         try:
-            n2 = row['name2']
+            n2 = row[single_var_with_prefix('name2')]
         except KeyError:
             n2 = None
+
+        # TODO maybe also use prefix fn here?
         if 'log10_conc_vv1' in row:
             log10_c1 = row['log10_conc_vv1']
             if n2 is not None:
@@ -3965,8 +5666,40 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
         odor_order = True
 
     if odor_order:
-        corr_df = corr_df.reindex(odors_in_order, level='name1', axis=0
-            ).reindex(odors_in_order, level='name1', axis=1
+        # 'name2' is just 'no_second_odor' for a lot of my data
+        # (the non-pair stuff)
+        name_prefix = 'name1'
+
+        # TODO probably refactor the two duped things below
+        odor_name_rows = [c for c in corr_df.index.names
+            if c.startswith(name_prefix)
+        ]
+        if len(odor_name_rows) != 1:
+            raise ValueError('expected the name of exactly one index level to '
+                f'start with {name_prefix}'
+            )
+        odor_name_row = odor_name_rows[0]
+
+        odor_name_cols = [c for c in corr_df.columns.names
+            if c.startswith(name_prefix)
+        ]
+        if len(odor_name_cols) != 1:
+            raise ValueError('expected the name of exactly one column level to '
+                f'start with {name_prefix}'
+            )
+        odor_name_col = odor_name_cols[0]
+        #
+
+        if len(corr_df.index.names) == 1:
+            assert len(corr_df.columns.names) == 1
+            # Necessary to avoid this error:
+            # KeyError: 'Requested level...does not match index name (None)'
+            odor_name_row = None
+            odor_name_col = None
+
+        corr_df = corr_df.reindex(odors_in_order, level=odor_name_row,
+            axis='index').reindex(odors_in_order, level=odor_name_col,
+            axis='columns'
         )
         if odors_in_order is None:
             # TODO 
@@ -6279,6 +8012,9 @@ def load_template_data(err_if_missing=False):
         return None
 
 
+# TODO TODO TODO after refactoring much of the stuff that was under
+# open_recording and some of its downstream fns from gui.py, also refactor this
+# to use the new fns
 def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
     stimfile=None, first_block=None, last_block=None):
     """Returns list of arrays, one per continuous acquisition.
@@ -6293,7 +8029,9 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
 
     keys = tiff_filename2keys(tif)
     mat = matfile(*keys)
-    ti = load_mat_timing_information(mat)
+    # TODO TODO TODO refactor all stuff that uses this to new output format
+    # (and remove factored checks, etc)
+    ti = load_mat_timing_info(mat)
 
     if stimfile is None:
         df = mb_team_gsheet()
@@ -6427,6 +8165,7 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
 
     frame_times = np.array(ti['frame_times']).flatten()
 
+    # TODO replace this w/ factored check fn
     total_block_frames = 0
     for i, (b_start, b_end) in enumerate(
         zip(block_first_frames, block_last_frames)):
@@ -6525,7 +8264,8 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
     # + frametimes into assign_frames_to_trials
     n_frames = movie.shape[0]
     total_block_frames = sum([e - s + 1 for s, e in
-        zip(block_first_frames, block_last_frames)])
+        zip(block_first_frames, block_last_frames)
+    ])
 
     assert total_block_frames == n_frames, \
         '{} != {}'.format(total_block_frames, n_frames)
@@ -6535,7 +8275,8 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
     # slicing inside loop vs. returning list of (presumably views) by slicing
     # matrix?
     blocks = [movie[start:(stop + 1)] for start, stop in
-        zip(block_first_frames, block_last_frames)]
+        zip(block_first_frames, block_last_frames)
+    ]
     assert sum([b.shape[0] for b in blocks]) == movie.shape[0]
     return blocks
 
@@ -7830,7 +9571,8 @@ def latest_trace_pickles():
         # exact search for this timestamp in database would fail.
         n_time_chars = len('YYYYMMDD_HHMM')
         run_at = pd.Timestamp(datetime.strptime(final_part[:n_time_chars],
-            '%Y%m%d_%H%M'))
+            '%Y%m%d_%H%M'
+        ))
 
         parts = final_part.split('_')[2:]
         date = pd.Timestamp(datetime.strptime(parts[0], date_fmt_str))
