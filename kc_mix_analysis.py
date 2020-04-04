@@ -88,6 +88,14 @@ parser.add_argument('-u', '--skip-cell-subset-linearity', default=False,
     action='store_true', help='Skips linearity analysis on functional subsets'
     ' of cells.'
 )
+parser.add_argument('-j', '--no-parallel-process-traces', default=False,
+    action='store_true', help='Disables parallel calls to process_traces. '
+    'Useful for debugging internals of that function.'
+)
+parser.add_argument('-r', '--plot-formats', action='store', default='png,pdf',
+    help='Extensions for plot formats to save figures in. Just include what '
+    'comes after the period. Use commas to separate multiple format extensions.'
+)
 args = parser.parse_args()
 
 # TODO maybe get this from some object that stores the params / a context
@@ -143,6 +151,9 @@ correlations = True
 plot_correlations = True
 trial_order_correlations = True
 odor_order_correlations = True
+
+hallem_correlations = True
+
 # TODO return to trying to aggregate some type of this analysis across flies
 # after doing corr + linearity stuff across flies (+ ROC!)
 do_pca = True
@@ -194,8 +205,15 @@ if args.delete_existing_figs:
 if not exists(fig_dir):
     os.mkdir(fig_dir)
 
-# Which formats to save plots in.
-plot_formats = ['png', 'pdf']
+# TODO validate this at argparse level. and maybe check each is supported by
+# matplotlib at that point too? they have some list of supported extensions?
+plot_formats = args.plot_formats.split(',')
+if 'pdf' not in plot_formats:
+    # TODO err if report requested
+    warnings.warn('will not be able to generate PDF report, as LaTeX report '
+        'generation currently requires PDF inputs'
+    )
+
 for pf in plot_formats:
     pf_dir = join(fig_dir, pf)
     if not exists(pf_dir):
@@ -220,6 +238,20 @@ for s, oset in odor_set2order_with_dupes.items():
         if o not in this_set_order:
             this_set_order.append(o)
     odor_set2order[s] = this_set_order
+
+# TODO clean this up / only optionally print?
+for os, unabbrev_odors in u.odor_set2order.items():
+    abbrev_odors = odor_set2order_with_dupes[os]
+    assert len(unabbrev_odors) == len(abbrev_odors)
+    seen = set()
+    print(os)
+    for abbrev, full in zip(abbrev_odors, unabbrev_odors):
+        if abbrev in seen:
+            continue
+        print(f' {abbrev} = {full}')
+        seen.add(abbrev)
+    print()
+#
 del odor_set2order_with_dupes
 
 odor_set_odors = [set(os) for os in odor_set2order.values()]
@@ -487,7 +519,7 @@ def load_pid_data(df):
     keys = u.recording_df2keys(df)
     mat = u.matfile(*keys)
     print(mat)
-    ti = u.load_mat_timing_information(mat)
+    ti = u.load_mat_timing_info(mat)
     # TODO do all the mat files i'm currently using have these variables?
     # they seem like what i want. are they?
     # TODO TODO need to do same kind of painting into blocks i remember doing
@@ -596,7 +628,8 @@ def order_by_odor_sets(trace_pickles, drop_if_missing={'kiwi'},
     This is so the odor_set with the reference odor can be analyzed first,
     and that threshold applied to the other recording(s) with the same fly.
     """
-    odor_set2order = {o: i for i, o in enumerate(odor_set_order)}
+    # TODO rename to differentiate from global odor_set2order
+    _odor_set2order = {o: i for i, o in enumerate(odor_set_order)}
     fname2keys = dict()
     fly_keys2odor_sets = dict()
     fly_keys2fnames = dict()
@@ -627,9 +660,9 @@ def order_by_odor_sets(trace_pickles, drop_if_missing={'kiwi'},
             fly_keys2fnames[fly_keys].append(tp)
 
         if odorset_first:
-            keys = (odor_set2order[odor_set],) + fly_keys
+            keys = (_odor_set2order[odor_set],) + fly_keys
         else:
-            keys = fly_keys + (odor_set2order[odor_set],) 
+            keys = fly_keys + (_odor_set2order[odor_set],) 
         fname2keys[tp] = keys
 
     if drop_if_missing is None or len(drop_if_missing) == 0:
@@ -819,8 +852,8 @@ def melt_symmetric(symmetric_df, drop_constant_levels=True,
         # TODO may need to call index.remove_unused_levels() first, if using
         # levels here... (see docs of that remove fn)
         constant_levels = [n for n, levels in zip(symmetric_df.index.names,
-            symmetric_df.index.levels) if len(levels) == 1]
-
+            symmetric_df.index.levels) if len(levels) == 1
+        ]
         symmetric_df = symmetric_df.droplevel(constant_levels, axis=0)
         symmetric_df = symmetric_df.droplevel(constant_levels, axis=1)
 
@@ -858,6 +891,36 @@ def melt_symmetric(symmetric_df, drop_constant_levels=True,
 
     tidy.name = name
     return tidy
+
+
+# TODO rename if it could make it more accurate
+def invert_melt_symmetric(ser, suffixes=('_a', '_b')):
+    """
+    """
+    assert len(ser.shape) == 1, 'not a series'
+    assert len(ser.index.names) == len(set(ser.index.names)), \
+        'index names should be unique'
+
+    assert len(suffixes) == 2 and len(set(suffixes)) == 2
+    s0, s1 = suffixes
+
+    levels_to_drop = set(ser.index.names)
+    col_prefixes = []
+    for c in ser.index.names:
+        if type(c) is not str:
+            continue
+
+        if c.endswith(s0):
+            prefix = c[:-len(s0)]
+            if (prefix + s1) in ser.index.names:
+                col_prefixes.append(prefix)
+                levels_to_drop.remove(prefix + s0)
+                levels_to_drop.remove(prefix + s1)
+
+    levels_to_drop = list(levels_to_drop)
+    # This does also work in the case where `levels_to_drop` is empty.
+    ser = ser.droplevel(levels_to_drop)
+    return ser.unstack([p + s0 for p in col_prefixes])
 
 
 # TODO update to include case where there are multiple time points for each
@@ -992,7 +1055,7 @@ def odor_and_fit_plot(odor_cell_stats, weighted_sum, ordered_cells, fname,
     ax.tick_params(bottom=False)
 
     f3.colorbar(im2, cax=cax2)
-    diff_cbar_label = r'$\frac{\Delta F}{F}$ difference'
+    diff_cbar_label = f'{u.dff_latex} difference'
     cax2.set_ylabel(diff_cbar_label)
 
     savefigs(f3, 'odorandfit', fname, exclude_from_latex=True)
@@ -1736,7 +1799,8 @@ def process_traces(df_pickle, fly2response_threshold):
         # TODO check plots generated w/ missing odors handled in this fn
         # are equiv to figure outputs from gui
         trial_by_cell_means = u.add_missing_odor_cols(df,
-            trial_by_cell_means)
+            trial_by_cell_means
+        )
         odor_corrs_from_means = trial_by_cell_means.corr()
 
         window_trial_maxes = window_by_trial.max()
@@ -1745,9 +1809,11 @@ def process_traces(df_pickle, fly2response_threshold):
             values='df_over_f'
         )
         trial_by_cell_maxes = u.add_missing_odor_cols(df,
-            trial_by_cell_maxes)
+            trial_by_cell_maxes
+        )
         odor_corrs_from_maxes = trial_by_cell_maxes.corr()
 
+        # TODO probably move outside of process_traces?
         if plot_correlations:
             title_suffix = '\n' + title
             # TODO TODO and are there other plots / outputs that will be
@@ -1811,6 +1877,7 @@ def process_traces(df_pickle, fly2response_threshold):
         tidy_corrs_from_maxes = melt_symmetric(odor_corrs_from_maxes,
             name='corr'
         )
+
         # TODO delete after getting refactoring in to process_traces to work.
         # commented to show original position.
         #correlation_dfs_from_maxes.append(
@@ -1870,7 +1937,7 @@ def process_traces(df_pickle, fly2response_threshold):
     if trial_matrices:
         trial_by_cell_stats_top = trial_by_cell_stats.loc[:, order[:top_n]]
 
-        cbar_label = trial_stat.title() + r' response $\frac{\Delta F}{F}$'
+        cbar_label = trial_stat.title() + ' response ' + u.dff_latex
 
         odor_labels = u.matlabels(trial_by_cell_stats_top, u.format_mixture)
         # TODO fix x/y in this fn... seems T required
@@ -2110,7 +2177,7 @@ def process_traces(df_pickle, fly2response_threshold):
         diff_fig.savefig(diff_fig_path)
         '''
 
-    cbar_label = 'Mean ' + trial_stat + r' response $\frac{\Delta F}{F}$'
+    cbar_label = 'Mean ' + trial_stat + ' response ' + u.dff_latex
     odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
     odor_labels = u.matlabels(odor_cell_stats_top, u.format_mixture)
 
@@ -2256,7 +2323,7 @@ def process_traces(df_pickle, fly2response_threshold):
         )
 
         g.axes[0,0].set_xlabel('Seconds from onset')
-        g.axes[0,0].set_ylabel(r'Mean $\frac{\Delta F}{F}$')
+        g.axes[0,0].set_ylabel('Mean ' + u.dff_latex)
         for a in g.axes.flat[1:]:
             a.axis('off')
 
@@ -2414,7 +2481,10 @@ if not args.only_analyze_cached:
     # TODO some existing solution to output stdout output of workers in order
     # after map finishes? explore trying to make one w/ redirecting stdout,
     # like: https://stackoverflow.com/questions/5884517 at some point
-    parallel_process_traces = True
+    # TODO TODO TODO probably refactor so rejection happens later?
+    # so that correlations of rejected flies can still be saved / averaged over
+    # later?
+    parallel_process_traces = not args.no_parallel_process_traces
     if parallel_process_traces:
         with mp.Manager() as manager:
             # TODO also handle case where fix_ref_odor_response_fracs == False!
@@ -2530,7 +2600,8 @@ if not args.only_analyze_cached:
     # re-calculation.
     if fix_ref_odor_response_fracs:
         pickle_outputs_name = pickle_outputs_fstr.format(
-            ref_response_percent, ref_odor)
+            ref_response_percent, ref_odor
+        )
         # Because although it will have a value, it changes across flies in this
         # cases. This is to avoid confusion in things using these outputs.
         mean_zchange_response_thresh = None
@@ -3002,6 +3073,7 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
 
         n_ros_sers.append(add_rec_metadata(rec_n_reliable_responders))
         shuffle_n_ros_sers.append(add_rec_metadata(rec_shuffled_n_rrs))
+del odor_order
 
 # this is just the mean frac responding... maybe i should have gotten the trial
 # info? or rename appropriately?
@@ -3043,7 +3115,7 @@ if model_mixture_responses:
 # TODO something similar for legends w/ odor set
 odor_set_legend_title = 'Panel'
 fly_id_legend_title = 'Fly'
-trial_stat_desc = trial_stat + r' $\frac{\Delta F}{F}$'
+trial_stat_desc = f'{trial_stat} {u.dff_latex}'
 
 # This only works because the groupby in loop over colors above and the 
 # groupby in add_fly_id both sort, and thus have the same order.
@@ -3191,6 +3263,32 @@ savefigs(g.fig, 'mean_frac_responding', section='Mean fraction responding',
     section_order=-1
 )
 
+
+# TODO TODO TODO TODO drop this fly from everything in the future
+bad_corr_fly_ids = [4]
+
+
+fdf = frac_responder_df.copy()
+fdf = fdf.loc[~ fdf.fly_id.isin(bad_corr_fly_ids)]
+
+g = sns.FacetGrid(fdf, col='odor_set', height=6.5,
+    col_order=odor_set_order, sharex=False, dropna=False
+)
+ci = 68
+g.map(with_odor_order(sns.barplot, ci=ci), 'name1', 'frac_responding')
+
+ylabel = 'Mean fraction responding'
+assert ci == 68
+ebar_str = '\nError bars are SEM'
+g.set_axis_labels('Odor', ylabel + ebar_str)
+
+g.fig.suptitle('Mean fraction responding')
+g.set_titles('{col_name}')
+g.fig.subplots_adjust(left=0.05, top=0.85)
+
+savefigs(g.fig, f'mean_frac_barplot', section='Mean fraction responding')
+
+
 old_len = len(responders.index.drop_duplicates())
 responders.name = 'response'
 responders = add_odorset(u.add_fly_id(responders.reset_index()))
@@ -3218,10 +3316,166 @@ del keys
 reliable_to_any.name = 'reliable_to_any'
 
 
+if hallem_correlations:
+    from drosolf import orns, pns
+
+    # Not doing this for now, b/c I'd probably have to at least scale the ORN
+    # responses... (but I guess computing correlations for the components also
+    # relies on the ORN responses being just a linear rescaling...)
+    # TODO TODO TODO discuss the above w/ B
+    additive_mix_responses = False
+    olsen_model_pn_correlations = False
+
+    hdf = orns.orns()
+
+    # Just dropping everything that chemutils cant abbrev, since all stuff in
+    # here can be abbreviated that way.
+    hdf.index = hdf.index.map(cu.odor2abbrev)
+    hdf = hdf.loc[hdf.index.dropna()].copy()
+
+    # it was just acetoin that wasn't in hallem, right?
+    # (include null / X's on plot for that one?)
+    # TODO and maybe one version w/o null regions?
+
+    cbar_label = 'Correlation'
+    for oset in odor_set_order:
+        comp_order = [o for o in odor_set2order[oset] if is_component(o)]
+
+        # TODO TODO TODO did she want me to add them and correlate that??
+        # maybe passing through the PN model *would* matter at that point,
+        # assuming it's not just linear...
+        # (if so, need to deal w/ 'mix' too, which is_component excludes)
+
+        # TODO does drosolf let me modify input to pns.pns() fn? i forget.
+        # (yes, first arg / orn=)
+
+        if additive_mix_responses:
+            odor_order = comp_order + ['mix']
+        else:
+            odor_order = comp_order
+
+        odf = hdf.loc[odor_order]
+
+        if additive_mix_responses:
+            #odf.loc['mix'] = odf[comp_order].sum()
+            import ipdb; ipdb.set_trace()
+
+        ocdf = odf.T.corr()
+        # TODO TODO TODO just refactor plot_odor_corrs so it can detect either
+        # name1 / name / odor as prefix, as long as it's unique (start w/ name1
+        # and search all, probably)
+        ocdf.index.name = 'name1'
+        ocdf.columns.name = 'name1'
+        #
+        fig = u.plot_odor_corrs(ocdf, odors_in_order=odor_order,
+            colorbar_label=cbar_label,
+            title=f'{oset} components\n\nHallem ORN correlations'
+        )
+        savefigs(fig, f'hallem_corrs_{oset}', section='Hallem ORN correlations')
+
+        if any([o not in hdf.index for o in comp_order]):
+            odf = odf.dropna()
+            odor_order = list(odf.index)
+
+            ocdf = odf.T.corr()
+            ocdf.index.name = 'name1'
+            ocdf.columns.name = 'name1'
+            fig = u.plot_odor_corrs(ocdf, odors_in_order=odor_order,
+                colorbar_label=cbar_label,
+                title=f'{oset} components\n\nHallem ORN correlations'
+            )
+            savefigs(fig, f'hallem_corrs_nonull_{oset}',
+                exclude_from_latex=True
+            )
+
+
 # TODO lookup which corrs (max / mean) to use from trial_stat, if not gonna
 # delete saving multiple
 corr_df = u.add_fly_id(corr_ser_from_maxes.reset_index())
 add_odorset(corr_df)
+
+cols = ['fly_id','odor_set','name1_a','repeat_num_a','name1_b','repeat_num_b',
+    'corr'
+]
+for tstat in ('max',):
+    cbar_label = f'Mean of fly {tstat} response {u.dff_latex} correlations'
+    if tstat == 'max':
+        cdf = corr_df
+    else:
+        cdf = u.add_fly_id(corr_ser_from_means.reset_index())
+        add_odorset(cdf)
+
+    # TODO just drop this fly_id earlier so it applies everywhere
+    df = cdf.loc[~ cdf.fly_id.isin(bad_corr_fly_ids), cols].copy()
+    # so we don't need to worry about nanmean / something like that
+    assert not df['corr'].isnull().any()
+
+    n_per_odorset = df.groupby('odor_set').fly_id.nunique()
+
+    # this averages corr over fly_id
+    ser = df.groupby(cols[1:-1])['corr'].mean()
+    name_cols = [c for c in ser.index.names if c.startswith('name1')]
+
+    # TODO TODO in the future, maybe turn this into a facetgrid thing somehow,
+    # and just share one colorbar to the right? (one facet per odor_set)
+    for go, gser in ser.groupby('odor_set'):
+        odor_order = odor_set2order[go]
+        n = n_per_odorset[go]
+
+        gdf = invert_melt_symmetric(gser)
+
+        # TODO TODO TODO TODO for these, should probably not average over the
+        # correlations between trials and themselves, right (since they are
+        # always 1...)?
+        mdf = invert_melt_symmetric(gser.groupby(name_cols).mean())
+
+        for no_real in (False, True):
+            noreal_str = '_noreal' if no_real else ''
+
+            if no_real:
+                #if len([o for o in odor_order if o in u.natural]) == 0:
+                if go == 'control':
+                    # (no need to also make this figure for the control set(s),
+                    # which do not have a real odor)
+                    continue
+
+                def _get_mask(multiindex):
+                    mask =  ~ multiindex.get_level_values(0).isin(u.natural)
+                    assert mask.any()
+                    return mask
+
+                def _filter_real(rdf):
+                    imask = _get_mask(rdf.index)
+                    cmask = _get_mask(rdf.columns)
+                    return rdf.loc[imask, cmask]
+
+                p_gdf = _filter_real(gdf)
+                p_mdf = _filter_real(mdf)
+                porder = [o for o in odor_order if o not in u.natural]
+            else:
+                p_gdf = gdf
+                p_mdf = mdf
+                porder = odor_order
+
+            # TODO maybe have the title n=<how many flies>. though i risk being
+            # misleading since some odors like pfo have less...  or real kiwi...
+            # maybe just drop stuff that has less? idk... real stuff is nice...
+            fig = u.plot_odor_corrs(p_gdf, odors_in_order=porder,
+                colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
+            )
+            savefigs(fig, f'mean_trial_corrs_{tstat}_{go}{noreal_str}',
+                section='Mean KC response correlations, trial-by-trial',
+                exclude_from_latex=no_real
+            )
+
+            fig = u.plot_odor_corrs(p_mdf, odors_in_order=porder,
+                colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
+            )
+            savefigs(fig, f'mean_corrs_{tstat}_{go}{noreal_str}',
+                section='Mean KC response correlations',
+                exclude_from_latex=no_real
+            )
+del cols, ser, df, gdf, odor_order, fig, cbar_label
 
 keys = ['odor_set','fly_id','name1_a','name1_b']
 for corr_agg_fn in ('mean', 'max'):
@@ -3515,6 +3769,7 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
     # these next two facetgrid plots get split onto two pages for the
     # cell-category-specific stuff, while only taking up one page for the
     # across-all-cells/responders stuff
+    # TODO TODO TODO what broke this?
     g = sns.FacetGrid(mean_rmag_df, col='odor_set', height=6.5,
         col_order=curr_odor_set_order, sharex=False, dropna=False
     )
@@ -4304,7 +4559,7 @@ if do_adaptation_analysis:
         # some way to do it? and should i include whether it's restricted to
         # responders here (i'm leaning towards no, for space again)?
         # TODO maybe just get from capitalizing first char in trial_stat_desc?
-        ylabel = f'{trial_stat.title()}' + r' trial $\frac{\Delta F}{F}$'
+        ylabel = f'{trial_stat.title()} trial {u.dff_latex}'
         gs, save_fn = odor_facetgrids(mean_rmags, sns.lineplot, 'repeat_num',
             'trialmax_df_over_f', 'Repeat', ylabel, title, marker='o'
         )
