@@ -163,12 +163,19 @@ def stimfile_root():
     return join(data_root(), 'stimulus_data_files')
 
 
+def format_date(date):
+    """
+    Takes a pandas Timestamp or something that can be used to construct one
+    and returns a str with the formatted date.
+
+    Used to name directories by date, etc.
+    """
+    return pd.Timestamp(date).strftime(date_fmt_str)
+
+
 def _fly_dir(date, fly):
     if not type(date) is str:
-        # TODO update to work w/ np.datetime64 too (they don't have strftime)?
-        # (+ factor date formatting into its own function that handles the
-        # same cases?)
-        date = date.strftime(date_fmt_str)
+        date = format_date(date)
 
     if not type(fly) is str:
         fly = str(int(fly))
