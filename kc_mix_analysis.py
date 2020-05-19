@@ -2658,14 +2658,33 @@ else:
         # '' if loading outputs where fix_ref_odor_response_fracs was False.
         desired_ref_odor = ''
         pickle_outputs_name = pickle_outputs_fstr.format(desired_thr,
-            desired_ref_odor)
+            desired_ref_odor
+        )
 
     print(f'Loading computed outputs from {pickle_outputs_name}')
     with open(pickle_outputs_name, 'rb') as f:
         data = pickle.load(f)
 
+    expected_params_found = []
+    expected_params_missing = []
     for n in param_names:
-        assert n in data.keys()
+        if n in data:
+            expected_params_found.append(n)
+        else:
+            expected_params_missing.append(n)
+
+    if len(expected_params_missing) > 0:
+        print('\nFound the following expected cache parameters:')
+        pprint(expected_params_found)
+
+        print('\nMissing the following expected cache parameters:')
+        pprint(expected_params_missing)
+
+        raise ValueError(f'data loaded from {pickle_outputs_name} was missing'
+            ' some expected parameters that could affect how the traces were '
+            'processed to produce the intermediates in the cache. try '
+            'recomputing cache contents and see above.'
+        )
 
     # Modifying globals rather than locals, because at least globals
     # would still (sort-of) work if this got refactored into a function,
@@ -3093,7 +3112,7 @@ del new_fly_keys2fly_id, keys
 # TODO start by shuffling as responses above, to do the analysis below?
 # (or just compare model to real stuff, w/o also comparing model shuffle
 # to model?)
-model_mixture_responses = False
+model_mixture_responses = True
 if model_mixture_responses:
     # So we don't depend on `olfsysm` otherwise.
     from model_mix_responses import fit_model
@@ -3107,6 +3126,11 @@ if model_mixture_responses:
         # TODO maybe convert 'responsed' col to boolean before returning?
         model_df = fit_model(frac_responder_df)
         print(f'writing model responses to cache at {model_output_cache}')
+        # TODO TODO TODO maybe also save data about what inputs (+parameters
+        # used to process those inputs, probably) were used to fit the model,
+        # so i can actually use these caches elsewhere without needed all the
+        # preceding code to be working, while still being able to know
+        # what was fit and how
         model_df.to_pickle(model_output_cache)
 
     import ipdb; ipdb.set_trace()
