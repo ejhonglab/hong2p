@@ -111,7 +111,8 @@ elif len(mc_on_path) == 0:
 
 matlab_caiman_path = mc_on_path[0]
 matlab_caiman_version = u.version_info(matlab_caiman_path,
-                                       used_for='motion correction')
+    used_for='motion correction'
+)
 
 this_repo_file = os.path.realpath(__file__)
 # TODO just use util fn that gets this internally
@@ -130,9 +131,11 @@ df = u.mb_team_gsheet(
 if only_last_n_days:
     dates_to_consider = sorted(df.date.unique())[-only_last_n_days:]
     date_dirs_to_consider = {pd.Timestamp(d).strftime(u.date_fmt_str)
-        for d in dates_to_consider}
+        for d in dates_to_consider
+    }
     print('B/c only_last_n_days setting, only considering date directories:',
-        date_dirs_to_consider)
+        date_dirs_to_consider
+    )
 
 # TODO TODO warn if any raw data is not present on NAS / report which
 # (could indicate problems w/ path inference)
@@ -167,16 +170,13 @@ natural_odors_concentrations.set_index('name', inplace=True)
 # TODO maybe don't err in this case (w/ option to only run on analysis?)
 # and symmetric option for analysis root?
 if not os.path.isdir(raw_data_root):
-    raise IOError('raw_data_root {} does not exist'.format(
-        raw_data_root))
+    raise IOError(f'raw_data_root {raw_data_root} does not exist')
 
 if not os.path.isdir(analysis_output_root):
-    raise IOError('analysis_output_root {} does not exist'.format(
-        analysis_output_root))
+    raise IOError(f'analysis_output_root {analysis_output_root} does not exist')
 
 if not os.path.isdir(stimfile_root):
-    raise IOError('stimfile_root {} does not exist'.format(
-        stimfile_root))
+    raise IOError(f'stimfile_root {stimfile_root} does not exist')
 
 # TODO TODO also do a first pass over everything w/ default params so just
 # manual correction remains
