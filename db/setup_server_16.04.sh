@@ -31,6 +31,12 @@ done
 # TODO how to best automatically add user? auth?
 # TODO change this call / modify the user so it doesn't show up in the login
 # screen (will never want to login to a desktop as this user)
+
+# TODO TODO TODO change + test creating user w/ UID < 1000 (which should
+# make it be treated like a service account)
+# https://askubuntu.com/questions/92349 (instructions here for fixing login
+# entry if UID is already >= 1000)
+
 sudo adduser tracedb --gecos "" --disabled-password
 echo "tracedb:tracedb" | sudo chpasswd
 
