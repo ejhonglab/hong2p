@@ -16,7 +16,8 @@ from drosolf.orns import orns
 import hong2p.util as u
 
 
-# TODO what should this return?
+# TODO TODO refactor so there is another fn to retrieve the model outputs on
+# just the unmodified hallem inputs?
 def fit_model(frac_responder_df):
     # With add_spontaneous=False, it should just return the deltas...
     orn_deltas = orns(add_spontaneous=False, drop_sfr=False).T
@@ -184,6 +185,8 @@ def fit_model(frac_responder_df):
         # by scale?
         return constrain_hallem_deltas(odor_deltas * scale)
 
+    # TODO be consistent about using either the term "response_fraction" or
+    # "sparsity"?
     def one_odor_model_response_fraction(scale, oi):
         deltas = orn_deltas.copy()
 
@@ -211,7 +214,16 @@ def fit_model(frac_responder_df):
         #return (rt - r)**2
         return abs(rt - r)
 
+    # TODO improve this message?
+    print('rescaling Hallem ORN deltas to match observed KC sparsity (with '
+        'concentrations potentially deviating from those in Hallem)...'
+    )
     scales = []
+    # TODO TODO i'm not indexing target_response_fracs incorrectly or something
+    # one time, am i? that part of reason for scale mismatch?
+    # TODO TODO TODO related to above, print sparsity achieved during fit in
+    # here, to see it's actually somewhat observable at the output of this fn,
+    # in case i don't pass something correctly
     for oi, rt in zip(range(110, orn_deltas.shape[1]), target_response_fracs):
         def one_odor_sparsity_err(scale):
             r = one_odor_model_response_fraction(scale, oi)
@@ -247,8 +259,18 @@ def fit_model(frac_responder_df):
         print(name)
         #print(f'oi={oi}')
         #print(orn_deltas.iloc[:, oi])
-        print(f'rt={rt:.3f}')
 
+        # TODO TODO print range brute search is over, and what resolution.
+        # (for each odor if i continue special casing that 111 odor)
+
+        # TODO TODO TODO see comment below part of kc_mix_analysis that calls
+        # this code about apparent mismatch between the rank ordering of
+        # response strengths of various odors in the model outputs vs input
+        # data. is this special casing of 111, whatever that is, part of the
+        # reason????
+        # TODO str about what 111 is. maybe make some lookup fn to translate
+        # from odor names to hallem indices (or whatever this actually is, maybe
+        # there is some offset?), and use that?
         # This was necessary to find a suitable scale for this particular odor.
         if oi == 111:
             rmin = 2
@@ -263,14 +285,33 @@ def fit_model(frac_responder_df):
         # error is sufficiently low?
         # TODO something that makes grid increasingly more fine around minima
         # from previous searches?
+        # TODO TODO probably rename ret and fval so it's more obvious to me what
+        # they are... seems like ret is supposed to be the scale... is fval the
+        # achieved sparsity?
+        # oh, i guess fval is the error? then can i pass extra return stuff, or
+        # should i just recompute the sparsity out here, if i want to check it?
         ret, fval, _, _ = brute(one_odor_sparsity_err, ((rmin, rmax),),
             finish=None, full_output=True, Ns=50
         )
         print(f'(brute) best scale: {ret:.3f}')
         print(f'(brute) best error: {fval:.3f}')
+        print(f'target sparsity: {rt:.3f}')
+
+        # TODO don't recompute this if i can just return it as something extra
+        # from brute maybe?
+        r = one_odor_model_response_fraction(ret, oi)
+        print(f'achieved sparsity: {r:.3f}')
+        #
+
+        # TODO TODO TODO maybe visualize the effects of my scaling +
+        # constraining and those effects on model outputs, to sanity check?
+
         # would at least need to increase Ns to do better than those for all
         # odors (if even possible, given realities of model)
         assert fval <= 0.02
+        # TODO TODO maybe assert that ret (scale?) is in the range the fitting
+        # was limited to, as another check it's the right return value from
+        # brute?
 
         # TODO why doesn't minimize work? it doesn't seem to update parameter
         # at all... (i mean these gradient methods will not work w/o some
@@ -300,6 +341,17 @@ def fit_model(frac_responder_df):
         '''
         print('')
 
+        # TODO TODO TODO check that modifying the orn_deltas in place like this
+        # is actually affecting the ultimate "responses" output, and in a way
+        # that makes sense
+        # (maybe also provide option to return unscaled version, and use that
+        # as one flawed test that the scaling is behaving in a reasonable way?)
+        # (test scaling to essentially the floor too. might want to add noise to
+        # also make correlations vanish at floor / behave like real data
+        # correlations w/o responses, if necessary)
+
+        # TODO TODO maybe double check that the RHS orn_deltas has actually
+        # been modified to the new scale + constraints
         # TODO TODO look at which / how many of ORN responses are
         # at min / max?
         orn_deltas.iloc[:, oi] = \
@@ -350,6 +402,7 @@ def fit_model(frac_responder_df):
 
     odor_sets = []
     name1s = []
+    # TODO don't hardcode the 110 everywhere. use constant at least.
     for c in orn_deltas.iloc[:, 110:].columns:
         parts = c.split()
         odor_sets.append(parts[0])
@@ -359,8 +412,14 @@ def fit_model(frac_responder_df):
         'odor_set': odor_sets,
         'name1': name1s
     }))
+    # TODO don't hardcode the 110 everywhere. use constant at least.
     model_df = pd.DataFrame(responses[:, 110:], columns=col_index)
     model_df.index.name = 'cell'
+
+    # TODO TODO TODO probably also return the orn_deltas? maybe also any
+    # parameters in here that i might want to change (this latter thing more
+    # just for reproducability if i cache it)? former more important b/c
+    # m
 
     # From how the docs describe unstack, it's not obvious it would do what I
     # want, but it seems to...

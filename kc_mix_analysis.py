@@ -3133,6 +3133,67 @@ if model_mixture_responses:
         # what was fit and how
         model_df.to_pickle(model_output_cache)
 
+    # TODO TODO TODO why was the scaling process apparently not able to get
+    # model_df.groupby(['odor_set','name1']).responded.sum()
+    # to have a closer ordering (~activtion strength) to my data?
+    # something i could do differently? are we at some floor / ceiling in the
+    # scaling?
+    # TODO TODO TODO without apparently changing anything, the problem seems to
+    # have gone away. maybe it was the cached bit for some reason? the loading?
+    # (seems OK this most recent run w/ no intermediate caching)
+    # (loading it in the same run still seems ok...)
+
+    # TODO delete after fixing above two todos
+    print(model_df.groupby(['odor_set','name1']).responded.mean())
+    #
+
+    ############################################################################
+    mc = model_df.copy()
+
+    cbar_label = 'Correlation'
+    for oset in odor_set_order:
+        comp_order = [o for o in odor_set2order[oset] if is_component(o)]
+
+        # TODO TODO TODO did she want me to add them and correlate that??
+        # maybe passing through the PN model *would* matter at that point,
+        # assuming it's not just linear...
+        # (if so, need to deal w/ 'mix' too, which is_component excludes)
+
+        # TODO does drosolf let me modify input to pns.pns() fn? i forget.
+        # (yes, first arg / orn=)
+
+        odor_order = comp_order + ['mix']
+        #odf = mc.loc[odor_order]
+        # TODO TODO TODO also need to index by odor set just to get the right
+        # order?
+        odf = mc[mc.odor_set == oset].pivot(index='name1', columns='cell',
+            values='responded'
+        )
+
+        # TODO TODO TODO want to limit cells to those that EVER respond before
+        # computing correlations?
+
+        '''
+        if additive_mix_responses:
+            #odf.loc['mix'] = odf[comp_order].sum()
+            import ipdb; ipdb.set_trace()
+        '''
+
+        ocdf = odf.T.corr()
+        # TODO TODO TODO just refactor plot_odor_corrs so it can detect either
+        # name1 / name / odor as prefix, as long as it's unique (start w/ name1
+        # and search all, probably)
+        ocdf.index.name = 'name1'
+        ocdf.columns.name = 'name1'
+        #
+        fig = u.plot_odor_corrs(ocdf, odors_in_order=odor_order,
+            colorbar_label=cbar_label,
+            title=f'{oset} components\n\nModel KC correlations'
+        )
+        savefigs(fig, f'model_kc_corrs_{oset}', section='Model KC correlations')
+    ############################################################################
+
+    plt.show()
     import ipdb; ipdb.set_trace()
 
 # TODO something similar for legends w/ odor set
@@ -3372,6 +3433,7 @@ if hallem_correlations:
         # TODO does drosolf let me modify input to pns.pns() fn? i forget.
         # (yes, first arg / orn=)
 
+        # TODO TODO TODO have i actually used this yet? try it!
         if additive_mix_responses:
             odor_order = comp_order + ['mix']
         else:
