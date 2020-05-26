@@ -19,8 +19,8 @@ import hong2p.util as u
 # TODO TODO refactor so there is another fn to retrieve the model outputs on
 # just the unmodified hallem inputs?
 def fit_model(frac_responder_df):
-    # With add_spontaneous=False, it should just return the deltas...
-    orn_deltas = orns(add_spontaneous=False, drop_sfr=False).T
+    # With add_sfr=False, it should just return the deltas...
+    orn_deltas = orns(add_sfr=False, drop_sfr=False).T
     sfr = orn_deltas['spontaneous firing rate']
     orn_deltas = orn_deltas.iloc[:, :-1]
 
