@@ -13,6 +13,7 @@ from itertools import zip_longest, product, combinations, starmap
 from collections import deque
 import subprocess
 import multiprocessing as mp
+import socket
 
 import numpy as np
 from scipy.optimize import minimize
@@ -21,14 +22,21 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.metrics import roc_curve, auc
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import seaborn as sns
 import h5py
 
 import chemutils as cu
 
 import hong2p.util as u
+
+# Having all matplotlib-related imports come after `hong2p.util` import,
+# so that I can let `hong2p.util` set the backend, which it seems must be set
+# before the first import of `matplotlib.pyplot`
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import seaborn as sns
+
+# Note: some imports were pushed down, just before code that uses them, to
+# reduce the number of hard dependencies.
 
 
 parser = argparse.ArgumentParser(description='Analyzes calcium imaging traces '
@@ -352,6 +360,18 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
     # section, and only do so when we want a section, rather than a fig title)
     # TODO TODO test case where we actually do want both a section title and
     # fig title (in adaptation case now, not actually making fig titles)
+
+    # TODO maybe add flag to toggle this behavior. using it for debugging
+    # across ssh -X to atlas and local blackbox (want to compare figures,
+    # so hostname somewhere would be good)
+    # TODO TODO maybe just monkey patch matplotlib to change the default
+    # behavior? (factor into fn and call in util, where backend is selected?)
+    # or call just after imports in util?
+    man = plt.get_current_fig_manager()
+    old_title = man.canvas.get_window_title()
+    man.canvas.set_window_title(f'{old_title} ({socket.gethostname()})')
+    del man, old_title
+    #
 
     out_strs = []
     if save_figs and (args.save_nonreport_figs or not exclude_from_latex):
@@ -2650,6 +2670,11 @@ else:
     load_most_recent = True
     if load_most_recent:
         out_pickles = glob.glob(pickle_outputs_fstr.replace('{:.2f}{}','*'))
+        if len(out_pickles) == 0:
+            raise IOError(f'no pickles under {pickle_outputs_dir}! re-run '
+                'without -c option.'
+            )
+
         out_pickles.sort(key=getmtime)
         pickle_outputs_name = out_pickles[-1]
     else:
@@ -2663,7 +2688,9 @@ else:
 
     print(f'Loading computed outputs from {pickle_outputs_name}')
     with open(pickle_outputs_name, 'rb') as f:
+        # TODO revert after debugging
         data = pickle.load(f)
+        #data = u.unpickler_load(f)
 
     expected_params_found = []
     expected_params_missing = []
@@ -2680,6 +2707,7 @@ else:
         print('\nMissing the following expected cache parameters:')
         pprint(expected_params_missing)
 
+        import ipdb; ipdb.set_trace()
         raise ValueError(f'data loaded from {pickle_outputs_name} was missing'
             ' some expected parameters that could affect how the traces were '
             'processed to produce the intermediates in the cache. try '

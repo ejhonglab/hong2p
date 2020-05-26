@@ -12,9 +12,11 @@ import pickle
 from jinja2.loaders import FileSystemLoader
 from latex import build_pdf, escape, LatexBuildError
 from latex.jinja2 import make_env
-import matplotlib.pyplot as plt
 
 import hong2p.util as u
+
+# Importing after hong2p.util, so util can change the matplotlib backend.
+import matplotlib.pyplot as plt
 
 
 def clean_generated_latex(latex_str):

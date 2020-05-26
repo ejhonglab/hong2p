@@ -20,10 +20,40 @@ import glob
 import re
 import hashlib
 import time
+# TODO delete if custom Unpickler doesn't work
+import io
 
 import numpy as np
 from numpy.ma import MaskedArray
 import pandas as pd
+# TODO delete if custom Unpickler doesn't work
+from pandas.compat import pickle_compat
+
+import matplotlib as mpl
+try:
+    # TODO TODO TODO will i want to explicitly check sys.modules to see whether
+    # any code has imported pyplot, or will matplotlib fail / warn appropriately
+    # if we try to `mpl.use(...)` after pyplot has already been imported.
+    # what i'm trying to avoid is it just silently failing, such that the
+    # backend is not actually changed
+
+    # see https://stackoverflow.com/questions/30483246 if need to check
+    # sys.modules ourselves
+
+    # TODO maybe only hardcode it if current default backend happens to be
+    # "non-gui" as in this error:
+    # TODO some mpl fn to check if it is a "gui" backend?
+    # UserWarning: Matplotlib is currently using agg, which is a non-GUI
+    # backend, so cannot show the figure
+    # TODO re: above, does mpl.get_backend() interfere w/ future .use calls?
+    mpl.use('Qt5Agg')
+except ImportError:
+    print('All possible (not necessarily installed) matplotlib backends:')
+    pprint(mpl.rcsetup.all_backends)
+
+# Having all matplotlib-related imports come after `hong2p.util` import,
+# so that I can let `hong2p.util` set the backend, which it seems must be set
+# before the first import of `matplotlib.pyplot`
 import matplotlib.patches as patches
 # is just importing this potentially going to interfere w/ gui?
 # put import behind paths that use it?
@@ -32,6 +62,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
+
 
 # TODO delete after refactoring to not require this engine.
 # flag so i can revert to old matlab-engine behavior while i'm still
@@ -9643,4 +9674,72 @@ def add_fly_id(df):
 def add_recording_id(df):
     name = 'recording_id'
     return add_group_id(df, recording_cols, name=name)
+
+
+# My attempt at writing an Unpickler that loads all objects that wouldn't
+# raise errors during unpickling (some pandas objects do if there is a different
+# version), comes from: https://stackoverflow.com/questions/46857615
+class UnpickleableObject:
+    pass
+
+
+# TODO TODO any way to figure out which pandas version it is?
+# or any way to load just the data that is err-ing w/ the pandas
+# load(read?)_pickle fn, which claims to maintain compatibility across
+# versions
+
+# TODO TODO TODO maybe at the same time as i implement some of my own caching
+# decorators / fns again, also implement something to maybe save all the pandas
+# / numpy stuff each to their own pickles, in like a zip file format, so i have
+# a better chance of loading those things in some compat mode if naive
+# unpickling fails (or write fns to fix broken pickles)
+# TODO maybe save numpy / pandas version strings as keys of dict at top level
+# or in specially named variables that are not returned (if as part of some
+# caching fns of mine), to help in fixing broken pickles
+# TODO or just save all version / git info in place of just explicitly the numpy
+# and pandas stuff... (in case some object from a module i didn't anticipate has
+# similar problems)
+
+unpickler_class = pickle_compat.Unpickler
+orig_find_class = unpickler_class.find_class
+
+def find_class(self, module, name):
+    print('module:', module)
+    print('name:', name)
+    return orig_find_class(self, module, name)
+    '''
+    try:
+        return super(Unpickler, self).find_class(module, name)
+    except AttributeError as e:
+        print(e)
+        import ipdb; ipdb.set_trace()
+        return UnpickleableObject
+    print()
+    '''
+unpickler_class.find_class = find_class
+
+
+'''
+# TODO need to subclass pickle._Unpickler, like in SO link above?
+# (don't think so)
+class Unpickler(pickle.Unpickler):
+    debugger = True
+    def find_class(self, module, name):
+        print('module:', module)
+        print('name:', name)
+        try:
+            return super(Unpickler, self).find_class(module, name)
+        except AttributeError as e:
+            print(e)
+            if self.debugger:
+                import ipdb; ipdb.set_trace()
+            return UnpickleableObject
+        print()
+unpickler_class = Unpickler
+'''
+
+
+def unpickler_load(file_obj):
+    return unpickler_class(file_obj).load()
+
 
