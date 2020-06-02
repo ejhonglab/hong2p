@@ -20,7 +20,8 @@ seaborn
 # 0.25.1 seemed to work for much of at least early 2020. More versions also
 # likely work, but if transferring pickled pandas objects between installations,
 # it becomes more important to match the pandas versions.
-pandas
+#pandas
+pandas==0.25.1
 
 scikit-learn
 gitpython
@@ -56,8 +57,11 @@ PyQt5==5.14
 #git+https://github.com/ejhonglab/chemutils
 
 # If using Matt Bauer's mushroom body model
--e ../olfsysm
-#git+ssh://git@github.com/ejhonglab/olfsysm
+# seems I can't actually install a working copy this way
+# TODO double check this though, cause it looks like i have (maybe in addition?)
+# memory issues
+#-e ../olfsysm
+git+ssh://git@github.com/ejhonglab/olfsysm
 #git+https://github.com/ejhonglab/olfsysm
 
 # If using neuprint to parameterize Matt's model.

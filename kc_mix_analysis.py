@@ -39,6 +39,25 @@ import seaborn as sns
 # reduce the number of hard dependencies.
 
 
+# TODO TODO TODO consider splitting this file up, perhaps along that
+# initial main caching divide, where i take all the variables in the pickle
+# and throw them into the current workspace?
+# (probably try to move as many fns / constants to util.py as possible, or maybe
+# start to make a separate util for fns specific to the two files i'll break
+# into) (maybe even move all these things into a new repo?)
+# (it could just depend on python_2p_analysis. that seems a reasonable way to
+# organize it...)
+# (the above might also make it more natural to break out modelling code)
+# TODO though note that the reason i did it was to run all the analysis
+# downstream of trace pickles within having to serialize stuff, if i so chose
+# (so maybe before starting refactoring, start migrating data management to dask
+# or something, like i mention in TODO.txt)
+
+
+# TODO maybe add option to save all outputs under some root, to test things w/o
+# risk of breaking data i actually care about in current tree? or maybe there's
+# a more sensible way...
+
 parser = argparse.ArgumentParser(description='Analyzes calcium imaging traces '
     'stored as pickled pandas DataFrames that gui.py outputs.'
 )
@@ -3134,6 +3153,10 @@ new_fly_keys2fly_id = frac_responder_df[keys].drop_duplicates().set_index(
 assert new_fly_keys2fly_id.equals(fly_keys2fly_id)
 del new_fly_keys2fly_id, keys
 
+
+# TODO TODO TODO TODO should i just move all this modelling stuff into its own
+# file? just move the stuff here into model_mix_responses?? consider other ways
+# to reorganize too. this script is super cumbersome now.
 
 # TODO TODO TODO use this as input for all other analyses that
 # deal w/ binary responses (and linearity stuff too, somehow)?

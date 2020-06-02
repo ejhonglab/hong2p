@@ -190,7 +190,14 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # Allocate memory
     rv = osm.RunVars(mp)
 
+    # TODO TODO TODO get an understanding of how matt's tuning process works
+
     # TODO or should i just disable tuning?
+    # TODO TODO for using neuprint data, probably!
+
+    # Note Matt's 2020-02-02 commit (Which I think he didn't push until
+    # ~2020-05-30, but honestly I'm not sure. Github says it was updated more
+    # recently than last commit.)
     # Tune thresholds/the APL to the Hallem odors only
     mp.kc.tune_from = range(110)
     # non-zero for consistent PN-KC connectivity generation
@@ -200,6 +207,8 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # (particularly if i'm gonna have null stuff for mixture response)
     # (any reason not to?)
     mp.sim_only = range(110)
+
+    import ipdb; ipdb.set_trace()
 
     before = time.time()
     print('running initial sims.', end='', flush=True)
@@ -234,6 +243,7 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # didn't have particularly activating odors found for them?)
     orn_maxes = orn_deltas.max(axis=1) + sfr
 
+    import ipdb; ipdb.set_trace()
     # TODO maybe also return maxes, to inspect the effect of that constraint out
     # of this fn?
 
@@ -590,6 +600,11 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     model_df.reset_index(inplace=True)
     # TODO maybe convert 'responded' col to boolean before returning?
 
+    # TODO TODO TODO also return PN data.
+    # TODO TODO TODO probaly just return all data i can get out of matt's model
+    # (just check it's working to serialize it and stuff...)
+    # (maybe copy or something here to be safe)
+    import ipdb; ipdb.set_trace()
 
     return {
         'model_df': model_df,
