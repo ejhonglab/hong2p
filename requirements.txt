@@ -1,4 +1,14 @@
+
+# Consider using something like: https://stackoverflow.com/questions/17803829
+# to organize my requirements perhaps by what needs them, which URLs to use for
+# the custom libraries, or both.
+# Maybe just simpler to always install everything though...
+
+# This one might not be strictly necessary. The errs that seemed to happen
+# during pip install w/o it might not be fatal, assuming other installation
+# options exist besides the .whl format (like sdists).
 wheel
+
 psycopg2-binary
 sqlalchemy
 h5py
@@ -37,17 +47,25 @@ PyQt5==5.14
 # to change all of these URLs to the versions using the https://... URLs.
 # (assuming some of these are private, at least)
 
-git+ssh://git@github.com/ejhonglab/chemutils
+-e ../chemutils
+#git+ssh://git@github.com/ejhonglab/chemutils
 #git+https://github.com/tom-f-oconnell/drosolf
 
-git+ssh://git@github.com/tom-f-oconnell/drosolf
+-e ../drosolf
+#git+ssh://git@github.com/tom-f-oconnell/drosolf
 #git+https://github.com/ejhonglab/chemutils
 
-# Just if using Matt Bauer's mushroom body model
-git+ssh://git@github.com/ejhonglab/olfsysm
+# If using Matt Bauer's mushroom body model
+-e ../olfsysm
+#git+ssh://git@github.com/ejhonglab/olfsysm
 #git+https://github.com/ejhonglab/olfsysm
 
-# Just for PDF report generation
+# If using neuprint to parameterize Matt's model.
+-e ../neuprint_helper
+#git+ssh://git@github.com/ejhonglab/neuprint_helper
+#git+https://github.com/ejhonglab/neuprint_helper
+
+# If using PDF report generation
 latex
 jinja2
 
