@@ -4,6 +4,7 @@
 """
 
 import time
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,9 @@ import hong2p.util as u
 
 # TODO TODO refactor so there is another fn to retrieve the model outputs on
 # just the unmodified hallem inputs?
-def fit_model(frac_responder_df):
+# TODO maybe allow configuring max vs sum/mean for mixing rule
+# (and diff normalization options? not sure how to specify those though...)
+def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # With add_sfr=False, it should just return the deltas...
     orn_deltas = orns(add_sfr=False, drop_sfr=False).T
     sfr = orn_deltas['spontaneous firing rate']
@@ -37,6 +40,7 @@ def fit_model(frac_responder_df):
 
     # TODO TODO print which receptor(?) is being removed
 
+    # TODO what is this shared_idx thing again?
     shared_idx = np.setdiff1d(np.arange(len(orn_deltas)), [skip_idx])
     sfr = sfr[shared_idx]
     orn_deltas = orn_deltas.iloc[shared_idx]
@@ -44,6 +48,10 @@ def fit_model(frac_responder_df):
     assert np.array_equal(orn_deltas, tmp_mp.orn.data.delta)
     kc_cxn_distrib = tmp_mp.kc.cxn_distrib.copy()
     del tmp_mp
+
+    assert orn_deltas.columns.name == 'odor'
+    assert orn_deltas.index.name == 'receptor'
+    n_orn_types = len(orn_deltas.index)
 
     # TODO TODO i guess acetoin isn't in hallem?? maybe i'm misunderstanding
     # some other naming convention? try stripping inchi?
@@ -53,13 +61,20 @@ def fit_model(frac_responder_df):
     mean_frac_responding = frac_responder_df.groupby(['odor_set','name1']
         ).frac_responding.mean()
 
+    # Will set values of this to False, as appropriate, within the loop.
+    # TODO delete this if not used
+    oset2all_components_in_hallem = {o: True for o in u.odor_set2order.keys()}
+
     new_odor_series = []
     target_response_fracs = []
+    odor_metadata_list = []
+    oi = 110 - 1
     # TODO maybe just loop over abbreviated things?
     for oset, odors in u.odor_set2order.items():
-        # Skipping this for now so as not to have to worry about acetoin.
-        if oset == 'flyfood':
-            continue
+
+        # TODO TODO make a kwarg that toggles whether mixtures w/ any missing
+        # components should be simulated (and maybe another flag for whether
+        # mixture responses should be created for them?)
 
         # So we know we can later use these prefixes to pull out just the data
         # for each odor set.
@@ -71,41 +86,89 @@ def fit_model(frac_responder_df):
             # Natural stuff will be excluded by breaking out of order early.
             if o in u.solvents:
                 continue
+            oi += 1
 
-            target_response_fracs.append(mean_frac_responding.loc[oset, abbrev])
+            target_response_frac = mean_frac_responding.loc[oset, abbrev]
+            target_response_fracs.append(target_response_frac)
+
+            # TODO TODO TODO probably switch new_ser stuff to a multiindex, w/
+            # (oset, abbrev) as the two levels (would probably need to fill nan
+            # for the hallem oset)
 
             # Anything after mix is either a mix or real as I have it now.
             #if cu.odor_is_mix(o):
             if abbrev == 'mix':
+                inchi = None
                 # These will be filled in (potentially followed by another
                 # optimization step) AFTER the single components are optimized
                 # to produce model KC activations are similar levels to the
                 # data.
                 new_ser = pd.Series(
                     index=sfr.index,
-                    data=np.full(sfr.shape, np.nan),
-                    name=f'{oset} mix'
+                    data=np.full(sfr.shape, np.nan)
                 )
-                new_odor_series.append(new_ser)
-                break
+                # TODO TODO TODO refactor so we don't depend on all "real" stuff
+                # being after the first "mix" in an odor set!!!!
+            else:
+                inchi = cu.convert(o, from_type='name')
+                if inchi in hc_inchi:
+                    new_ser = orn_deltas.T[hc_inchi == inchi].iloc[0].copy()
+                    assert new_ser.shape == (n_orn_types,)
+                else:
+                    oset2all_components_in_hallem[oset] = False
+                    warnings.warn(f'{inchi} (name={o}) not in hc_inchi. setting'
+                        ' ORN deltas to NaN for this odor!'
+                    )
+                    nan_deltas = np.zeros(n_orn_types) * np.nan
+                    new_ser = pd.Series(index=orn_deltas.index, data=nan_deltas)
+                    del nan_deltas
 
-            inchi = cu.convert(o, from_type='name')
-            assert inchi in hc_inchi
+                    # TODO TODO TODO does matt's model (as i would hope) just
+                    # straight ignore all nan, or does it propagate it?
+                    # TODO TODO if the model doesn't ignore nan, maybe handle by
+                    # setting the model to not similuate fully nan indices?
 
-            new_ser = orn_deltas.T[hc_inchi == inchi].iloc[0].copy()
-            #new_ser.name = f'{oset} {new_ser.name}'
             new_ser.name = f'{oset} {abbrev}'
-            # Because we will use this later to identify the mix columns.
-            assert not new_ser.name.endswith('mix')
             new_odor_series.append(new_ser)
 
-    del mean_frac_responding
+            odor_metadata_list.append({
+                'odor_set': oset,
+                'abbrev': abbrev,
+                'oi': oi,
+                'name': o,
+                'inchi': inchi,
+                'target_response_frac': target_response_frac
+            })
+
+            # TODO see note in end of abbrev == 'mix' block about refactoring
+            # this. this is just to skip the "real" stuff after mixes.
+            if abbrev == 'mix':
+                break
+
+    # TODO TODO is there any sensible way to fit mixture responses (as a
+    # weighted sum of component ORN responses) IF we are missing some of the
+    # component responses (from hallem, like in the oset=='flyfood' case)??
+
+    # TODO delete this + code that generates it, if i don't end up using
+    odor_metadata = pd.DataFrame(odor_metadata_list)
+    odor_metadata['fit_hallem_orns_scale']= \
+        np.zeros(len(odor_metadata)) * np.nan
+
+    oi_ser = odor_metadata.oi
+    # Showing there are no gaps.
+    assert oi_ser.nunique() == (oi_ser.max() - oi_ser.min() + 1)
+    del oi_ser
+
+    odor_metadata.set_index('oi', inplace=True)
+
+    del target_response_frac, mean_frac_responding, oi
     target_response_fracs = np.array(target_response_fracs)
 
     len_before = len(orn_deltas)
     assert orn_deltas.shape[1] == 110
     orn_deltas = pd.concat([orn_deltas] + new_odor_series, axis=1)
     assert len(orn_deltas) == len_before
+    del len_before
 
     # This will give the the "1" at the end of its shape that Matt's code
     # may be expecting.
@@ -148,6 +211,8 @@ def fit_model(frac_responder_df):
     osm.run_KC_sims(mp, rv, True) # True -> (re)gen connectivity, retune stuff
     print(' done ({:.1f}s)'.format(time.time() - before), flush=True)
 
+    before_fitting = time.time()
+
     # TODO TODO TODO do synthetic mixture studies at ORNs using any data i can
     # find on the fruits they use (could maybe use our own peach / mango /
     # banana data)
@@ -168,6 +233,9 @@ def fit_model(frac_responder_df):
     # (maybe they do all have a similar max firing rate, and some odors just
     # didn't have particularly activating odors found for them?)
     orn_maxes = orn_deltas.max(axis=1) + sfr
+
+    # TODO maybe also return maxes, to inspect the effect of that constraint out
+    # of this fn?
 
     def constrain_hallem_deltas(odor_deltas):
         odor_orn_rates = sfr + odor_deltas
@@ -214,11 +282,23 @@ def fit_model(frac_responder_df):
         #return (rt - r)**2
         return abs(rt - r)
 
+    # TODO TODO maybe move body of this loop into loop above (maybe moving
+    # a bit of the between code above the loop above?) any real reason to 
+    # make a list of those target_response_fracs first??
+
     # TODO improve this message?
     print('rescaling Hallem ORN deltas to match observed KC sparsity (with '
         'concentrations potentially deviating from those in Hallem)...'
     )
-    scales = []
+    default_rmin = 0.1
+    default_rmax = 2.5
+    # TODO TODO probably change the type of this to a pandas series?
+
+    # Since we want to set the mix from the *scaled* components, we need to make
+    # sure that after we see a mix (for a given odor set), we never see anything
+    # *else* from that odor set. This will help with that.
+    odor_sets_with_seen_mixes = set()
+
     # TODO TODO i'm not indexing target_response_fracs incorrectly or something
     # one time, am i? that part of reason for scale mismatch?
     # TODO TODO TODO related to above, print sparsity achieved during fit in
@@ -229,11 +309,15 @@ def fit_model(frac_responder_df):
             r = one_odor_model_response_fraction(scale, oi)
             return err_fn(rt, r)
 
+        # TODO could replace most of this stuff w/ odor_metadata
         name = orn_deltas.iloc[:, oi].name
+        parts = name.split()
+        assert len(parts) == 2
+        oset = parts[0]
+        assert oset not in odor_sets_with_seen_mixes, 'out of order'
+
         if name.endswith('mix'):
-            parts = name.split()
-            assert len(parts) == 2
-            oset = parts[0]
+            odor_sets_with_seen_mixes.add(oset)
 
             # TODO TODO TODO maybe use various kinds of derivative free
             # optimization methods to fit a few different mixture models here?
@@ -249,18 +333,43 @@ def fit_model(frac_responder_df):
             component_cols = orn_deltas.columns.map(
                 lambda c: c.startswith(oset) and not c.endswith('mix')
             )
-            #model_orn_mix = orn_deltas.loc[:, component_cols].sum(axis=1)
-            model_orn_mix = orn_deltas.loc[:, component_cols].mean(axis=1)
+            # At least in the deterministic case, the overall scale shouldn't
+            # affect the correlation between this synthetic mix and the
+            # components...
+
+            # The data we are pulling from `orn_deltas` here ***was*** scaled
+            # (at the bottom of this loop, when `orn_deltas` is assigned into)
+            all_component_data = orn_deltas.loc[:, component_cols]
+
+            if require_all_components:
+                if all_component_data.isnull().any().any():
+                    continue
+                model_orn_mix = all_component_data.mean(axis=1)
+            else:
+                # TODO + check that denominator doesn't include nan
+                # TODO TODO find some replacement fn. this doesn't work.
+                #model_orn_mix = all_component_data.nanmean(axis=1)
+                import ipdb; ipdb.set_trace()
+
+            # TODO maybe pick a scale (relative to sum / max of component
+            # scales) that best matches the scale ratio / difference of the real
+
+            # TODO TODO maybe just as a sanity check, copy orn_deltas before
+            # any modifications (up top) and then define model_orn_mix
+            # in terms of unweighted component sum, and check that it looks
+            # different what is calculated here (where scales actually do factor
+            # in, via the modifications to orn_deltas at end of this loop)
 
             orn_deltas.iloc[:, oi] = model_orn_mix
-
-            # TODO asserts to ensure this is last thing seen from this odorset
-
+            if not fit_mix:
+                continue
+        else:
+            one_component_data = orn_deltas.iloc[:, oi]
+            if one_component_data.isnull().any():
+                continue
         print(name)
-        #print(f'oi={oi}')
-        #print(orn_deltas.iloc[:, oi])
 
-        # TODO TODO print range brute search is over, and what resolution.
+        # TODO print range brute search is over, and what resolution.
         # (for each odor if i continue special casing that 111 odor)
 
         # TODO TODO TODO see comment below part of kc_mix_analysis that calls
@@ -276,10 +385,13 @@ def fit_model(frac_responder_df):
             rmin = 2
             rmax = 4
         else:
-            rmin = 0.1
-            rmax = 2.5
+            rmin = default_rmin
+            rmax = default_rmax
         # TODO err / warn / modify bounds if opt scale was equal to one of the
         # bounds
+
+        # TODO TODO save rmin, rmax, and resolution to odor_metadata for each
+        # odor
 
         # TODO any similar fn that can be configured to return as soon as
         # error is sufficiently low?
@@ -308,7 +420,7 @@ def fit_model(frac_responder_df):
 
         # would at least need to increase Ns to do better than those for all
         # odors (if even possible, given realities of model)
-        assert fval <= 0.02
+        assert fval <= 0.02, f'fval: {fval}'
         # TODO TODO maybe assert that ret (scale?) is in the range the fitting
         # was limited to, as another check it's the right return value from
         # brute?
@@ -357,7 +469,14 @@ def fit_model(frac_responder_df):
         orn_deltas.iloc[:, oi] = \
             scale_hallem_odor_deltas(orn_deltas.iloc[:, oi], ret)
 
-        scales.append(ret)
+        # TODO maybe still have this be defined in the `not fit_mix` case
+        odor_metadata.loc[oi, 'fit_hallem_orns_scale'] = ret
+
+        # TODO maybe also add a field the odor_metadata for the fit error for
+        # each odor / mix?
+
+    print(f' done ({time.time() - before_fitting:.1f}s)', flush=True)
+    print(f'Total time: {time.time() - before:.1f}s', flush=True)
 
     # TODO TODO run sims w/ all of above (w/ diff weight draws?)
     # TODO make sense to run w/ fit scales w/ diff weight draws? or always want
@@ -400,6 +519,13 @@ def fit_model(frac_responder_df):
     # concentration data? or come up with a better method of scaling knowing
     # that? possible? may very well not be...
 
+
+    # TODO TODO TODO options to add noise to simulations!
+    # (e.g. normal noise at orns propagated up through to other stuff)
+
+    # TODO TODO TODO can i pull out model pn responses, for stuff like
+    # correlation matrices? how? (put in returned data!)
+
     odor_sets = []
     name1s = []
     # TODO don't hardcode the 110 everywhere. use constant at least.
@@ -416,18 +542,61 @@ def fit_model(frac_responder_df):
     model_df = pd.DataFrame(responses[:, 110:], columns=col_index)
     model_df.index.name = 'cell'
 
-    # TODO TODO TODO probably also return the orn_deltas? maybe also any
-    # parameters in here that i might want to change (this latter thing more
-    # just for reproducability if i cache it)? former more important b/c
-    # m
-
+    # TODO double check this part
     # From how the docs describe unstack, it's not obvious it would do what I
     # want, but it seems to...
     model_ser = model_df.unstack()
     model_ser.name = 'responded'
     model_df = model_ser.reset_index()
-    # TODO maybe also return scales / scaled data for use in other fitting steps
-    # for mixture responses?
-    return model_df
+
+    # TODO maybe cast model_ser 0.0 / 1.0 float to bool?
+
+    orn_deltas = orn_deltas.iloc[:, 110:].T
+    assert len(sfr) == orn_deltas.shape[1]
+    orn_abs_rates = orn_deltas + sfr
+
+    assert len(orn_deltas) == len(orn_abs_rates)
+    assert len(odor_metadata) == len(orn_abs_rates)
+
+    # TODO maybe rename abbrev to 'name1' for consistency w/ stuff
+    # in kc_mix_analysis.py ...
+    odor_metadata.set_index(['odor_set', 'abbrev'], inplace=True)
+
+    # TODO TODO TODO either have orn_deltas be multiindexed the whole time,
+    # or zip its orig index here w/ the new index we are gonna give it,
+    # and check if you join the str parts of each rows multiindex together,
+    # you get the index of that orn_deltas row!
+
+    orn_deltas.index = odor_metadata.index
+    orn_abs_rates.index = odor_metadata.index
+
+    # TODO TODO TODO null the parts of returned model data that are not null
+    # when they are supposed to be!!!! (like acetoin or (when
+    # require_all_components == True) the flyfood mix)
+
+    # TODO TODO similar plots (of orn firing rates) BUT divided by the max for
+    # each orn type? and maybe a more conservative upper bound on max firing
+    # rate? or a constant / normal distribution of max firing rates? or what
+    # distribution would make sense? have people measured this type of stuff
+    # anywhere? maybe in vision?
+
+    orn_deltas.index.names = ['odor_set', 'name1']
+    orn_abs_rates.index.names = ['odor_set', 'name1']
+
+    model_df.set_index(['odor_set', 'name1'], inplace=True)
+    for row in fit_scales.itertuples():
+        if pd.isnull(row.fit_hallem_orns_scale):
+            model_df.loc[row.Index, 'responded'] = np.nan
+    model_df.reset_index(inplace=True)
+    # TODO maybe convert 'responded' col to boolean before returning?
+
+
+    return {
+        'model_df': model_df,
+        'fit_scales': odor_metadata,
+        'orn_deltas': orn_deltas,
+        'orn_abs_rates': orn_abs_rates,
+        'orn_maxes': orn_maxes
+    }
 
 

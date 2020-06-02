@@ -1045,7 +1045,8 @@ def odor_and_fit_plot(odor_cell_stats, weighted_sum, ordered_cells, fname,
 
     im = u.matshow(cells_odors_and_fit, xticklabels=labels,
         xtickrotation=xtickrotation, fontsize=fontsize,
-        title=title, ax=f3_axs[0])
+        title=title, ax=f3_axs[0]
+    )
     # Default is 'equal'
     ax.set_aspect('auto')
 
@@ -3145,38 +3146,77 @@ if model_mixture_responses:
     # So we don't depend on `olfsysm` otherwise.
     from model_mix_responses import fit_model
 
+    # TODO expose in argparse
+    #ignore_model_cache = True
+    ignore_model_cache = False
     # TODO save something about input in filename?
-    model_output_cache = 'model_responses.p'
-    if exists(model_output_cache):
-        print(f'reading cached model responses from {model_output_cache}')
-        model_df = pd.read_pickle(model_output_cache)
+    model_output_cache = 'model_data.p'
+    if not ignore_model_cache and exists(model_output_cache):
+        print(f'reading cached model output data from {model_output_cache}')
+        #model_df = pd.read_pickle(model_output_cache)
+        with open(model_output_cache, 'rb') as f:
+            data = pickle.load(f)
+
+        model_df = data['model_df']
     else:
-        # TODO maybe convert 'responsed' col to boolean before returning?
-        model_df = fit_model(frac_responder_df)
-        print(f'writing model responses to cache at {model_output_cache}')
+        data = fit_model(frac_responder_df)
+        print(f'writing model output data to cache at {model_output_cache}')
         # TODO TODO TODO maybe also save data about what inputs (+parameters
         # used to process those inputs, probably) were used to fit the model,
         # so i can actually use these caches elsewhere without needed all the
         # preceding code to be working, while still being able to know
         # what was fit and how
-        model_df.to_pickle(model_output_cache)
+        with open(model_output_cache, 'wb') as f:
+            pickle.dump(data, f)
 
-    # TODO TODO TODO why was the scaling process apparently not able to get
-    # model_df.groupby(['odor_set','name1']).responded.sum()
-    # to have a closer ordering (~activtion strength) to my data?
-    # something i could do differently? are we at some floor / ceiling in the
-    # scaling?
-    # TODO TODO TODO without apparently changing anything, the problem seems to
-    # have gone away. maybe it was the cached bit for some reason? the loading?
-    # (seems OK this most recent run w/ no intermediate caching)
-    # (loading it in the same run still seems ok...)
+    model_df = data['model_df']
 
+    fit_scales = data['fit_scales']
+
+    orn_deltas = data['orn_deltas']
+    orn_abs_rates = data['orn_abs_rates']
+
+    orn_maxes = data['orn_maxes']
+
+    # TODO TODO why was the scaling process apparently not able to get
+    # model_df.groupby(['odor_set','name1']).responded.sum() to have a closer
+    # ordering (~activtion strength) to my data?  something i could do
+    # differently? are we at some floor / ceiling in the scaling? (not still
+    # true, is it?)
+    # TODO TODO without apparently changing anything, the problem seems to have
+    # gone away. maybe it was the cached bit for some reason? the loading?
+    # (seems OK this most recent run w/ no intermediate caching) (loading it in
+    # the same run still seems ok...)
+
+    # onto the feature axis ca
+    # TODO try to turn this into something of an assertion of this order roughly
+    # matching the ORN order (within an odor set, at least)
     # TODO delete after fixing above two todos
     print(model_df.groupby(['odor_set','name1']).responded.mean())
     #
 
+    # TODO TODO related to the below, is there any more or less of an intensity
+    # mismatch between odors within an odorset or across odorsets?
+    # might the intensity of the whole odorset be part of the equation?
+    # (not just like the relative differences in intensity)
+
+    # TODO TODO might there be actual features of the input odors that the first
+    # two layers are calculating, such that things with large projection onto
+    # this feature axis (which i guess maybe you *could* learn with something
+    # like PCA, no? isn't a feature that is AND-ed together from a bunch of
+    # boolean variables be something that PCA could learn? cause just AND
+    # doesn't give you XOR, right, and is XOR the only fundamental gate type
+    # that a single neuron isn't often modelled as being able to do?)
+
     ############################################################################
     mc = model_df.copy()
+
+    # TODO TODO TODO deal w/ modelling portion specially in report generation?
+    # want grid w/ columns: model ORNs, model PNs, model KCs
+    # (and one row per odor set)
+
+    # TODO TODO TODO use a constant absolute scale for firing rates in the
+    # matrix plots that show those? (at least w/in cell type)
 
     cbar_label = 'Correlation'
     for oset in odor_set_order:
@@ -3191,6 +3231,36 @@ if model_mixture_responses:
         # (yes, first arg / orn=)
 
         odor_order = comp_order + ['mix']
+        del comp_order
+
+        # TODO TODO TODO also extract model PN responses above and plot them
+        # alongside (also perhaps against unscaled inputs, for sanity checking)
+
+        # TODO plot side-by-side w/ unscaled inputs?
+        adf = orn_abs_rates.loc[oset]
+
+        fig = u.matshow(adf, title=f'{oset}\nScaled Hallem ORN vectors')
+        savefigs(fig, f'scaled_orns_{oset}', section='Scaled ORN vectors')
+
+        # TODO TODO TODO also get unscaled and scaled hallem abs rates!!!
+        '''
+        fig = u.matshow(adf, xticklabels=odor_labels,
+            group_ticklabels=True, colorbar_label=cbar_label, fontsize=6,
+            title=title
+        )
+        '''
+
+        acdf = adf.T.corr()
+        fig = u.plot_odor_corrs(acdf, odors_in_order=odor_order,
+            colorbar_label=cbar_label,
+            title=f'{oset} components\n\nORN correlations'
+        )
+        savefigs(fig, f'model_orn_corrs_{oset}', section='ORN correlations')
+
+
+        # TODO TODO TODO TODO plot real kc mean data here, w/o solvents / real
+
+
         #odf = mc.loc[odor_order]
         # TODO TODO TODO also need to index by odor set just to get the right
         # order?
@@ -3200,12 +3270,6 @@ if model_mixture_responses:
 
         # TODO TODO TODO want to limit cells to those that EVER respond before
         # computing correlations?
-
-        '''
-        if additive_mix_responses:
-            #odf.loc['mix'] = odf[comp_order].sum()
-            import ipdb; ipdb.set_trace()
-        '''
 
         ocdf = odf.T.corr()
         # TODO TODO TODO just refactor plot_odor_corrs so it can detect either
