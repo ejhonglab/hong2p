@@ -2280,16 +2280,23 @@ def thorsync_num(x):
     return int(x[len(prefix):])
 
 
-def gsheet_csv_export_link(file_with_edit_link):
+# TODO rethink gid kwarg(s)
+def gsheet_csv_export_link(file_with_edit_link): #, add_default_gid=True):
     """
     Takes a gsheet link copied from browser while editing it, and returns a
     URL suitable for reading it as a CSV into a DataFrame.
 
     Must append appropriate GID to what is returned.
     """
-    pkg_data_dir = split(split(__file__)[0])[0]
-    with open(join(pkg_data_dir, file_with_edit_link), 'r') as f:
-        gsheet_link = f.readline().split('/edit')[0] + '/export?format=csv&gid='
+    # TODO make expectations on URL consistent whether from file or not
+    if file_with_edit_link.startswith('http'):
+        base_url = file_with_edit_link
+    else:
+        pkg_data_dir = split(split(__file__)[0])[0]
+        with open(join(pkg_data_dir, file_with_edit_link), 'r') as f:
+            base_url = f.readline().split('/edit')[0]
+
+    gsheet_link = base_url + '/export?format=csv&gid='
     return gsheet_link
 
 
@@ -2317,6 +2324,8 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
     else:
         # TODO TODO maybe env var pointing to this? or w/ link itself?
         # TODO maybe just get relative path from __file__ w/ /.. or something?
+        # TODO TODO TODO give this an [add_]default_gid=True (set to False here)
+        # so other code of mine can use this function
         gsheet_link = gsheet_csv_export_link('mb_team_sheet_link.txt')
 
         # If you want to add more sheets, when you select the new sheet in your
