@@ -14,8 +14,10 @@ setup(
         # installation options exist besides the .whl format (like sdists).
         'wheel',
 
-        'psycopg2',
-        'sqlalchemy',
+        # Note: this caused natural_odors/requirements/literature_data.txt
+        # install to fail for Sharne because she didn't have postgres installed.
+        #'psycopg2',
+        #'sqlalchemy',
         'h5py',
         'numpy',
         'scipy',
