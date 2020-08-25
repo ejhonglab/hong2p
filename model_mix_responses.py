@@ -13,6 +13,13 @@ from scipy.optimize import brute
 import chemutils as cu
 import olfsysm as osm
 from drosolf.orns import orns
+# TODO delete after fixing hacks + drosolf imports in general
+import drosolf
+#
+
+# TODO maybe remove nu later, if nh does enough (might be the goal...)
+import neuprint as nu
+import neuprint_helper.util as nhu
 
 import hong2p.util as u
 
@@ -21,11 +28,26 @@ import hong2p.util as u
 # just the unmodified hallem inputs?
 # TODO maybe allow configuring max vs sum/mean for mixing rule
 # (and diff normalization options? not sure how to specify those though...)
-def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
+def fit_model(frac_responder_df, require_all_components=True, fit_mix=True,
+    use_em_connectivity=False, tune=True):
+
+    print('USE_EM_CONNECTIVITY:', use_em_connectivity)
+    print('TUNE:', tune)
+
+    # TODO TODO TODO relax this restriction
+    if use_em_connectivity:
+        # slightly easier to start this way, to change less of matt's code
+        warnings.warn('setting tune=False because use_em_connectivity (hack)')
+        tune = False
+
     # With add_sfr=False, it should just return the deltas...
     orn_deltas = orns(add_sfr=False, drop_sfr=False).T
     sfr = orn_deltas['spontaneous firing rate']
     orn_deltas = orn_deltas.iloc[:, :-1]
+
+    # TODO TODO re-evaluate whether it still makes sense to drop this one
+    # (would need to modify matt's thing a little to not drop it though)
+    # maybe make a kwarg flag to toggle dropping it
 
     tmp_mp = osm.ModelParams()
     osm.load_hc_data(tmp_mp, 'hc_data.csv')
@@ -38,7 +60,25 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
             break
     assert skip_idx is not None
 
-    # TODO TODO print which receptor(?) is being removed
+    # TODO TODO check this is right (33b/DM3. is that what ann drops?)
+    skip_or = orn_deltas.index[skip_idx]
+    skip_glom = drosolf.orns.receptor2glomerulus[skip_or]
+    print(f'\nDropping Hallem data for Or{skip_or}/{skip_glom} '
+        f'(index={skip_idx}), consistent with Kennedy work.\n'
+    )
+    del skip_or, skip_glom
+
+    # TODO TODO maybe change back / kwarg toggle. just using this format now, to
+    # get it closer to neuprint identifiers for PN types
+    #orn_deltas.index = orn_deltas.index.map(drosolf.orns.receptor2glomerulus)
+    # TODO TODO TODO how did the above cause this error below
+    '''
+    File "/home/tom/src/python_2p_analysis/model_mix_responses.py", line ~204,in
+        fit_model
+    assert len(orn_deltas) == len_before
+    AssertionError
+    '''
+    #
 
     # TODO what is this shared_idx thing again?
     shared_idx = np.setdiff1d(np.arange(len(orn_deltas)), [skip_idx])
@@ -47,10 +87,14 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     assert np.array_equal(sfr, tmp_mp.orn.data.spont[:, 0])
     assert np.array_equal(orn_deltas, tmp_mp.orn.data.delta)
     kc_cxn_distrib = tmp_mp.kc.cxn_distrib.copy()
+    # TODO it wasn't actually important that i delete this, right?
+    # i.e. there wasn't some mechanism in matt's code enforcing a singleton or
+    # something, if that's even possible?
     del tmp_mp
 
     assert orn_deltas.columns.name == 'odor'
-    assert orn_deltas.index.name == 'receptor'
+    # TODO TODO restore
+    #assert orn_deltas.index.name == 'receptor'
     n_orn_types = len(orn_deltas.index)
 
     # TODO TODO i guess acetoin isn't in hallem?? maybe i'm misunderstanding
@@ -182,13 +226,28 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     mp.orn.data.spont = sfr
     # (nglom x nodor matrix of odor-evoked rate deltas)
     mp.orn.data.delta = orn_deltas
+
+    if not tune:
+        # TODO probably don't even go through the trouble of setting this
+        # in the first place in the (not tune) case...
+
+        # This aims to cause any accidental tuning to fail.
+        kc_cxn_distrib = np.zeros_like(kc_cxn_distrib) * np.nan
+    else:
+        print('TUNE')
+
+    # TODO TODO why do i set this w/ above??? (i'm pretty sure i had a reason,
+    # but i'm forgetting what it was)
+    # TODO TODO TODO maybe set this to NaN / some null value in em connectivity
+    # case, to ensure it doesn't get used (or that it errs if it is used)
     mp.kc.cxn_distrib = kc_cxn_distrib
 
+    # TODO TODO want to save any of the other things?
     # spike timings are thrown out by default
     mp.kc.save_spike_recordings = True
 
     # Allocate memory
-    rv = osm.RunVars(mp)
+    run_vars = osm.RunVars(mp)
 
     # TODO TODO TODO get an understanding of how matt's tuning process works
 
@@ -199,6 +258,7 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # ~2020-05-30, but honestly I'm not sure. Github says it was updated more
     # recently than last commit.)
     # Tune thresholds/the APL to the Hallem odors only
+    # TODO TODO TODO disable if kwarg tune=False
     mp.kc.tune_from = range(110)
     # non-zero for consistent PN-KC connectivity generation
     mp.kc.seed = 12345
@@ -206,29 +266,135 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # TODO TODO should i set sim_only to exclude new stuff here?
     # (particularly if i'm gonna have null stuff for mixture response)
     # (any reason not to?)
+    # TODO sim_only == tune_from would seem to contradict something i read in
+    # matt's code comments. double check and ask.
     mp.sim_only = range(110)
 
-    import ipdb; ipdb.set_trace()
+    # TODO TODO TODO ask matt and/or read code to verify, but is the purpose of
+    # these "initial sims" JUST to "tune", as referenced by tune_from above?
+    # TODO TODO maybe i should expose that `mp.kc.fixed_thr` param?
+    # (what is matt's experience w/ it? then just APL <-> KC weights changed,
+    # to tune sparsity?)
 
+    # TODO TODO probably expose `mp.kc.use_homeostatic_thrs` unless matt found
+    # that one value of this made much more sense
+
+    if use_em_connectivity:
+        print('USE_EM_CONNECTIVITY')
+        ndf, cdf = nhu.pn_kc_connections(checks=True)
+
+        # TODO TODO good chance i'll need to fix some of these, probably best
+        # done by fixing in drosolf, or the data drosolf uses
+        r2g = drosolf.orns.receptor2glomerulus
+
+        r2g['47a'] = 'DM3'
+        # just for clarity
+        r2g['33b'] = None
+
+        gloms = orn_deltas.index.map(r2g)
+
+        pn_ids = ndf.bodyId.isin(cdf.bodyId_pre)
+        '''
+        pfs = [x for x in ndf[pn_ids].type.unique()
+            if any([x.upper().startswith(g) for g in gloms])
+        ]
+        '''
+        # (delete if not needed) TODO should i go direct to the other direction?
+        #glom2neuprint_pn_types = dict()
+        #
+
+        # TODO TODO TODO adPn vs lPN vs lvPN?
+
+        # TODO TODO TODO h2 in comment at top of drosolf has dm3=33b and 
+        # dm3.1=47a , since we are dropping 33b here anyway, maybe just consider
+        # dm3 as 47a? (drosolf glomeruli.xlsx also only has dm3=47a, w/ no
+        # mention of 33b)
+
+        neuprint_pn_types2glom = dict()
+        missing_gloms = set(gloms)
+        unmatched_neuprint_pn_types = set()
+        # TODO TODO TODO work on this loop
+        # fix all the unmatched neuprint types!!!!!
+        for x in ndf[pn_ids].type.unique():
+            longest_matching = None
+            for g in gloms:
+                # TODO TODO TODO need to split on first number in each word or
+                # something, so that 'D' doesn't match 'DL5','DM3',etc
+                # (or implement in such a way that longest matching wins)
+                if g in x.upper():
+                    #glom2neuprint_pn_types[g] = x
+                    # (i think this might have been the wrong assert anyway)
+                    ####assert x not in neuprint_pn_types2glom
+                    '''
+                    if g in neuprint_pn_types2glom.values():
+                    neuprint_pn_types2glom[x] = g
+                    missing_gloms -= {g}
+                    '''
+                    curr_len = len(g)
+                    if (longest_matching is None or
+                        longest_matching_len <= curr_len):
+    
+                        # TODO fix
+                        assert longest_matching_len != curr_len
+                        longest_matching = g
+                        longest_matching_len = len(g)
+
+            if longest_matching is not None:
+                neuprint_pn_types2glom[x] = g
+                missing_gloms -= {g}
+            else:
+                unmatched_neuprint_pn_types.add(x)
+                    
+        from pprint import pprint
+        # TODO probably filter 'multi' and stuff like that from here anyway
+        print('unmatched_neuprint_pn_types:')
+        pprint(unmatched_neuprint_pn_types)
+        print('\nneuprint_pn_types2glom:')
+        pprint(neuprint_pn_types2glom)
+        print('\nmissing_gloms:')
+        pprint(missing_gloms)
+        #cmat = nu.utils.connection_table_to_matrix(cdf)
+        import ipdb; ipdb.set_trace()
+        print()
+    else:
+        print('NO_EM')
+
+    # (used at bottom too)
     before = time.time()
-    print('running initial sims.', end='', flush=True)
-    # Run a 1st simulation to tune KC thresholds and APL weights
-    osm.run_ORN_LN_sims(mp, rv)
-    print('.', end='', flush=True)
-    osm.run_PN_sims(mp, rv)
-    print('.', end='', flush=True)
-    osm.run_KC_sims(mp, rv, True) # True -> (re)gen connectivity, retune stuff
-    print(' done ({:.1f}s)'.format(time.time() - before), flush=True)
+    
+    if tune:
+        print('running initial sims.', end='', flush=True)
+        # Run a 1st simulation to tune KC thresholds and APL weights
+        osm.run_ORN_LN_sims(mp, run_vars)
+        print('.', end='', flush=True)
+        osm.run_PN_sims(mp, run_vars)
+        print('.', end='', flush=True)
 
-    before_fitting = time.time()
+        # All of Matt's "tuning" happens in this line (and it happens anytime
+        # this is called with the 3rd argument True (but that also causes other
+        # things to happen during the call).
+        # TODO isn't "REtune" not accurate? isn't tuning only ever happening on
+        # this call, when last arg is True???
+        # True -> (re)gen connectivity, retune stuff
+        osm.run_KC_sims(mp, run_vars, True)
+        print(' done ({:.1f}s)'.format(time.time() - before), flush=True)
+    else:
+        print('NO_TUNE')
+
+    # TODO TODO TODO also inspect things like apl weights, and look at the
+    # effects of tuning. + just spect lots of internal model vars...
+
+    # dtype == float64. shape == (2000, 23)
+    # max is 4 (given seed above)
+    #wpk = run_vars.kc.wPNKC
+    # TODO TODO TODO note that this is constant!
+    # (b/c matt set's # of claws per KC as a constant)
+    #wpk.sum(axis=1).unique()
+    #import ipdb; ipdb.set_trace()
 
     # TODO TODO TODO do synthetic mixture studies at ORNs using any data i can
     # find on the fruits they use (could maybe use our own peach / mango /
     # banana data)
-
-    # TODO what does "*** Not yet returned!" mean when i try rv.kc.responses???
-    # (seems to only come up when i try to access the value in ipdb. Matt have
-    # any idea why this would be?)
 
     # TODO TODO TODO check whether any of my odors are among the set of odors
     # with measurements at multiple concentrations (could maybe use that data to
@@ -243,7 +409,6 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # didn't have particularly activating odors found for them?)
     orn_maxes = orn_deltas.max(axis=1) + sfr
 
-    import ipdb; ipdb.set_trace()
     # TODO maybe also return maxes, to inspect the effect of that constraint out
     # of this fn?
 
@@ -278,10 +443,10 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
             print(f'running sims for scale={scale[0]:.3f}', flush=True)
 
         mp.sim_only = [oi]
-        osm.run_ORN_LN_sims(mp, rv)
-        osm.run_PN_sims(mp, rv)
-        osm.run_KC_sims(mp, rv, False)
-        r = np.mean(rv.kc.responses[:, oi], axis=0)
+        osm.run_ORN_LN_sims(mp, run_vars)
+        osm.run_PN_sims(mp, run_vars)
+        osm.run_KC_sims(mp, run_vars, False)
+        r = np.mean(run_vars.kc.responses[:, oi], axis=0)
 
         if verbose:
             print(f'response rate: {r:.3f}', flush=True)
@@ -296,6 +461,7 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # a bit of the between code above the loop above?) any real reason to 
     # make a list of those target_response_fracs first??
 
+    before_fitting = time.time()
     # TODO improve this message?
     print('rescaling Hallem ORN deltas to match observed KC sparsity (with '
         'concentrations potentially deviating from those in Hallem)...'
@@ -496,11 +662,11 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
 
     # TODO TODO TODO convert output to something suitable for use as my real
     # data
-    responses = rv.kc.responses
+    responses = run_vars.kc.responses
 
     '''
-    spike_recordings = rv.kc.spike_recordings
-    spike_counts = rv.kc.spike_counts
+    spike_recordings = run_vars.kc.spike_recordings
+    spike_counts = run_vars.kc.spike_counts
     # couldn't get shape of this cause it is apparently a list
     print(len(spike_recordings))
     print(spike_counts.shape)
@@ -517,7 +683,7 @@ def fit_model(frac_responder_df, require_all_components=True, fit_mix=True):
     # TODO ever multiple spikes fired?
 
     # TODO TODO if i'm just going to binarize anyway, should i just use 
-    # rv.kc.respones rather than spike_recordings?
+    # run_vars.kc.respones rather than spike_recordings?
 
     # TODO TODO TODO maybe first check what total output of
     # linear-sum-at-periphery is in model kcs?
