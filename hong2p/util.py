@@ -5959,6 +5959,9 @@ def set_facetgrid_legend(facet_grid, **kwargs) -> None:
                 # matplotlib.collections.PathCollection objects are the same
                 # (line width, dash, etc)
                 past_facecolor = legend_data[label].get_facecolor()
+                # TODO TODO TODO fix! this is failing again 2020-08-25
+                # (after re-installing requirements.txt, when running
+                # kc_mix_analysis.py w/ no just -j arg)
                 assert np.array_equal(facecolor, past_facecolor), \
                     f'{facecolor} != {past_facecolor}'
             else:

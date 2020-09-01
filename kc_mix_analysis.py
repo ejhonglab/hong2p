@@ -35,8 +35,42 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 
+
+# TODO TODO TODO TODO things to fix in 2020-08-27 outputs:
+# - why is kiwi mix eag seemingly smaller in eb pinned case??? plotting mistake?
+#   or is the min -> mean calculation weird? or what?
+# - !!! and why is mix response mean in barplot seemingly lower than range in
+#   figure comparing to EAG???
+# - label stuff in eag vs KC plot + color code odors / de-emph components etc
+#
+# - global pinning!!!
+# 
+# - compare eag vs average-across-all-pixels-in-MB / recording intensity,
+#   to get a sense of strength differences independent of weird analysis choices
+#   / thresholding
+#   - also try non-zscored cell avg?
+#   - and maybe z-scored / normalized pixel avg?
+#
+# - don't pin to reject data! (or just do global...)
+#
+# - should changing the pinning really change all of the relative ordering
+#   features (in the response rate) that it seems to change in at least some
+#   cases?? does it really make sense?
+
 # Note: some imports were pushed down, just before code that uses them, to
 # reduce the number of hard dependencies.
+
+
+# TODO TODO TODO TODO fix plotting line(s) that produced this warning!!
+# (started seeing in re-install of requirements.txt 2020-08-25)
+warnings.filterwarnings('ignore',
+    message='FixedFormatter should only be used together with FixedLocator'
+)
+
+# TODO TODO TODO which lines in process_traces are causing:
+# WARNING: QApplication was not created in the main() thread.
+# (running through ssh -X into atlas 2020-08-27 from my home computer)
+# and is it a problem?
 
 
 # TODO TODO TODO consider splitting this file up, perhaps along that
@@ -61,10 +95,13 @@ import seaborn as sns
 parser = argparse.ArgumentParser(description='Analyzes calcium imaging traces '
     'stored as pickled pandas DataFrames that gui.py outputs.'
 )
+# TODO say in help message which params control the filename expected here
+# (or at least / in addition generate filename and include in help?)
 parser.add_argument('-c', '--only-analyze-cached', default=False,
     action='store_true', help='Only analyzes cached outputs from previous runs '
     'of this script. Will not load any trace pickles.'
 )
+# TODO maybe this should imply -f?
 parser.add_argument('-n', '--no-save-figs', default=False, action='store_true',
     help='Does not save any figures.'
 )
@@ -107,10 +144,6 @@ parser.add_argument('-b', '--debug-shell', default=False,
     action='store_true', help='Drops to an ipdb shell at end, for further '
     'interactive analysis or debugging.'
 )
-parser.add_argument('-u', '--skip-cell-subset-linearity', default=False,
-    action='store_true', help='Skips linearity analysis on functional subsets'
-    ' of cells.'
-)
 parser.add_argument('-j', '--no-parallel-process-traces', default=False,
     action='store_true', help='Disables parallel calls to process_traces. '
     'Useful for debugging internals of that function.'
@@ -119,15 +152,26 @@ parser.add_argument('-r', '--plot-formats', action='store', default='png,pdf',
     help='Extensions for plot formats to save figures in. Just include what '
     'comes after the period. Use commas to separate multiple format extensions.'
 )
+# TODO TODO add argument that accepts an arbitrary (',' separated?) list of plot
+# type names and only those analyses are performed. also include in help str the
+# full available list. to test the effect of changes on particular outputs
+# faster.
+# TODO and have a corresponding flag that allows exclusion of plot types?
+# TODO also include a summary of what each type of plot is in the help str
+# TODO maybe implement as part of refactoring and use docstring of functions
+# that each perform one type of analysis?
 args = parser.parse_args()
 
 # TODO maybe get this from some object that stores the params / a context
 # manager of some kind that captures param variable names defined inside?
 param_names = [
     'fix_ref_odor_response_fracs',
+
+    'mean_zchange_response_thresh',
+
     'ref_odor',
     'ref_response_percent',
-    'mean_zchange_response_thresh',
+
     'baseline_start',
     'baseline_end',
     'response_start',
@@ -136,31 +180,49 @@ param_names = [
 ]
 
 odor_set_order = ['kiwi', 'control', 'flyfood']
-use_existing_abbrevs = False
-
-# TODO should look up odor_set of this odor, then pass that to ordering fn,
-# s.t. that odor_set is first
-ref_odor = 'eb'
-# This + 1o3ol~11.1 taken from 0.7 thresh on 2019-8-27/9 fly, which may not have
-# been ideal.
-ref_response_percent = 18.6
-
-# TODO TODO implement checking against these / maybe something like these
-# (normed to rate of ref odor) across all odors and flies automatically, to
-# sanity check response calling across flies
-'''
-other_odors_to_check = {
-    '1o3ol': 11.1
-}
-'''
 
 # If True, the threshold is set within each fly, such that the response percent
 # to the reference odor is the reference response percent.
 # If False, responders are called with the fixed mean Z-scored dF/F (in response
 # window) (mean_zchange_response_thresh) across all flies.
-fix_ref_odor_response_fracs = True
-mean_zchange_response_thresh = 3.0
+#fix_ref_odor_response_fracs = True
+fix_ref_odor_response_fracs = False
 
+# TODO TODO does this make sense? or should i compute something like z-score
+# across trials, and threshold that, rather than take mean of the z-score
+# quantity i'm currently using?
+#mean_zchange_response_thresh = 3.0
+mean_zchange_response_thresh = 4.98
+
+'''
+ref_odor = 'eb'
+#ref_odor = '1o3ol'
+
+# This + 1o3ol~11.1 taken from 0.7 thresh on 2019-8-27/9 fly, which may not have
+# been ideal.
+ref_response_percent = 18.6
+# Trying to set this so the mean of the kiwi eb response fractions comes out to
+# about what it was originally pinned at
+# TODO TODO do computationally...
+#ref_response_percent = 10.0
+'''
+
+################################################################################
+# These flags affect steps both DURING and AFTER the process_traces calls.
+################################################################################
+do_pca = False
+do_roc = False
+
+# TODO TODO err if one of these flags is true but we are analyzing cached
+# data, and cache doesn't have the data of interest
+# TODO i don't think stuff after process_traces actually works if this is false.
+# either delete or make it work in those steps as well.
+correlations = True
+
+################################################################################
+# These flags only affect steps that happen DURING the process_traces calls.
+################################################################################
+response_criteria_hists = True
 responder_threshold_plots = True
 
 # TODO rename to be more clear about what each of these mean / add comment
@@ -168,27 +230,64 @@ responder_threshold_plots = True
 trial_matrices = False
 odor_matrices = False
 
-# TODO TODO err if one of these flags is true but we are analyzing cached
-# data, and cache doesn't have the data of interest
-correlations = True
-plot_correlations = True
-trial_order_correlations = True
-odor_order_correlations = True
-
-hallem_correlations = True
-
-# TODO return to trying to aggregate some type of this analysis across flies
-# after doing corr + linearity stuff across flies (+ ROC!)
-do_pca = True
-do_roc = False
+# TODO move do_linearity_analysis up here, and don't have it defined from these
+# two down below (want to be able to disable it at output too)
+# (also make non-redundant w/ plot_linearity_analysis)
 # TODO was one of these types of plots obselete? did odor_and_fit_matrices
 # replace fit_matrices? (seems like fit_matrices may be obselete)
 fit_matrices = False
-odor_and_fit_matrices = True
+odor_and_fit_matrices = False
+
 # TODO maybe modify things s.t. avg traces are plotted under the matrix
 # portion of the odor_and_fit_matrices and odor_matrices plots
 # (w/ gridspec probably) + eag too
 avg_traces = False
+
+plot_correlations = False
+trial_order_correlations = True
+odor_order_correlations = True
+
+################################################################################
+# These flags only affect steps that happen AFTER all the process_traces calls.
+################################################################################
+do_adaptation_analysis = False
+
+common_responded_combos = False
+
+
+linearity_analysis_on_all_cells = True
+# If True, whether these plots get created will also depend on the value of the
+# `odorsets_within_fly` kwarg to the particular call of `linearity_analysis`.
+per_cell_linearity_dists = False
+# TODO maybe this or other to be more consistent w/ "common_responded_combos"
+cell_subset_linearity = False
+
+# TODO probably just compute this by ORing the above set of flags...
+# If this is False, it will prevent any of the linearity-related flags above
+# from producing plots.
+plot_linearity_analysis = False
+
+
+mix_v_component_response_plots = False
+
+plot_mean_correlations = False
+plot_correlation_consistencency = False
+
+model_mixture_responses = False
+
+# This one doesn't depend on our data, just which odors we used.
+hallem_correlations = False
+
+do_tuning_breadth_vs_shuffle = False
+
+# TODO probably delete / refactor code that corresponds to these. some of them
+# are also incorrect as it is.
+# These are all in the same loop that computes tuning breadth vs shuffle.
+reliable_of_responder_barplots = False
+of_mix_reliable_to_others_barplot = False
+of_mix_rel_to_others_ratio_barplt = False
+
+################################################################################
 
 # How many of the most broadly reponsive cells to plot.
 # In some contexts, this may instead take this many cells sorted by other
@@ -251,7 +350,7 @@ within_recording_stim_cols = ['name1', 'name2', 'repeat_num', 'order']
 
 # (_with_dupes, because some things in u.odor_set2order evaluate to the same
 # abbreviation)
-odor_set2order_with_dupes = {s: [cu.odor2abbrev(o) for o in os] for s, os
+odor_set2order_with_dupes = {s: [cu.odor2abbrev(o) for o in oset] for s, oset
     in u.odor_set2order.items()
 }
 odor_set2order = dict()
@@ -263,11 +362,11 @@ for s, oset in odor_set2order_with_dupes.items():
     odor_set2order[s] = this_set_order
 
 # TODO clean this up / only optionally print?
-for os, unabbrev_odors in u.odor_set2order.items():
-    abbrev_odors = odor_set2order_with_dupes[os]
+for oset, unabbrev_odors in u.odor_set2order.items():
+    abbrev_odors = odor_set2order_with_dupes[oset]
     assert len(unabbrev_odors) == len(abbrev_odors)
     seen = set()
-    print(os)
+    print(oset)
     for abbrev, full in zip(abbrev_odors, unabbrev_odors):
         if abbrev in seen:
             continue
@@ -277,7 +376,7 @@ for os, unabbrev_odors in u.odor_set2order.items():
 #
 del odor_set2order_with_dupes
 
-odor_set_odors = [set(os) for os in odor_set2order.values()]
+odor_set_odors = [set(oset) for oset in odor_set2order.values()]
 odor_counts = dict()
 for odors in odor_set_odors:
     for odor in odors:
@@ -358,6 +457,9 @@ fig_queue = deque()
 # Currently putting in LaTeX report in the order saved here, though still
 # with all paired stuff coming after non-paired stuff.
 
+# TODO modify so (maybe if verbose?) savefigs also prints time since last
+# savefig call finished (when available, at least), to get a quick sense of
+# which analyses are taking up time
 plot_prefix2latex_data = dict()
 plots_made_this_run = set()
 # TODO do i need to include any of these in what gets [un]pickled now?
@@ -1110,7 +1212,8 @@ def plot_pca(df, fname=None):
 
         f1a = plt.figure()
         sns.scatterplot(data=pca_data.reset_index(), x='PC1', y='PC2',
-            hue='name1', legend='full')
+            hue='name1', legend='full'
+        )
         #    hue='sample_type', style='fermented', size='day', legend='full')
         plt.title('PCA on raw data')
 
@@ -1170,7 +1273,8 @@ def plot_pca(df, fname=None):
     # point
     # TODO what about day? size? (saturation / alpha would be ideal i think)
     sns.scatterplot(data=pca_data.reset_index(), x='PC1', y='PC2',
-        hue='name1', legend='full')
+        hue='name1', legend='full'
+    )
         #hue='sample_type', style='fermented', size='day')#, legend='full')
 
     plt.title('PCA on standardized data')
@@ -1313,7 +1417,7 @@ ax_id2order = dict()
 # actually facetgrid made as above shares labels still... (was just
 # g.set_xticklabels that cased the problem in this case)
 def with_odor_order(plot_fn, **fn_kwargs):
-    def ordered_plot_fn(*args, **kwargs):
+    def ordered_plot_fn(*args, unsafe_skip_hue_checks=False, **kwargs):
         for fk, fv in fn_kwargs.items():
             if fk not in kwargs:
                 kwargs[fk] = fv
@@ -1374,10 +1478,17 @@ def with_odor_order(plot_fn, **fn_kwargs):
         # was thinking maybe i could also check order == xticklabels here,
         # but seems they might not be set yet?
 
+        # Looks like cases like this are when you'd want to use this:
+        # https://stackoverflow.com/questions/28992174
         # TODO comment explaining reason for this whole 2/3 args thing
         assert len(args) == 2 or len(args) == 3
-        if len(args) == 3:
+        if len(args) == 3 and not unsafe_skip_hue_checks:
+            # maybe this was meant for case when hue was encoding odor??
+            # although why would i do that...
+
             # TODO what does this mean? how would the user do that?
+            # TODO TODO TODO provide example! also maybe explain how this can
+            # cause a problem if not done?
             err_msg = ('fill in missing odors before calling, if using the '
                 'third positional hue arg'
             )
@@ -1392,6 +1503,11 @@ def with_odor_order(plot_fn, **fn_kwargs):
             # prevent, and in what circumstances might it be triggered?
             if len(odors) < full_cartesian_len:
                 raise ValueError(err_msg)
+
+        elif len(args) == 3 and unsafe_skip_hue_checks:
+            warnings.warn('plot function being called with '
+                'unsafe_skip_hue_checks=True. could cause problems?'
+            )
 
         return plot_fn(*args, order=order, **kwargs)
 
@@ -1528,7 +1644,7 @@ def add_odor_id(df):
     # 'mix' means different things for different values of odor_set.
     oid = 'odor_id'
     assert oid not in df.columns
-    df[oid] = [os + ', ' + o for os, o in zip(df.odor_set, df.name1)]
+    df[oid] = [oset + ', ' + o for oset, o in zip(df.odor_set, df.name1)]
     return df
 
 
@@ -1536,12 +1652,37 @@ def add_odor_id(df):
 # below this (or move the few remaining single fly plots from there here?)
 # want to be able to calulate responders w/ different thresholds easily though /
 # compute linearity props, etc w/ diff params
-def process_traces(df_pickle, fly2response_threshold):
+'''
+def process_traces(df_pickle, mean_zchange_response_thresh=None,
+    fly2response_threshold=None, ref_odor=None, ref_response_percent=None,
+'''
+def process_traces(df_pickle, fly2response_threshold=None,
+    use_existing_abbrevs=False):
+    # TODO refactor so there is actually one function for each real analysis
+    # contained in here? or does it just benefit too much from the tight
+    # coupling?
     """Computes responders and does initial analyses on one recording's traces.
 
     Args:
     df_pickle (str): filename of pickled DataFrame with cell dF/F traces
     """
+    if fix_ref_odor_response_fracs:
+        if not all([x is not None for x in
+            (fly2response_threshold, ref_odor, ref_response_percent)]):
+            
+            raise ValueError('fly2response_threshold, ref_odor, and '
+                'ref_response_percent are all required if '
+                'fix_ref_odor_response_fracs'
+            )
+    else:
+        if not all([x is None for x in
+            (fly2response_threshold, ref_odor, ref_response_percent)]):
+
+            # TODO update
+            raise ValueError('either pass mean_zchange_response_thresh or all '
+                'of fly2response_threshold, ref_odor, and ref_response_percent'
+            )
+
     verbose = True
     being_parallelized = not type(fly2response_threshold) is dict
 
@@ -1593,6 +1734,8 @@ def process_traces(df_pickle, fly2response_threshold):
     except KeyError:
         fly_id = None
 
+    ret_dict['fly_id'] = fly_id
+
     # TODO maybe convert other handling of from_onset to timedeltas?
     # (also for ease of resampling / using other time based ops)
     #in_response_window = ((df.from_onset > 0.0) &
@@ -1620,29 +1763,34 @@ def process_traces(df_pickle, fly2response_threshold):
     baseline_stddev = baseline_by_trial.std()
     baseline_mean = baseline_by_trial.mean()
 
+    # TODO rename to make it more clear that there is one of these for each
+    # (cell, trial?)
     # I checked this against my old (slower) method of calculating Z-score,
     # using a loop over a groupby (equal after sort_index on both).
-    response_criteria = \
+    zscored_response_windowed_timeseries = \
         (window_df.df_over_f - baseline_mean) / baseline_stddev
 
+    # TODO TODO TODO also try computing this as (smoothed?) max?
+    # (and using that for thresholding to responders)
     scalar_response_criteria = \
-        response_criteria.groupby(cell_cols).agg('mean')
+        zscored_response_windowed_timeseries.groupby(cell_cols).agg('mean')
 
     used_for_thresh = False
     if fix_ref_odor_response_fracs:
-        #if fly_key not in fly2response_threshold:
         if ref_odor in scalar_response_criteria.index.unique(level='name1'):
             assert fly_key not in fly2response_threshold
-            mean_zchange_response_thresh = np.percentile(
+            fly_mean_zchange_response_thresh = np.percentile(
                 scalar_response_criteria.loc[(ref_odor,)],
                 100 - ref_response_percent
             )
-            fly2response_threshold[fly_key] = mean_zchange_response_thresh
+            fly2response_threshold[fly_key] = fly_mean_zchange_response_thresh
             # TODO maybe print for all flies in one place at the end?
+            # TODO also print description of mean_zchange_response_thresh
+            # (units / how calculated / something like that)
             out_s = ('Calculated mean Z-scored response threshold, from '
                 'reference response percentage of {:.1f} to {}: '
                 '{:.2f}').format(
-                ref_response_percent, ref_odor, mean_zchange_response_thresh
+                ref_response_percent, ref_odor, fly_mean_zchange_response_thresh
             )
             if verbose:
                 print(out_s)
@@ -1673,7 +1821,17 @@ def process_traces(df_pickle, fly2response_threshold):
             unique_name1s = scalar_response_criteria.index.get_level_values(
                 'name1').unique()
             assert ref_odor not in unique_name1s
-            mean_zchange_response_thresh = fly2response_threshold[fly_key]
+            fly_mean_zchange_response_thresh = fly2response_threshold[fly_key]
+
+        # TODO change key in dict too? (for consistent name...)
+        ret_dict['mean_zchange_response_thresh'] = \
+            fly_mean_zchange_response_thresh
+
+        ret_dict['used_for_thresh'] = used_for_thresh
+
+    else:
+        # Using the module-level value.
+        fly_mean_zchange_response_thresh = mean_zchange_response_thresh
 
     thorimage_ids = df.thorimage_id.unique()
     assert len(thorimage_ids) == 1
@@ -1685,6 +1843,13 @@ def process_traces(df_pickle, fly2response_threshold):
         )
         # TODO only do this if some stuff for fly is not dropped
         if used_for_thresh:
+            # TODO TODO TODO TODO probably just fail in this case (or reject
+            # data derived from this threshold). add flags / arguments to
+            # control this behavior.
+            # TODO TODO TODO if i don't avoid doing this at all (as i probably
+            # should...) i should at least make sure the correlation matrices
+            # are still plotted for these recordings, to get a sense of how
+            # fucked up they are (and included in pdf, maybe labelled)
             warnings.warn('AND this recording was used to set the threshold'
                 ' for this fly!'
             )
@@ -1702,14 +1867,44 @@ def process_traces(df_pickle, fly2response_threshold):
     # that as long as a fly wasn't a reject, it still has fly_id defined.
     assert fly_id is not None
 
+    # TODO TODO TODO in the plots below, maybe color the dotted line red (and /
+    # or label) if the threshold it depicts comes from other data (i.e. a kiwi
+    # recording in the same fly, if threshold selection is configured to allow
+    # that)
+
+    # TODO TODO maybe just include these in as a subplot sharing a figure with
+    # the sensitivity plots below, to make them easier to consider together?
+    if response_criteria_hists:
+        rc_hist_fig, rc_hist_ax = plt.subplots()
+
+        # TODO TODO fixed range? derive from percentile as elsewhere?
+        # TODO TODO TODO log [/log] scale?
+        # TODO TODO TODO make these plots after loop using seaborn distplot,
+        # to overlay all onto same axis??
+        rc_hist_ax.hist(scalar_response_criteria, density=True, bins=100,
+            range=(-5, 15)
+        )
+
+        rc_hist_ax.set_title(title + '\nResponse criteria')
+        # TODO indicate window mean is computed over?
+        rc_hist_ax.set_xlabel('Mean Z-scored response (in window)')
+        rc_hist_ax.set_ylabel('Density of cell-trials')
+
+        rc_hist_ax.axvline(x=fly_mean_zchange_response_thresh, color='gray',
+            linestyle='--', label='Response threshold'
+        )
+
+        out_s = savefigs(rc_hist_fig, 'response_criteria_hists', fname,
+            section='Response criteria histograms'
+        )
+        out_strs.append(out_s)
+
     if responder_threshold_plots:
         zthreshes = np.linspace(0, 25.0, 40)
         resp_frac_over_zthreshes = np.empty_like(zthreshes) * np.nan
-        mean_rc = response_criteria.groupby(cell_cols).agg('mean')
-        # TODO for all odors? specific reference odors?) [-> pick threshold
-        # from there?]
+
         for i, z_thr in enumerate(zthreshes):
-            z_thr_trial_responders = mean_rc >= z_thr
+            z_thr_trial_responders = scalar_response_criteria >= z_thr
             frac = \
                 z_thr_trial_responders.sum() / len(z_thr_trial_responders)
 
@@ -1723,8 +1918,9 @@ def process_traces(df_pickle, fly2response_threshold):
         thr_ax.set_xlabel('Mean Z-scored response threshold')
         thr_ax.set_ylabel('Fraction of cells responding (across all odors)')
 
-        thr_ax.axvline(x=mean_zchange_response_thresh, color='gray',
-            linestyle='--', label='Response threshold')
+        thr_ax.axvline(x=fly_mean_zchange_response_thresh, color='gray',
+            linestyle='--', label='Response threshold'
+        )
         
         # TODO maybe pick thresh from some kind of max of derivative (to
         # find an elbow)?
@@ -1735,13 +1931,24 @@ def process_traces(df_pickle, fly2response_threshold):
         out_strs.append(out_s)
 
     # TODO not sure why it seems i need such a high threshold here, to get
-    # reasonable sparseness... was the fly i'm testing it with just super
+    # reasonable sparseness... was the fly i was testing it with just super
     # responsive?
     trial_responders = \
-        scalar_response_criteria >= mean_zchange_response_thresh
+        scalar_response_criteria >= fly_mean_zchange_response_thresh
+
+    # TODO TODO TODO TODO check these values against those that go into the
+    # mean_frac_[barplot/responding] plots below (+ plotting scales are right)
+    # because the differences in this mean value seems to vary by more than the
+    # overall scales do in the plot...
+    # suspect cases:
+    # - control_2019-10-04_4_fn_0003: 0.03
+    # - control_2019-07-25_1__005: 0.05
+    # - (to a lesser extent) control_2019-10-04_2_fn_0002: 0.07
+    # TODO TODO TODO is it "reliable" responders below??? (but wouldn't that
+    # affect things in the opposite direction anyway?)
 
     out_s = ('Fraction of cells trials counted as responses (mean z-scored '
-        'dff > {:.2f}): {:.2f}').format(mean_zchange_response_thresh,
+        'dff > {:.2f}): {:.2f}').format(fly_mean_zchange_response_thresh,
         trial_responders.sum() / len(trial_responders)
     )
     if verbose:
@@ -1902,11 +2109,6 @@ def process_traces(df_pickle, fly2response_threshold):
         tidy_corrs_from_means = melt_symmetric(odor_corrs_from_means,
             name='corr'
         )
-        # TODO delete after getting refactoring in to process_traces to work.
-        # commented to show original position.
-        #correlation_dfs_from_means.append(
-        #    add_metadata(df, tidy_corrs_from_means)
-        #)
         ret_dict['correlation_ser_from_means'] = \
             add_metadata(df, tidy_corrs_from_means)
 
@@ -1914,11 +2116,6 @@ def process_traces(df_pickle, fly2response_threshold):
             name='corr'
         )
 
-        # TODO delete after getting refactoring in to process_traces to work.
-        # commented to show original position.
-        #correlation_dfs_from_maxes.append(
-        #    add_metadata(df, tidy_corrs_from_maxes)
-        #)
         ret_dict['correlation_ser_from_maxes'] = \
             add_metadata(df, tidy_corrs_from_maxes)
 
@@ -1930,9 +2127,6 @@ def process_traces(df_pickle, fly2response_threshold):
             fname=fname
         )
         auc_df.set_index(['task','odor','cell'], inplace=True)
-        # TODO delete after getting refactoring in to process_traces to work.
-        # commented to show original position.
-        #auc_dfs.append(add_metadata(df, auc_df))
         ret_dict['auc_df'] = add_metadata(df, auc_df)
 
     # TODO TODO would it make more sense to do some kind of PCA across
@@ -1951,9 +2145,6 @@ def process_traces(df_pickle, fly2response_threshold):
         # relevant?)
         pca_df = plot_pca(pivoted_window_trial_stats, fname=fname)
         pca_df.set_index('component_number', inplace=True)
-        # TODO delete after getting refactoring in to process_traces to work.
-        # commented to show original position.
-        #pca_dfs.append(add_metadata(df, pca_df))
         ret_dict['pca_df'] = add_metadata(df, pca_df)
 
     responsiveness = window_trial_stats.groupby('cell').mean()
@@ -2111,11 +2302,6 @@ def process_traces(df_pickle, fly2response_threshold):
             'simple_sum': simple_sum,
             'simple_mix_diff': simple_mix_diff
         })
-        # TODO delete after getting refactoring in to process_traces to work.
-        # commented to show original position.
-        #linearity_sers.append(add_metadata(df, linearity_ser))
-        #linearity_odor_dfs.append(add_metadata(df, linearity_odor_df))
-        #linearity_cell_dfs.append(add_metadata(df, linearity_cell_df))
         ret_dict['linearity_ser'] = add_metadata(df, linearity_ser)
         ret_dict['linearity_odor_df'] = add_metadata(df, linearity_odor_df)
         ret_dict['linearity_cell_df'] = add_metadata(df, linearity_cell_df)
@@ -2452,6 +2638,8 @@ if not args.only_analyze_cached:
         pickles = [p for p in pickles if test_substr in p]
 
     b = time.time()
+    # TODO TODO TODO skip this step when using not using
+    # fix_ref_odor_response_fracs
     print('reading all pickles to decide their order... ', end='', flush=True)
     pickles = order_by_odor_sets(pickles)
     print('done ({:.2f}s)'.format(time.time() - b), flush=True)
@@ -2491,7 +2679,7 @@ if not args.only_analyze_cached:
     # of traces????
     max_plotting_td = 1.0
 
-    if fit_matrices or odor_and_fit_matrices:
+    if plot_linearity_analysis or fit_matrices or odor_and_fit_matrices:
         do_linearity_analysis = True
     else:
         do_linearity_analysis = False
@@ -2500,32 +2688,19 @@ if not args.only_analyze_cached:
         # (date, fly_num) -> threshold
         fly2response_threshold = dict()
     else:
+        fly2response_threshold = None
         ref_odor = None
         ref_response_percent = None
-
-    # TODO maybe assert all outputs are same running w/ mp vs in loop here?
-    # (pdfs / pngs & cached stuff) (in case it's possible diff scope causes
-    # differences? is it though?) (and ideally compare to output before
-    # factoring loop contents to fn above / argument for why output would
-    # not be expected to change ...which it shouldn't, right?)
-    '''
-    ret_dicts = []
-    for df_pickle in pickles:
-        ret_dicts.append(process_traces(df_pickle))
-    '''
 
     # TODO some existing solution to output stdout output of workers in order
     # after map finishes? explore trying to make one w/ redirecting stdout,
     # like: https://stackoverflow.com/questions/5884517 at some point
-    # TODO TODO TODO probably refactor so rejection happens later?
-    # so that correlations of rejected flies can still be saved / averaged over
-    # later?
     parallel_process_traces = not args.no_parallel_process_traces
     if parallel_process_traces:
         with mp.Manager() as manager:
-            # TODO also handle case where fix_ref_odor_response_fracs == False!
-            # (or delete code supporting that case)
-            fly2response_threshold = manager.dict()
+            if fix_ref_odor_response_fracs:
+                fly2response_threshold = manager.dict()
+
             # The multiprocessing docs say this is the default value if the
             # `processes` kwarg is not specified in the Pool constructor.
             print(f'Processing traces with {os.cpu_count()} workers')
@@ -2572,6 +2747,26 @@ if not args.only_analyze_cached:
     # This filters out any recordings that were used to set some threshold, but
     # were otherwise intentionally skipped from the rest of the analysis.
     ret_dicts = [x for x in ret_dicts if x is not None]
+
+
+    if fix_ref_odor_response_fracs:
+        fly_id2response_thresh = {r['fly_id']: r['mean_zchange_response_thresh']
+            for r in ret_dicts
+        }
+        print('Fly mean Z-score response thresholds (starting with fly #1):')
+        for i in sorted(list(fly_keys2fly_id.values)):
+            frt = fly_id2response_thresh[i]
+            if i == fly_keys2fly_id.max():
+                end = '\n'
+            else:
+                end = ', '
+            print(f'{frt:.2f}', end=end)
+
+        mfrt = np.mean(list(fly_id2response_thresh.values()))
+        print("Mean of each fly's mean Z-score response threshold: "
+            f'{mfrt:.2f}\n'
+        )
+
 
     responder_sers = [x['responder_ser'] for x in ret_dicts]
     responders = pd.concat(responder_sers)
@@ -2655,6 +2850,9 @@ if not args.only_analyze_cached:
     with open(pickle_outputs_name, 'wb') as f:
         _locals = locals()
         data = {n: _locals[n] for n in param_names}
+        # TODO TODO also save the threshold we calculate from reference odor,
+        # if not using global threshold (to use in analysis later)
+        # (at output of each process_traces call!)
         data.update({
             # TODO maybe also need to save hashes / full figs, to check that
             # what exists on disk under the same names are actually what these
@@ -2706,6 +2904,8 @@ else:
             desired_ref_odor
         )
 
+    # TODO TODO TODO print mtime of this file? (or how old it is, as a
+    # duration)? (just as a sanity check it isn't too old)
     print(f'Loading computed outputs from {pickle_outputs_name}')
     with open(pickle_outputs_name, 'rb') as f:
         # TODO revert after debugging
@@ -2755,7 +2955,7 @@ else:
 n_flies = len(responders.index.to_frame()[fly_keys].drop_duplicates())
 fly_colors = sns.color_palette('hls', n_flies)
 
-odor_set_odors_nosolvent = [os - set(u.solvents) for os in odor_set_odors]
+odor_set_odors_nosolvent = [oset - set(u.solvents) for oset in odor_set_odors]
 
 # TODO fix cause of warnings that first plt call generates, e.g.:
 # Gtk-Message: ...: Failed to load module ["overlay-scrollbar"/...]
@@ -2774,7 +2974,7 @@ else:
 # only count cells that respond (reliably) to all odors, since it is not
 # possible for them to respond to > n_odors.
 n_max_odors_per_panel = max(
-    [len(os - n_ro_exclude) for os in odor_set_odors_nosolvent]
+    [len(oset - n_ro_exclude) for oset in odor_set_odors_nosolvent]
 )
 # TODO maybe this should be + 1 then, since n odors used to be 6, even though
 # kiwi (may?) have been included?
@@ -2819,6 +3019,12 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
         else:
             raise ValueError('odor set not recognized')
         del unique_odors
+
+        def add_rec_metadata(ser_or_df):
+            ser_or_df = add_metadata(rec_gser.reset_index(), ser_or_df)
+            return pd.concat([ser_or_df], names=['odor_set'],
+                keys=[odorset]
+            )
 
         # TODO still needed?
         rec_keys2odor_set[fly_gn + (rec_gn,)] = odorset
@@ -2886,7 +3092,9 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             (n_odor_repeats * n_rec_cells))[odor_order]
         check_fraction_series(frac_responders)
 
-        reliable_of_responder_barplots = False
+        frac_responders = add_rec_metadata(frac_responders)
+        frac_responder_sers.append(frac_responders)
+
         if not args.across_flies_only and reliable_of_responder_barplots:
             responded_at_all = n_trials_responded_to >= 1
             # These are both per-odor.
@@ -2920,19 +3128,6 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
             savefigs(reliable_of_resp_fig, 'reliable_of_resp', fname,
                 section='Response reliability'
             )
-
-        def add_rec_metadata(ser_or_df):
-            ser_or_df = add_metadata(rec_gser.reset_index(), ser_or_df)
-            return pd.concat([ser_or_df], names=['odor_set'],
-                keys=[odorset]
-            )
-
-        frac_responders = add_rec_metadata(frac_responders)
-        frac_responder_sers.append(frac_responders)
-
- 
-        of_mix_reliable_to_others_barplot = False
-        of_mix_rel_to_others_ratio_barplt = False
 
         if (of_mix_reliable_to_others_barplot or
             of_mix_rel_to_others_ratio_barplt):
@@ -3038,104 +3233,114 @@ for i, (fly_gn, fly_gser) in enumerate(responders.groupby(fly_keys)):
         ########################################################################
         # end section to de-dupe w/ code in first loop
 
-        rr_idx_names = reliable_responders.index.names
-        rr = reliable_responders.reset_index()
-        reliable_responders = rr[~ rr.name1.isin(n_ro_exclude)
-            ].set_index(rr_idx_names)
-        assert reliable_responders.shape[1] == 1
-        reliable_responders = reliable_responders.iloc[:, 0]
+        if do_tuning_breadth_vs_shuffle:
+            rr_idx_names = reliable_responders.index.names
+            rr = reliable_responders.reset_index()
+            reliable_responders = rr[~ rr.name1.isin(n_ro_exclude)
+                ].set_index(rr_idx_names)
+            del rr, rr_idx_names
+            assert reliable_responders.shape[1] == 1
+            reliable_responders = reliable_responders.iloc[:, 0]
 
-        # TODO maybe try w/ any responses counting it as a responder for the
-        # odor, instead of the 2 required for reliable_responders?
-        rec_n_reliable_responders = reliable_responders.groupby('cell').sum()
-        rec_n_reliable_responders.name = 'n_odors_reliable_to'
-        assert rec_n_reliable_responders.notnull().all(), \
-            'cant cast to int if any NaN'
-        rec_n_reliable_responders = rec_n_reliable_responders.astype(np.uint16)
+            # TODO rename this to drop 'rec_' prefix or rename
+            # 'reliable_responders' to add it, to be clear that both are within
+            # recording
+            # TODO maybe try w/ any responses counting it as a responder for the
+            # odor, instead of the 2 required for reliable_responders?
+            rec_n_reliable_responders = \
+                reliable_responders.groupby('cell').sum()
 
-        n_ro_hist_odors = \
-            reliable_responders.index.get_level_values('name1').unique()
-        assert 'pfo' not in n_ro_hist_odors
-        assert 'water' not in n_ro_hist_odors
-        if not n_ro_include_real:
-            assert 'kiwi' not in n_ro_hist_odors
-            assert 'fly food' not in n_ro_hist_odors
+            rec_n_reliable_responders.name = 'n_odors_reliable_to'
+            assert rec_n_reliable_responders.notnull().all(), \
+                'cant cast to int if any NaN'
+            rec_n_reliable_responders = \
+                rec_n_reliable_responders.astype(np.uint16)
 
-        # Since last bin includes right edge, but beyond that stuff would not
-        # have a bin.
-        assert rec_n_reliable_responders.max() <= n_ro_bins[-1]
+            n_ro_hist_odors = \
+                reliable_responders.index.get_level_values('name1').unique()
+            assert 'pfo' not in n_ro_hist_odors
+            assert 'water' not in n_ro_hist_odors
+            if not n_ro_include_real:
+                assert 'kiwi' not in n_ro_hist_odors
+                assert 'fly food' not in n_ro_hist_odors
+            del n_ro_hist_odors
 
-        # TODO TODO TODO double check myself, and with B, that this is actually
-        # the shuffle we want to do
-        # TODO TODO TODO maybe first want to subset boolean (odor, cell)
-        # responder flags to only include cells that reliable responded to
-        # anything??
-        # TODO TODO TODO maybe keep number of times each cell is counted a
-        # responder constant, sampling from something like the distribution of
-        # how often each odor was responded to??? (so explicitly just changing
-        # real data so it is now as if each odor WAS independent? (this
-        # correct?))
+            # Since last bin includes right edge, but beyond that stuff would
+            # not have a bin.
+            assert rec_n_reliable_responders.max() <= n_ro_bins[-1]
 
-        shuffle_indices = np.stack([
-            np.random.permutation(len(reliable_responders)) for _
-            in range(n_shuffles)
-        ])
-        # Transposing so first dimension will be length of reliable_responders
-        # again, so the index from reliable_responders can be applied to it.
-        shuffled_rrs = reliable_responders.values[shuffle_indices].T
+            # TODO TODO double check myself, and with B, that this is actually
+            # the shuffle we want to do
+            # TODO TODO TODO maybe first want to subset boolean (odor, cell)
+            # responder flags to only include cells that reliable responded to
+            # anything??
+            # TODO TODO TODO maybe keep number of times each cell is counted a
+            # responder constant, sampling from something like the distribution
+            # of how often each odor was responded to??? (so explicitly just
+            # changing real data so it is now as if each odor WAS independent?
+            # (this correct?))
 
-        # Checking that different shuffles actually differ.
-        if reliable_responders.sum() > 0:
-            first_shuffle = shuffled_rrs[:, 0]
-            shuffles_to_check = np.random.choice(np.arange(1, n_shuffles),
-                size=5, replace=False
+            shuffle_indices = np.stack([
+                np.random.permutation(len(reliable_responders)) for _
+                in range(n_shuffles)
+            ])
+            # Transposing so first dimension will be length of
+            # reliable_responders again, so the index from reliable_responders
+            # can be applied to it.
+            shuffled_rrs = reliable_responders.values[shuffle_indices].T
+
+            # Checking that different shuffles actually differ.
+            if reliable_responders.sum() > 0:
+                first_shuffle = shuffled_rrs[:, 0]
+                shuffles_to_check = np.random.choice(np.arange(1, n_shuffles),
+                    size=5, replace=False
+                )
+                for i in shuffles_to_check:
+                    assert i != 0, 'next assertion would fail b/c identity'
+                    assert not np.array_equal(shuffled_rrs[:, i], first_shuffle
+                        ), 'shuffles did not differ. fix shuffling procedure.'
+
+            shuffled_rrs = pd.DataFrame(shuffled_rrs,
+                index=reliable_responders.index
             )
-            for i in shuffles_to_check:
-                assert i != 0, 'next assertion would fail b/c identity'
-                assert not np.array_equal(shuffled_rrs[:, i], first_shuffle), \
-                    'shuffles did not differ. fix shuffling procedure.'
+            shuffled_rrs.columns.name = 'shuffle_num'
 
-        shuffled_rrs = pd.DataFrame(shuffled_rrs,
-            index=reliable_responders.index
-        )
-        shuffled_rrs.columns.name = 'shuffle_num'
+            # TODO delete this section?
+            shuffled_rr_sums = shuffled_rrs.sum()
+            assert shuffled_rr_sums.shape == (n_shuffles,)
+            unq_shuffled_rr_sums = shuffled_rr_sums.unique()
+            assert len(unq_shuffled_rr_sums) == 1
+            assert unq_shuffled_rr_sums[0] == reliable_responders.sum()
+            #
 
-        # TODO delete this section?
-        shuffled_rr_sums = shuffled_rrs.sum()
-        assert shuffled_rr_sums.shape == (n_shuffles,)
-        unq_shuffled_rr_sums = shuffled_rr_sums.unique()
-        assert len(unq_shuffled_rr_sums) == 1
-        assert unq_shuffled_rr_sums[0] == reliable_responders.sum()
-        #
+            rec_shuffled_n_rrs = shuffled_rrs.groupby('cell').sum()
+            assert rec_shuffled_n_rrs.notnull().all(axis=None), \
+                'cant cast to int if any NaN'
+            rec_shuffled_n_rrs = rec_shuffled_n_rrs.astype(np.uint16)
 
-        rec_shuffled_n_rrs = shuffled_rrs.groupby('cell').sum()
-        assert rec_shuffled_n_rrs.notnull().all(axis=None), \
-            'cant cast to int if any NaN'
-        rec_shuffled_n_rrs = rec_shuffled_n_rrs.astype(np.uint16)
+            # TODO provide CIs for the histogram value in each bin?
+            # TODO and then plot w/ fill between? or save all hist vals and use
+            # seaborn to plot after this loop?
 
-        # TODO provide CIs for the histogram value in each bin?
-        # TODO and then plot w/ fill between? or save all hist vals and use
-        # seaborn to plot after this loop?
+            # TODO TODO how to aggregate these across flies (and how to get CI
+            # on [mean-per-bin(?)]-shuffle-hist across flies at end, given diff
+            # #s of cells per fly?)
 
-        # TODO TODO how to aggregate these across flies (and how to
-        # get CI on [mean-per-bin(?)]-shuffle-hist across flies at end, given
-        # diff #s of cells per fly?)
+            # TODO TODO KDE w/ weights based approach like in shuffle_fruits??
+            # TODO TODO maybe still check that against mean-of-mean-hists +
+            # bootstrapped mean there? (or mean of CIs from each fly? those
+            # seem like they are quite different, though not sure which i want)
 
-        # TODO TODO KDE w/ weights based approach like in shuffle_fruits??
-        # TODO TODO maybe still check that against mean-of-mean-hists +
-        # bootstrapped mean there? (or mean of CIs from each fly? those
-        # seem like they are quite different, though not sure which i want)
+            # TODO TODO do i want to plot the mean hist from shuffle
+            # and then bootstrap shuffled hists to compute CI of this mean??
+            # or just plot percentiles of the histogram from the shuffles?
+            # maybe at that point, plot median rather than mean hist?
 
-        # TODO TODO do i want to plot the mean hist from shuffle
-        # and then bootstrap shuffled hists to compute CI of this mean??
-        # or just plot percentiles of the histogram from the shuffles?
-        # maybe at that point, plot median rather than mean hist?
+            rec_shuffled_n_rrs = rec_shuffled_n_rrs.unstack()
+            rec_shuffled_n_rrs.name = rec_n_reliable_responders.name
 
-        rec_shuffled_n_rrs = rec_shuffled_n_rrs.unstack()
-        rec_shuffled_n_rrs.name = rec_n_reliable_responders.name
-
-        n_ros_sers.append(add_rec_metadata(rec_n_reliable_responders))
-        shuffle_n_ros_sers.append(add_rec_metadata(rec_shuffled_n_rrs))
+            n_ros_sers.append(add_rec_metadata(rec_n_reliable_responders))
+            shuffle_n_ros_sers.append(add_rec_metadata(rec_shuffled_n_rrs))
 del odor_order
 
 # this is just the mean frac responding... maybe i should have gotten the trial
@@ -3164,7 +3369,6 @@ del new_fly_keys2fly_id, keys
 # TODO start by shuffling as responses above, to do the analysis below?
 # (or just compare model to real stuff, w/o also comparing model shuffle
 # to model?)
-model_mixture_responses = True
 if model_mixture_responses:
     # So we don't depend on `olfsysm` otherwise.
     from model_mix_responses import fit_model
@@ -3355,96 +3559,104 @@ odorset_distplot_hist_kws = {
 # col_wrap for FacetGrids
 cw = 4
 
-# TODO delete after fixing legend business
-# (commented b/c colors do at least seem to be in correspondence between
-# n_ro_hist and facetgrid below)
-#print(frac_responder_df[fly_keys + ['fly_id']].drop_duplicates())
-#
-real_n_ros_df = u.add_fly_id(pd.concat(n_ros_sers).reset_index())
-shuffle_n_ros_df = u.add_fly_id(pd.concat(shuffle_n_ros_sers).reset_index())
+# TODO TODO move all this real vs shuffle # responder stuff just below loop that
+# computes it (and maybe move stuff that's currently between them up top, if
+# needed?) (also move modelling stuff)
+if do_tuning_breadth_vs_shuffle:
+    # TODO delete after fixing legend business
+    # (commented b/c colors do at least seem to be in correspondence between
+    # n_ro_hist and facetgrid below)
+    #print(frac_responder_df[fly_keys + ['fly_id']].drop_duplicates())
+    #
+    real_n_ros_df = u.add_fly_id(pd.concat(n_ros_sers).reset_index())
+    shuffle_n_ros_df = u.add_fly_id(pd.concat(shuffle_n_ros_sers).reset_index())
 
-real_n_ros_df['is_shuffle'] = False
-shuffle_n_ros_df['is_shuffle'] = True
-n_ros_df = pd.concat([real_n_ros_df, shuffle_n_ros_df], ignore_index=True,
-    sort=False
-)
-
-def set_shuffle_facet_titles(g, say_within_each_fly=True):
-    for ax in g.axes.flat:
-        old_title = ax.get_title()
-        if old_title == 'is_shuffle = False':
-            title = 'Real data'
-        elif old_title == 'is_shuffle = True':
-            # Whether a cell responded reliably to a certain odor is shuffled
-            # across all cells and also across all odors, within each fly.
-            title = 'Cells and odors shuffled'
-            if say_within_each_fly:
-                title += ' within each fly'
-        else:
-            raise AssertionError('unexpected title')
-        ax.set_title(title)
-
-aspect = 1.5
-yvar = 'n_odors_reliable_to'
-xlabel = 'Number of odors responded to reliably'
-# TODO change 'Density of cells' in other places to this? or vice versa?
-ylabel = 'Fraction of cells'
-# TODO better name?
-title = 'Cell tuning breadth vs. shuffle'
-hspace = 0.3
-fname = 'tuning_breadth_vs_shuffle'
-section = 'Cell tuning breadth'
-
-def tuning_breadth_vs_shuffle(fly=None):
-    df = n_ros_df
-    curr_title = title
-    curr_fname = fname
-    top = 0.9
-    if fly is not None:
-        df = df[df.fly_id == fly]
-        curr_title = f'Fly {fly}\n{curr_title}'
-        curr_fname += f'_fly{fly}'
-        top = 0.87
-
-    g = sns.FacetGrid(df, row='is_shuffle', hue='odor_set',
-        palette=odor_set2color, aspect=aspect
+    real_n_ros_df['is_shuffle'] = False
+    shuffle_n_ros_df['is_shuffle'] = True
+    n_ros_df = pd.concat([real_n_ros_df, shuffle_n_ros_df], ignore_index=True,
+        sort=False
     )
-    g.map(sns.distplot, yvar, bins=n_ro_bins, kde=False,
-        norm_hist=True, hist_kws=dict(odorset_distplot_hist_kws)
-    )
-    g.add_legend(title=odor_set_legend_title)
-    g.set_axis_labels(xlabel, ylabel)
-    g.fig.suptitle(curr_title)
-    g.fig.subplots_adjust(top=top, hspace=hspace)
-    u.fix_facetgrid_axis_labels(g)
-    set_shuffle_facet_titles(g)
-    savefigs(g.fig, curr_fname, section=section, order=200 if fly else None)
+    del real_n_ros_df, shuffle_n_ros_df
 
-tuning_breadth_vs_shuffle()
-for fly in n_ros_df.fly_id.unique():
-    tuning_breadth_vs_shuffle(fly=fly)
+    def set_shuffle_facet_titles(g, say_within_each_fly=True):
+        for ax in g.axes.flat:
+            old_title = ax.get_title()
+            if old_title == 'is_shuffle = False':
+                title = 'Real data'
+            elif old_title == 'is_shuffle = True':
+                # Whether a cell responded reliably to a certain odor is
+                # shuffled across all cells and also across all odors, within
+                # each fly.
+                title = 'Cells and odors shuffled'
+                if say_within_each_fly:
+                    title += ' within each fly'
+            else:
+                raise AssertionError('unexpected title')
+            ax.set_title(title)
 
-for oset in odor_set_order:
-    oset_df = n_ros_df[n_ros_df.odor_set == oset]
+    aspect = 1.5
+    yvar = 'n_odors_reliable_to'
+    xlabel = 'Number of odors responded to reliably'
+    # TODO change 'Density of cells' in other places to this? or vice versa?
+    ylabel = 'Fraction of cells'
+    # TODO better name?
+    title = 'Cell tuning breadth vs. shuffle'
+    hspace = 0.3
+    fname = 'tuning_breadth_vs_shuffle'
+    section = 'Cell tuning breadth'
 
-    # May not easily be able to show non-normalized plots here (or at least
-    # counts w/in shuffle might stand to be adjusted, because raw counts are
-    # also counted across shuffles, so scale is very different in shuffle case)
-    g = sns.FacetGrid(oset_df, row='is_shuffle',
-        hue='fly_id', palette=fly_id_palette, aspect=aspect
-    )
-    g.map(sns.distplot, yvar, norm_hist=True, kde=False,
-        bins=n_ro_bins, hist_kws=dict(odorset_distplot_hist_kws)
-    )
-    g.add_legend(title=fly_id_legend_title)
-    g.set_axis_labels(xlabel, ylabel)
+    def tuning_breadth_vs_shuffle(fly=None):
+        df = n_ros_df
+        curr_title = title
+        curr_fname = fname
+        top = 0.9
+        if fly is not None:
+            df = df[df.fly_id == fly]
+            curr_title = f'Fly {fly}\n{curr_title}'
+            curr_fname += f'_fly{fly}'
+            top = 0.87
 
-    g.fig.suptitle(title + f'\n{oset}')
-    set_shuffle_facet_titles(g, say_within_each_fly=False)
-    g.fig.subplots_adjust(top=0.86, hspace=hspace, left=0.13)
-    u.fix_facetgrid_axis_labels(g)
-    savefigs(g.fig, f'{fname}_{oset}', section=section)
+        g = sns.FacetGrid(df, row='is_shuffle', hue='odor_set',
+            palette=odor_set2color, aspect=aspect
+        )
+        g.map(sns.distplot, yvar, bins=n_ro_bins, kde=False,
+            norm_hist=True, hist_kws=dict(odorset_distplot_hist_kws)
+        )
+        g.add_legend(title=odor_set_legend_title)
+        g.set_axis_labels(xlabel, ylabel)
+        g.fig.suptitle(curr_title)
+        g.fig.subplots_adjust(top=top, hspace=hspace)
+        u.fix_facetgrid_axis_labels(g)
+        set_shuffle_facet_titles(g)
+        savefigs(g.fig, curr_fname, section=section, order=200 if fly else None)
 
+    tuning_breadth_vs_shuffle()
+    for fly in n_ros_df.fly_id.unique():
+        tuning_breadth_vs_shuffle(fly=fly)
+
+    for oset in odor_set_order:
+        oset_df = n_ros_df[n_ros_df.odor_set == oset]
+
+        # May not easily be able to show non-normalized plots here (or at least
+        # counts w/in shuffle might stand to be adjusted, because raw counts are
+        # also counted across shuffles, so scale is very different in shuffle
+        # case)
+        g = sns.FacetGrid(oset_df, row='is_shuffle',
+            hue='fly_id', palette=fly_id_palette, aspect=aspect
+        )
+        g.map(sns.distplot, yvar, norm_hist=True, kde=False,
+            bins=n_ro_bins, hist_kws=dict(odorset_distplot_hist_kws)
+        )
+        g.add_legend(title=fly_id_legend_title)
+        g.set_axis_labels(xlabel, ylabel)
+
+        g.fig.suptitle(title + f'\n{oset}')
+        set_shuffle_facet_titles(g, say_within_each_fly=False)
+        g.fig.subplots_adjust(top=0.86, hspace=hspace, left=0.13)
+        u.fix_facetgrid_axis_labels(g)
+        savefigs(g.fig, f'{fname}_{oset}', section=section)
+
+    del n_ros_df
 
 # Used swarmplot before, but I like the jittering here, to avoid overlapping
 # points.
@@ -3458,18 +3670,20 @@ for oset in odor_set_order:
 # TODO TODO maybe somehow connect lines that share a hue (to make it more
 # visually clear how much overall responsiveness is the main thing that varies)
 
+"""
+# TODO TODO TODO delete me
+plt.close('all')
+#
+"""
+
 categ_pt_plot_fn = with_odor_order(sns.stripplot)
 #categ_pt_plot_fn = with_odor_order(sns.swarmplot)
 
+'''
 g = sns.FacetGrid(frac_responder_df, col='odor_set', hue='fly_id', 
     palette=fly_id_palette, sharex=False
 )
 g.map(categ_pt_plot_fn, 'name1', 'frac_responding')
-
-# TODO TODO either somehow show (date, fly_num) in this legend, or show
-# fly_id in n_ro_hist above, to match between them
-# TODO TODO maybe modify add_fly_id to add a concatenation of string
-# representations of each of the group keys?
 g.add_legend(title=fly_id_legend_title)
 g.set_axis_labels('Odor', 'Fraction responding')
 # TODO way to just capitalize?
@@ -3477,6 +3691,204 @@ g.set_titles('{col_name}')
 savefigs(g.fig, 'mean_frac_responding', section='Mean fraction responding',
     section_order=-1
 )
+'''
+
+# TODO try catplot w/ kind='point', or will i then lose what with_odor_order
+# gives me?
+
+# I tried sns.lineplot, but couldn't specify order (so with_odor_order wrapper
+# didn't work), and the docs seem to say it shouldn't have worked with the 'x'
+# argument (the odor) being non-numeric anyway, so that seems to have just
+# accidentally worked.
+# sys.pointplot without odor order wrapper also has offset issues, with some
+# points lined up with the *wrong* odor labels (see reference odor, for example)
+
+# TODO TODO use one of / both markers and linestyles kwargs to pointplot to
+# differentiate control experiments w/ diff dilutions (and ideally add to legend
+# somehow)
+g = sns.FacetGrid(frac_responder_df, col='odor_set', sharex=False)
+
+# TODO TODO how to change alpha of connecting line and / or points?
+# alpha kwarg didn't seem to work..
+
+# didn't work
+#alpha_pal = {f: (c[0], c[1], c[2], 0.1) for f, c in fly_id_palette.items()}
+
+# TODO TODO TODO how to line up markers/linestyles and hues if we are using
+# palette?  possible? just pass a list for hues, and map from palette in
+# advance? (or will that screw stuff up across axes?)
+# TODO maybe in combination with hue_order it will work across axes?
+
+# This post (again) seems to explain why the hue legend wasn't showing up
+# correctly when hue and palette were set in the FacetGrid constructor:
+# https://stackoverflow.com/questions/28992174
+# For some reason, this works when hue is passed as third vararg, but not when
+# it is passed as a kwarg (and it doesn't seem to be the fault of my wrapper, as
+# it behaves the same when just mapping with sns.pointplot).
+#alpha = 0.3
+
+# TODO TODO maybe map twice, once w/ subset w/ one marker, once we other subset
+# and other marker? (oh, but i can't change the data... or can i? take some
+# hacks?)
+
+# this doesn't work across axes. for example, flyfood also has stuff that should
+# be last marker, but since only 2 flies in that axes, it doesn't work.
+#markers = ['o'] * 7 + ['x'] * 2
+
+# i also tried hoping that there was undocumented support for a dict here,
+# as with palette, but that does not seem to be the case
+#markers = dict([x for x in zip(range(1,8), ['o']*7)] + [(8,'x'),(9,'x')])
+
+g.map(with_odor_order(sns.pointplot), 'name1', 'frac_responding', 'fly_id',
+#    palette=alpha_pal, ci=None, unsafe_skip_hue_checks=True
+    palette=fly_id_palette, ci=None, unsafe_skip_hue_checks=True, dodge=True,
+#    markers=markers
+#    plot_kws=dict(alpha=alpha)
+)
+# This answer also passes alpha in plot_kws in above map call, but I don't think
+# that does anything.
+# https://stackoverflow.com/questions/56300170
+# (answer doesn't work anyway. g.collections / lines don't exist.
+# maybe try https://stackoverflow.com/questions/45556499 or appropriate input to
+# g.set(...)
+'''
+plt.setp(g.collections, alpha=alpha)
+plt.setp(g.lines, alpha=alpha)
+'''
+g.add_legend(title=fly_id_legend_title)
+g.set_axis_labels('Odor', 'Fraction responding')
+g.set_titles('{col_name}')
+
+savefigs(g.fig, 'mean_frac_responding', section='Mean fraction responding',
+    section_order=-1
+)
+
+"""
+# TODO TODO TODO delete me
+plt.show()
+import ipdb; ipdb.set_trace()
+#
+"""
+
+
+# Mean{across trials} of min{across locations} EAG deflections from only my
+# summer 2020 experiments.
+eag_df = pd.read_csv('mean_min_eag.csv')
+
+odorname2odor_set = {
+    'ethanol': 'kiwi',
+    'ethyl acetate': 'kiwi',
+    'ethyl butyrate': 'kiwi',
+    'isoamyl acetate': 'kiwi',
+    'isoamyl alcohol': 'kiwi',
+    'kiwi approx.': 'kiwi',
+    '1-octen-3-ol': 'control',
+    '2-heptanone': 'control',
+    'furfural': 'control',
+    'methyl salicylate': 'control',
+    'valeric acid': 'control',
+    'control mix': 'control',
+}
+odorname2name1 = {
+    'ethanol': 'etoh',
+    'ethyl acetate': 'ea',
+    'ethyl butyrate': 'eb',
+    'isoamyl acetate': 'iaa',
+    'isoamyl alcohol': 'iaol',
+    'kiwi approx.': 'mix',
+    '1-octen-3-ol': '1o3ol',
+    '2-heptanone': '2h',
+    'furfural': 'fur',
+    'methyl salicylate': 'ms',
+    'valeric acid': 'va',
+    'control mix': 'mix',
+}
+eag_df['odor_set'] = eag_df.odorname.map(odorname2odor_set)
+eag_df['name1'] = eag_df.odorname.map(odorname2name1)
+eag_stats = eag_df.groupby(['name1','concentration','odor_set']).min_eag_mv.agg(
+    ['mean','sem']
+)
+
+# TODO TODO define from date + fly num within in the future!!! in case fly_ids
+# get offset
+fly_id2control_dilution = {
+    1: -1.0,
+    2: -1.0,
+    3: -1.0,
+    4: -1.0,
+    5: -1.0,
+    6: -1.0,
+    # TODO replace w/ what they actually were (though no eag data...)
+    7: None,
+    8: None,
+    9: -0.7
+}
+frac_responder_df['control_dilution'] = frac_responder_df.fly_id.map(
+    fly_id2control_dilution
+)
+# Since the step above adds odor_set='kiwi', control_dilution=-0.7 rows,
+# which are incorrect and will break stuff below.
+frac_responder_df.loc[frac_responder_df.odor_set == 'kiwi', 'control_dilution'
+    ] = -1.0
+
+fstats = frac_responder_df.groupby(['odor_set','name1','control_dilution']
+    ).frac_responding.agg(['mean','sem']).reset_index()
+fstats.rename(columns={'mean': 'fr_mean', 'sem': 'fr_sem'}, inplace=True)
+
+fig, ax = plt.subplots()
+
+edf = eag_stats.reset_index()
+edf['mean'] = np.abs(edf['mean'])
+# "concentration" as defined in eag_df column. eag_df only has 1.0 and 0.7
+edf.rename(columns={'concentration': 'control_dilution', 'mean': 'emean',
+    'sem': 'esem'}, inplace=True)
+
+fdf = fstats
+
+mdf = fdf.merge(edf)
+
+kdf = mdf[mdf.odor_set == 'kiwi']
+cdfl = mdf[(mdf.odor_set == 'control') & (mdf.control_dilution == -1.0)]
+#cdfh = mdf[(mdf.odor_set == 'control') & (mdf.control_dilution == -0.7)]
+
+ax.errorbar(kdf.emean, kdf.fr_mean, xerr=kdf.esem, yerr=kdf.fr_sem, fmt='none',
+    ecolor=odor_set2color['kiwi'], label='Kiwi'
+)
+for x, y, n in zip(kdf.emean, kdf.fr_mean, kdf.name1):
+    # fontdict? **kwargs?
+    ax.text(x, y, n, ha='center', va='center')
+
+ax.errorbar(cdfl.emean, cdfl.fr_mean, xerr=cdfl.esem, yerr=cdfl.fr_sem,
+    fmt='none', ecolor=odor_set2color['control'], label='Weaker control'
+)
+for x, y, n in zip(cdfl.emean, cdfl.fr_mean, cdfl.name1):
+    # fontdict? **kwargs?
+    ax.text(x, y, n, ha='center', va='center')
+
+# TODO also plot just frac responding data (on left?) for 4x boosted?
+
+# since there is just one point, not passing yerr
+'''
+eb1 = ax.errorbar(cdfh.emean, cdfh.fr_mean, xerr=cdfh.esem,
+    fmt='none', ecolor=odor_set2color['control'], #linestyle='--',
+    label='2x boosted control'
+)
+# https://stackoverflow.com/questions/22995797
+#eb1[-1][0] is the LineCollection objects of the errorbar lines
+eb1[-1][0].set_linestyle('--') 
+'''
+
+ax.set_xlabel('Absolute value of fly-mean (location,trial)-min EAG (mV)')
+ax.set_ylabel('Fraction KCs responding')
+
+ax.legend(loc='upper left')
+
+savefigs(fig, 'eag_vs_frac_responding', section='EAG vs. KC response fraction')
+'''
+plt.show()
+import ipdb; ipdb.set_trace()
+import sys; sys.exit()
+'''
 
 
 # TODO TODO TODO TODO drop this fly from everything in the future
@@ -3605,111 +4017,121 @@ if hallem_correlations:
             )
 
 
-# TODO lookup which corrs (max / mean) to use from trial_stat, if not gonna
-# delete saving multiple
-corr_df = u.add_fly_id(corr_ser_from_maxes.reset_index())
-add_odorset(corr_df)
+if plot_mean_correlations or plot_correlation_consistencency:
+    # TODO lookup which corrs (max / mean) to use from trial_stat, if not gonna
+    # delete saving multiple
+    corr_df = u.add_fly_id(corr_ser_from_maxes.reset_index())
+    add_odorset(corr_df)
 
-cols = ['fly_id','odor_set','name1_a','repeat_num_a','name1_b','repeat_num_b',
-    'corr'
-]
-for tstat in ('max',):
-    cbar_label = f'Mean of fly {tstat} response {u.dff_latex} correlations'
-    if tstat == 'max':
-        cdf = corr_df
-    else:
-        cdf = u.add_fly_id(corr_ser_from_means.reset_index())
-        add_odorset(cdf)
+if plot_mean_correlations:
+    cols = ['fly_id','odor_set','name1_a','repeat_num_a','name1_b',
+        'repeat_num_b','corr'
+    ]
+    for tstat in ('max',):
+        cbar_label = f'Mean of fly {tstat} response {u.dff_latex} correlations'
+        if tstat == 'max':
+            cdf = corr_df
+        else:
+            cdf = u.add_fly_id(corr_ser_from_means.reset_index())
+            add_odorset(cdf)
 
-    # TODO just drop this fly_id earlier so it applies everywhere
-    df = cdf.loc[~ cdf.fly_id.isin(bad_corr_fly_ids), cols].copy()
-    # so we don't need to worry about nanmean / something like that
-    assert not df['corr'].isnull().any()
+        # TODO just drop this fly_id earlier so it applies everywhere
+        df = cdf.loc[~ cdf.fly_id.isin(bad_corr_fly_ids), cols].copy()
+        # so we don't need to worry about nanmean / something like that
+        assert not df['corr'].isnull().any()
 
-    n_per_odorset = df.groupby('odor_set').fly_id.nunique()
+        n_per_odorset = df.groupby('odor_set').fly_id.nunique()
 
-    # this averages corr over fly_id
-    ser = df.groupby(cols[1:-1])['corr'].mean()
-    name_cols = [c for c in ser.index.names if c.startswith('name1')]
+        # this averages corr over fly_id
+        ser = df.groupby(cols[1:-1])['corr'].mean()
+        name_cols = [c for c in ser.index.names if c.startswith('name1')]
 
-    # TODO TODO in the future, maybe turn this into a facetgrid thing somehow,
-    # and just share one colorbar to the right? (one facet per odor_set)
-    for go, gser in ser.groupby('odor_set'):
-        odor_order = odor_set2order[go]
-        n = n_per_odorset[go]
+        # TODO TODO in the future, maybe turn this into a facetgrid thing
+        # somehow, and just share one colorbar to the right? (one facet per
+        # odor_set)
+        for go, gser in ser.groupby('odor_set'):
+            odor_order = odor_set2order[go]
+            n = n_per_odorset[go]
 
-        gdf = invert_melt_symmetric(gser)
+            gdf = invert_melt_symmetric(gser)
 
-        # TODO TODO TODO TODO for these, should probably not average over the
-        # correlations between trials and themselves, right (since they are
-        # always 1...)?
-        mdf = invert_melt_symmetric(gser.groupby(name_cols).mean())
+            # TODO TODO TODO TODO for these, should probably not average over
+            # the correlations between trials and themselves, right (since they
+            # are always 1...)?
+            mdf = invert_melt_symmetric(gser.groupby(name_cols).mean())
 
-        for no_real in (False, True):
-            noreal_str = '_noreal' if no_real else ''
+            for no_real in (False, True):
+                noreal_str = '_noreal' if no_real else ''
 
-            if no_real:
-                #if len([o for o in odor_order if o in u.natural]) == 0:
-                if go == 'control':
-                    # (no need to also make this figure for the control set(s),
-                    # which do not have a real odor)
-                    continue
+                if no_real:
+                    #if len([o for o in odor_order if o in u.natural]) == 0:
+                    if go == 'control':
+                        # (no need to also make this figure for the control
+                        # set(s), which do not have a real odor)
+                        continue
 
-                def _get_mask(multiindex):
-                    mask =  ~ multiindex.get_level_values(0).isin(u.natural)
-                    assert mask.any()
-                    return mask
+                    def _get_mask(multiindex):
+                        mask =  ~ multiindex.get_level_values(0).isin(u.natural)
+                        assert mask.any()
+                        return mask
 
-                def _filter_real(rdf):
-                    imask = _get_mask(rdf.index)
-                    cmask = _get_mask(rdf.columns)
-                    return rdf.loc[imask, cmask]
+                    def _filter_real(rdf):
+                        imask = _get_mask(rdf.index)
+                        cmask = _get_mask(rdf.columns)
+                        return rdf.loc[imask, cmask]
 
-                p_gdf = _filter_real(gdf)
-                p_mdf = _filter_real(mdf)
-                porder = [o for o in odor_order if o not in u.natural]
-            else:
-                p_gdf = gdf
-                p_mdf = mdf
-                porder = odor_order
+                    p_gdf = _filter_real(gdf)
+                    p_mdf = _filter_real(mdf)
+                    porder = [o for o in odor_order if o not in u.natural]
+                else:
+                    p_gdf = gdf
+                    p_mdf = mdf
+                    porder = odor_order
 
-            # TODO maybe have the title n=<how many flies>. though i risk being
-            # misleading since some odors like pfo have less...  or real kiwi...
-            # maybe just drop stuff that has less? idk... real stuff is nice...
-            fig = u.plot_odor_corrs(p_gdf, odors_in_order=porder,
-                colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
-            )
-            savefigs(fig, f'mean_trial_corrs_{tstat}_{go}{noreal_str}',
-                section='Mean KC response correlations, trial-by-trial',
-                exclude_from_latex=no_real
-            )
+                # TODO maybe have the title n=<how many flies>. though i risk
+                # being misleading since some odors like pfo have less...  or
+                # real kiwi...  maybe just drop stuff that has less? idk... real
+                # stuff is nice...
+                fig = u.plot_odor_corrs(p_gdf, odors_in_order=porder,
+                    colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
+                )
+                savefigs(fig, f'mean_trial_corrs_{tstat}_{go}{noreal_str}',
+                    section='Mean KC response correlations, trial-by-trial',
+                    exclude_from_latex=no_real
+                )
 
-            fig = u.plot_odor_corrs(p_mdf, odors_in_order=porder,
-                colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
-            )
-            savefigs(fig, f'mean_corrs_{tstat}_{go}{noreal_str}',
-                section='Mean KC response correlations',
-                exclude_from_latex=no_real
-            )
-del cols, ser, df, gdf, odor_order, fig, cbar_label
+                fig = u.plot_odor_corrs(p_mdf, odors_in_order=porder,
+                    colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
+                )
+                savefigs(fig, f'mean_corrs_{tstat}_{go}{noreal_str}',
+                    section='Mean KC response correlations',
+                    exclude_from_latex=no_real
+                )
+    del cols, ser, df, gdf, odor_order, fig, cbar_label
 
-keys = ['odor_set','fly_id','name1_a','name1_b']
-for corr_agg_fn in ('mean', 'max'):
-    agged_corrs = corr_df.groupby(keys)['corr'].agg(corr_agg_fn).reset_index()
+if plot_correlation_consistencency:
+    # TODO TODO TODO uncomment. was just trying to get past an assertion failure
+    # inside here 2020-08-25
+    #'''
+    keys = ['odor_set','fly_id','name1_a','name1_b']
+    for corr_agg_fn in ('mean', 'max'):
+        agged_corrs = corr_df.groupby(keys)['corr'].agg(corr_agg_fn
+            ).reset_index()
 
-    cap_agg_fn = corr_agg_fn.title()
-    gs, save_fn = odor_facetgrids(agged_corrs, categ_pt_plot_fn, 'name1_b',
-        'corr', 'Odor B', f'{cap_agg_fn} of trial correlations',
-        f'{cap_agg_fn} correlation consistency', marker='o'
-    )
-    for g in gs:
-        g.fig.subplots_adjust(hspace=0.4)
+        cap_agg_fn = corr_agg_fn.title()
+        gs, save_fn = odor_facetgrids(agged_corrs, categ_pt_plot_fn, 'name1_b',
+            'corr', 'Odor B', f'{cap_agg_fn} of trial correlations',
+            f'{cap_agg_fn} correlation consistency', marker='o'
+        )
+        for g in gs:
+            g.fig.subplots_adjust(hspace=0.4)
 
-    # TODO subsection for agg fn? look like what i want in pdf?
-    save_fn(f'corrs_{corr_agg_fn}', section='Correlation consistency',
-        subsection=cap_agg_fn, section_order=200
-    )
-del keys
+        # TODO subsection for agg fn? look like what i want in pdf?
+        save_fn(f'corrs_{corr_agg_fn}', section='Correlation consistency',
+            subsection=cap_agg_fn, section_order=200
+        )
+    del keys
+    #'''
 
 
 response_magnitudes = u.add_fly_id(add_odorset(
@@ -3730,7 +4152,7 @@ n_odor_reliable_cells_per_rec = per_odor_reliable_idx.to_frame(index=False
     ).groupby(['fly_id','odor_set','name1']).cell.nunique()
 
 
-n_odor_colors = max([len(os) for os in odor_set_odors_nosolvent])
+n_odor_colors = max([len(oset) for oset in odor_set_odors_nosolvent])
 # TODO also, maybe just vary alpha? maybe use something that varies color more
 # than this cmap does?
 #odor_colors = sns.diverging_palette(10, 220, n=n_odor_colors, center='dark',
@@ -3738,7 +4160,7 @@ n_odor_colors = max([len(os) for os in odor_set_odors_nosolvent])
 #)
 odor_colors = sns.color_palette('cubehelix', n_odor_colors)
 
-nonsolvent_odor_orders = [[o for o in os if o not in u.solvents] for os in
+nonsolvent_odor_orders = [[o for o in oset if o not in u.solvents] for oset in
     odor_set2order.values()
 ]
 
@@ -3766,7 +4188,6 @@ for color_and_odors in zip_longest(odor_colors, *nonsolvent_odor_orders):
             odor_hues_within_odorset[o] = c
 
 
-mix_v_component_response_plots = False
 if mix_v_component_response_plots:
     # TODO TODO do the same, but w/ responses to maybe the real thing on the 
     # axis where the mix is? (or just leave it as part of the mix plot?)
@@ -4044,12 +4465,24 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
         g.set_titles('')
         #g.fig.subplots_adjust(top=top)
 
+    # TODO TODO maybe do plots like these but excluding the sum & diff, to
+    # make it more like the frac responding plots?
+    # TODO TODO and maybe one where all the movie (maybe within some mask) is
+    # averaged to produce the value, to guard against segmentation /
+    # thresholding artifacts? (with and without sum & diff, probably)
+
     savefigs(g.fig, f'flymean_simple_linearity_{cell_subset_fname_str}',
         section='Linearity',
         subsection=f'Simple linearity, {cell_subset_title_str}'
     )
 
+    # This is a flag set up top.
+    if not per_cell_linearity_dists:
+        return
+
+    # TODO why, again?
     assert reliable_to_any is not None, 'must pass kwarg reliable_to_any'
+
     # Omitting the checks in similar section above. They should have
     # been triggered if applicable when this function was called with
     # reliable-to-any input (Which it should have been, as I'm doing
@@ -4314,16 +4747,12 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
         # have kwarg flag to plot some example cells based on this info (pulling
         # from different parts of dist like B wanted) (still want to do this?)
 
-    # So that we it's obvious the returned value should not be used if it was
+    # So that it's obvious the returned value should not be used if it was
     # passed in.
     if had_n_params2bins:
         n_params2bins = None
 
     return n_params2bins
-
-# TODO TODO repeat this analysis only using kiwi data for fixed
-# concentration (what was the change again?)!
-linearity_cell_df = u.add_fly_id(add_odorset(linearity_cell_df.reset_index()))
 
 # TODO move above / maybe return this by default (as another positional return
 # val?) in fn that generates groups?
@@ -4342,186 +4771,211 @@ def groups2cell_fraction_series(groups):
     # across trial response calls)
     return series
 
-print_classification_rankings = False
-largest_reliable_groups = None
-for at_least_n_trials in (1, 2, 3):
-    if at_least_n_trials == 2:
-        # TODO maybe exclude stuff w/ missing data. or at least be wary of it
-        # complicating these things...
-        # Same as if computed w/ n=2 in else case below.
-        per_odor_enough_responded_trials = per_odor_reliable
-        name = 'reliable'
-        nonresponder_title_str = 'non-reliable'
-        title_and_fname_strs = True
-        title_str = 'reliably'
-    else:
-        keys = [k for k in responders.index.names if k != 'repeat_num']
-        # TODO maybe exclude stuff w/ missing data. or at least be wary of it
-        # complicating these things...
-        per_odor_enough_responded_trials = \
-            responders.groupby(keys).sum() >= at_least_n_trials
-        del keys
+if (common_responded_combos or
+    (plot_linearity_analysis and cell_subset_linearity)):
 
-        if at_least_n_trials == 3:
-            name = 'all trial'
+    print_classification_rankings = False
+    largest_reliable_groups = None
+    for at_least_n_trials in (1, 2, 3):
+        if at_least_n_trials == 2:
+            # TODO maybe exclude stuff w/ missing data. or at least be wary of
+            # it complicating these things...
+            # Same as if computed w/ n=2 in else case below.
+            per_odor_enough_responded_trials = per_odor_reliable
+            name = 'reliable'
+            nonresponder_title_str = 'non-reliable'
+            title_and_fname_strs = True
+            title_str = 'reliably'
         else:
-            name = f'>={at_least_n_trials} trial'
+            # If we don't want to make these plots, then we only care about
+            # what's computed (and saved into largest_reliable_groups, in the
+            # iteration where at_least_n_trials == 2)
+            if not common_responded_combos:
+                continue
 
-        nonresponder_title_str = 'non-responders'
-        title_and_fname_strs = False
-        title_str = f'on {name}s'
+            keys = [k for k in responders.index.names if k != 'repeat_num']
+            # TODO maybe exclude stuff w/ missing data. or at least be wary of
+            # it complicating these things...
+            per_odor_enough_responded_trials = \
+                responders.groupby(keys).sum() >= at_least_n_trials
+            del keys
 
-    if at_least_n_trials == 1:
-        subsection = 'At least 1 trial'
-    else:
-        subsection = f'At least {at_least_n_trials} trials'
+            if at_least_n_trials == 3:
+                name = 'all trial'
+            else:
+                name = f'>={at_least_n_trials} trial'
 
-    if print_classification_rankings:
-        print(f'\nOdorset AND fly {name} responder classification:')
+            nonresponder_title_str = 'non-responders'
+            title_and_fname_strs = False
+            title_str = f'on {name}s'
 
-    per_fly_groups = group_cells_by_odors_responded(
-        per_odor_enough_responded_trials,
-        per_fly=True,
-        verbose=print_classification_rankings,
-        title_and_fname_strs=title_and_fname_strs,
-        nonresponder_title_str=nonresponder_title_str
-    )
+        if at_least_n_trials == 1:
+            subsection = 'At least 1 trial'
+        else:
+            subsection = f'At least {at_least_n_trials} trials'
 
-    if print_classification_rankings:
-        print(f'\nOdorset {name} responder classification:')
+        if print_classification_rankings:
+            print(f'\nOdorset AND fly {name} responder classification:')
 
-    groups = group_cells_by_odors_responded(
-        per_odor_enough_responded_trials,
-        verbose=print_classification_rankings,
-        title_and_fname_strs=title_and_fname_strs,
-        nonresponder_title_str=nonresponder_title_str
-    )
+        per_fly_groups = group_cells_by_odors_responded(
+            per_odor_enough_responded_trials,
+            per_fly=True,
+            verbose=print_classification_rankings,
+            title_and_fname_strs=title_and_fname_strs,
+            nonresponder_title_str=nonresponder_title_str
+        )
 
-    largest_groups = []
-    # TODO different parameters for barplot and for passing to
-    # linearity_analysis?
-    n_largest_groups = 9
-    for oset in odor_set_order:
-        # Assumes that group_cells_by_odors_responded sorts by fraction of
-        # cells in the group, which it does (within odorsets).
-        oset_largest = [
-            g for g in groups if g['odor_set'] == oset
-        ][:n_largest_groups]
-        largest_groups.extend(oset_largest)
+        if print_classification_rankings:
+            print(f'\nOdorset {name} responder classification:')
 
-    if at_least_n_trials == 2:
-        largest_reliable_groups = largest_groups
+        groups = group_cells_by_odors_responded(
+            per_odor_enough_responded_trials,
+            verbose=print_classification_rankings,
+            title_and_fname_strs=title_and_fname_strs,
+            nonresponder_title_str=nonresponder_title_str
+        )
 
-    ser = groups2cell_fraction_series(largest_groups)
-    per_fly_ser = groups2cell_fraction_series(per_fly_groups)
+        largest_groups = []
+        # TODO different parameters for barplot and for passing to
+        # linearity_analysis?
+        n_largest_groups = 9
+        for oset in odor_set_order:
+            # Assumes that group_cells_by_odors_responded sorts by fraction of
+            # cells in the group, which it does (within odorsets).
+            oset_largest = [
+                g for g in groups if g['odor_set'] == oset
+            ][:n_largest_groups]
+            largest_groups.extend(oset_largest)
 
-    # Subsetting to only data from groups w/ largest cell fractions (ser).
-    per_fly_df = per_fly_ser.reset_index().set_index(
-        ser.index.names).loc[ser.index].reset_index()
-    del per_fly_ser
-    df = ser.reset_index()
-    del ser
+        if at_least_n_trials == 2:
+            largest_reliable_groups = largest_groups
 
-    # Whether to use rows or cols for the odor_set in the FacetGrid.
-    use_rows = False
-    if use_rows:
-        fg_kwargs = dict(row='odor_set', row_order=odor_set_order)
-    else:
-        fg_kwargs = dict(col='odor_set', col_order=odor_set_order)
+            # If we don't want to make these plots, than the only purpose of
+            # this loop is achieved when largest_reliable_groups is set in the
+            # line above.
+            if not common_responded_combos:
+                break
 
-    def set_odors_cell_fraction_plot_props(g):
+        ser = groups2cell_fraction_series(largest_groups)
+        per_fly_ser = groups2cell_fraction_series(per_fly_groups)
+
+        # Subsetting to only data from groups w/ largest cell fractions (ser).
+        per_fly_df = per_fly_ser.reset_index().set_index(
+            ser.index.names).loc[ser.index].reset_index()
+        del per_fly_ser
+        df = ser.reset_index()
+        del ser
+
+        # Whether to use rows or cols for the odor_set in the FacetGrid.
+        use_rows = False
         if use_rows:
-            g.set_titles('{row_name}')
+            fg_kwargs = dict(row='odor_set', row_order=odor_set_order)
         else:
-            g.set_titles('{col_name}')
+            fg_kwargs = dict(col='odor_set', col_order=odor_set_order)
 
-        # TODO maybe also indicate non-natural only
-        g.fig.suptitle(
-            f'Top {n_largest_groups} odor combos responded to {title_str}'
+        def set_odors_cell_fraction_plot_props(g):
+            if use_rows:
+                g.set_titles('{row_name}')
+            else:
+                g.set_titles('{col_name}')
+
+            # TODO maybe also indicate non-natural only
+            g.fig.suptitle(
+                f'Top {n_largest_groups} odor combos responded to {title_str}'
+            )
+            g.set_xlabels('')
+            g.set_ylabels('Fraction of cells')
+            u.fix_facetgrid_axis_labels(g)
+
+            # Since g.set_xticklabels(rotation=90) changes all xticklabels to
+            # only those of first axis, even though sharex=False.
+            for ax in g.axes.flat:
+                labels = [x.get_text() for x in ax.get_xticklabels()]
+                ax.set_xticklabels(labels, rotation=90)
+
+            if use_rows:
+                # need to fix bounds so suptitle not clipped in this case
+                # (if i want to use this branch... which i don't now)
+                g.fig.subplots_adjust(hspace=1.5, bottom=0.2, top=0.85)
+            else:
+                g.fig.subplots_adjust(bottom=0.6, top=0.85)
+
+        # NOTE: Important that True comes second, since df and per_fly_df are
+        # changed in that case.
+        for exclude_nonresponders in (False, True):
+            if exclude_nonresponders:
+                df = df[df.odors_str != nonresponder_title_str]
+                per_fly_df = \
+                    per_fly_df[per_fly_df.odors_str != nonresponder_title_str]
+
+            # TODO maybe somehow combine bar plot + plots that shows points for
+            # each fly into one plot? could use sns.boxplot to get a line for
+            # each across-fly point
+
+            fname = f'{at_least_n_trials}responders_by_odors'
+            if not exclude_nonresponders:
+                fname += '_with_nonresponders'
+
+            g = sns.FacetGrid(data=df, sharex=False, **fg_kwargs)
+            # Using plt.bar rather than sns.barplot cause I don't think I need
+            # any of the functionality only in latter, and it warns about lack
+            # of order kwarg.
+            g.map(plt.bar, 'odors_str', 'cell_fraction')
+            set_odors_cell_fraction_plot_props(g)
+            # TODO maybe order this section so it's just before linearity
+            # section (in the pdf?)
+            savefigs(g.fig, fname, section='Responder breakdown',
+                subsection=subsection
+            )
+
+            g = sns.FacetGrid(data=per_fly_df, sharex=False, hue='fly_id',
+                palette=fly_id_palette, **fg_kwargs
+            )
+            # TODO suppress / deal with this warning
+            # (same reason using plt.bar above)
+            g.map(sns.stripplot, 'odors_str', 'cell_fraction', alpha=0.5)
+            set_odors_cell_fraction_plot_props(g)
+            g.add_legend(title=fly_id_legend_title)
+            savefigs(g.fig, 'per_fly_' + fname, section='Responder breakdown',
+                subsection=subsection
+            )
+    assert largest_reliable_groups is not None
+
+if plot_linearity_analysis:
+    # TODO TODO repeat this analysis only using kiwi data for fixed
+    # concentration (what was the change again?)!
+    linearity_cell_df = u.add_fly_id(add_odorset(
+        linearity_cell_df.reset_index()
+    ))
+
+    lin_subset_kwargs_list = [{
+        'cell_subset': reliable_to_any,
+        'cell_subset_title_str': 'cells reliable to any odor',
+        'cell_subset_fname_str': 'reliabletoany',
+
+        # TODO why did i want these plots in this case but not in the 'all
+        # cells' case? i guess it's just even harder to see things in that case?
+        # maybe check it again and provide a comment here verifying?
+        # Makes 1 extra plot per (fly x model) w/ each odorset distribution
+        # overlayed.
+        'odorsets_within_fly': True
+    }]
+    if linearity_analysis_on_all_cells:
+        lin_subset_kwargs_list.append(dict())
+
+    if cell_subset_linearity:
+        # TODO TODO TODO also do stuff similar w/ clustering cells?
+        # (how to verify number of clusters is reasonable though? just don't?)
+        # TODO maybe also see how things categorize as above w/in each
+        # cluster i'm using?
+        largest_reliable_groups_excluding_nonresponders = [
+            g for g in largest_reliable_groups if len(g['odors']) > 0
+        ]
+        lin_subset_kwargs_list.extend(
+            largest_reliable_groups_excluding_nonresponders
         )
-        g.set_xlabels('')
-        g.set_ylabels('Fraction of cells')
-        u.fix_facetgrid_axis_labels(g)
-
-        # Since g.set_xticklabels(rotation=90) changes all xticklabels to only
-        # those of first axis, even though sharex=False.
-        for ax in g.axes.flat:
-            labels = [x.get_text() for x in ax.get_xticklabels()]
-            ax.set_xticklabels(labels, rotation=90)
-
-        if use_rows:
-            # need to fix bounds so suptitle not clipped in this case
-            # (if i want to use this branch... which i don't now)
-            g.fig.subplots_adjust(hspace=1.5, bottom=0.2, top=0.85)
-        else:
-            g.fig.subplots_adjust(bottom=0.6, top=0.85)
-
-    # NOTE: Important that True comes second, since df and per_fly_df are
-    # changed in that case.
-    for exclude_nonresponders in (False, True):
-        if exclude_nonresponders:
-            df = df[df.odors_str != nonresponder_title_str]
-            per_fly_df = \
-                per_fly_df[per_fly_df.odors_str != nonresponder_title_str]
-
-        # TODO maybe somehow combine bar plot + plots that shows points for each
-        # fly into one plot? could use sns.boxplot to get a line for each
-        # across-fly point
-
-        fname = f'{at_least_n_trials}responders_by_odors'
-        if not exclude_nonresponders:
-            fname += '_with_nonresponders'
-
-        g = sns.FacetGrid(data=df, sharex=False, **fg_kwargs)
-        # Using plt.bar rather than sns.barplot cause I don't think I need any
-        # of the functionality only in latter, and it warns about lack of order
-        # kwarg.
-        g.map(plt.bar, 'odors_str', 'cell_fraction')
-        set_odors_cell_fraction_plot_props(g)
-        # TODO maybe order this section so it's just before linearity section
-        savefigs(g.fig, fname, section='Responder breakdown',
-            subsection=subsection
-        )
-
-        g = sns.FacetGrid(data=per_fly_df, sharex=False, hue='fly_id',
-            palette=fly_id_palette, **fg_kwargs
-        )
-        # TODO suppress / deal with this warning
-        # (same reason using plt.bar above)
-        g.map(sns.stripplot, 'odors_str', 'cell_fraction', alpha=0.5)
-        set_odors_cell_fraction_plot_props(g)
-        g.add_legend(title=fly_id_legend_title)
-        savefigs(g.fig, 'per_fly_' + fname, section='Responder breakdown',
-            subsection=subsection
-        )
-
-assert largest_reliable_groups is not None
-
-# TODO add parameters like this + things that control binning to params
-# rendered into pdf?
-linearity_analysis_on_all_cells = True
-lin_subset_kwargs_list = [{
-    'cell_subset': reliable_to_any,
-    'cell_subset_title_str': 'cells reliable to any odor',
-    'cell_subset_fname_str': 'reliabletoany',
-    # Makes 1 extra plot per (fly x model) w/ each odorset distribution
-    # overlayed.
-    'odorsets_within_fly': True
-}]
-if linearity_analysis_on_all_cells:
-    lin_subset_kwargs_list.append(dict())
-
-if not args.skip_cell_subset_linearity:
-    # TODO TODO TODO also do stuff similar w/ clustering cells?
-    # (how to verify number of clusters is reasonable though? just don't?)
-    # TODO maybe also see how things categorize as above w/in each
-    # cluster i'm using?
-    largest_reliable_groups_excluding_nonresponders = [
-        g for g in largest_reliable_groups if len(g['odors']) > 0
-    ]
-    lin_subset_kwargs_list.extend(
-        largest_reliable_groups_excluding_nonresponders
-    )
+else:
+    lin_subset_kwargs_list = []
 
 # TODO make sense to plots residuals? should i scale by # of cells or something
 # (like average residual per cell)?
@@ -4529,7 +4983,7 @@ if not args.skip_cell_subset_linearity:
 
 n_params2bins = None
 for i, lin_subset_kwargs in enumerate(lin_subset_kwargs_list):
-    if i > 0:
+    if per_cell_linearity_dists and i > 0:
         assert n_params2bins is not None
 
     # TODO TODO TODO update latex equations on these plots to indicate that 
@@ -4683,7 +5137,6 @@ def pd_linregress(gdf, xvar, yvar, verbose=True):
         'first_data_y': gdf[yvar].iloc[0]
     })
 
-do_adaptation_analysis = False
 if do_adaptation_analysis:
     # TODO some kind of differential analysis on adaptation speeds
     # (each mix relative to its components)??
@@ -5042,7 +5495,7 @@ if not args.no_report_pdf:
     # TODO what does this mean if these are not equivalent?
     #from . import generate_pdf_report
 
-    if args.no_save_figs:
+    if not save_figs:
         warnings.warn('--report-pdf was passed despite --no-save-figs! '
             'The report generated will ONLY contain any figures already in the '
             'PDF output directory!!!'
