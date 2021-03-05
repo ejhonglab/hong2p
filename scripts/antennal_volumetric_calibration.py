@@ -60,6 +60,8 @@ def write_trace_pickles():
 
         fly_dir, thorimage_id = split(data_dir)
         tiff = join(fly_dir, 'tif_stacks', f'{thorimage_id}.tif')
+        # TODO TODO how were these tiffs generated? manually in imagej? or using
+        # read_movie / write_tiff?
         assert exists(tiff)
         # Calling this for its side effect of writing the "trace" pickle for the
         # current recording.

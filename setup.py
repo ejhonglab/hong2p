@@ -1,12 +1,13 @@
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='hong2p',
     version='0.0.0',
-    packages=['hong2p'],
+    packages=find_packages(),
     # TODO .py suffix here? populate_db too. subdir of hong_2p?
     #scripts=['gui'],
+    scripts=['scripts/thor2tiff'],
     setup_requires=['pytest-runner'],
     install_requires=[
         # This one might not be strictly necessary. The errs that seemed to
@@ -21,6 +22,8 @@ setup(
         'h5py',
         'numpy',
         'scipy',
+        'tifffile',
+
         # 0.25.1 seemed to work for much of at least early 2020. More versions
         # also likely work, but if transferring pickled pandas objects between
         # installations, it becomes more important to match the pandas versions.
@@ -86,6 +89,11 @@ setup(
     #    # specifically the first work i did making a gui to annotate the quality
     #    # of ROIs
     tests_require=['pytest'],
+    entry_points={
+        'console_scripts': [
+            'thor2tiff=hong2p:thor2tiff',
+        ],
+    },
     author="Tom O'Connell",
     author_email='toconnel@caltech.edu',
     license='GPLv3',

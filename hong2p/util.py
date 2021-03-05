@@ -5,7 +5,7 @@ our databases / movies / CNMF output.
 
 import os
 from os import listdir
-from os.path import join, split, exists, sep, isdir, normpath, getmtime
+from os.path import join, split, exists, sep, isdir, normpath, getmtime, abspath
 import socket
 import pickle
 import atexit
@@ -132,6 +132,8 @@ data_root_name = 'mb_team'
 
 # Module level cache.
 _data_root = None
+# TODO add verbose flag which says all the things it's searching? or log them to
+# loginfo level or something?
 def data_root():
     global _data_root
     if _data_root is None:
@@ -139,6 +141,7 @@ def data_root():
         data_root_key = 'HONG_2P_DATA'
         nas_prefix_key = 'HONG_NAS'
         fallback_data_root_key = 'DATA_DIR'
+        # TODO print priority order of the above env vars in any failure below
 
         prefix = None
         if data_root_key in os.environ:
@@ -4219,9 +4222,6 @@ def get_thorimage_n_flyback_xml(xml):
     if streaming.attrib['zFastEnable'] == '1':
         n_flyback_frames = int(streaming.attrib['flybackFrames'])
     else:
-        # may fail in non-streaming volume case? though might then also not want
-        # to assert first streaming object is enabled?
-        assert z == 1
         n_flyback_frames = 0
 
     return n_flyback_frames
@@ -4234,6 +4234,11 @@ def load_thorimage_metadata(thorimage_directory, return_xml=False):
     """
     xml = get_thorimage_xmlroot(thorimage_directory)
 
+    # TODO TODO in volumetric streaming case (at least w/ input from thorimage
+    # 3.0 from downstairs scope), this is the xy fps (< time per volume). also
+    # doesn't include flyback frame. probably want to convert it to
+    # volumes-per-second in that case here, and return that for fps. just need
+    # to check it doesn't break other stuff.
     fps = get_thorimage_fps_xml(xml)
     xy, z, c = get_thorimage_dims_xml(xml)
 
@@ -4283,12 +4288,57 @@ def read_movie(thorimage_dir, discard_flyback=True):
     if z > 0:
         # TODO TODO some way to set pockel power to zero during flyback frames?
         # not sure why that data is even wasting space in the file...
+        # TODO possible to skip reading the flyback frames? maybe it wouldn't
+        # save time though...
+        # just so i can hardcode some fixes based on part of path (assuming
+        # certain structure under mb_team, at least for the inputs i need to
+        # fix)
+        thorimage_dir = abspath(thorimage_dir)
+        date_part = thorimage_dir.split(sep)[-3]
+        try_to_fix_flyback = False
+
+        # TODO TODO TODO do more testing to determine 1) if this really was a
+        # flyback issue and not some bug in thor / some change in thor behavior
+        # on update, and 2) what is appropriate flyback [and which change from
+        # 2020-04-* stuff is what made this flyback innapropriate? less
+        # averaging?]
+        if date_part in {'2020-11-29', '2020-11-30'}:
+            warnings.warn('trying to fix flyback frames since date_part match')
+            # this branch is purely a hacky fix to what seems like an
+            # insufficient number of flyback frames with data from a few
+            # particular days.
+            try_to_fix_flyback = True
+            n_flyback = n_flyback + 1
 
         z_total = z + n_flyback
+
+        orig_n_frames = n_frames
         n_frames, remainder = divmod(n_frames, z_total)
-        assert remainder == 0
-        # TODO check this against method by reshaping as before and slicing w/
-        # appropriate strides [+ concatenating?]
+        if not try_to_fix_flyback:
+            assert remainder == 0
+
+        if try_to_fix_flyback and remainder != 0:
+            # TODO maybe don't warn [the same way?] if dropped frames are just
+            # flyback-equivalent?
+
+            # remainder is int but checking equality against float still works
+            assert (len(data) - len(data[:-(n_frame_pixels * remainder)])
+                ) / n_frame_pixels == remainder
+
+            warnings.warn(f'dropping last {remainder}/{orig_n_frames} frames '
+                'because of flyback issue'
+            )
+            # otherwise the reshape won't work, because it requires even
+            # division
+            data = data[:-(n_frame_pixels * remainder)]
+
+            # TODO maybe some other check that flyback time was appropriate (to
+            # not have to hardcode certain paths + to identify accidental
+            # flyback issues) [if flyback is even the issue at all... do more
+            # tests] (or just pass through a flag... including to thor2tiff)
+
+        # TODO check this against method by reshaping as before and slicing
+        # w/ appropriate strides [+ concatenating?] (what was "before"?)
         data = np.reshape(data, (n_frames, z_total, x, y))
 
         if discard_flyback:
@@ -4300,6 +4350,7 @@ def read_movie(thorimage_dir, discard_flyback=True):
 
 
 def write_tiff(tiff_filename, movie):
+    # TODO also handle diff color channels
     """Write a TIFF loading the same as the TIFFs we create with ImageJ.
 
     TIFFs are written in big-endian byte order to be readable by `imread_big`
@@ -4331,11 +4382,47 @@ def write_tiff(tiff_filename, movie):
 
     # TODO TODO maybe change so ImageJ considers appropriate dimension the time
     # dimension (both in 2d x T and 3d x T cases)
-    
+    # TODO TODO TODO convert from thor data to appropriate dimension order (w/
+    # singleton dimensions as necessary) (or keep dimensions + dimension order
+    # of array, and pass metadata={'axes': 'TCXY'}, w/ the value constructed
+    # appropriately? that work w/ imagej=True?)
+
+    # TODO TODO TODO since scipy docs say [their version] of tifffile expects
+    # channels in TZCYXS order
+    # https://scikit-image.org/docs/0.14.x/api/skimage.external.tifffile.html
+
+    if len(movie.shape) == 3:
+        #axes = 'TXY'
+        # Z and C
+        new_dim_indices = (1, 2)
+    elif len(movie.shape) == 4:
+        #axes = 'TZXY'
+        # C
+        new_dim_indices = (2,)
+    else:
+        raise ValueError('unexpected number of dimensions to movie')
+
+    movie = np.expand_dims(movie, new_dim_indices)
+
+    # not doing this still seems to produce output consistent w/ what i see on
+    # the scope, in constrast to what i see if i *do* swap these
+    # Switches from last two dimensions being XY to YX
+    #movie = np.swapaxes(movie, -2, -1)
+
+    # TODO TODO is "UserWarning: TiffWriter: truncating ImageJ file" actually
+    # something to mind? for example, w/ 2020-04-01/2/fn as input, the .raw is 
+    # 8.3GB and the .tif is 5.5GB (w/ 3 flyback frames for each 6 non-flyback
+    # frames -> 8.3 * (2/3) = ~5.53  (~ 5.5...). some docs say bigtiff is not
+    # supported w/ imagej=True, so maybe that wouldn't be a quick fix if the
+    # warning actually does matter. if not, maybe suppress it somehow?
+
     # TODO actually make sure any metadata we use is the same
     # TODO maybe just always do test from test_readraw here?
     # (or w/ flag to disable the check)
     tifffile.imsave(tiff_filename, movie, imagej=True)
+    # doesn't seem to work (reading it into imagej still has a slider for C at
+    # the bottom, and it jumps across Z planes when scrolling either slider)
+    #tifffile.imsave(tiff_filename, movie, metadata={'axes': axes})
 
 
 def full_frame_avg_trace(movie):
