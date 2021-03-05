@@ -188,11 +188,17 @@ odor_set_order = ['kiwi', 'control', 'flyfood']
 #fix_ref_odor_response_fracs = True
 fix_ref_odor_response_fracs = False
 
+# TODO TODO TODO also try just thresholding off the dff (not z-scored)
+# check bimodality.
+# TODO TODO maybe also try eroding (shrinking) all rois a bit and recheck
+# bimodality of both this and z-scored version
+
 # TODO TODO does this make sense? or should i compute something like z-score
 # across trials, and threshold that, rather than take mean of the z-score
 # quantity i'm currently using?
-#mean_zchange_response_thresh = 3.0
+#mean_zchange_response_thresh = 3.5
 mean_zchange_response_thresh = 4.98
+
 
 '''
 ref_odor = 'eb'
@@ -2638,7 +2644,8 @@ if not args.only_analyze_cached:
         pickles = [p for p in pickles if test_substr in p]
 
     b = time.time()
-    # TODO TODO TODO skip this step when using not using
+    # TODO TODO TODO skip this step when using not using (no side effects are
+    # there? and only difference of `pickles` is the order?)
     # fix_ref_odor_response_fracs
     print('reading all pickles to decide their order... ', end='', flush=True)
     pickles = order_by_odor_sets(pickles)
