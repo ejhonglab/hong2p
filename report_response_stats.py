@@ -5,6 +5,10 @@ Generates some descriptors of whole-frame-average responses to each odor, using
 each recording in the database.
 """
 
+# TODO TODO if i want to restore this script to working order, at least need to
+# make changes to go along with refactoring of db components from hong2p.util
+# to hong2p.db
+
 import pandas as pd
 import matplotlib.pyplot as plt
 plt.rcParams.update({'figure.max_open_warning': 0})

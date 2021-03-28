@@ -7,7 +7,6 @@ setup(
     packages=find_packages(),
     # TODO .py suffix here? populate_db too. subdir of hong_2p?
     #scripts=['gui'],
-    scripts=['scripts/thor2tiff'],
     setup_requires=['pytest-runner'],
     install_requires=[
         # This one might not be strictly necessary. The errs that seemed to
@@ -27,7 +26,9 @@ setup(
         # 0.25.1 seemed to work for much of at least early 2020. More versions
         # also likely work, but if transferring pickled pandas objects between
         # installations, it becomes more important to match the pandas versions.
-        'pandas==0.25.1',
+        # this version fails to build on 18.04 with python3.8 though
+        #'pandas==0.25.1',
+        'pandas',
 
         # Aiming to guarantee that at least the matplotlib backend 'Qt5Agg' will
         # work.  (but does system Qt5 need to be installed separately? order of
@@ -37,7 +38,9 @@ setup(
         # https://stackoverflow.com/questions/59768179 indicated it could fix an
         # error I encountered when installing version selected (5.14.2) without
         # specifying.
-        'PyQt5==5.14',
+        #'PyQt5==5.14',
+        'PyQt5',
+
         'matplotlib',
         'seaborn',
 

@@ -18,6 +18,7 @@ from scipy.spatial.distance import pdist
 import multiprocessing as mp
 
 import hong2p.util as u
+import hong2p.thor as thor
 
 
 def split_to_xydm(roi_data_xyd, unmasked=False):
@@ -290,7 +291,7 @@ def main():
     )
     tiff_title = u.tiff_title(tif)
     keys = u.tiff_filename2keys(tif)
-    fps = u.get_thorimage_fps(u.thorimage_dir(*keys))
+    fps = thor.get_thorimage_fps(u.thorimage_dir(*keys))
     movie = tifffile.imread(tif)
     shape_before = movie.shape
 

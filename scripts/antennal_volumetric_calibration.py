@@ -13,6 +13,7 @@ import seaborn as sns
 import cv2
 
 import hong2p.util as u
+from hong2p.thor import read_movie
 
 
 # TODO maybe rename now that it also has antennal data...
@@ -32,7 +33,7 @@ def write_trace_pickles():
 
         avg_tiff_fname = join(data_dir, 'avg.tif')
         if not exists(avg_tiff_fname):
-            movie = u.read_movie(data_dir)
+            movie = read_movie(data_dir)
             avg = np.mean(movie, axis=0)
 
             # TODO factor into write_tiff / provide some other fn for this?
@@ -64,8 +65,9 @@ def write_trace_pickles():
         # read_movie / write_tiff?
         assert exists(tiff)
         # Calling this for its side effect of writing the "trace" pickle for the
-        # current recording.
-        data = u.load_recording(tiff)
+        # current recording. It does interact with the db though and that might
+        # be a problem...
+        data = db.load_recording(tiff)
 
 
 def process_trace_pickles():

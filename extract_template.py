@@ -21,6 +21,10 @@ from scipy.cluster.vq import kmeans
 
 import ijroi
 import hong2p.util as u
+# TODO test whether replacing w/ 'from hong2p import db' works (w/ or w/o
+# changing __init__.py)
+import hong2p.db as db
+import hong2p.thor as thor
 
 
 def print_bad_keys(mask):
@@ -217,7 +221,7 @@ def main():
         # against db contents into util + use in kc_mix_analysis
         print('Making template...')
 
-        conn = u.get_db_conn()
+        conn = db.get_db_conn()
         df = pd.read_sql_query('SELECT * FROM analysis_runs '
             'WHERE ijroi_file_path IS NOT NULL', conn)
         assert df.input_filename.notnull().all()
@@ -281,10 +285,10 @@ def main():
         row_index2thorimage_xmlroots = dict()
         for row in df.itertuples():
             thorimage_dir = u.thorimage_dir(*row.Index)
-            xmlroot = u.get_thorimage_xmlroot(thorimage_dir)
+            xmlroot = thor.get_thorimage_xmlroot(thorimage_dir)
             row_index2thorimage_xmlroots[row.Index] = xmlroot
 
-            xy_shape, _, _ = u.get_thorimage_dims_xml(xmlroot)
+            xy_shape, _, _ = thor.get_thorimage_dims_xml(xmlroot)
             row_index2frame_shape[row.Index] = xy_shape
 
             if xy_shape in movie_xy_shape_counts:
@@ -340,7 +344,7 @@ def main():
             xy_shape = row_index2frame_shape[row.Index]
 
             xmlroot = row_index2thorimage_xmlroots[row.Index]
-            um_per_pixel_xy = u.get_thorimage_pixelsize_xml(xmlroot)
+            um_per_pixel_xy = thor.get_thorimage_pixelsize_xml(xmlroot)
 
             ijroi_file = row.ijroi_file_path
             curr_mtime = datetime.fromtimestamp(getmtime(ijroi_file))

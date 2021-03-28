@@ -26,6 +26,11 @@ import matplotlib.pyplot as plt
 # TODO maybe just move these fns into a module hong2p, rather than hong2p util?
 # or maybe __init__ stuff to get them importable under hong2p?
 import hong2p.util as u
+from hong2p.matlab import (matlab_engine, get_matfile_var, load_mat_timing_info,
+    rel_to_cnmf_mat
+)
+import hong2p.db as db
+import hong2p.thor as thor
 
 
 ################################################################################
@@ -76,7 +81,7 @@ test_recording = None
 if only_do_anything_for_analysis:
     only_motion_correct_for_analysis = True
 
-conn = u.get_db_conn()
+conn = db.get_db_conn()
 
 # TODO TODO implement some kind of queue (or just lock files on NAS?) so
 # multiple instantiations can work in parallel
@@ -89,7 +94,7 @@ analyzed_at = datetime.fromtimestamp(time.time())
 # i had?
 #future = matlab.engine.start_matlab(async=True)
 #evil = None
-evil = u.matlab_engine(force=True)
+evil = matlab_engine(force=True)
 
 # To get Git version information to have a record of what analysis was
 # performed.
@@ -153,8 +158,6 @@ if only_last_n_days:
 # TODO move these paths to config file / envvar (+ defaults in util?)
 raw_data_root = u.raw_data_root()
 analysis_output_root = u.analysis_output_root()
-
-rel_to_cnmf_mat = 'cnmf'
 
 stimfile_root = u.stimfile_root()
 
@@ -364,7 +367,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             os.mkdir(tiff_dir)
 
         for thorimage_dir in glob.glob(join(full_fly_dir, '*/')):
-            if not u.is_thorimage_dir(thorimage_dir):
+            if not thor.is_thorimage_dir(thorimage_dir):
                 continue
 
             thorimage_id = split(os.path.normpath(thorimage_dir))[-1]
@@ -372,7 +375,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             if exists(tiff_filename):
                 continue
 
-            from_raw = u.read_movie(thorimage_dir)
+            from_raw = thor.read_movie(thorimage_dir)
             print('Writing TIFF to {}... '.format(tiff_filename), end='',
                 flush=True
             )
@@ -491,7 +494,7 @@ if fit_rois:
                 continue
 
             thorimage_ids = [split(td)[1] for td in
-                u.thorimage_subdirs(u.raw_fly_dir(date, fly_num))
+                thor.thorimage_subdirs(u.raw_fly_dir(date, fly_num))
             ]
             for thorimage_id in thorimage_ids:
                 try:
@@ -530,7 +533,7 @@ analysis_runs = pd.DataFrame({
 })
 # TODO don't insert into this if dependent stuff won't be written? same for some
 # of the other metadata tables?
-u.to_sql_with_duplicates(analysis_runs, 'analysis_runs')
+db.to_sql_with_duplicates(analysis_runs, 'analysis_runs')
 '''
 
 recording_outcomes = []
@@ -771,10 +774,10 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # TODO TODO TODO also replace other cases that might need to be
             # updated w/ pg_upsert based solution. presentations table
             # especially.
-            ####u.to_sql_with_duplicates(recordings, 'recordings')
+            ####db.to_sql_with_duplicates(recordings, 'recordings')
             recordings.set_index('started_at', inplace=True)
             recordings.to_sql('recordings', conn, if_exists='append',
-                method=u.pg_upsert)
+                method=db.pg_upsert)
 
             db_recording = pd.read_sql_query('SELECT * FROM recordings WHERE ' +
                 "started_at = '{}'".format(pd.Timestamp(started_at)), conn,
@@ -802,7 +805,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         assert len(odor_pair_list) % presentations_per_block == 0
 
         if ACTUALLY_UPLOAD:
-            u.to_sql_with_duplicates(odors, 'odors')
+            db.to_sql_with_duplicates(odors, 'odors')
 
             # TODO make unique id before insertion? some way that wouldn't
             # require the IDs, but would create similar tables?
@@ -832,7 +835,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 'odor2': odor2_ids
             })
 
-            u.to_sql_with_duplicates(mixtures, 'mixtures')
+            db.to_sql_with_duplicates(mixtures, 'mixtures')
 
         # TODO merge w/ odors to check
 
@@ -884,7 +887,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             raw_f = np.array(evil.eval('data.CNM.C')).T
 
         try:
-            ti = u.load_mat_timing_info(mat)
+            ti = load_mat_timing_info(mat)
         except matlab.engine.MatlabExecutionError as e:
             print(e)
             # TODO recording outcome? or just fail here?
@@ -892,7 +895,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         # TODO maybe change to return None/dict rather than deal with lists
         # and then just check not None in a list comprehension aggregating them?
-        ti_code_version = u.get_matfile_var(mat, 'ti_code_version')
+        ti_code_version = get_matfile_var(mat, 'ti_code_version')
 
         # TODO maybe it was not possible to calc timing info because input has
         # moved / was corrupted (either the thorsync file or the .mat it gets
@@ -909,7 +912,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # keys to recordings, and have trace process just follow motion
         # correction?
         if ACTUALLY_UPLOAD:
-            u.upload_analysis_info(started_at, analyzed_at, ti_code_version)
+            db.upload_analysis_info(started_at, analyzed_at, ti_code_version)
 
         # TODO dtype appropriate?
         frame_times = np.array(ti['frame_times']).flatten()
@@ -1084,7 +1087,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # TODO filter out footprints less than a certain # of pixels in
             # cnmf?  (is 3 pixels really reasonable?)
             if ACTUALLY_UPLOAD:
-                u.to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
+                db.to_sql_with_duplicates(footprint_df, 'cells', verbose=True)
 
             n_frames, n_cells = df_over_f.shape
             assert n_cells == n_footprints
@@ -1207,7 +1210,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # concentration of ethyl acetate?) (which would i guess mean any
             # prep checking immediately followed by natural_odors?)
             if process_time_averages:
-                fps = u.get_thorimage_fps(thorimage_dir)
+                fps = thor.get_thorimage_fps(thorimage_dir)
                 # TODO does it really take this long in most cases?
                 rise_time_s = 2.0 #1.5
                 rise_time_frames = int(round(rise_time_s * fps))
@@ -1301,7 +1304,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 # TODO TODO TODO is this insertion method causing some
                 # parameters to not actually get updated?
                 # use to_sql w/ pg_upsert?
-                u.to_sql_with_duplicates(presentation, 'presentations')
+                db.to_sql_with_duplicates(presentation, 'presentations')
 
             db_presentations = pd.read_sql('presentations', conn)
 
@@ -1356,7 +1359,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 response_df = pd.concat(cell_dfs, ignore_index=True)
 
                 if ACTUALLY_UPLOAD:
-                    u.to_sql_with_duplicates(response_df, 'responses')
+                    db.to_sql_with_duplicates(response_df, 'responses')
 
                 # TODO put behind flag?
                 '''
@@ -1389,7 +1392,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
                 # TODO maybe just return empty df as base case?
                 response_stats = \
-                    u.latest_response_stats(db_curr_odor_presentations)
+                    db.latest_response_stats(db_curr_odor_presentations)
 
                 if response_stats is None:
                     continue

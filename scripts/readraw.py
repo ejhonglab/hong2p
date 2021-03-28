@@ -8,6 +8,8 @@ import tifffile
 import matplotlib.pyplot as plt
 
 import hong2p.util as u
+from hong2p.thor import read_movie
+from hong2p.matlab import matlab_engine
 
 
 # TODO factor this whole test script into a unit test of reading / saving fns
@@ -17,7 +19,7 @@ def main():
 
     # Since despite python rt checking out, normcorre output still seemed weird
     # w/ TIFFs generated this way.
-    evil = u.matlab_engine()
+    evil = matlab_engine()
 
     # so that i know where to look for the code if that would help troubleshoot
     evil.evalc("clear; tp = '{}'; p1 = which('imread_big(tp)')".format(
@@ -31,7 +33,7 @@ def main():
 
     #raw = '/mnt/nas/mb_team/raw_data/2019-01-23/6/_002/Image_0001_0001.raw'
     raw_dir = '/mnt/nas/mb_team/raw_data/2019-01-23/6/_002'
-    from_raw = u.read_movie(raw_dir)
+    from_raw = read_movie(raw_dir)
 
     # This TIFF should have been created with ImageJ manually (this manual
     # process produces TIFFs that yield reasonable looking output from

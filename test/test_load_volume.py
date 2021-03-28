@@ -7,6 +7,7 @@ import numpy as np
 import tifffile
 
 import hong2p.util as u
+import hong2p.thor as thor
 
 
 _data = None
@@ -14,7 +15,7 @@ def read_movie():
     global _data
     if _data is None:
         data_dir = u.thorimage_dir('2020-03-09', 1, 'fn_007')
-        data = u.read_movie(data_dir)
+        data = thor.read_movie(data_dir)
         _data = data
     return _data
 

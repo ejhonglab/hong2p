@@ -3,6 +3,7 @@
 from os.path import join
 
 import hong2p.util as u
+import hong2p.db as db
 
 
 def test_load_experiment():
@@ -14,7 +15,7 @@ def test_load_experiment():
     tiffs = [c1, r1, r2]
     for t in tiffs: #[2:]:
         print(t)
-        data = u.load_recording(t)
+        data = db.load_recording(t)
         #import ipdb; ipdb.set_trace()
 
 

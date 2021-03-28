@@ -57,9 +57,12 @@ import ijroi
 import chemutils as cu
 
 import hong2p.util as u
+from hong2p.matlab import matlab_engine, get_matfile_var
+import hong2p.db as db
+import hong2p.thor as thor
 
 
-conn = u.get_db_conn()
+conn = db.get_db_conn()
 
 # TODO probably move to / use something already in util
 # Maybe rename. It's these cols once already in a recording + comparison.
@@ -254,7 +257,7 @@ class Segmentation(QWidget):
             # Delete if this seems OK. Deferring to expansion since
             # list_segmentations is currently a slow step.
             '''
-            tif_seg_runs = u.list_segmentations(d)
+            tif_seg_runs = db.list_segmentations(d)
             if tif_seg_runs is None:
                 continue
 
@@ -1077,7 +1080,7 @@ class Segmentation(QWidget):
 
         row = self.current_segrun_widget.data(0, Qt.UserRole)
         tiff = row.input_filename
-        xy, z, _ = u.get_thorimage_dims_xml(u.tif2xml_root(tiff))
+        xy, z, _ = thor.get_thorimage_dims_xml(thor.tif2xml_root(tiff))
         if z is None:
             frame_shape = xy
         else:
@@ -1323,7 +1326,9 @@ class Segmentation(QWidget):
                 'footprints': self.footprints,
                 'ijrois': ijrois,
                 'tiff': self.tiff_fname,
-                'fps': u.get_thorimage_fps_xml(u.tif2xml_root(self.tiff_fname)),
+                'fps': thor.get_thorimage_fps_xml(thor.tif2xml_root(
+                    self.tiff_fname
+                )),
                 'odor_onset_frames': self.odor_onset_frames,
                 'trial_start_frames': self.trial_start_frames,
                 'trial_stop_frames': self.trial_stop_frames,
@@ -1392,7 +1397,7 @@ class Segmentation(QWidget):
 
         # TODO is this really how i want to do it?
         if 'blocks_accepted' not in segrun_row:
-            blocks_accepted = u.accepted_blocks(segrun_row.run_at)
+            blocks_accepted = db.accepted_blocks(segrun_row.run_at)
             segrun_row['blocks_accepted'] = blocks_accepted
 
             # TODO maybe change things s.t. i can get rid of propagate flag,
@@ -2349,7 +2354,7 @@ class Segmentation(QWidget):
             # this experiment are new (weren't in db before)
             # (and maybe support some local analysis anyway that doesn't require
             # rt through the db...)
-            presentations_df = u.merge_odors(presentations_df,
+            presentations_df = db.merge_odors(presentations_df,
                 self.db_odors.reset_index()
             )
             # TODO maybe adapt to case where name2 might have only occurence of 
@@ -2568,7 +2573,7 @@ class Segmentation(QWidget):
             presentation_df['from_onset'] = presentation_df['from_onset'].apply(
                 lambda x: np.array(x)
             )
-            presentation_df = u.merge_odors(presentation_df,
+            presentation_df = db.merge_odors(presentation_df,
                 self.db_odors.reset_index()
             )
 
@@ -2583,7 +2588,7 @@ class Segmentation(QWidget):
             presentation_df['name2'] = \
                 presentation_df.name2.map(odor2abbrev)
 
-            presentation_df = u.merge_recordings(
+            presentation_df = db.merge_recordings(
                 presentation_df, self.recordings
             )
 
@@ -2668,10 +2673,10 @@ class Segmentation(QWidget):
                 # causing footprint_row in util to have > 1 row
                 '''
                 # TODO or maybe just set show_footprints to false?
-                footprints = u.merge_recordings(self.footprint_df,
+                footprints = db.merge_recordings(self.footprint_df,
                     self.recordings
                 )
-                footprints = u.merge_gsheet(footprints, df)
+                footprints = db.merge_gsheet(footprints, df)
                 footprints.set_index(u.recording_cols + ['cell'], inplace=True)
                 '''
 
@@ -2948,7 +2953,7 @@ class Segmentation(QWidget):
         # not exist, and that read shows insert worked in w/ method case
         if self.ACTUALLY_UPLOAD:
             run.to_sql('analysis_runs', conn, if_exists='append',
-                method=u.pg_upsert
+                method=db.pg_upsert
             )
 
         # TODO worth preventing (attempts to) insert code versions and
@@ -2965,8 +2970,8 @@ class Segmentation(QWidget):
 
         # TODO TODO TODO if i'm gonna require this variable, check for it
         # in open_recording, so there are no surprises
-        ti_code_version = u.get_matfile_var(self.matfile, 'ti_code_version')
-        mocorr_code_versions = u.get_matfile_var(self.matfile,
+        ti_code_version = get_matfile_var(self.matfile, 'ti_code_version')
+        mocorr_code_versions = get_matfile_var(self.matfile,
             mocorr_version_varname, require=False
         )
         code_versions = [this_code_version]
@@ -2980,7 +2985,7 @@ class Segmentation(QWidget):
         # TODO maybe impute missing mocorr version in some cases?
 
         if self.ACTUALLY_UPLOAD:
-            u.upload_analysis_info(self.run_at, code_versions)
+            db.upload_analysis_info(self.run_at, code_versions)
 
         # TODO TODO zoom to a constant factor (+ redraw) before saving, since
         # the zoom seems to change the way the figure looks?
@@ -3031,7 +3036,7 @@ class Segmentation(QWidget):
 
         if self.ACTUALLY_UPLOAD:
             segmentation_run.to_sql('segmentation_runs', conn,
-                if_exists='append', method=u.pg_upsert)
+                if_exists='append', method=db.pg_upsert)
 
         # TODO unless i change db to have a canonical analysis version per
         # blocks/trials, probably want to check analysis version to be set
@@ -3048,7 +3053,7 @@ class Segmentation(QWidget):
         # TODO filter out footprints less than a certain # of pixels in cnmf?
         # (is 3 pixels really reasonable?)
         if self.ACTUALLY_UPLOAD:
-            u.to_sql_with_duplicates(self.footprint_df, 'cells')
+            db.to_sql_with_duplicates(self.footprint_df, 'cells')
 
         self.uploaded_common_segrun_info = True
 
@@ -3138,7 +3143,7 @@ class Segmentation(QWidget):
             for presentation_df, comparison_df in zip(
                 presentation_dfs, comparison_dfs):
 
-                u.to_sql_with_duplicates(presentation_df.drop(
+                db.to_sql_with_duplicates(presentation_df.drop(
                     columns='temp_presentation_id'), 'presentations')
 
                 db_presentations = pd.read_sql('presentations', conn,
@@ -3160,7 +3165,7 @@ class Segmentation(QWidget):
                 # sqlalchemy.exc.ProgrammingError: (psycopg2.ProgrammingError)
                 # table "temp_responses" does not exist
                 # SQL: DROP TABLE temp_responses
-                u.to_sql_with_duplicates(comparison_df.drop(
+                db.to_sql_with_duplicates(comparison_df.drop(
                     columns='temp_presentation_id'), 'responses'
                 )
 
@@ -3438,7 +3443,7 @@ class Segmentation(QWidget):
         seg_runs_loaded = recording_node.data(0, Qt.UserRole)
         if seg_runs_loaded:
             return
-        tif_seg_runs = u.list_segmentations(tiff)
+        tif_seg_runs = db.list_segmentations(tiff)
         recording_node.setData(0, Qt.UserRole, True)
 
         if tif_seg_runs is None:
@@ -3523,7 +3528,7 @@ class Segmentation(QWidget):
         )
         assert len(self.footprint_df) > 0
 
-        self.accepted = u.accepted_blocks(self.run_at)
+        self.accepted = db.accepted_blocks(self.run_at)
         self.n_blocks = len(self.accepted)
 
         self.to_be_accepted = list(self.accepted)
@@ -3672,7 +3677,7 @@ class Segmentation(QWidget):
             # ends, but I may want to refactor things in here after finishing
             # the new load_recording implementation
             raise NotImplementedError
-            data = u.load_recording(tiff)
+            data = db.load_recording(tiff)
 
         # TODO be more specific about the types of errors expected / remove try
         # except
@@ -3780,7 +3785,7 @@ class Segmentation(QWidget):
         self.avg = np.mean(self.movie, axis=0)
         self.tiff_fname = tiff
 
-        self.data_params = u.cnmf_metadata_from_thor(tiff)
+        self.data_params = thor.cnmf_metadata_from_thor(tiff)
 
         # TODO try to get rid of these here? (s.t. only made at end of cnmf run)
         # was some error in loading either old run or data after loading old
@@ -4030,7 +4035,7 @@ class ROIAnnotation(QWidget):
         # TODO TODO put to left of where video is? left of annotation buttons?
         # under data selection part?
         response_calling_s = 3.0
-        fps = u.fps_from_thor(self.metadata)
+        fps = thor.fps_from_thor(self.metadata)
         self.fps = fps
         self.response_frames = int(np.ceil(fps * response_calling_s))
         self.background_frames = int(np.floor(fps * np.abs(
@@ -4300,7 +4305,7 @@ class MainWindow(QMainWindow):
         if self.user is not None:
             pd.DataFrame({'nickname': [self.user]}).set_index('nickname'
                 ).to_sql('people', conn, if_exists='append',
-                method=u.pg_upsert)
+                method=db.pg_upsert)
 
             user_select.addItem(self.user)
 
@@ -4435,13 +4440,13 @@ def main():
     presentations['from_onset'] = presentations.from_onset.apply(
         lambda x: np.array(x))
 
-    presentations = u.merge_odors(presentations, odors)
+    presentations = db.merge_odors(presentations, odors)
 
     # TODO change sql for recordings table to use thorimage dir + date + fly
     # as index?
     recordings = pd.read_sql('recordings', conn)
 
-    presentations = u.merge_recordings(presentations, recordings)
+    presentations = db.merge_recordings(presentations, recordings)
 
     rec_meta_cols = [
         'recording_from',
@@ -4461,7 +4466,7 @@ def main():
     comp_cols = u.recording_cols + ['comparison']
 
     print('starting MATLAB engine...', end='', flush=True)
-    u.matlab_engine()
+    matlab_engine()
     print(' done')
 
     # TODO convention re: this vs setWindowTitle? latter not available if making

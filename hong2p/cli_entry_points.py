@@ -4,6 +4,7 @@ import argparse
 from os.path import isdir, exists, join
 
 import hong2p.util as u
+from hong2p.thor import read_movie
 
 
 def thor2tiff():
@@ -33,7 +34,7 @@ def thor2tiff():
         assert not exists(output_name)
 
     print('Reading RAW movie...', flush=True, end='')
-    from_raw = u.read_movie(raw_dir)
+    from_raw = read_movie(raw_dir)
     print(' done', flush=True)
 
     # TODO TODO TODO try to figure out if anything can be done about tifffile

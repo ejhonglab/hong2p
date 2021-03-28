@@ -27,6 +27,7 @@ import h5py
 import chemutils as cu
 
 import hong2p.util as u
+from hong2p.matlab import matfile, load_mat_timing_info
 
 # Having all matplotlib-related imports come after `hong2p.util` import,
 # so that I can let `hong2p.util` set the backend, which it seems must be set
@@ -660,9 +661,9 @@ def savefigs(fig, plot_type_prefix, *vargs, odor_set=None, section=None,
 
 def load_pid_data(df):
     keys = u.recording_df2keys(df)
-    mat = u.matfile(*keys)
+    mat = matfile(*keys)
     print(mat)
-    ti = u.load_mat_timing_info(mat)
+    ti = load_mat_timing_info(mat)
     # TODO do all the mat files i'm currently using have these variables?
     # they seem like what i want. are they?
     # TODO TODO need to do same kind of painting into blocks i remember doing

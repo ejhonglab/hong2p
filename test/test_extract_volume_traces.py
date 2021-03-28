@@ -6,11 +6,12 @@ import ijroi
 import matplotlib.pyplot as plt
 
 import hong2p.util as u
+from hong2p.thor import read_movie
 
 
 def test_extract_volume_traces():
     data_dir = u.thorimage_dir('2020-03-09', 1, 'fn_007')
-    movie = u.read_movie(data_dir)
+    movie = read_movie(data_dir)
 
     ijroiset_filename = join(data_dir, 'rois.zip')
     ijrois = ijroi.read_roi_zip(ijroiset_filename)
