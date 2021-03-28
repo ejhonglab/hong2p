@@ -13,7 +13,7 @@ from jinja2.loaders import FileSystemLoader
 from latex import build_pdf, escape, LatexBuildError
 from latex.jinja2 import make_env
 
-import hong2p.util as u
+import hong2p import util
 
 # Importing after hong2p.util, so util can change the matplotlib backend.
 import matplotlib.pyplot as plt
@@ -144,7 +144,7 @@ def plot_files_in_order(glob_str, filenames_to_use):
 
             try:
                 date_part_already_found = date_part is not None
-                date_part = datetime.strptime(p, u.date_fmt_str)
+                date_part = datetime.strptime(p, util.date_fmt_str)
                 if date_part_already_found:
                     # Can't be a ValueError b/c using that as indication
                     # part couldn't be converted to a date...
@@ -394,7 +394,7 @@ def main(*args, **kwargs):
             if p in ('kiwi', 'control'):
                 break
             try:
-                datetime.strptime(p, u.date_fmt_str)
+                datetime.strptime(p, util.date_fmt_str)
                 break
             except ValueError:
                 prefix_parts.append(p)
@@ -583,7 +583,8 @@ def main(*args, **kwargs):
         # the fact that the date prefix avoided that was kinda nice i guess...
         pdf_fname = 'kc_mix_analysis.pdf'
         if date_in_pdf_name:
-            pdf_fname = date.today().strftime(u.date_fmt_str) + f'_{pdf_fname}'
+            pdf_fname = date.today().strftime(util.date_fmt_str
+                ) + f'_{pdf_fname}'
 
     if write_latex_like_pdf:
         tex_fname = pdf_fname[:-len('.pdf')] + '.tex'

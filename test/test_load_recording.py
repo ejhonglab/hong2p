@@ -2,14 +2,13 @@
 
 from os.path import join
 
-import hong2p.util as u
-import hong2p.db as db
+import hong2p import util, db
 
 
 def test_load_experiment():
-    r1 = join(u.raw_data_root(), '2019-11-21/4/tif_stacks/fn_0001.tif')
-    r2 = join(u.raw_data_root(), '2020-03-09/2/fn_002/tif_stacks/fn_002.tif')
-    c1 = join(u.analysis_output_root(),
+    r1 = join(util.raw_data_root(), '2019-11-21/4/tif_stacks/fn_0001.tif')
+    r2 = join(util.raw_data_root(), '2020-03-09/2/fn_002/tif_stacks/fn_002.tif')
+    c1 = join(util.analysis_output_root(),
         '2019-11-21/4/tif_stacks/fn_0001_nr.tif'
     )
     tiffs = [c1, r1, r2]

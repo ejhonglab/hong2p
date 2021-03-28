@@ -8,14 +8,14 @@ import matplotlib.pyplot as plt
 import tifffile
 import ijroi
 
-import hong2p.util as u
+from hong2p import util
 
 
 # Only for interactively working on tests. Should be false if running
 # automated tests.
 interactive = False
 
-template_data = u.load_template_data()
+template_data = util.load_template_data()
 assert template_data is not None, 'could not load template data'
 template = template_data['template']
 margin = template_data['margin']
@@ -133,7 +133,7 @@ def make_img_with_rois(frame_shape, centers, template_dimension_changes=None,
         if template_dimension_changes is not None:
             roi_d += template_dimension_changes[i]
 
-        radius_px = u._get_template_roi_radius_px(template_data,
+        radius_px = util._get_template_roi_radius_px(template_data,
             if_template_d=roi_d, _round=False
         )
         ground_truth_radii_px.append(radius_px)
@@ -227,7 +227,7 @@ def test_single_template_knownoffset():
         for center_point in wellseparated_centers[:2]:
             img_with_roi, _ = make_img_with_rois(frame_shape, [center_point])
 
-            ij_centers, radii_px, _, _ = u.fit_circle_rois(tiff_fname,
+            ij_centers, radii_px, _, _ = util.fit_circle_rois(tiff_fname,
                 template_data, _um_per_pixel_xy=um_per_pixel_xy,
                 avg=img_with_roi, min_neighbors=0,
                 min_n_rois=1, max_n_rois=1,
@@ -272,7 +272,7 @@ def test_ordering_wellseparated_centers():
             img_with_rois, _ = make_img_with_rois(frame_shape, centers,
                 intensity_scales=intensity_scales
             )
-            ij_centers, radii_px, _, _ = u.fit_circle_rois(tiff_fname,
+            ij_centers, radii_px, _, _ = util.fit_circle_rois(tiff_fname,
                 template_data, _um_per_pixel_xy=um_per_pixel_xy,
                 avg=img_with_rois, min_neighbors=0,
                 min_n_rois=2, max_n_rois=2,
@@ -320,7 +320,7 @@ def test_multiscale_packing():
             centers, template_dimension_changes=templ_d_deltas
         )
 
-        ij_centers, radii_px, thresholds, ns_found = u.fit_circle_rois(
+        ij_centers, radii_px, thresholds, ns_found = util.fit_circle_rois(
             tiff_fname,
             template_data,
             _um_per_pixel_xy=um_per_pixel_xy,
@@ -441,7 +441,7 @@ def test_ijrois2masks():
         ijrois = ijroi.read_roi_zip(roiset_fname)
         assert len(ijrois) == n_rois
         assert np.array_equal(ijrois[0][1], ijrois[1][1])
-        masks = u.ijrois2masks(ijrois, frame_shape)
+        masks = util.ijrois2masks(ijrois, frame_shape)
         # So last dim indexes mask #. I might want first index to do that...
         assert masks.shape[:2] == frame_shape
         assert masks.shape[-1] == n_rois
@@ -455,14 +455,14 @@ def test_ijrois2masks():
         plt.show()
         '''
 
-        traces = u.extract_traces_boolean_footprints(movie, masks,
+        traces = util.extract_traces_boolean_footprints(movie, masks,
             verbose=False
         )
         assert traces.shape[0] == n_frames
         assert traces.shape[1] == n_rois
         assert np.all(traces > 0)
 
-        empty_traces = u.extract_traces_boolean_footprints(movie_t, masks,
+        empty_traces = util.extract_traces_boolean_footprints(movie_t, masks,
             verbose=False
         )
         assert empty_traces.shape[0] == n_frames
@@ -473,7 +473,7 @@ def test_ijrois2masks():
         for i in range(masks.shape[-1]):
             masks_t.append(masks[:,:,i].T)
         masks_t = np.stack(masks_t, axis=-1)
-        empty_traces2 = u.extract_traces_boolean_footprints(movie, masks_t,
+        empty_traces2 = util.extract_traces_boolean_footprints(movie, masks_t,
             verbose=False
         )
         assert empty_traces2.shape[0] == n_frames
@@ -494,7 +494,7 @@ def check_ijroi_circle_center_coords():
 
     roi_file = 'check_corner.roi'
     radius = 8
-    roi_repr = u.get_circle_ijroi_input(center, radius)
+    roi_repr = util.get_circle_ijroi_input(center, radius)
     print(f'Writing debuging ROI file to {roi_file}')
     with open(roi_file, 'wb') as f:
         ijroi.write_roi(roi_repr, f, name='0', roi_type=ijroi.RoiType.OVAL)

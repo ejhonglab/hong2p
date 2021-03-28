@@ -50,12 +50,7 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-# TODO test either matlab refactoring worked
-#import hong2p.matlab as matlab
-# TODO does it need to be in __init__.py for this to work?
-from hong2p import matlab
-import hong2p.db as db
-import hong2p.thor as thor
+from hong2p import matlab, db, thor
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
@@ -5178,6 +5173,8 @@ def load_template_data(err_if_missing=False):
 # submodule as it uses matlab pipeline ouputs...
 # TODO maybe move to project/analysis specific repo / submodule (same as other
 # stuff that uses matlab_kc_plane outputs)
+# TODO maybe move to matlab (this is only fn that uses either of fns imported
+# from there)
 def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
     stimfile=None, first_block=None, last_block=None):
     """Returns list of arrays, one per continuous acquisition.
@@ -5192,9 +5189,12 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
 
     keys = tiff_filename2keys(tif)
     mat = matlab.matfile(*keys)
+    #mat = matfile(*keys)
+
     # TODO TODO TODO refactor all stuff that uses this to new output format
     # (and remove factored checks, etc)
     ti = matlab.load_mat_timing_info(mat)
+    #ti = load_mat_timing_info(mat)
 
     if stimfile is None:
         df = mb_team_gsheet()

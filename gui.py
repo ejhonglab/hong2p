@@ -56,10 +56,7 @@ import caiman.utils.visualization
 import ijroi
 import chemutils as cu
 
-import hong2p.util as u
-from hong2p.matlab import matlab_engine, get_matfile_var
-import hong2p.db as db
-import hong2p.thor as thor
+from hong2p import util, matlab, db, thor
 
 
 conn = db.get_db_conn()
@@ -68,14 +65,14 @@ conn = db.get_db_conn()
 # Maybe rename. It's these cols once already in a recording + comparison.
 cell_cols = ['name1','name2','repeat_num','cell']
 
-raw_data_root = u.raw_data_root()
-analysis_output_root = u.analysis_output_root()
+raw_data_root = util.raw_data_root()
+analysis_output_root = util.analysis_output_root()
 
 use_cached_gsheet = False
 show_inferred_paths = True
 overwrite_older_analysis = True
 
-df = u.mb_team_gsheet(use_cache=use_cached_gsheet)
+df = util.mb_team_gsheet(use_cache=use_cached_gsheet)
 
 # TODO probably just move this info into output of stimuli metadata generator
 # (or maybe just load either-or as-needed)
@@ -196,7 +193,7 @@ class Segmentation(QWidget):
 
         # TODO move initialization of this thing to another class
         # (DataSelector or something) that is shared?
-        self.motion_corrected_tifs = u.list_motion_corrected_tifs()
+        self.motion_corrected_tifs = util.list_motion_corrected_tifs()
 
         self.splitter = QSplitter(self)
         self.layout = QVBoxLayout(self)
@@ -242,7 +239,7 @@ class Segmentation(QWidget):
 
             date_str = x[-4]
             fly_str = x[-3]
-            thorimage_id = u.tiff_thorimage_id(d)
+            thorimage_id = util.tiff_thorimage_id(d)
             item_parts = [date_str, fly_str, thorimage_id]#, cor_type]
 
             label = '/'.join(item_parts)
@@ -1100,10 +1097,10 @@ class Segmentation(QWidget):
         for cell_row in self.footprint_df.iterrows():
             cell = cell_row[0]
             # TODO this indicate some other problem?
-            footprint = u.db_row2footprint(cell_row[1], shape=frame_shape)
+            footprint = util.db_row2footprint(cell_row[1], shape=frame_shape)
             # Looking at ijroi source code, it seems Y coordinate is first in
             # input / output arrays.
-            footprint = u.py2imagej_coords(footprint)
+            footprint = util.py2imagej_coords(footprint)
 
             # TODO TODO maybe change this to using cv2 findContours or something
             # TODO make this always verbose when it's applying whatever
@@ -1114,7 +1111,7 @@ class Segmentation(QWidget):
             # boundary, to get them to overlap w/ cnmf util plots...
             # (adding 0.5 to contour before casting seemed to produce a similar
             # problem in opposite direction)
-            ij_contour = (u.closed_mpl_contours(footprint,
+            ij_contour = (util.closed_mpl_contours(footprint,
                 if_multiple='take_largest')).astype(np.int16)
 
             # TODO need to subtract one point or something? need to order?
@@ -1131,11 +1128,11 @@ class Segmentation(QWidget):
         #import ipdb; ipdb.set_trace()
 
         # TODO delete.
-        #self.before_ijroi_cycle = u.ijrois2masks(ijrois, frame_shape)
+        #self.before_ijroi_cycle = util.ijrois2masks(ijrois, frame_shape)
         #
 
         tiff_dir = split(tiff)[0]
-        thorimage_id = u.tiff_thorimage_id(tiff)
+        thorimage_id = util.tiff_thorimage_id(tiff)
         roi_filename = (thorimage_id + self.run_at.strftime('_%Y%m%d_%H%M%S') +
             '_ijroi.zip'
         )
@@ -1184,7 +1181,7 @@ class Segmentation(QWidget):
         # TODO maybe just combine w/ open_recording and load movie and
         # everything? or optionally?
 
-        ijroiset_filename = u.tiff_ijroi_filename(self.tiff_fname)
+        ijroiset_filename = util.tiff_ijroi_filename(self.tiff_fname)
 
         old_plot_intermediates_val = self.plot_intermediates
         self.plot_intermediates_btn.setChecked(False)
@@ -1223,14 +1220,15 @@ class Segmentation(QWidget):
                 )
                 if len(orig_cnmf_footprints) == 0:
                     warnings.warn(('No footprints found in db for CNMF run {}'
-                        ).format(u.format_timestamp(ijroi_cnmf_run))
+                        ).format(util.format_timestamp(ijroi_cnmf_run))
                     )
                 else:
-                    self.orig_cnmf_footprints = \
-                        u.db_footprints2array(orig_cnmf_footprints, frame_shape)
+                    self.orig_cnmf_footprints = util.db_footprints2array(
+                        orig_cnmf_footprints, frame_shape
+                    )
             else:
                 warnings.warn('Segmentation run {} not found in db'.format(
-                    u.format_timestamp(ijroi_cnmf_run))
+                    util.format_timestamp(ijroi_cnmf_run))
                 )
 
         # TODO display a note about ij params if loading ijroi analysis from db
@@ -1253,7 +1251,7 @@ class Segmentation(QWidget):
         self.cnm = None
 
         print('Using ImageJ ROIs from {}'.format(self.ijroi_file_path))
-        print('Last modified at {}'.format(u.format_timestamp(self.run_at)))
+        print('Last modified at {}'.format(util.format_timestamp(self.run_at)))
 
         ijrois = ijroi.read_roi_zip(ijroiset_filename)
 
@@ -1261,7 +1259,7 @@ class Segmentation(QWidget):
         # (mpl code) / use diff code to generate them. no point always storing
         # this extra stuff if cv2 doesn't need it...
 
-        self.footprints = u.ijrois2masks(ijrois, frame_shape)
+        self.footprints = util.ijrois2masks(ijrois, frame_shape)
         if self.orig_cnmf_footprints is not None:
             assert self.footprints.shape == self.orig_cnmf_footprints.shape
 
@@ -1280,7 +1278,7 @@ class Segmentation(QWidget):
         # TODO superimpose on avg or something before calculating everything
         # (separate user action to confirm)?
 
-        self.raw_f = u.extract_traces_boolean_footprints(self.movie,
+        self.raw_f = util.extract_traces_boolean_footprints(self.movie,
             self.footprints
         )
         n_footprints = self.raw_f.shape[1]
@@ -1299,7 +1297,7 @@ class Segmentation(QWidget):
                 # inclusive? (<-fixed) other problems like this elsewhere?????
                 # TODO maybe smooth less now that df/f is being calculated more
                 # sensibly...
-                self.raw_f[b_start:(b_end + 1), c] = u.smooth(
+                self.raw_f[b_start:(b_end + 1), c] = util.smooth(
                     self.raw_f[b_start:(b_end + 1), c], window_len=11)
         '''
         self.df_over_f = np.empty_like(self.raw_f) * np.nan
@@ -1361,7 +1359,7 @@ class Segmentation(QWidget):
 
         confirmation_choice = QMessageBox.question(self, 'Confirm delete',
             'Remove analysis run from {} from database?'.format(
-            u.format_timestamp(run_at)),
+            util.format_timestamp(run_at)),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if confirmation_choice == QMessageBox.Yes:
@@ -1392,7 +1390,7 @@ class Segmentation(QWidget):
     def add_segrun_widget(self, parent, segrun_row) -> None:
         seg_run_item = QTreeWidgetItem(parent)
         seg_run_item.setData(0, Qt.UserRole, segrun_row)
-        seg_run_item.setText(0, u.format_timestamp(segrun_row.run_at))
+        seg_run_item.setText(0, util.format_timestamp(segrun_row.run_at))
         seg_run_item.setFlags(seg_run_item.flags() ^ Qt.ItemIsUserCheckable)
 
         # TODO is this really how i want to do it?
@@ -1495,18 +1493,18 @@ class Segmentation(QWidget):
 
         if node.parent() is not None:
             menu = QMenu(self)
-            menu.addAction('Delete from database',
+            menutil.addAction('Delete from database',
                 lambda: self.delete_segrun(node))
 
             '''
             any_accepted = any(node.data(0, Qt.UserRole).blocks_accepted)
             if any_accepted:
-                menu.addAction('Make canonical',
+                menutil.addAction('Make canonical',
                     lambda: self.make_canonical(node)
                 )
             '''
 
-            menu.exec_(QCursor.pos())
+            menutil.exec_(QCursor.pos())
         # could put other menu options for top-level nodes in an else here
 
 
@@ -1699,7 +1697,7 @@ class Segmentation(QWidget):
 
 
     def run_cnmf(self) -> None:
-        print('Running CNMF ({})'.format(u.format_timestamp(self.run_at)),
+        print('Running CNMF ({})'.format(util.format_timestamp(self.run_at)),
             flush=True
         )
         # TODO TODO TODO if i'm going to null self.cnm in imagej thing, should
@@ -1898,7 +1896,7 @@ class Segmentation(QWidget):
         # TODO should i also just merge the meta and response dfs by default?
         # TODO rename all presentation_df(s) to meta_df(s) and
         # comparison_df(s) to response_df(s), if not just gonna merge
-        #meta_dfs, response_dfs, footprint_df = u.recording_frames(raw_f,
+        #meta_dfs, response_dfs, footprint_df = util.recording_frames(raw_f,
         #    df_over_f, footprints, 
 
         # TODO are self.df_over_f and raw_f the same shape? shouldn't raw_f be
@@ -2117,12 +2115,14 @@ class Segmentation(QWidget):
 
             if self.ijroi_file_path is not None:
                 assert self.parameter_json is None
-                A = u.footprints_to_flat_cnmf_dims(self.footprints)
+                A = util.footprints_to_flat_cnmf_dims(self.footprints)
                 
                 # TODO delete
                 '''
                 try:
-                    bA = u.footprints_to_flat_cnmf_dims(self.before_ijroi_cycle)
+                    bA = util.footprints_to_flat_cnmf_dims(
+                        self.before_ijroi_cycle
+                    )
                     caiman.utils.visualization.plot_contours(bA, img,
                         ax=contour_ax, display_numbers=False, colors='y',
                         linewidth=1.5
@@ -2132,7 +2132,7 @@ class Segmentation(QWidget):
                 '''
                 #
                 if self.orig_cnmf_footprints is not None:
-                    orig_A = u.footprints_to_flat_cnmf_dims(
+                    orig_A = util.footprints_to_flat_cnmf_dims(
                         self.orig_cnmf_footprints
                     )
                     caiman.utils.visualization.plot_contours(orig_A, img,
@@ -2271,7 +2271,7 @@ class Segmentation(QWidget):
             # non self.pair_case experiments)
             '''
             n_blocks = presentations_df.comparison.max() + 1
-            n_repeats = u.n_expected_repeats(presentations_df)
+            n_repeats = util.n_expected_repeats(presentations_df)
             n_stim = len(presentations_df[['odor1','odor2']].drop_duplicates())
             presentations_per_block = n_stim * n_repeats
             '''
@@ -2609,7 +2609,7 @@ class Segmentation(QWidget):
             comparison_df.drop(columns='temp_presentation_id', inplace=True)
             del presentation_df
 
-            comparison_df = u.expand_array_cols(comparison_df)
+            comparison_df = util.expand_array_cols(comparison_df)
 
             # TODO TODO make this optional
             # (and probably move to upload where fig gets saved.
@@ -2640,7 +2640,7 @@ class Segmentation(QWidget):
                 odor_order = None
                 if not self.pair_case:
                     # TODO check legend below is also in this order?
-                    odor_order = u.df_to_odor_order(comparison_df,
+                    odor_order = util.df_to_odor_order(comparison_df,
                         return_name1=True)
 
                 # TODO TODO might want to only compute responders/criteria one
@@ -2677,7 +2677,9 @@ class Segmentation(QWidget):
                     self.recordings
                 )
                 footprints = db.merge_gsheet(footprints, df)
-                footprints.set_index(u.recording_cols + ['cell'], inplace=True)
+                footprints.set_index(util.recording_cols + ['cell'],
+                    inplace=True
+                )
                 '''
 
                 # TODO TODO factor out response calling and also do that here,
@@ -2703,12 +2705,12 @@ class Segmentation(QWidget):
                     # TODO maybe allow passing movie in to not have to load it
                     # multiple times when plotting traces on same data?
                     # (then just use self.movie)
-                    u.plot_traces(pdf, show_footprints=False,
+                    util.plot_traces(pdf, show_footprints=False,
                         gridspec=odor_order_trace_gs, n=n,
                         title='Top components'
                     )
                     presentation_order_trace_gs = all_blocks_trace_gs[1, i]
-                    u.plot_traces(pdf, show_footprints=False,
+                    util.plot_traces(pdf, show_footprints=False,
                         gridspec=presentation_order_trace_gs,
                         order_by='presentation_order', n=n
                     )
@@ -2722,12 +2724,12 @@ class Segmentation(QWidget):
                         prow = 1
 
                     odor_order_trace_gs = all_blocks_trace_gs[orow, i]
-                    u.plot_traces(comparison_df, footprints=footprints,
+                    util.plot_traces(comparison_df, footprints=footprints,
                         gridspec=odor_order_trace_gs, n=n, random=True,
                         title='Random components'
                     )
                     presentation_order_trace_gs = all_blocks_trace_gs[prow, i]
-                    u.plot_traces(comparison_df, footprints=footprints,
+                    util.plot_traces(comparison_df, footprints=footprints,
                         gridspec=presentation_order_trace_gs,
                         order_by='presentation_order', n=n, random=True
                     )
@@ -2802,10 +2804,10 @@ class Segmentation(QWidget):
                     trial_mean_presentation_order.corr()
 
                 odor_order_ax = corr_axes[0, i]
-                ticklabels = u.matlabels(odor_order_trial_mean_corrs,
-                    u.format_mixture
+                ticklabels = util.matlabels(odor_order_trial_mean_corrs,
+                    util.format_mixture
                 )
-                u.matshow(odor_order_trial_mean_corrs,
+                util.matshow(odor_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     group_ticklabels=True,
                     colorbar_label=corr_cbar_label,
@@ -2815,10 +2817,10 @@ class Segmentation(QWidget):
                 self.mpl_canvas.draw()
 
                 presentation_order_ax = corr_axes[1, i]
-                ticklabels = u.matlabels(presentation_order_trial_mean_corrs,
-                    u.format_mixture
+                ticklabels = util.matlabels(presentation_order_trial_mean_corrs,
+                    util.format_mixture
                 )
-                u.matshow(presentation_order_trial_mean_corrs,
+                util.matshow(presentation_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     colorbar_label=corr_cbar_label,
                     ax=presentation_order_ax,
@@ -2970,8 +2972,10 @@ class Segmentation(QWidget):
 
         # TODO TODO TODO if i'm gonna require this variable, check for it
         # in open_recording, so there are no surprises
-        ti_code_version = get_matfile_var(self.matfile, 'ti_code_version')
-        mocorr_code_versions = get_matfile_var(self.matfile,
+        ti_code_version = matlab.get_matfile_var(self.matfile,
+            'ti_code_version'
+        )
+        mocorr_code_versions = matlab.get_matfile_var(self.matfile,
             mocorr_version_varname, require=False
         )
         code_versions = [this_code_version]
@@ -3502,7 +3506,7 @@ class Segmentation(QWidget):
         self.run_at = row.run_at
         # TODO rename to "ImageJ ROIs from" in that case
         # (how to test which case again? nullness of some fields?)
-        print('\nCNMF run from {}'.format(u.format_timestamp(self.run_at)))
+        print('\nCNMF run from {}'.format(util.format_timestamp(self.run_at)))
 
         # TODO for debugging. probably delete
         # TODO TODO also print whether analysis run was accepted or not
@@ -3588,7 +3592,7 @@ class Segmentation(QWidget):
 
     def plot_avg_trace(self, recalc_trace=True):
         if recalc_trace:
-            self.full_frame_avg_trace = u.full_frame_avg_trace(self.movie)
+            self.full_frame_avg_trace = util.full_frame_avg_trace(self.movie)
 
         # TODO TODO maybe make a new fig / do something other than clearing it
         # clearing seems to take a while sometimes (timing steps in
@@ -3606,7 +3610,7 @@ class Segmentation(QWidget):
 
         # TODO TODO smooth, just don't have that cause artifacts at the edges
         '''
-        smoothed_ff_avg_trace = u.smooth(self.full_frame_avg_trace,
+        smoothed_ff_avg_trace = util.smooth(self.full_frame_avg_trace,
             window_len=7
         )
         ax.plot(smoothed_ff_avg_trace)
@@ -3700,7 +3704,7 @@ class Segmentation(QWidget):
 
         date = datetime.strptime(date_dir, '%Y-%m-%d')
         fly_num = int(fly_dir)
-        thorimage_id = u.tiff_thorimage_id(tiff_just_fname)
+        thorimage_id = util.tiff_thorimage_id(tiff_just_fname)
         del tiff_just_fname
 
         recordings = df.loc[
@@ -3771,7 +3775,7 @@ class Segmentation(QWidget):
         # TODO maybe md5 array in memory, to not have to load twice?
         # (though for most formats it probably won't be the same... maybe none)
         # (would want to do it before slicing probably?)
-        self.tiff_md5 = u.md5(tiff)
+        self.tiff_md5 = util.md5(tiff)
         end = time.time()
         print('Hashing TIFF took {:.3f} seconds'.format(end - start))
         '''
@@ -4009,7 +4013,7 @@ class ROIAnnotation(QWidget):
         # TODO rewrite to avoid performancewarning (indexing past lexsort depth)
         self.metadata = self.presentations.loc[comp]
 
-        tiff = u.motion_corrected_tiff_filename(*comp[:-1])
+        tiff = util.motion_corrected_tiff_filename(*comp[:-1])
         # TODO move loading to some other process? QRunnable? progress bar?
         # TODO if not just going to load just comparison, keep movie loaded if
         # clicking other comparisons / until run out of memory
@@ -4079,7 +4083,7 @@ class ROIAnnotation(QWidget):
 
         # TODO TODO take the margin as a parameter in the GUI
         cropped_footprint, ((x_min, x_max), (y_min, y_max)) = \
-            u.crop_to_nonzero(footprint, margin=6)
+            util.crop_to_nonzero(footprint, margin=6)
 
         near_footprints = dict()
         for c, f in self.full_footprints.items():
@@ -4128,10 +4132,11 @@ class ROIAnnotation(QWidget):
                     # TODO maybe indicate somehow visually if contour is cutoff
                     # (not?)hatched? don't draw as closed? diff color?
                     near_footprint_contours[c] = \
-                        u.closed_mpl_contours(f, ax, colors='blue')
+                        util.closed_mpl_contours(f, ax, colors='blue')
 
-                contour = \
-                    u.closed_mpl_contours(cropped_footprint, ax, colors='red')
+                contour = util.closed_mpl_contours(cropped_footprint, ax,
+                    colors='red'
+                )
             else:
                 for c, cont in near_footprint_contours.items():
                     ax.plot(cont[:,0], cont[:,1], 'b-')
@@ -4357,7 +4362,7 @@ class MainWindow(QMainWindow):
         debug_action.triggered.connect(self.debug_shell)
 
         menu = self.menuBar()
-        tools = menu.addMenu('&Tools')
+        tools = menutil.addMenu('&Tools')
         tools.addAction(debug_action)
         '''
         debug_shortcut = QShortcut(QKeySequence('Ctrl+d'), self)
@@ -4414,7 +4419,7 @@ def main():
     # kinda slow
     # TODO will __file__ still work if i get to the point of installing this
     # package w/ pip?
-    caiman_code_version, this_code_version = [u.version_info(m,
+    caiman_code_version, this_code_version = [util.version_info(m,
         used_for='extracting footprints and traces')
         for m in [caiman, __file__]
     ]
@@ -4461,12 +4466,12 @@ def main():
 
     footprints = pd.read_sql('cells', conn)
     footprints = footprints.merge(recordings_meta, on='recording_from')
-    footprints.set_index(u.recording_cols, inplace=True)
+    footprints.set_index(util.recording_cols, inplace=True)
 
-    comp_cols = u.recording_cols + ['comparison']
+    comp_cols = util.recording_cols + ['comparison']
 
     print('starting MATLAB engine...', end='', flush=True)
-    matlab_engine()
+    matlab.matlab_engine()
     print(' done')
 
     # TODO convention re: this vs setWindowTitle? latter not available if making

@@ -23,14 +23,7 @@ import matlab.engine
 import tifffile
 import matplotlib.pyplot as plt
 
-# TODO maybe just move these fns into a module hong2p, rather than hong2p util?
-# or maybe __init__ stuff to get them importable under hong2p?
-import hong2p.util as u
-from hong2p.matlab import (matlab_engine, get_matfile_var, load_mat_timing_info,
-    rel_to_cnmf_mat
-)
-import hong2p.db as db
-import hong2p.thor as thor
+from hong2p import util, thor, matlab, db
 
 
 ################################################################################
@@ -94,7 +87,7 @@ analyzed_at = datetime.fromtimestamp(time.time())
 # i had?
 #future = matlab.engine.start_matlab(async=True)
 #evil = None
-evil = matlab_engine(force=True)
+evil = matlab.matlab_engine(force=True)
 
 # To get Git version information to have a record of what analysis was
 # performed.
@@ -115,7 +108,7 @@ elif len(mc_on_path) == 0:
         'matlab_caiman_folder')
 
 matlab_caiman_path = mc_on_path[0]
-matlab_caiman_version = u.version_info(matlab_caiman_path,
+matlab_caiman_version = util.version_info(matlab_caiman_path,
     used_for='motion correction'
 )
 
@@ -124,18 +117,18 @@ this_repo_file = os.path.realpath(__file__)
 this_repo_path = split(this_repo_file)[0]
 
 #driver_version_info ?
-matlab_code_version = u.version_info(matlab_code_path)
+matlab_code_version = util.version_info(matlab_code_path)
 curr_ti_code_version = copy.deepcopy(matlab_code_version)
 curr_ti_code_version['used_for'] = 'calculating timing information'
 matlab_code_version['used_for'] = 'driving motion correction'
 
-df = u.mb_team_gsheet(
+df = util.mb_team_gsheet(
     use_cache=use_cached_gsheet,
     show_inferred_paths=show_inferred_paths
 )
 if only_last_n_days:
     dates_to_consider = sorted(df.date.unique())[-only_last_n_days:]
-    date_dirs_to_consider = {pd.Timestamp(d).strftime(u.date_fmt_str)
+    date_dirs_to_consider = {pd.Timestamp(d).strftime(util.date_fmt_str)
         for d in dates_to_consider
     }
     print('B/c only_last_n_days setting, only considering date directories:',
@@ -156,10 +149,10 @@ if only_last_n_days:
 # analysis output on disk (or just latter)
 
 # TODO move these paths to config file / envvar (+ defaults in util?)
-raw_data_root = u.raw_data_root()
-analysis_output_root = u.analysis_output_root()
+raw_data_root = util.raw_data_root()
+analysis_output_root = util.analysis_output_root()
 
-stimfile_root = u.stimfile_root()
+stimfile_root = util.stimfile_root()
 
 natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
 natural_odors_concentrations.set_index('name', inplace=True)
@@ -280,7 +273,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                 if row['thorimage_dir'] != test_recording[2]:
                     continue
             #
-            if u.is_subrecording(row['thorimage_dir']):
+            if util.is_subrecording(row['thorimage_dir']):
                 continue
 
             thorimage_dir = join(full_fly_dir, row['thorimage_dir'])
@@ -326,7 +319,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             # wasn't actually changing matlab err print color (cause stderr?)
             # even if i did get it to work, might also color warnings and
             # verbose prints, which i don't want
-            #u.start_color('red')
+            #util.start_color('red')
             try:
                 # TODO maybe determine whether to update_ti based on reading
                 # version info (in update_timing_info == False case)?
@@ -351,11 +344,11 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
                     evil.clear(nargout=0)
 
             except matlab.engine.MatlabExecutionError as err:
-                u.print_color('red', err)
+                util.print_color('red', err)
                 print('')
                 continue
             #finally:
-            #    u.stop_color()
+            #    util.stop_color()
 
             print(' done.')
 
@@ -379,7 +372,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
             print('Writing TIFF to {}... '.format(tiff_filename), end='',
                 flush=True
             )
-            u.write_tiff(tiff_filename, from_raw)
+            util.write_tiff(tiff_filename, from_raw)
             print('done.')
 
         # TODO at least delete dir if empty (only if we made it?)
@@ -468,7 +461,7 @@ for full_fly_dir in glob.glob(raw_data_root + '/*/*/'):
 
 if fit_rois:
     print('Fitting ROIs...')
-    template_data = u.load_template_data()
+    template_data = util.load_template_data()
     if template_data is None:
         warnings.warn('template data not found, so can not fit_rois')
     else:
@@ -494,11 +487,11 @@ if fit_rois:
                 continue
 
             thorimage_ids = [split(td)[1] for td in
-                thor.thorimage_subdirs(u.raw_fly_dir(date, fly_num))
+                thor.thorimage_subdirs(util.raw_fly_dir(date, fly_num))
             ]
             for thorimage_id in thorimage_ids:
                 try:
-                    tif = u.motion_corrected_tiff_filename(date, fly_num,
+                    tif = util.motion_corrected_tiff_filename(date, fly_num,
                         thorimage_id
                     )
                 # TODO is this except gonna work? OSError count?
@@ -510,7 +503,7 @@ if fit_rois:
                 # TODO TODO check if analysis is ticked in df (gsheet)
 
                 try:
-                    u.fit_circle_rois(tif, template_data, write_ijrois=True,
+                    util.fit_circle_rois(tif, template_data, write_ijrois=True,
                         overwrite=True
                     )
                 except RuntimeError as e:
@@ -599,7 +592,9 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
     # info to get the rejection criteria from that...)
     # TODO make dataframe saying whether each entry in mb_team_gsheet df
     # has cnmf output / timing information / tif / motion correction?
-    mat_files = glob.glob(join(analysis_dir, rel_to_cnmf_mat, '*_cnmf.mat'))
+    mat_files = glob.glob(join(analysis_dir, matlab.rel_to_cnmf_mat,
+        '*_cnmf.mat'
+    ))
     # TODO both in this case and w/ stuff above, maybe don't print anything in
     # case where no data is found
     if len(mat_files) == 0:
@@ -623,7 +618,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
         # TODO TODO TODO maybe proceed, but keep track s.t. it isn't done twice
         # (b/c i might mark parent as not attempt_analysis, so it wouldn't get
         # reached here...)
-        if u.is_subrecording(thorimage_id):
+        if util.is_subrecording(thorimage_id):
             print('skipping sub-recording')
             skip = True
 
@@ -765,7 +760,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # just n_frames)
             n_frames = movie.shape[0]
 
-            full_frame_avg_trace = u.full_frame_avg_trace(movie)
+            full_frame_avg_trace = util.full_frame_avg_trace(movie)
             recordings['full_frame_avg_trace'] = [[float(x) for x in
                 full_frame_avg_trace.astype('float32')]]
 
@@ -887,7 +882,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             raw_f = np.array(evil.eval('data.CNM.C')).T
 
         try:
-            ti = load_mat_timing_info(mat)
+            ti = matlab.load_mat_timing_info(mat)
         except matlab.engine.MatlabExecutionError as e:
             print(e)
             # TODO recording outcome? or just fail here?
@@ -895,7 +890,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
 
         # TODO maybe change to return None/dict rather than deal with lists
         # and then just check not None in a list comprehension aggregating them?
-        ti_code_version = get_matfile_var(mat, 'ti_code_version')
+        ti_code_version = matlab.get_matfile_var(mat, 'ti_code_version')
 
         # TODO maybe it was not possible to calc timing info because input has
         # moved / was corrupted (either the thorsync file or the .mat it gets
@@ -1250,7 +1245,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 presentation['avg_zchange_5s'] = avg_zchange_5s
 
                 # TODO TODO catch runtimewarning overflow and turn into error
-                (scale, tau, offset), sigmas = u.fit_exp_decay(
+                (scale, tau, offset), sigmas = util.fit_exp_decay(
                     avg_df_over_f,
                     times=decay_frametimes,
                     numerical_scale=200
@@ -1292,7 +1287,9 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
                 # TODO or just smooth and find maxima for everything ->
                 # use that as rise time
                 '''
-                model_trace = u.exp_decay(decay_frametimes, scale, tau, offset)
+                model_trace = util.exp_decay(decay_frametimes, scale, tau,
+                    offset
+                )
                 import matplotlib.pyplot as plt
                 plt.plot(decay_frametimes, avg_df_over_f, label='data')
                 plt.plot(decay_frametimes, model_trace, label='fit')
@@ -1330,7 +1327,7 @@ for analysis_dir in glob.glob(analysis_output_root+ '/*/*/'):
             # Check correct insertion
             db_presentation = db_presentations.loc[presentation_ids,
                 presentation.columns].reset_index(drop=True)
-            diff = u.diff_dataframes(presentation, db_presentation)
+            diff = util.diff_dataframes(presentation, db_presentation)
             if diff is not None:
                 print(diff)
                 raise IOError('SQL insertion failed')

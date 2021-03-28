@@ -10,11 +10,10 @@ import socket
 from datetime import datetime
 import time
 
-import hong2p.util as u
-import hong2p.thor as thor
+from hong2p import util, thor
 
 # TODO test/check that all necessary imports were brought over in refactoring
-# (+ all refs to util.py fns below are prefixed w/ 'u.')
+# (+ all refs to util.py fns below are prefixed w/ 'util.')
 
 
 db_hostname = os.getenv('HONG_POSTGRES_HOST', 'atlas')
@@ -1892,7 +1891,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     comparison_df.drop(columns='temp_presentation_id', inplace=True)
     del presentation_df
 
-    comparison_df = u.expand_array_cols(comparison_df)
+    comparison_df = util.expand_array_cols(comparison_df)
 
     # TODO TODO make this optional
     # (and probably move to upload where fig gets saved.

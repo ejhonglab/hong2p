@@ -7,7 +7,7 @@ import numpy as np
 import tifffile
 import matplotlib.pyplot as plt
 
-import hong2p.util as u
+from hong2p.util import write_tiff
 from hong2p.thor import read_movie
 from hong2p.matlab import matlab_engine
 
@@ -104,7 +104,7 @@ def main():
         # TODO need other args to save metadata same way ij does?
         # and do we actually use that metadata anywhere?
         #tifffile.imsave(test_tiff, from_raw)
-        u.write_tiff(test_tiff, from_raw)
+        write_tiff(test_tiff, from_raw)
 
         #from_test_tiff = tifffile.imread(test_tiff)
         with tifffile.TiffFile(test_tiff) as tif:

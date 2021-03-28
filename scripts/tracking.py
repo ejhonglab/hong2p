@@ -17,8 +17,7 @@ import pyqtgraph as pg
 from scipy.spatial.distance import pdist
 import multiprocessing as mp
 
-import hong2p.util as u
-import hong2p.thor as thor
+from hong2p import util, thor
 
 
 def split_to_xydm(roi_data_xyd, unmasked=False):
@@ -262,7 +261,7 @@ def show_movie(movie, rois=None, show_surrounding_frame_rois=True,
 def fit_frame(args):
     frame_num, frame, tif = args
 
-    centers, radii, _, _ = u.fit_circle_rois(tif, avg=frame)
+    centers, radii, _, _ = util.fit_circle_rois(tif, avg=frame)
     rois_xyd = np.concatenate((centers,
         np.expand_dims(radii * 2, -1)), axis=-1
     )
@@ -276,7 +275,7 @@ def main():
     #nt = 2
     #test_movie = np.zeros((nt, 256, 256))
     test_movie = np.random.uniform(size=(nt, 256, 256))
-    centers = u.make_test_centers(initial_n=3, nt=nt, p=None, verbose=True)
+    centers = util.make_test_centers(initial_n=3, nt=nt, p=None, verbose=True)
     print(centers[0])
     show_movie(test_movie, centers, show_surrounding_frame_rois=False,
         debug_rois=True
@@ -285,22 +284,22 @@ def main():
     '''
 
     tif = join(
-        u.analysis_output_root(),
+        util.analysis_output_root(),
         #'2019-08-27/9/tif_stacks/fn_0001_nr.tif'
         '2019-11-18/3/tif_stacks/fn_0000_nr.tif'
     )
-    tiff_title = u.tiff_title(tif)
-    keys = u.tiff_filename2keys(tif)
-    fps = thor.get_thorimage_fps(u.thorimage_dir(*keys))
+    tiff_title = util.tiff_title(tif)
+    keys = util.tiff_filename2keys(tif)
+    fps = thor.get_thorimage_fps(util.thorimage_dir(*keys))
     movie = tifffile.imread(tif)
     shape_before = movie.shape
 
-    blocks = u.movie_blocks(tif, movie=movie)
+    blocks = util.movie_blocks(tif, movie=movie)
     assert movie.shape == shape_before
 
     block = blocks[0]
     target_fps = 1.0
-    downsampled, new_fps = u.downsample_movie(block, target_fps, fps)
+    downsampled, new_fps = util.downsample_movie(block, target_fps, fps)
     print(f'new_fps: {new_fps:.2f}')
 
     # TODO delete. just to speed up testing.
@@ -350,7 +349,7 @@ def main():
         ]
     }
     '''
-    # generated w/ u.roi_jumps
+    # generated w/ util.roi_jumps
     debug_points = {
         1: [{'name': '265', 'xy0': (153, 116), 'xy1': (76, 122)},
              {'name': '266', 'xy0': (76, 122), 'xy1': (162, 148)},
@@ -389,7 +388,7 @@ def main():
 
     # TODO time this to see whether it's worth parallelizing
     before = time.time()
-    roi_xyd = u.correspond_and_renumber_rois(
+    roi_xyd = util.correspond_and_renumber_rois(
         withinblock_center_sequence, debug=True, debug_points=debug_points,
         progress=False, # if len(downsampled) < 10 else True
         #checks=False
@@ -400,7 +399,7 @@ def main():
     ))
 
     max_cost = 5
-    jump_debug_points = u.roi_jumps(roi_xyd, max_cost)
+    jump_debug_points = util.roi_jumps(roi_xyd, max_cost)
     '''
     if len(jump_debug_points) > 0:
         print('debug_points = ', end='')
@@ -463,18 +462,18 @@ def main():
     center_sequence = []
     for i in range(len(blocks)):
         frame = blocks[i].mean(axis=0)
-        centers, radius, _, _ = u.fit_circle_rois(tif, avg=frame)
+        centers, radius, _, _ = util.fit_circle_rois(tif, avg=frame)
         center_sequence.append(centers)
 
     roi_numbers = False
 
     avg = movie.mean(axis=0)
     lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
-        u.correspond_rois(center_sequence, max_cost=radius + 1,
+        util.correspond_rois(center_sequence, max_cost=radius + 1,
         draw_on=avg, title=tiff_title,
         pairwise_plots=True, roi_numbers=roi_numbers, show=True
     )
-    stable_cells, new_lost = u.stable_rois(lr_matches)
+    stable_cells, new_lost = util.stable_rois(lr_matches)
 
     print(f'Number of cells detected in each block:',
         [len(cs) for cs in center_sequence])
@@ -569,7 +568,7 @@ def main():
         # TODO there some other name for this / some more appropriate value?
         # i want to get a sense of how clustered these points are in 2d space
         mean = np.mean(points, axis=0)
-        return np.mean([u.euclidean_dist(pt, mean) for pt in points])
+        return np.mean([util.euclidean_dist(pt, mean) for pt in points])
 
     np.random.seed(50)
     n_samples = 5

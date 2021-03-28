@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 from scipy.spatial.distance import pdist
 
-import hong2p.util as u
+from hong2p import util
 
 
 def _to_center_seq(centers, reverse=tuple(), randomize=tuple(),
@@ -105,10 +105,10 @@ def help_test_correspond_and_renumber(nt, verbose=False, **kwargs):
     # TODO maybe also check we cant sub_n to having no ROIs before end
 
     for _ in range(n_max_attempts):
-        centers = u.make_test_centers(initial_n=initial_n, nt=nt, p=None,
+        centers = util.make_test_centers(initial_n=initial_n, nt=nt, p=None,
             add_diameters=False, verbose=True
         )
-        u.check_no_roi_jumps(centers, max_cost)
+        util.check_no_roi_jumps(centers, max_cost)
         if all([pdist(ct).min() > max_cost for ct in centers]):
             break
         centers = None
@@ -128,7 +128,7 @@ def help_test_correspond_and_renumber(nt, verbose=False, **kwargs):
 
     print(kwarg_str, end=' ... ')
     try:
-        new_centers = u.correspond_and_renumber_rois(
+        new_centers = util.correspond_and_renumber_rois(
             center_seq_no_nan, max_cost=max_cost
         )
     except:

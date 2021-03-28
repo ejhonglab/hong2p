@@ -6,15 +6,14 @@ import pytest
 import numpy as np
 import tifffile
 
-import hong2p.util as u
-import hong2p.thor as thor
+from hong2p import util, thor
 
 
 _data = None
 def read_movie():
     global _data
     if _data is None:
-        data_dir = u.thorimage_dir('2020-03-09', 1, 'fn_007')
+        data_dir = util.thorimage_dir('2020-03-09', 1, 'fn_007')
         data = thor.read_movie(data_dir)
         _data = data
     return _data
@@ -48,7 +47,7 @@ def test_save_volume():
     # TODO test to find biggest size actually achievable w/o real truncation?
     # (or just always round trip test whenever saving?)
     print(f'writing to {fname}...', flush=True, end='')
-    u.write_tiff(fname, data)
+    util.write_tiff(fname, data)
     print(' done')
 
     # TODO how to do round trip test here? (ideally in a way that checks

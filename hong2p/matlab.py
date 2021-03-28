@@ -11,7 +11,10 @@ import warnings
 
 import numpy as np
 
-from hong2p.util import is_array_sorted
+# Only currently using `is_array_sorted` from here, but trying to import as:
+# `from hong2p.util import is_array_sorted` led to a ImportError with a message
+# indicating it was likely because of a circular import.
+import hong2p.util
 
 
 # TODO delete after refactoring to not require this engine.
@@ -260,7 +263,7 @@ def load_mat_timing_info(mat_file, use_matlab_engine=None):
     assert odor_onset_frames[0] > 0
     assert odor_offset_frames[0] > 0
 
-    assert is_array_sorted(frame_times)
+    assert hong2p.util.is_array_sorted(frame_times)
 
     for frame_index_arr in [block_first_frames, block_last_frames,
         odor_onset_frames, odor_offset_frames]:

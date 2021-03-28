@@ -13,15 +13,18 @@ import glob
 
 
 def xmlroot(xml_path):
+    """Loads contents of xml_path into xml.etree.ElementTree and returns root.
+    """
     return etree.parse(xml_path).getroot()
 
+# TODO maybe rename everything to get rid of 'get_' prefix? mainly here so i
+# can name what these functions return naturally without shadowing...
 
-# TODO maybe rename to exclude get_ prefix, to be consistent w/
-# thorimage_dir(...) and others above?
+thorimage_xml_basename = 'Experiment.xml'
 def get_thorimage_xml_path(thorimage_dir):
-    """Takes ThorImage output dir to path to its XML output.
+    """Takes ThorImage output dir to (expected) path to its XML output.
     """
-    return join(thorimage_dir, 'Experiment.xml')
+    return join(thorimage_dir, thorimage_xml_basename)
 
 
 def get_thorimage_xmlroot(thorimage_dir):
@@ -62,15 +65,6 @@ def get_thorimage_time(thorimage_dir, use_mtime=False):
         return get_thorimage_time_xml(xml)
     else:
         return datetime.fromtimestamp(getmtime(xml_path))
-
-
-def get_thorsync_time(thorsync_dir):
-    """Returns modification time of ThorSync XML.
-
-    Not perfect, but it doesn't seem any ThorSync outputs have timestamps.
-    """
-    syncxml = join(thorsync_dir, 'ThorRealTimeDataSettings.xml')
-    return datetime.fromtimestamp(getmtime(syncxml))
 
 
 def get_thorimage_dims_xml(xml):
@@ -191,30 +185,6 @@ def load_thorimage_metadata(thorimage_directory, return_xml=False):
         return fps, xy, z, c, n_flyback_frames, imaging_file, xml
 
 
-# TODO TODO TODO TODO add functions to assign times to frame / split movie into
-# blocks. might be helpful to look at the following functions from some of my
-# other projects that attempted something like this:
-#
-# al_imaging:
-# - util.load_thor_hdf5
-# - util.crop_trailing_frames (not sure i actually need this)
-# - util.threshold_crossings
-# - util.calc_odor_onsets (though prob don't wanna copy this one too much)
-# (don't think i had a separate dedicated pin to just mirror valve timing though
-# here, so don't need to do everything it does to get valve timings probably,
-# and maybe we can do better)
-#
-# also look at the thor/remy matlab code that used some of the other data in the
-# hdf5 ('DI' rather than 'AI', i think)
-#
-# assign_frames_to_trials in here might have some of the logic i want
-#
-# not useful:
-# - ejhonglab/imaging_exp_mon
-# - ejhonglab/automate2p
-# - atlas:~/src/imaging_util (not a git repo)
-
-
 # TODO rename to indicate a thor (+raw?) format
 def read_movie(thorimage_dir, discard_flyback=True):
     """Returns (t,[z,]x,y) indexed timeseries as a numpy array.
@@ -310,6 +280,30 @@ def read_movie(thorimage_dir, discard_flyback=True):
     return data
 
 
+# TODO TODO TODO TODO add functions to assign times to frame / split movie into
+# blocks. might be helpful to look at the following functions from some of my
+# other projects that attempted something like this:
+#
+# al_imaging:
+# - util.load_thor_hdf5
+# - util.crop_trailing_frames (not sure i actually need this)
+# - util.threshold_crossings
+# - util.calc_odor_onsets (though prob don't wanna copy this one too much)
+# (don't think i had a separate dedicated pin to just mirror valve timing though
+# here, so don't need to do everything it does to get valve timings probably,
+# and maybe we can do better)
+#
+# also look at the thor/remy matlab code that used some of the other data in the
+# hdf5 ('DI' rather than 'AI', i think)
+#
+# assign_frames_to_trials below might have some of the logic i want
+#
+# not useful:
+# - ejhonglab/imaging_exp_mon
+# - ejhonglab/automate2p
+# - atlas:~/src/imaging_util (not a git repo)
+
+
 def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
     odor_onset_frames):
     """Returns arrays trial_start_frames, trial_stop_frames
@@ -382,6 +376,8 @@ def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
 
 # TODO rename to indicate it's parsing from directory name?
 def old_fmt_thorimage_num(x):
+    # TODO provide example(s) of format in docstring
+
     if pd.isnull(x) or not (x[0] == '_' and len(x) == 4):
         return np.nan
     try:
@@ -393,6 +389,8 @@ def old_fmt_thorimage_num(x):
 
 # TODO rename to indicate it's parsing from directory name?
 def new_fmt_thorimage_num(x):
+    # TODO provide example(s) of format in docstring
+
     parts = x.split('_')
     if len(parts) == 1:
         return 0
@@ -400,9 +398,50 @@ def new_fmt_thorimage_num(x):
         return int(x[-1])
 
 
-def thorsync_num(x):
-    prefix = 'SyncData'
-    return int(x[len(prefix):])
+thorsync_dir_prefix = 'SyncData'
+def thorsync_num(thorsync_dir):
+    """Returns number in suffix of ThorSync output directory name as an int.
+    """
+    return int(thorsync_dir[len(thorsync_dir_prefix):])
+
+
+thorsync_xml_basename = 'ThorRealTimeDataSettings.xml'
+def get_thorsync_xml_path(thorsync_dir):
+    """Takes ThorSync output dir to (expected) path to its XML output.
+    """
+    return join(thorsync_dir, thorsync_xml_basename)
+
+
+def get_thorsync_time(thorsync_dir):
+    """Returns modification time of ThorSync XML.
+
+    Not perfect, but it doesn't seem any ThorSync outputs have timestamps.
+    """
+    syncxml = get_thorsync_xml_path(thorsync_dir)
+    return datetime.fromtimestamp(getmtime(syncxml))
+
+
+thorsync_h5_basename = 'Episode001.h5'
+def is_thorsync_h5(f):
+    """True if filename indicates file is ThorSync HDF5 output.
+    """
+    _, f_basename = split(f)[1]
+    # So far I've only seen these files named *exactly* 'Episode001.h5', but
+    # this function could be adapted if this naming convention has some
+    # variations in the future.
+    if f_basename == thorsync_h5_basename:
+        return True
+
+    return False
+
+
+def get_thorsync_h5(thorsync_dir):
+    """Returns path to ThorSync .h5 output given a directory created by ThorSync
+    """
+    # NOTE: if in the future this filename varies, could instead iterate over
+    # files, calling `is_thorsync_h5` and returning list / [asserting one +
+    # returning it]
+    return join(thorsync_dir, thorsync_h5_basename)
 
 
 def is_thorsync_dir(d, verbose=False):
@@ -411,22 +450,36 @@ def is_thorsync_dir(d, verbose=False):
     if not isdir(d):
         return False
     
+    # No matter how many directory levels `d` contains, `listdir` only returns
+    # the basename of each file, not any preceding part of the path.
     files = {f for f in listdir(d)}
 
     have_settings = False
     have_h5 = False
     for f in files:
-        # checking for substring
-        if 'ThorRealTimeDataSettings.xml' in f:
+        if f == thorsync_xml_basename:
             have_settings = True
-        if '.h5':
+
+        if is_thorsync_h5(f):
             have_h5 = True
 
     if verbose:
         print('have_settings:', have_settings)
         print('have_h5:', have_h5)
 
-    return have_h5 and have_settings
+    return have_h5 and have_settings1
+
+
+def is_thorimage_raw(f):
+    """True if filename indicates file is ThorImage raw output.
+    """
+    _, f_basename = split(f)[1]
+
+    # Needs to match at least 'Image_0001_0001.raw' and 'Image_001_001.raw'
+    if f_basename.startswith('Image_00') and f_basename.endswith('001.raw'):
+        return True
+
+    return False
 
 
 def is_thorimage_dir(d, verbose=False):
@@ -436,7 +489,9 @@ def is_thorimage_dir(d, verbose=False):
     """
     if not isdir(d):
         return False
-    
+   
+    # No matter how many directory levels `d` contains, `listdir` only returns
+    # the basename of each file, not any preceding part of the path.
     files = {f for f in listdir(d)}
 
     have_xml = False
@@ -444,11 +499,14 @@ def is_thorimage_dir(d, verbose=False):
     # TODO support tif output case(s) as well
     #have_processed_tiff = False
     for f in files:
-        if f == 'Experiment.xml':
+        if f == thorimage_xml_basename:
             have_xml = True
-        # Needs to match at least 'Image_0001_0001.raw' and 'Image_001_001.raw'
-        elif f.startswith('Image_00') and f.endswith('001.raw'):
+
+        # TODO TODO would probably fail if experiment was configured to save
+        # TIFF output? or does it also save .raw in that case? fix if not.
+        elif is_thorimage_raw(f):
             have_raw = True
+
         #elif f == split(d)[-1] + '_ChanA.tif':
         #    have_processed_tiff = True
 
@@ -821,7 +879,7 @@ def tif2xml_root(filename):
     parts = filename.split(sep)
     thorimage_id = '_'.join(parts[-1].split('_')[:-1])
 
-    xml_fname = sep.join(parts[:-2] + [thorimage_id, 'Experiment.xml'])
+    xml_fname = sep.join(parts[:-2] + [thorimage_id, thorimage_xml_basename])
     return xmlroot(xml_fname)
 
 

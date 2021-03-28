@@ -12,23 +12,23 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import cv2
 
-import hong2p.util as u
+from hong2p import util
 from hong2p.thor import read_movie
 
 
 # TODO maybe rename now that it also has antennal data...
-gdf = u.mb_team_gsheet()
+gdf = util.mb_team_gsheet()
 gdf = gdf[gdf.stimulus_data_file.apply(lambda x: '_vv-' in x) &
     gdf.attempt_analysis
 ]
 # Assuming there are no non-calibration pickles on the same dates as 
 # calibration experiments (that have their own trace pickles).
-date_strs = [u.format_date(d) for d in gdf.date.unique()]
+date_strs = [util.format_date(d) for d in gdf.date.unique()]
 
 def write_trace_pickles():
     keys = ['date', 'fly_num', 'thorimage_dir']
     for ks, group_df in gdf.groupby(keys):
-        data_dir = u.thorimage_dir(*ks)
+        data_dir = util.thorimage_dir(*ks)
         # TODO assert the dir exists?
 
         avg_tiff_fname = join(data_dir, 'avg.tif')
@@ -44,7 +44,7 @@ def write_trace_pickles():
             avg = np.round(avg).astype(np.uint16)
 
             print(f'writing average to {avg_tiff_fname}')
-            u.write_tiff(avg_tiff_fname, avg)
+            util.write_tiff(avg_tiff_fname, avg)
 
             import ipdb; ipdb.set_trace()
 
@@ -71,7 +71,7 @@ def write_trace_pickles():
 
 
 def process_trace_pickles():
-    trace_pickle_dir = join(u.analysis_output_root(), 'trace_pickles')
+    trace_pickle_dir = join(util.analysis_output_root(), 'trace_pickles')
     # TODO TODO TODO if enumerating thorimage dirs above from a list of dates,
     # use same dates here to glob the pickles
     pickles = [

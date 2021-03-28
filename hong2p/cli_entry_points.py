@@ -3,7 +3,7 @@
 import argparse
 from os.path import isdir, exists, join
 
-import hong2p.util as u
+from hong2p import util
 from hong2p.thor import read_movie
 
 
@@ -44,6 +44,6 @@ def thor2tiff():
     # i'm doing something stupid.
 
     print(f'Writing TIFF to {output_name}...', flush=True, end='')
-    u.write_tiff(output_name, from_raw)
+    util.write_tiff(output_name, from_raw)
     print(' done', flush=True)
 

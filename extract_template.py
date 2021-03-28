@@ -20,11 +20,7 @@ import matplotlib.pyplot as plt
 from scipy.cluster.vq import kmeans
 
 import ijroi
-import hong2p.util as u
-# TODO test whether replacing w/ 'from hong2p import db' works (w/ or w/o
-# changing __init__.py)
-import hong2p.db as db
-import hong2p.thor as thor
+from hong2p import util, thor, db
 
 
 def print_bad_keys(mask):
@@ -75,10 +71,10 @@ def try_all_template_matching_methods(scene, template):
         'cv2.TM_SQDIFF',
         'cv2.TM_SQDIFF_NORMED'
     ]
-    normed_template = u.baselined_normed_u8(template)
+    normed_template = util.baselined_normed_u8(template)
     for method in methods:
         res = cv2.matchTemplate(scene, normed_template, method)
-        u.imshow(res, method)
+        util.imshow(res, method)
 
 
 def unconstrained_roi_finding(match_image, radius, d, draw_on, threshold=0.8):
@@ -88,7 +84,7 @@ def unconstrained_roi_finding(match_image, radius, d, draw_on, threshold=0.8):
     """
     above_thresh = np.where(match_image >= threshold)
 
-    scene = u.baselined_normed_u8(draw_on)
+    scene = util.baselined_normed_u8(draw_on)
     # upsampling just so cv2 drawing functions look better
     ups = 4
     scene = cv2.resize(scene, tuple([ups * x for x in scene.shape]))
@@ -105,7 +101,7 @@ def unconstrained_roi_finding(match_image, radius, d, draw_on, threshold=0.8):
         center = (pt[0] + int(round(w / 2)), pt[1] + int(round(h / 2)))
         cv2.circle(scene_bgr, center, radius, (255,0,0), 2)
 
-    u.imshow(scene_bgr, 'unconstrained template matching maxima')
+    util.imshow(scene_bgr, 'unconstrained template matching maxima')
 
 
 def enforce_nonneg_int(int_arg):
@@ -199,11 +195,11 @@ def main():
 
     np.set_printoptions(precision=3)
 
-    template_cache = u.template_data_file()
+    template_cache = util.template_data_file()
     if args.remake:
         template_data = None
     else:
-        template_data = u.load_template_data()
+        template_data = util.load_template_data()
 
     if template_data is not None:
         print(f'Loaded template data from {template_cache}')
@@ -233,11 +229,11 @@ def main():
 
         # No real way to go from filenames under trace_pickles to imagej roi set
         # that was used, since mtime may have changed, but...
-        latest_on_disk = u.latest_trace_pickles()
+        latest_on_disk = util.latest_trace_pickles()
 
         # Getting keys from input_filename to not have to merge w/ other tables.
         # (uh... was there some other reason?)
-        df = pd.concat([df, df.input_filename.apply(u.tiff_filename2keys)],
+        df = pd.concat([df, df.input_filename.apply(util.tiff_filename2keys)],
             axis=1
         )
         df.set_index(latest_on_disk.index.names, inplace=True)
@@ -284,7 +280,7 @@ def main():
         row_index2frame_shape = dict()
         row_index2thorimage_xmlroots = dict()
         for row in df.itertuples():
-            thorimage_dir = u.thorimage_dir(*row.Index)
+            thorimage_dir = util.thorimage_dir(*row.Index)
             xmlroot = thor.get_thorimage_xmlroot(thorimage_dir)
             row_index2thorimage_xmlroots[row.Index] = xmlroot
 
@@ -386,8 +382,8 @@ def main():
                     # after scaling). check w/ docs or some test case!
                     roi = np.round(roi * scale_factor).astype(roi.dtype)
 
-                cropped, (x_bounds, y_bounds) = u.crop_to_coord_bbox(avg, roi,
-                    margin=margin
+                cropped, (x_bounds, y_bounds) = util.crop_to_coord_bbox(avg,
+                    roi, margin=margin
                 )
                 if debug_plots:
                     plt.imshow(cropped)
@@ -397,7 +393,7 @@ def main():
                     # a mask as large as the whole frame.
                     roi[:,0] = roi[:,0] - x_bounds[0]
                     roi[:,1] = roi[:,1] - y_bounds[0]
-                    mask = u.contour2mask(roi, cropped.shape)
+                    mask = util.contour2mask(roi, cropped.shape)
 
                     if debug_plots:
                         plt.figure()
@@ -451,13 +447,13 @@ def main():
                 title = \
                     f'{str(row.Index[0])[:10]}/{row.Index[1]}/{row.Index[2]}'
 
-                u.imshow(movie.mean(axis=0), f'{title} avg')
+                util.imshow(movie.mean(axis=0), f'{title} avg')
 
-                fig = u.image_grid(avg_cells)
+                fig = util.image_grid(avg_cells)
                 fig.suptitle(title)
 
                 template = make_template(avg_cells)
-                u.imshow(template,
+                util.imshow(template,
                     f'{title} template (averaged across rotations and flips)'
                 )
                 plt.show()
@@ -465,12 +461,12 @@ def main():
         mean_cell_diam_um = np.mean(all_cell_diams_um)
 
         if show_cell_images:
-            fig = u.image_grid(all_avg_cells)
+            fig = util.image_grid(all_avg_cells)
             title = 'All cells, across input recordings'
             fig.suptitle(title)
 
         template = make_template(all_avg_cells)
-        u.imshow(template, 'Template')
+        util.imshow(template, 'Template')
 
         # This section is to assist in designing multi-scale template matching,
         # or see when it might/might-not be worth it.
@@ -535,7 +531,7 @@ def main():
         template_cell_diam_px = template.shape[0] - 2 * margin
         template_cell_radius_px = template_cell_diam_px / 2
         radius = int(round(template_cell_radius_px))
-        ijroi_repr = u.get_circle_ijroi_input(center, radius)
+        ijroi_repr = util.get_circle_ijroi_input(center, radius)
 
         template_roi_path = 'template.roi'
         with open(template_roi_path, 'wb') as f:
@@ -586,7 +582,7 @@ def main():
             row = df[tif_rows].iloc[0]
 
             ijroi_file = row.ijroi_file_path
-            auto_md_fname = u.autoroi_metadata_filename(ijroi_file)
+            auto_md_fname = util.autoroi_metadata_filename(ijroi_file)
             if exists(auto_md_fname):
                 if exclude_even_initially_auto_rois:
                     print('skipping', tif, 'because ROIs (at least initially) '
@@ -611,7 +607,7 @@ def main():
             movie = tifffile.imread(tif)
             avg = movie.mean(axis=0)
 
-            centers, radii_px, _, _ = u.fit_circle_rois(tif, template_data,
+            centers, radii_px, _, _ = util.fit_circle_rois(tif, template_data,
                 avg=avg
             )
             # TODO delete
@@ -625,7 +621,7 @@ def main():
             # TODO TODO allow passing same-length costs for either centers
             # inputs to correspond_rois (=radii)
             max_cost = np.mean(radii_px)
-            title = u.tiff_title(tif)
+            title = util.tiff_title(tif)
 
             center_diams = [
                 ijroi.oval_points_center_diam(roi, assert_circular=False)
@@ -634,7 +630,7 @@ def main():
             true_centers = np.stack([c for c, _ in center_diams])
 
             lr_matches, unmatched_left, unmatched_right, total_cost, _ = \
-                u.correspond_rois(centers, true_centers, max_cost=max_cost,
+                util.correspond_rois(centers, true_centers, max_cost=max_cost,
                 left_name='Automatic', right_name='Manual', draw_on=draw_on,
                 title=title, show=True
             )

@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 import pandas as pd
 
-import hong2p.util as u
+from hong2p import util
 
 
 test_df = pd.DataFrame({
@@ -21,7 +21,7 @@ test_df = pd.DataFrame({
 def test_diff_dataframes_equal():
     df1 = test_df.copy()
     df2 = test_df.copy()
-    assert u.diff_dataframes(df1, df2) is None
+    assert util.diff_dataframes(df1, df2) is None
 
 
 def test_diff_dataframes_floatclose():
@@ -30,7 +30,7 @@ def test_diff_dataframes_floatclose():
     assert df1.equals(df2)
     df2.loc[0, 'float'] = df2.loc[0, 'float'] + 1e-6
     assert not df1.equals(df2)
-    assert u.diff_dataframes(df1, df2) is None
+    assert util.diff_dataframes(df1, df2) is None
 
 
 def test_diff_dataframes_arrclose():
@@ -43,7 +43,7 @@ def test_diff_dataframes_arrclose():
     v2 = df2.loc[0, 'arr1'][1]
     df2.loc[0, 'arr1'][1] = v2 + 1e-6
     assert not df1.equals(df2)
-    assert u.diff_dataframes(df1, df2) is None
+    assert util.diff_dataframes(df1, df2) is None
 
 
 def test_diff_dataframes_other_ne():
@@ -52,7 +52,7 @@ def test_diff_dataframes_other_ne():
     assert df1.equals(df2)
     df1['str'] = 'qwerty'
     assert not df1.equals(df2)
-    diff = u.diff_dataframes(df1, df2)
+    diff = util.diff_dataframes(df1, df2)
     assert diff is not None
     assert len(diff) == 1
     assert 'str' in diff.index.get_level_values('col')
@@ -64,7 +64,7 @@ def test_diff_dataframes_float_ne():
     assert df1.equals(df2)
     df2.loc[0, 'float'] = df2.loc[0, 'float'] + 1.0
     assert not df1.equals(df2)
-    diff = u.diff_dataframes(df1, df2)
+    diff = util.diff_dataframes(df1, df2)
     assert diff is not None
     assert len(diff) == 1
     assert 'float' in diff.index.get_level_values('col')
@@ -78,7 +78,7 @@ def test_diff_dataframes_arr_ne():
     v2 = df2.loc[0, 'arr1'][1]
     df2.loc[0, 'arr1'][1] = v2 + 100
     assert not df1.equals(df2)
-    diff = u.diff_dataframes(df1, df2)
+    diff = util.diff_dataframes(df1, df2)
     assert len(diff) == 1
     assert 'arr1' in diff.index.get_level_values('col')
 
@@ -89,7 +89,7 @@ def test_diff_dataframes_float_onenan():
     assert df1.equals(df2)
     df2.loc[0, 'float'] = np.nan
     assert not df1.equals(df2)
-    diff = u.diff_dataframes(df1, df2)
+    diff = util.diff_dataframes(df1, df2)
     assert len(diff) == 1
     assert 'float' in diff.index.get_level_values('col')
 
@@ -101,7 +101,7 @@ def test_diff_dataframes_arr_onenan():
     assert df1.equals(df2)
     df2.loc[0, 'arr1'][1] = np.nan
     assert not df1.equals(df2)
-    diff = u.diff_dataframes(df1, df2)
+    diff = util.diff_dataframes(df1, df2)
     assert len(diff) == 1
     assert 'arr1' in diff.index.get_level_values('col')
 
@@ -112,7 +112,7 @@ def test_diff_dataframes_float_naneq():
     assert df1.equals(df2)
     df1.loc[0, 'float'] = np.nan
     df2.loc[0, 'float'] = np.nan
-    assert u.diff_dataframes(df1, df2) is None
+    assert util.diff_dataframes(df1, df2) is None
 
 
 def test_diff_dataframes_arr_naneq():
@@ -123,6 +123,5 @@ def test_diff_dataframes_arr_naneq():
     assert df1.equals(df2)
     df1.loc[0, 'arr1'][1] = np.nan
     df2.loc[0, 'arr1'][1] = np.nan
-    assert u.diff_dataframes(df1, df2) is None
-
+    assert util.diff_dataframes(df1, df2) is None
 
