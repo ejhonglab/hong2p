@@ -161,12 +161,12 @@ def get_thorimage_n_flyback_xml(xml):
     return n_flyback_frames
 
 
-def load_thorimage_metadata(thorimage_directory, return_xml=False):
+def load_thorimage_metadata(thorimage_dir, return_xml=False):
     """Returns (fps, xy, z, c, n_flyback, raw_output_path) for ThorImage dir.
 
     Returns xml as an additional final return value if `return_xml` is True.
     """
-    xml = get_thorimage_xmlroot(thorimage_directory)
+    xml = get_thorimage_xmlroot(thorimage_dir)
 
     # TODO TODO in volumetric streaming case (at least w/ input from thorimage
     # 3.0 from downstairs scope), this is the xy fps (< time per volume). also
@@ -182,8 +182,16 @@ def load_thorimage_metadata(thorimage_directory, return_xml=False):
     # - Image_0001_0001.raw
     # - Image_001_001.raw
     # ...but not sure if there any meaning behind the differences.
-    imaging_files = glob.glob(join(thorimage_directory, 'Image_*.raw'))
-    assert len(imaging_files) == 1, 'multiple possible imaging files'
+    imaging_files = glob.glob(join(thorimage_dir, 'Image_*.raw'))
+
+    if len(imaging_files) == 0:
+        raise IOError(f'no .raw files in ThorImage directory {thorimage_dir}')
+
+    elif len(imaging_files) > 1:
+        raise RuntimeError('multiple .raw files in ThorImage directory '
+            f'{thorimage_dir}. ambiguous!'
+        )
+
     imaging_file = imaging_files[0]
 
     if not return_xml:
@@ -461,6 +469,15 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         # issues.
         if isinstance(obj, h5py.Dataset):
             parent_name = obj.parent.name
+
+            # In data from 2019-05-03/3/SyncData002, this has keys 'Hz' and
+            # 'FitHz' under it, each of shape (3000, 1) (<< length of other
+            # arrays, so would cause DataFrame creation to fail). min/max of
+            # both datasets were 0, so they don't seem to be used, at least as I
+            # had the acquisition configured.
+            if parent_name == '/Freq':
+                return
+
             # Excluding the names of the Group(s) containing this Dataset.
             dataset_name = obj.name[(len(parent_name) + 1):]
 
