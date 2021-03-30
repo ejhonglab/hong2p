@@ -5179,6 +5179,12 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
     stimfile=None, first_block=None, last_block=None):
     """Returns list of arrays, one per continuous acquisition.
 
+    `tif` must be named and placed according to convention, and a .mat file
+    created from `ejhonglab/matlab_kc_plane` (typically run via `populate_db.py`
+    in this repo) must exist in the conventional path under the analysis root.
+    This .mat file is used for the timing information (ultimately derived mainly
+    from ThorSync data).
+
     Total length along time dimension should be preserved from input TIFF.
     """
     from scipy import stats

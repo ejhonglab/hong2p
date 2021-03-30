@@ -11,9 +11,16 @@ import warnings
 from pprint import pprint
 import glob
 
+import numpy as np
+import pandas as pd
+
 
 def xmlroot(xml_path):
     """Loads contents of xml_path into xml.etree.ElementTree and returns root.
+
+    Use calls to <node>.find(<child name>) to traverse down tree and at leaves,
+    use <leaf>.attrib[<attribute name>] to get values. There are other functions
+    too, but see `xml` documentation for more information.
     """
     return etree.parse(xml_path).getroot()
 
@@ -185,7 +192,96 @@ def load_thorimage_metadata(thorimage_directory, return_xml=False):
         return fps, xy, z, c, n_flyback_frames, imaging_file, xml
 
 
+thorsync_xml_basename = 'ThorRealTimeDataSettings.xml'
+def get_thorsync_xml_path(thorsync_dir):
+    """Takes ThorSync output dir to (expected) path to its XML output.
+    """
+    return join(thorsync_dir, thorsync_xml_basename)
+
+
+# TODO is this also updated past start of recording, as I think the ThorImage
+# one is?
+def get_thorsync_time(thorsync_dir):
+    """Returns modification time of ThorSync XML.
+
+    Not perfect, but it doesn't seem any ThorSync outputs have timestamps.
+    """
+    syncxml = get_thorsync_xml_path(thorsync_dir)
+    return datetime.fromtimestamp(getmtime(syncxml))
+
+
+thorsync_h5_basename = 'Episode001.h5'
+def is_thorsync_h5(f):
+    """True if filename indicates file is ThorSync HDF5 output.
+    """
+    _, f_basename = split(f)[1]
+    # So far I've only seen these files named *exactly* 'Episode001.h5', but
+    # this function could be adapted if this naming convention has some
+    # variations in the future.
+    if f_basename == thorsync_h5_basename:
+        return True
+
+    return False
+
+
+def get_thorsync_samplerate_hz(thorsync_dir):
+    """Returns int sample rate (Hz) of ThorSync HDF5 data in `thorsync_dir`.
+    """
+    xml_path = get_thorsync_xml_path(thorsync_dir)
+    xml = xmlroot(xml_path)
+    devices = xml.find('DaqDevices')
+
+    # TODO some of the keys seem to hint that this xml also describes which
+    # channel was used to trigger the recording, though they don't seem set as i
+    # would think... maybe they are for something else
+    # (if this data is there, could automatically pull out the channel that is
+    # used to trigger the thorimage recording, or something like that)
+    # (maybe that data is in thorimage config actually?)
+
+    active_device = None
+    for device in devices.getchildren():
+        attrib = device.attrib
+
+        if attrib['type'] == 'Simulator' or attrib['devID'] == 'NONE':
+            continue
+
+        if int(attrib['active']):
+            if active_device is not None:
+                raise ValueError('multiple AcquireBoard elements active in '
+                    f'{xml_path}'
+                )
+            active_device = device
+
+    if active_device is None:
+        raise ValueError(f'no AcquireBoard elements active in {xml_path}')
+
+    samplerate_hz = None
+    for samprate_ele in active_device.findall('SampleRate'):
+        attrib = samprate_ele.attrib
+        if int(attrib['enable']):
+            if samplerate_hz is not None:
+                raise ValueError('multiple SampleRate elements active in '
+                    f'{xml_path}'
+                )
+            samplerate_hz = int(samprate_ele.attrib['rate'])
+
+    if samplerate_hz is None:
+        raise ValueError(f'no SampleRate elements active in {xml_path}')
+
+    return samplerate_hz
+
+
+def get_thorsync_h5(thorsync_dir):
+    """Returns path to ThorSync .h5 output given a directory created by ThorSync
+    """
+    # NOTE: if in the future this filename varies, could instead iterate over
+    # files, calling `is_thorsync_h5` and returning list / [asserting one +
+    # returning it]
+    return join(thorsync_dir, thorsync_h5_basename)
+
+
 # TODO rename to indicate a thor (+raw?) format
+# TODO rename to 'load_movie' to be consistent w/ other similar fns in here?
 def read_movie(thorimage_dir, discard_flyback=True):
     """Returns (t,[z,]x,y) indexed timeseries as a numpy array.
     """
@@ -280,6 +376,150 @@ def read_movie(thorimage_dir, discard_flyback=True):
     return data
 
 
+# TODO maybe refactor this a bit and and a function to list datasets, just so
+# people can figure out their own data post hoc w/o needing other tools
+def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
+    drop_gctr=True):
+    """Loads ThorSync .h5 output within `thorsync_dir` into a `pd.DataFrame`
+
+    A column 'time_s' will be added, which is derived from 'GCtr', and
+    represents the time (in seconds) from the start of the ThorSync recording.
+
+    Args:
+    datasets (iterable of str | None): Load only datasets with these names.
+        Do not include the group names preceding the dataset name. Pass only
+        one of either this or `exclude_datasets`. Names must be as they were
+        before the internal normalization (lowercasing/space conversion) that is
+        applied to some of the columns in this function.
+
+    exclude_datasets (iterable of str | None): Load only datasets *except* those
+        with these names. Do not include 'GCtr' here.
+
+    drop_gctr (bool): (default=True) Drop '/Global/GCtr' data (would be returned
+        as column 'gctr') after using it to calculate 'time_s' column.
+
+    These HDF5 files have the following hierarchical structure, where leaves of
+    this tree are "Datasets" and their parents are "Groups" (via inspection of a
+    ThorSync 3.0 output):
+    - Global:
+      - GCtr
+        (from ThorSync 3.0 manual) "ThorSync records data into a table with
+        clock cycles beginning with 0.  The time of acquisition can be
+        determined by dividing the clock cycle by the frequency of the data
+        collection set at 20 MHz. Thus, each sequential clock cycle represents
+        an increment of 0.05 μs."
+
+        Note that this 20 MHz is not the same as the sampling rate specified in
+        the ThorSync XML output. See commented example at end of this function.
+
+    - DI:
+      - Frame In
+        - completely zero in the file I was exploring
+
+      - Frame Out
+        - may have one high pulse (==2 for some reason; low==0) per frame
+        - seems to only be low briefly before returning high again. perhaps just
+          for one / a few samples?
+        - it may be possible there are cases where there are more high pulses
+          here than there are frames in the movie, perhaps in cases with
+          averaging or multiple separate acquisition periods.
+
+    - CI:
+      - Frame Counter
+
+    - AI:
+      - <one entry for each user-configured analog input>
+
+    Two changes will be made in translating HDF5 dataset names to DataFrame
+    column names:
+    1. Dataset names *except* those under the group 'AI' (the user configurable
+       ones) will be lowercased.
+
+    2. All dataset names will have any spaces converted to underscores.
+
+    """
+    # TODO TODO DI/Frame [In/Out] useful? how?
+
+    # I tried to use `pd.read_hdf` in place of this, but no matter how I used it
+    # (tried various arguments to key=), just got various errors.
+    import h5py
+
+    # TODO maybe just silently ignore exclude_datasets if datasets is passed, so
+    # i can have some defaults in exclude_datasets that can be overridden if
+    # need be...
+    if not (datasets is None or exclude_datasets is None):
+        raise ValueError('only pass at most one of datasets or exclude_datasets')
+
+    # Structure of hdf5 can be explored via:
+    # h5dump -H <h5 path>
+    # (need to `sudo apt install hdf5-tools` first)
+    hdf5_fname = get_thorsync_h5(thorsync_dir)
+
+    data_dict = dict()
+    def load_datasets(name, obj):
+        # Could also check if `obj` has a 'shape' attribute if this approach has
+        # issues.
+        if isinstance(obj, h5py.Dataset):
+            parent_name = obj.parent.name
+            # Excluding the names of the Group(s) containing this Dataset.
+            dataset_name = obj.name[(len(parent_name) + 1):]
+
+            if datasets and dataset_name not in datasets:
+                return
+
+            if exclude_datasets and dataset_name in exclude_datasets:
+                return
+
+            # Seemingly consistent with what the Thorlabs MATLAB scripts are
+            # doing, and something I'd want to do anyway.
+            dataset_name = dataset_name.replace(' ', '_')
+
+            if parent_name != '/AI':
+                # This could in theory eliminate some uniqueness of the names,
+                # but in practice it really shouldn't.
+                # Not doing this for all keys so that things like 'olfDispPin'
+                # don't become hard to read.
+                dataset_name = dataset_name.lower()
+
+            shape = obj.shape
+            assert len(shape) == 2 and shape[1] == 1, 'unexpected shape'
+            # NOTE: would be an issue if someone named one of the user-nameable
+            # analog inputs to be the same as one of the builtin dataset names
+            assert dataset_name not in data_dict, 'dataset names not unique'
+
+            # TODO TODO probably convert all digital stuff (exactly the stuff
+            # under the 'DI' group, right?) to 0/1, and maybe also dtype to bool
+            data_dict[dataset_name] = obj[:, 0]
+
+    # NOTE: for some reason, opening a debugger (e.g. via `ipdb.set_trace()`)
+    # inside this context manager has `self` in `dir()`, seemingly pointing to
+    # `f`, but `f` can not be referenced directly.
+    with h5py.File(hdf5_fname, 'r') as f:
+        # Populates data_dict
+        f.visititems(load_datasets)
+
+        # TODO maybe compare performance w/ w/o conversion to Dataframe?
+        df = pd.DataFrame(data_dict)
+
+    # Dividing what I think is the clock cycle counter by the 20MHz mentioned in
+    # the 3.0 ThorSync manual (section 5.2 "Reviewing Data").
+    df['time_s'] = df.gctr / int(2e7)
+
+    if drop_gctr:
+        df.drop(columns='gctr', inplace=True)
+
+    # Just to illustrate what the sampling rate in the XML is. This check should
+    # work, but no need for it to be routine.
+    #
+    # samprate_hz = get_thorsync_samplerate_hz(thorsync_dir)
+    # mean_sample_interval = df.time_s.diff().mean()
+    # expected_sample_interval = 1 / samprate_hz
+    # assert np.isclose(mean_sample_interval, expected_sample_interval), \
+    #     'ThorSync XML sample rate or acquisition clock frequency wrong'
+
+    return df
+
+
 # TODO TODO TODO TODO add functions to assign times to frame / split movie into
 # blocks. might be helpful to look at the following functions from some of my
 # other projects that attempted something like this:
@@ -298,12 +538,27 @@ def read_movie(thorimage_dir, discard_flyback=True):
 #
 # assign_frames_to_trials below might have some of the logic i want
 #
+# hong2p.util.movie_blocks:
+# - uses output of matlab_kc_plane for ThorSync data, but some of this fn may
+#   still be useful
+#
 # not useful:
 # - ejhonglab/imaging_exp_mon
 # - ejhonglab/automate2p
 # - atlas:~/src/imaging_util (not a git repo)
 
+# TODO TODO TODO try to make sure we are maintaining the same behavior as the
+# official thor provided matlab scripts:
+# From red "Note:" box on p37 of ThorSync3.0 user guide:
+# "Importing data into Matlab will automatically maintain the correct frame
+# reference by removing any unintended image frame(s) acquired during the
+# Trigger Out phase."
 
+# TODO TODO TODO step through (LoadSyncEpisode.m ->) GenerateFrameTime.m
+# in MATLAB and inspect the intermediates
+
+
+# TODO maybe delete / move back to util
 def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
     odor_onset_frames):
     """Returns arrays trial_start_frames, trial_stop_frames
@@ -403,45 +658,6 @@ def thorsync_num(thorsync_dir):
     """Returns number in suffix of ThorSync output directory name as an int.
     """
     return int(thorsync_dir[len(thorsync_dir_prefix):])
-
-
-thorsync_xml_basename = 'ThorRealTimeDataSettings.xml'
-def get_thorsync_xml_path(thorsync_dir):
-    """Takes ThorSync output dir to (expected) path to its XML output.
-    """
-    return join(thorsync_dir, thorsync_xml_basename)
-
-
-def get_thorsync_time(thorsync_dir):
-    """Returns modification time of ThorSync XML.
-
-    Not perfect, but it doesn't seem any ThorSync outputs have timestamps.
-    """
-    syncxml = get_thorsync_xml_path(thorsync_dir)
-    return datetime.fromtimestamp(getmtime(syncxml))
-
-
-thorsync_h5_basename = 'Episode001.h5'
-def is_thorsync_h5(f):
-    """True if filename indicates file is ThorSync HDF5 output.
-    """
-    _, f_basename = split(f)[1]
-    # So far I've only seen these files named *exactly* 'Episode001.h5', but
-    # this function could be adapted if this naming convention has some
-    # variations in the future.
-    if f_basename == thorsync_h5_basename:
-        return True
-
-    return False
-
-
-def get_thorsync_h5(thorsync_dir):
-    """Returns path to ThorSync .h5 output given a directory created by ThorSync
-    """
-    # NOTE: if in the future this filename varies, could instead iterate over
-    # files, calling `is_thorsync_h5` and returning list / [asserting one +
-    # returning it]
-    return join(thorsync_dir, thorsync_h5_basename)
 
 
 def is_thorsync_dir(d, verbose=False):

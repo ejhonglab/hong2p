@@ -294,6 +294,9 @@ def main():
     movie = tifffile.imread(tif)
     shape_before = movie.shape
 
+    # `tif` passed so this fn can find metadata about the movie, as the TIF name
+    # and placement follow a certain convention. It would also be used to load
+    # movie if we didn't separately pass that.
     blocks = util.movie_blocks(tif, movie=movie)
     assert movie.shape == shape_before
 
