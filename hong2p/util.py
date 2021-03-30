@@ -5166,6 +5166,76 @@ def load_template_data(err_if_missing=False):
         return None
 
 
+def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
+    odor_onset_frames):
+    """Returns arrays trial_start_frames, trial_stop_frames
+    """
+    n_frames = movie.shape[0]
+    # TODO maybe just add metadata['drop_first_n_frames'] to this?
+    # (otherwise, that variable screws things up, right?)
+    #onset_frame_offset = \
+    #    odor_onset_frames[0] - block_first_frames[0]
+
+    # TODO delete this hack, after implementing more robust frame-to-trial
+    # assignment described below
+    b2o_offsets = sorted([o - b for b, o in zip(block_first_frames,
+        odor_onset_frames[::presentations_per_block])
+    ])
+    assert len(b2o_offsets) >= 3
+    # TODO TODO TODO re-enable after fixing frame_times based issues w/
+    # volumetric data
+    # TODO might need to allow for some error here...? frame or two?
+    # (in resonant scanner case, w/ frame averaging maybe)
+    #assert b2o_offsets[-1] == b2o_offsets[-2]
+    onset_frame_offset = b2o_offsets[-1]
+    #
+    
+    # TODO TODO TODO instead of this frame # strategy for assigning frames
+    # to trials, maybe do this:
+    # 1) find ~max # frames from block start to onset, as above
+    # TODO but maybe still warn if some offset deviates from max by more
+    # than a frame or two...
+    # 2) paint all frames before odor onsets up to this max # frames / time
+    #    (if frames have a time discontinuity between them indicating
+    #     acquisition did not proceed continuously between them, do not
+    #     paint across that boundary)
+    # 3) paint still-unassigned frames following odor onset in the same
+    #    fashion (again stopping at boundaries of > certain dt)
+    # [4)] if not using max in #1 (but something like rounded mean)
+    #      may still have unassigned frames at block starts. assign those to
+    #      trials.
+    # TODO could just assert everything within block regions i'm painting
+    # does not have time discontinuities, and then i could just deal w/
+    # frames
+
+    trial_start_frames = np.append(0,
+        odor_onset_frames[1:] - onset_frame_offset
+    )
+    trial_stop_frames = np.append(
+        odor_onset_frames[1:] - onset_frame_offset - 1, n_frames - 1
+    )
+
+    # TODO same checks are made for blocks, so factor out?
+    total_trial_frames = 0
+    for i, (t_start, t_end) in enumerate(
+        zip(trial_start_frames, trial_stop_frames)):
+
+        if i != 0:
+            last_t_end = trial_stop_frames[i - 1]
+            assert last_t_end == (t_start - 1)
+
+        total_trial_frames += t_end - t_start + 1
+
+    assert total_trial_frames == n_frames, \
+        '{} != {}'.format(total_trial_frames, n_frames)
+    #
+
+    # TODO warn if all block/trial lens are not the same? (by more than some
+    # threshold probably)
+
+    return trial_start_frames, trial_stop_frames
+
+
 # TODO TODO TODO after refactoring much of the stuff that was under
 # open_recording and some of its downstream fns from gui.py, also refactor this
 # to use the new fns
@@ -5430,7 +5500,7 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
         warnings.warn('{} != {}'.format(movie.shape[0], len(frame_times)))
 
     # TODO maybe move this and the above checks on block start/end frames
-    # + frametimes into thor.assign_frames_to_trials
+    # + frametimes into assign_frames_to_trials
     n_frames = movie.shape[0]
     total_block_frames = sum([e - s + 1 for s, e in
         zip(block_first_frames, block_last_frames)

@@ -74,6 +74,16 @@ def get_thorimage_time(thorimage_dir, use_mtime=False):
         return datetime.fromtimestamp(getmtime(xml_path))
 
 
+def get_thorimage_n_frames_xml(xml):
+    """Returns the number of XY planes (# of timepoints) in the recording.
+
+    Flyback frames are included.
+    """
+    return int(xml.find('Streaming').attrib['frames'])
+
+
+# TODO probably also include number of "frames" (*planes* over time) here too
+# (and in functions that call this)
 def get_thorimage_dims_xml(xml):
     """Takes etree XML root object to (xy, z, c) dimensions of movie.
 
@@ -316,7 +326,7 @@ def read_movie(thorimage_dir, discard_flyback=True):
 
     # This does not fail in the volumetric case, because 'frames' here
     # refers to XY frames there too.
-    assert n_frames == int(xml.find('Streaming').attrib['frames'])
+    assert n_frames == get_thorimage_n_frames_xml(xml)
 
     # TODO how to reshape if there are also multiple channels?
 
@@ -384,6 +394,7 @@ def read_movie(thorimage_dir, discard_flyback=True):
     return data
 
 
+time_col = 'time_s'
 # TODO maybe refactor this a bit and and a function to list datasets, just so
 # people can figure out their own data post hoc w/o needing other tools
 def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
@@ -504,9 +515,13 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
             # analog inputs to be the same as one of the builtin dataset names
             assert dataset_name not in data_dict, 'dataset names not unique'
 
-            # TODO TODO probably convert all digital stuff (exactly the stuff
-            # under the 'DI' group, right?) to 0/1, and maybe also dtype to bool
-            data_dict[dataset_name] = obj[:, 0]
+            values = obj[:, 0]
+
+            if parent_name == '/DI':
+                # Anything non-zero gets converted to True
+                values = values.astype(np.bool_)
+
+            data_dict[dataset_name] = values
 
     # NOTE: for some reason, opening a debugger (e.g. via `ipdb.set_trace()`)
     # inside this context manager has `self` in `dir()`, seemingly pointing to
@@ -518,9 +533,11 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         # TODO maybe compare performance w/ w/o conversion to Dataframe?
         df = pd.DataFrame(data_dict)
 
+    # TODO check whether this is (nearly) equivalent to multiplying arange len
+    # samples by 1 / thorsync sampling rate
     # Dividing what I think is the clock cycle counter by the 20MHz mentioned in
     # the 3.0 ThorSync manual (section 5.2 "Reviewing Data").
-    df['time_s'] = df.gctr / int(2e7)
+    df[time_col] = df.gctr / int(2e7)
 
     if drop_gctr:
         df.drop(columns='gctr', inplace=True)
@@ -529,7 +546,7 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     # work, but no need for it to be routine.
     #
     # samprate_hz = get_thorsync_samplerate_hz(thorsync_dir)
-    # mean_sample_interval = df.time_s.diff().mean()
+    # mean_sample_interval = df[time_col].diff().mean()
     # expected_sample_interval = 1 / samprate_hz
     # assert np.isclose(mean_sample_interval, expected_sample_interval), \
     #     'ThorSync XML sample rate or acquisition clock frequency wrong'
@@ -537,113 +554,255 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     return df
 
 
-# TODO TODO TODO TODO add functions to assign times to frame / split movie into
-# blocks. might be helpful to look at the following functions from some of my
-# other projects that attempted something like this:
-#
-# al_imaging:
-# - util.load_thor_hdf5
-# - util.crop_trailing_frames (not sure i actually need this)
-# - util.threshold_crossings
-# - util.calc_odor_onsets (though prob don't wanna copy this one too much)
-# (don't think i had a separate dedicated pin to just mirror valve timing though
-# here, so don't need to do everything it does to get valve timings probably,
-# and maybe we can do better)
-#
-# also look at the thor/remy matlab code that used some of the other data in the
-# hdf5 ('DI' rather than 'AI', i think)
-#
-# assign_frames_to_trials below might have some of the logic i want
-#
-# hong2p.util.movie_blocks:
-# - uses output of matlab_kc_plane for ThorSync data, but some of this fn may
-#   still be useful
-#
-# not useful:
-# - ejhonglab/imaging_exp_mon
-# - ejhonglab/automate2p
-# - atlas:~/src/imaging_util (not a git repo)
-
-# TODO TODO TODO try to make sure we are maintaining the same behavior as the
-# official thor provided matlab scripts:
-# From red "Note:" box on p37 of ThorSync3.0 user guide:
-# "Importing data into Matlab will automatically maintain the correct frame
-# reference by removing any unintended image frame(s) acquired during the
-# Trigger Out phase."
-
-# TODO TODO TODO step through (LoadSyncEpisode.m ->) GenerateFrameTime.m
-# in MATLAB and inspect the intermediates
-
-
-# TODO maybe delete / move back to util
-def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
-    odor_onset_frames):
-    """Returns arrays trial_start_frames, trial_stop_frames
+# TODO is this slow / are there faster alternatives?
+# (copied from my deprecated al_imaging/al_imaging/util.py)
+def threshold_crossings(signal, threshold=2.5, onsets=True, offsets=True):
+    # TODO TODO clarify "ignored" in equality case in doc
     """
-    n_frames = movie.shape[0]
-    # TODO maybe just add metadata['drop_first_n_frames'] to this?
-    # (otherwise, that variable screws things up, right?)
-    #onset_frame_offset = \
-    #    odor_onset_frames[0] - block_first_frames[0]
-
-    # TODO delete this hack, after implementing more robust frame-to-trial
-    # assignment described below
-    b2o_offsets = sorted([o - b for b, o in zip(block_first_frames,
-        odor_onset_frames[::presentations_per_block])
-    ])
-    assert len(b2o_offsets) >= 3
-    # TODO TODO TODO re-enable after fixing frame_times based issues w/
-    # volumetric data
-    # TODO might need to allow for some error here...? frame or two?
-    # (in resonant scanner case, w/ frame averaging maybe)
-    #assert b2o_offsets[-1] == b2o_offsets[-2]
-    onset_frame_offset = b2o_offsets[-1]
-    #
+    Returns indices where signal goes from < threshold to > threshold as onsets,
+    and where signal goes from > threshold to < threshold as offsets.
     
-    # TODO TODO TODO instead of this frame # strategy for assigning frames
-    # to trials, maybe do this:
-    # 1) find ~max # frames from block start to onset, as above
-    # TODO but maybe still warn if some offset deviates from max by more
-    # than a frame or two...
-    # 2) paint all frames before odor onsets up to this max # frames / time
-    #    (if frames have a time discontinuity between them indicating
-    #     acquisition did not proceed continuously between them, do not
-    #     paint across that boundary)
-    # 3) paint still-unassigned frames following odor onset in the same
-    #    fashion (again stopping at boundaries of > certain dt)
-    # [4)] if not using max in #1 (but something like rounded mean)
-    #      may still have unassigned frames at block starts. assign those to
-    #      trials.
-    # TODO could just assert everything within block regions i'm painting
-    # does not have time discontinuities, and then i could just deal w/
-    # frames
+    Cases where it at one index equals the threshold are ignored. Shouldn't
+    happen and may indicate electrical problems for our application.
+    """
+    # TODO could redefine in terms of np.diff
+    # might be off by one?
+    # TODO TODO TODO detect whether input is pandas series and only use .values
+    # in that case
+    # NOTE: we must call .values or else some of the comparison operations
+    # across series will behave in a manner we don't want (np.logical_and, I
+    # think).
+    shifted = signal[1:].values
+    truncated = signal[:-1].values
 
-    trial_start_frames = np.append(0,
-        odor_onset_frames[1:] - onset_frame_offset
+    onset_indices = None
+    offset_indices = None
+
+    # TODO maybe special case boolean (np.bool_ dtype; digital) inputs to not
+    # use comparison against a float, if something else is faster
+
+    if onsets:
+        onset_indices = np.where(np.logical_and(
+            shifted > threshold,
+            truncated < threshold
+        ))[0]
+
+    if offsets:
+        offset_indices = np.where(np.logical_and(
+            shifted < threshold,
+            truncated > threshold
+        ))[0]
+
+    # TODO TODO check whether these indices lead to off-by-one if used to index
+    # times (+ fix here if so)
+    return onset_indices, offset_indices
+
+
+# TODO also take thorimage dir / metadata / # frames optionally to check against
+# # of frames we pull out in here
+def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
+    # TODO update doc (+ maybe fn name) to reflect fact that initial acquisition
+    # onset time also returned (and is this what i want to return? for zeroing
+    # against odor stuff later)
+    """Returns seconds from start of ThorSync recording for each frame.
+
+    Arguments:
+    df (`DataFrame`): as returned by `load_thorsync_hdf5`
+    thorimage_dir_or_xml (not currently used)
+    time_ref ('mid' | 'end')
+
+    Returns a `np.array` that should be of length equal to the number of frames
+    actually saved by ThorImage.
+    """
+    # NOTE: initially I was planning on basing this off of one of the ThorLabs
+    # supplied MATLAB scripts (see GenerateFrameTime.m referenced in ThorSync
+    # manual), but it seems to not be behaving correctly (or my data does not
+    # have the values for Frame_In that this script expects, as all of mine are
+    # purely 0). even excluding the AND w/ Frame_In, however, the shape of
+    # the `indexes` variable in this MATLAB script would not seem to be what I'd
+    # expect (i.e. length is not equal to number of frames) for at least some of
+    # my data (tried 2021-03-07/1/SyncData002).
+    # If I had to guess, Frame_In is supposed to function as our copy of the
+    # recording trigger does, but digital.
+    # TODO try to make sure we are maintaining the same behavior as the official
+    # thor provided matlab scripts (eh... nvm. see other comments explaining how
+    # i don't think they are working correctly, with regards to Frame_In and
+    # perhaps some other things):
+    # From red "Note:" box on p37 of ThorSync3.0 user guide:
+    # "Importing data into Matlab will automatically maintain the correct frame
+    # reference by removing any unintended image frame(s) acquired during the
+    # Trigger Out phase."
+
+    if time_ref not in ('mid', 'end'):
+        raise ValueError("time_ref must be either 'mid' or 'end'")
+
+    if time_col not in df.columns:
+        raise ValueError(f'{time_col} not in df.columns')
+
+    # TODO change (by wrapping, probably...) all of the functions that take a
+    # thorimage dir as input -> some metadata property so that they can use a
+    # cached version of the xml (so we don't need to reload nor have two
+    # versions of each function, one to accept xml and another to accept
+    # directory / path to xml file)
+    # TODO TODO TODO factor in averaging here later
+    # (not relevant on downstairs where i don't believe i'm using any averaging,
+    # or 
+
+    # TODO confirm that some of the data actually does have the column named
+    # FrameOut or something that ultimately produces 'frameout'
+    # (and probably normalize all such built-in columns inside hdf5 load fn)
+    frame_out_names = ('frame_out', 'frameout')
+    frame_out = None
+    for n in frame_out_names:
+        if n in df.columns:
+            frame_out = df[n]
+            break
+
+    if frame_out is None:
+        raise ValueError(f'no column with name in {frame_out_names} in df')
+
+    # TODO TODO if frame_in can be recovered / configured to be saved in the
+    # future, and it does indeed serve the same function as our
+    # "scopePin"/whatever, replace this with that (at least if it's available in
+    # current data)
+    # TODO include my own names for this here
+    acquisition_trigger_names = ('scopePin',)
+    acquisition_trigger = None
+    for n in acquisition_trigger_names:
+        if n in df.columns:
+            acquisition_trigger = df[n]
+            break
+
+    if acquisition_trigger is None:
+        raise ValueError(
+            f'no column with name in {acquisition_trigger_names} in df'
+        )
+
+    # TODO TODO TODO see al_imaging/util.crop_trailing_frames to check that my
+    # current understanding of frame_counter / frame_out is accurate
+
+    frame_out_onsets, frame_out_offsets = threshold_crossings(frame_out,
+        threshold=0.5
     )
-    trial_stop_frames = np.append(
-        odor_onset_frames[1:] - onset_frame_offset - 1, n_frames - 1
+    '''
+    print('len(frame_out_onsets):', len(frame_out_onsets))
+    print('len(frame_out_offsets):', len(frame_out_offsets))
+    '''
+    # TODO maybe just have threshold_crossings make this check by default, w/ a
+    # kwarg to override (which gets threaded through here)
+    assert np.all(frame_out_onsets < frame_out_offsets), \
+        'offset before onset OR mismatched number of the two'
+
+    acq_onsets, acq_offsets = threshold_crossings(acquisition_trigger,
+        threshold=2.5
     )
+    '''
+    print('len(acq_onsets):', len(acq_onsets))
+    print('len(acq_offsets):', len(acq_offsets))
+    '''
+    assert np.all(acq_onsets < acq_offsets), \
+        'offset before onset OR mismatched number of the two'
 
-    # TODO same checks are made for blocks, so factor out?
-    total_trial_frames = 0
-    for i, (t_start, t_end) in enumerate(
-        zip(trial_start_frames, trial_stop_frames)):
+    if len(acq_onsets) > 1:
+        raise NotImplementedError
 
-        if i != 0:
-            last_t_end = trial_stop_frames[i - 1]
-            assert last_t_end == (t_start - 1)
+    # TODO TODO TODO TODO implement in a way that supports multiple blocks
+    actually_saved = frame_out_onsets <= acq_offsets[0]
+    frame_out_onsets = frame_out_onsets[actually_saved]
+    frame_out_offsets = frame_out_offsets[actually_saved]
 
-        total_trial_frames += t_end - t_start + 1
+    # NOTE: without the .values call here, the 'mid' case below does not work
+    # because pandas tries to align the series.
+    onset_times = df[time_col].values[frame_out_onsets]
+    # TODO maybe only calculate offset_times if using time_ref='end'?
+    # assuming they are the same width probably only need one anyway...
+    # except maybe for whatever i ultimately need to crop last frame references
+    # successfully
+    offset_times = df[time_col].values[frame_out_offsets]
 
-    assert total_trial_frames == n_frames, \
-        '{} != {}'.format(total_trial_frames, n_frames)
-    #
+    # TODO TODO try to determine what determines whether a given frame (where
+    # acquisition trigger goes low between frame out onset and offset) will be
+    # saved. is it:
+    # 1) any such frame will be saved?
+    # 2) acquisition offset must happen past a certain point in the interval
+    #    (maybe halfway?)
+    # (assuming #1 for now, for simplicity)
 
-    # TODO warn if all block/trial lens are not the same? (by more than some
-    # threshold probably)
+    if time_ref == 'end':
+        frame_times = offset_times
 
-    return trial_start_frames, trial_stop_frames
+    elif time_ref == 'mid':
+        frame_times = (offset_times - onset_times) / 2 + onset_times
+
+    initial_acquisition_onset_time = df[time_col][acq_onsets[0]]
+
+    return frame_times, initial_acquisition_onset_time
+
+
+# TODO how should this deal w/ blocks[/similar block handling functions i might
+# implement]
+# TODO TODO also take thorimage metadata arg here after implementing its support
+# in get_frame_times above
+# TODO maybe move this function to util or something?
+# TODO provide kwargs to crop (end of?) ranges so that all have same number of
+# frames? might also be some cases where something similar is needed at start,
+# especially when we have multiple blocks
+def assign_frames_to_odor_presentations(df, frame_times=None, **kwargs):
+    """Returns list of (start, end) frame indices, one per odor presentation.
+
+    end frames are included in range, and thus getting a presentation must be
+    done like `movie[start_i:(end_i + 1)]` rather  than `movie[start_i:end_i]`.
+
+    Not all frames necessarily included. No overlap.
+    """
+    # TODO factor this out to private util fn in this file
+    # (used twice in above fn too)
+    # TODO include my own names for this here
+    odor_timing_names = ('olfDispPin',)
+    odor_timing = None
+    for n in odor_timing_names:
+        if n in df.columns:
+            odor_timing = df[n]
+            break
+
+    if odor_timing is None:
+        raise ValueError(
+            f'no column with name in {odor_timing_names} in df'
+        )
+
+    if frame_times is None:
+        frame_times, _ = get_frame_times(df, None, **kwargs)
+
+    # (when the valve(s) are given the signal to open)
+    odor_onsets, _ = threshold_crossings(odor_timing, threshold=2.5,
+        offsets=False
+    )
+    odor_onset_times = df[time_col].values[odor_onsets]
+
+    # (with respect to the odor onset in both of these cases)
+    first_frame_to_odor_s = odor_onset_times[0] - frame_times[0]
+    print('first_frame_to_odor_s:', first_frame_to_odor_s)
+
+    # don't actually think i need this
+    #last_odor_to_frame_s = frame_times[-1] - odor_onset_times[-1]
+    #print('last_odor_to_frame_s:', last_odor_to_frame_s)
+
+    start_times = odor_onset_times - first_frame_to_odor_s
+    #print([x in frame_times for x in start_times])
+
+    # If tied, seems to provide index that would insert the new element at the
+    # earlier position.
+    start_frames = np.searchsorted(frame_times, start_times)
+
+    # Inclusive (so can NOT be used as the end of slices directly. need to add
+    # one because slice ends are not inclusive.)
+    end_frames = [x - 1 for x in start_frames[1:]] + [len(frame_times) - 1]
+
+    # TODO TODO probably want to at least check for discontinuities within the
+    # frames assigned to a given presentation, particularly in case where there
+    # are multiple blocks
+
+    return list(zip(start_frames, end_frames))
 
 
 # TODO rename to indicate it's parsing from directory name?

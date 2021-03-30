@@ -28,13 +28,13 @@ def main():
     # Similar format to output of thor.pair_thor_subdirs, but just the tail part
     # of each path.
     exp2thor_dir_pairs = {
-        # single plane KC recording w/ blocks
-        ('2019-05-03', 3): [
-            ('fn_0001', 'SyncData002'),
-        ],
         ('2021-03-07', 1): [
             ('t2h_single_plane', 'SyncData002'),
             ('glomeruli_diagnostics_192', 'SyncData001'),
+        ],
+        # single plane KC recording w/ blocks
+        ('2019-01-23', 6): [
+            ('_001', 'SyncData001'),
         ],
         # TODO uncomment after moving this code to atlas / moving the data to
         # blackbox
@@ -68,10 +68,18 @@ def main():
                 exclude_datasets=exclude_datasets
             )
 
-            movie = thor.read_movie(thorimage_dir)
+            single_plane_fps, xy, z, c, n_flyback, _, xml = \
+                thor.load_thorimage_metadata(thorimage_dir, return_xml=True)
 
-            single_plane_fps, xy, z, c, n_flyback, _ = \
-                thor.load_thorimage_metadata(thorimage_dir)
+            # slow b/c has to read whole movie... read_movie has an assert that
+            # n_frames derived this way + using get_thorimage_n_frames_xml are
+            # same anyway, and didn't find a case where that assertion failed
+            # yet
+            #movie = thor.read_movie(thorimage_dir)
+            #print('n_frames:', len(movie))
+
+            n_frames = thor.get_thorimage_n_frames_xml(xml)
+            print('n_frames:', n_frames)
 
             print('xy:', xy)
             print('z:', z)
@@ -90,23 +98,29 @@ def main():
             frames_per_trial = int(round(trial_s * volumes_per_second))
 
             print('single_plane_fps:', single_plane_fps)
+            print('1 / single_plane_fps:', 1 / single_plane_fps)
             print('volumes_per_second:', volumes_per_second)
             print('1 / volumes_per_second:', 1 / volumes_per_second)
             # frames means volumes here
             print('frames_per_trial:', frames_per_trial)
 
-            print('n_frames:', len(movie))
+            # literally all of my data has this as all zeros...
+            #print('frame_in.max():', df.frame_in.max())
+            #print('frame_in.min():', df.frame_in.min())
 
-            print('frame_counter.max():', df.frame_counter.max())
-            # TODO TODO TODO but if it is zero before the first frame, is it
-            # still zero DURING the first frame?
-            print('frame_counter.min():', df.frame_counter.min())
+            frame_times, t0 = thor.get_frame_times(df, None)
 
-            print('frame_in.max():', df.frame_in.max())
-            print('frame_in.min():', df.frame_in.min())
+            assert len(frame_times) == n_frames, \
+                f'{len(frame_times)} != {n_frames}'
 
-            import ipdb; ipdb.set_trace()
+            bounding_frames = thor.assign_frames_to_odor_presentations(df,
+                frame_times
+            )
+            lens = [end - start + 1 for start, end in bounding_frames]
 
+            assert sum(lens) == n_frames, f'{sum(lens)} != {n_frames}'
+
+            #'''
             plt.plot(df.time_s, df.scopePin, label='trigger')
             plt.plot(df.time_s, df.frame_out, label='frame_out')
             plt.plot(df.time_s, df.frame_counter.diff(),
@@ -114,8 +128,25 @@ def main():
             )
             plt.xlabel('Time (s)')
             plt.plot(df.time_s, df.frame_counter, label='frame_counter')
+
+            plt.plot(frame_times, [0.5] * len(frame_times), linestyle='None',
+                marker='x', label='frame_times'
+            )
+
+            colors = ['r', 'g', 'b']
+            assert len(colors) == len(bounding_frames)
+
+            for i, ((start_frame, end_frame), c) in enumerate(
+                zip(bounding_frames, colors)):
+
+                odor_frames = frame_times[start_frame:(end_frame + 1)]
+                plt.plot(odor_frames, [2.5] * len(odor_frames),
+                    linestyle='None', marker='x', color=c, label=f'{i}'
+                )
+
             plt.legend()
             plt.show()
+            #'''
             import ipdb; ipdb.set_trace()
 
             print()

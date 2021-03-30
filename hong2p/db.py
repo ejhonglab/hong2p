@@ -1399,7 +1399,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
         block_last_frames
     )
 
-    trial_start_frames, trial_stop_frames = thor.assign_frames_to_trials(
+    trial_start_frames, trial_stop_frames = util.assign_frames_to_trials(
         movie, presentations_per_block, block_first_frames, odor_onset_frames
     )
     # TODO probably do want a fn that can return movie and metadata, so that
