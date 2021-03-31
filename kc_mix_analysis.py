@@ -28,6 +28,7 @@ import chemutils as cu
 
 import hong2p.util as u
 from hong2p.matlab import matfile, load_mat_timing_info
+from hong2p import viz
 
 # Having all matplotlib-related imports come after `hong2p.util` import,
 # so that I can let `hong2p.util` set the backend, which it seems must be set
@@ -434,10 +435,10 @@ def add_metadata(df, out_df, keys=('prep_date', 'fly_num', 'thorimage_id')):
 #
 
 
-# TODO maybe just use u.matshow? or does that do enough extra stuff that it
+# TODO maybe just use viz.matshow? or does that do enough extra stuff that it
 # would be hard to get it to just do what i want in this linearity-checking
 # case?
-# TODO factor this functionality into u.matshow if i end up using that
+# TODO factor this functionality into viz.matshow if i end up using that
 def matshow(ax, data, as_row=False, **kwargs):
     if len(data.shape) == 1:
         if as_row:
@@ -1171,7 +1172,7 @@ def odor_and_fit_plot(odor_cell_stats, weighted_sum, ordered_cells, fname,
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('left', size='3%', pad=0.5)
 
-    im = u.matshow(cells_odors_and_fit, xticklabels=labels,
+    im = viz.matshow(cells_odors_and_fit, xticklabels=labels,
         xtickrotation=xtickrotation, fontsize=fontsize,
         title=title, ax=f3_axs[0]
     )
@@ -1607,16 +1608,16 @@ def odor_facetgrids(df, plot_fn, xcol, ycol, xlabel, ylabel, title,
                 # axes, so if some fly_ids are missing from last axis plotted,
                 # that doesn't cause the legend to have empty lines for those
                 # fly ids)
-                u.set_facetgrid_legend(g, title=fly_id_legend_title)
+                viz.set_facetgrid_legend(g, title=fly_id_legend_title)
 
             except AttributeError as err:
                 warnings.warn(f'Title: {title}\nOdor set: {oset}\n'
-                    f'Error in set_facetgrid_legend:\n{err}\n'
+                    f'Error in viz.set_facetgrid_legend:\n{err}\n'
                     'Defaulting to g.add_legend()'
                 )
                 g.add_legend(title=fly_id_legend_title)
 
-        u.fix_facetgrid_axis_labels(g, shared_in_center=False)
+        viz.fix_facetgrid_axis_labels(g, shared_in_center=False)
 
         if xcol == 'repeat_num':
             xticks = np.arange(df.repeat_num.min(),
@@ -2070,7 +2071,7 @@ def process_traces(df_pickle, fly2response_threshold=None,
             # affected by missing odors?
             # TODO exclude 3/4 of these from latex / don't compute at all
             if trial_order_correlations:
-                porder_corr_mean_fig = u.plot_odor_corrs(
+                porder_corr_mean_fig = viz.plot_odor_corrs(
                     odor_corrs_from_means, title_suffix=title_suffix
                 )
                 out_s = savefigs(porder_corr_mean_fig, 'porder_corr_mean',
@@ -2078,7 +2079,7 @@ def process_traces(df_pickle, fly2response_threshold=None,
                 )
                 out_strs.append(out_s)
 
-                porder_corr_max_fig = u.plot_odor_corrs(
+                porder_corr_max_fig = viz.plot_odor_corrs(
                     odor_corrs_from_maxes, trial_stat='max',
                     title_suffix=title_suffix
                 )
@@ -2088,7 +2089,7 @@ def process_traces(df_pickle, fly2response_threshold=None,
                 out_strs.append(out_s)
 
             if odor_order_correlations:
-                oorder_corr_mean_fig = u.plot_odor_corrs(
+                oorder_corr_mean_fig = viz.plot_odor_corrs(
                     odor_corrs_from_means, odors_in_order=odor_order,
                     title_suffix=title_suffix
                 )
@@ -2097,7 +2098,7 @@ def process_traces(df_pickle, fly2response_threshold=None,
                 )
                 out_strs.append(out_s)
 
-                oorder_corr_max_fig = u.plot_odor_corrs(
+                oorder_corr_max_fig = viz.plot_odor_corrs(
                     odor_corrs_from_maxes, trial_stat='max',
                     odors_in_order=odor_order,
                     title_suffix=title_suffix
@@ -2173,9 +2174,9 @@ def process_traces(df_pickle, fly2response_threshold=None,
 
         cbar_label = trial_stat.title() + ' response ' + u.dff_latex
 
-        odor_labels = u.matlabels(trial_by_cell_stats_top, u.format_mixture)
+        odor_labels = viz.matlabels(trial_by_cell_stats_top, u.format_mixture)
         # TODO fix x/y in this fn... seems T required
-        f1 = u.matshow(trial_by_cell_stats_top.T, xticklabels=odor_labels,
+        f1 = viz.matshow(trial_by_cell_stats_top.T, xticklabels=odor_labels,
             group_ticklabels=True, colorbar_label=cbar_label, fontsize=6,
             title=title
         )
@@ -2355,7 +2356,7 @@ def process_traces(df_pickle, fly2response_threshold=None,
                 rotation=title_rotation
             )
 
-        # TODO probably change from responder_traces... fn? use u.matshow?
+        # TODO probably change from responder_traces... fn? use viz.matshow?
         #ax.set_xlabel(responder_traces.columns.name)
         #ax.set_ylabel(responder_traces.index.name)
         ax.yaxis.set_ticks_position('right')
@@ -2408,12 +2409,12 @@ def process_traces(df_pickle, fly2response_threshold=None,
 
     cbar_label = 'Mean ' + trial_stat + ' response ' + u.dff_latex
     odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
-    odor_labels = u.matlabels(odor_cell_stats_top, u.format_mixture)
+    odor_labels = viz.matlabels(odor_cell_stats_top, u.format_mixture)
 
     if odor_matrices:
-        # TODO TODO modify u.matshow to take a fn (x/y)labelfn? to generate
+        # TODO TODO modify viz.matshow to take a fn (x/y)labelfn? to generate
         # str labels from row/col indices
-        f2 = u.matshow(odor_cell_stats_top.T, xticklabels=odor_labels,
+        f2 = viz.matshow(odor_cell_stats_top.T, xticklabels=odor_labels,
             colorbar_label=cbar_label, fontsize=6, title=title
         )
         ax = plt.gca()
@@ -2515,7 +2516,7 @@ def process_traces(df_pickle, fly2response_threshold=None,
         '''
         smoothed_df_over_f = smoothed_df.groupby(cell_cols, sort=False,
             as_index=False, group_keys=False).df_over_f.apply(lambda ts:
-            pd.Series(index=ts.index, data=u.smooth(ts, window_len=30))
+            pd.Series(index=ts.index, data=u.smooth_1d(ts, window_len=30))
             ).reset_index(level=0, drop=True)
         smoothed_df.df_over_f = smoothed_df_over_f 
         '''
@@ -2577,7 +2578,7 @@ def process_traces(df_pickle, fly2response_threshold=None,
         # in roi / full frame MB fluorescence under each column?
         if odor_matrices:
             odor_cell_stats_top = odor_cell_stats.loc[:, order[:top_n]]
-            fs = u.matshow(odor_cell_stats_top.T,
+            fs = viz.matshow(odor_cell_stats_top.T,
                 xticklabels=sort_odor_labels, colorbar_label=cbar_label,
                 fontsize=6, title=title
             )
@@ -3485,21 +3486,21 @@ if model_mixture_responses:
 
             # TODO TODO TODO TODO change titles w/ prefix too!
 
-            fig = u.matshow(adf, title=f'{oset}\nScaled Hallem ORN vectors')
+            fig = viz.matshow(adf, title=f'{oset}\nScaled Hallem ORN vectors')
             savefigs(fig, f'{prefix}scaled_orns_{oset}',
                 section='Scaled ORN vectors'
             )
 
             # TODO TODO TODO also get unscaled and scaled hallem abs rates!!!
             '''
-            fig = u.matshow(adf, xticklabels=odor_labels,
+            fig = viz.matshow(adf, xticklabels=odor_labels,
                 group_ticklabels=True, colorbar_label=cbar_label, fontsize=6,
                 title=title
             )
             '''
 
             acdf = adf.T.corr()
-            fig = u.plot_odor_corrs(acdf, odors_in_order=odor_order,
+            fig = viz.plot_odor_corrs(acdf, odors_in_order=odor_order,
                 colorbar_label=cbar_label,
                 title=f'{oset} components\n\nORN correlations'
             )
@@ -3527,7 +3528,7 @@ if model_mixture_responses:
             ocdf.index.name = 'name1'
             ocdf.columns.name = 'name1'
             #
-            fig = u.plot_odor_corrs(ocdf, odors_in_order=odor_order,
+            fig = viz.plot_odor_corrs(ocdf, odors_in_order=odor_order,
                 colorbar_label=cbar_label,
                 title=f'{oset} components\n\nModel KC correlations'
             )
@@ -3634,7 +3635,7 @@ if do_tuning_breadth_vs_shuffle:
         g.set_axis_labels(xlabel, ylabel)
         g.fig.suptitle(curr_title)
         g.fig.subplots_adjust(top=top, hspace=hspace)
-        u.fix_facetgrid_axis_labels(g)
+        viz.fix_facetgrid_axis_labels(g)
         set_shuffle_facet_titles(g)
         savefigs(g.fig, curr_fname, section=section, order=200 if fly else None)
 
@@ -3661,7 +3662,7 @@ if do_tuning_breadth_vs_shuffle:
         g.fig.suptitle(title + f'\n{oset}')
         set_shuffle_facet_titles(g, say_within_each_fly=False)
         g.fig.subplots_adjust(top=0.86, hspace=hspace, left=0.13)
-        u.fix_facetgrid_axis_labels(g)
+        viz.fix_facetgrid_axis_labels(g)
         savefigs(g.fig, f'{fname}_{oset}', section=section)
 
     del n_ros_df
@@ -4003,7 +4004,7 @@ if hallem_correlations:
         ocdf.index.name = 'name1'
         ocdf.columns.name = 'name1'
         #
-        fig = u.plot_odor_corrs(ocdf, odors_in_order=odor_order,
+        fig = viz.plot_odor_corrs(ocdf, odors_in_order=odor_order,
             colorbar_label=cbar_label,
             title=f'{oset} components\n\nHallem ORN correlations'
         )
@@ -4016,7 +4017,7 @@ if hallem_correlations:
             ocdf = odf.T.corr()
             ocdf.index.name = 'name1'
             ocdf.columns.name = 'name1'
-            fig = u.plot_odor_corrs(ocdf, odors_in_order=odor_order,
+            fig = viz.plot_odor_corrs(ocdf, odors_in_order=odor_order,
                 colorbar_label=cbar_label,
                 title=f'{oset} components\n\nHallem ORN correlations'
             )
@@ -4100,7 +4101,7 @@ if plot_mean_correlations:
                 # being misleading since some odors like pfo have less...  or
                 # real kiwi...  maybe just drop stuff that has less? idk... real
                 # stuff is nice...
-                fig = u.plot_odor_corrs(p_gdf, odors_in_order=porder,
+                fig = viz.plot_odor_corrs(p_gdf, odors_in_order=porder,
                     colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
                 )
                 savefigs(fig, f'mean_trial_corrs_{tstat}_{go}{noreal_str}',
@@ -4108,7 +4109,7 @@ if plot_mean_correlations:
                     exclude_from_latex=no_real
                 )
 
-                fig = u.plot_odor_corrs(p_mdf, odors_in_order=porder,
+                fig = viz.plot_odor_corrs(p_mdf, odors_in_order=porder,
                     colorbar_label=cbar_label, title=f'{go}\n\n(n={n})'
                 )
                 savefigs(fig, f'mean_corrs_{tstat}_{go}{noreal_str}',
@@ -4121,7 +4122,7 @@ if plot_correlation_consistencency:
     # TODO TODO TODO uncomment. was just trying to get past an assertion failure
     # inside here 2020-08-25
     #'''
-    keys = ['odor_set','fly_id','name1_a','name1_b']
+    keys = ['odor_set', 'fly_id', 'name1_a', 'name1_b']
     for corr_agg_fn in ('mean', 'max'):
         agged_corrs = corr_df.groupby(keys)['corr'].agg(corr_agg_fn
             ).reset_index()
@@ -4735,7 +4736,7 @@ def linearity_analysis(linearity_cell_df, response_magnitudes, cell_subset=None,
             g.set_titles('')
             g.fig.subplots_adjust(bottom=0.2, left=0.1)
 
-        u.fix_facetgrid_axis_labels(g)
+        viz.fix_facetgrid_axis_labels(g)
         # TODO delete
         #if cell_subset is not None and cell_subset.sum() < 100:
         #plt.show()
@@ -4893,7 +4894,7 @@ if (common_responded_combos or
             )
             g.set_xlabels('')
             g.set_ylabels('Fraction of cells')
-            u.fix_facetgrid_axis_labels(g)
+            viz.fix_facetgrid_axis_labels(g)
 
             # Since g.set_xticklabels(rotation=90) changes all xticklabels to
             # only those of first axis, even though sharex=False.

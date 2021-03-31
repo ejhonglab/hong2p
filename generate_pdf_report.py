@@ -13,7 +13,7 @@ from jinja2.loaders import FileSystemLoader
 from latex import build_pdf, escape, LatexBuildError
 from latex.jinja2 import make_env
 
-import hong2p import util
+from hong2p import util
 
 # Importing after hong2p.util, so util can change the matplotlib backend.
 import matplotlib.pyplot as plt

@@ -44,7 +44,6 @@ import cv2
 from matplotlib.backends.backend_qt5agg import (FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
-import matlab.engine
 
 # TODO allow things to fail gracefully if we don't have cnmf.
 # either don't display tabs that involve it or display a message indicating it
@@ -56,14 +55,14 @@ import caiman.utils.visualization
 import ijroi
 import chemutils as cu
 
-from hong2p import util, matlab, db, thor
+from hong2p import util, matlab, db, thor, viz
 
 
 conn = db.get_db_conn()
 
 # TODO probably move to / use something already in util
 # Maybe rename. It's these cols once already in a recording + comparison.
-cell_cols = ['name1','name2','repeat_num','cell']
+cell_cols = ['name1', 'name2', 'repeat_num', 'cell']
 
 raw_data_root = util.raw_data_root()
 analysis_output_root = util.analysis_output_root()
@@ -72,15 +71,8 @@ use_cached_gsheet = False
 show_inferred_paths = True
 overwrite_older_analysis = True
 
-df = util.mb_team_gsheet(use_cache=use_cached_gsheet)
+#df = util.mb_team_gsheet(use_cache=use_cached_gsheet)
 
-# TODO probably just move this info into output of stimuli metadata generator
-# (or maybe just load either-or as-needed)
-# TODO rename to indicate it's for pair experiments
-natural_odors_concentrations = pd.read_csv('natural_odor_panel_vial_concs.csv')
-natural_odors_concentrations.set_index('name', verify_integrity=True,
-    inplace=True
-)
 
 def show_mask_union(masks):
     # TODO either fail in / handle volumetric timeseries case
@@ -1297,7 +1289,7 @@ class Segmentation(QWidget):
                 # inclusive? (<-fixed) other problems like this elsewhere?????
                 # TODO maybe smooth less now that df/f is being calculated more
                 # sensibly...
-                self.raw_f[b_start:(b_end + 1), c] = util.smooth(
+                self.raw_f[b_start:(b_end + 1), c] = util.smooth_1d(
                     self.raw_f[b_start:(b_end + 1), c], window_len=11)
         '''
         self.df_over_f = np.empty_like(self.raw_f) * np.nan
@@ -2705,12 +2697,12 @@ class Segmentation(QWidget):
                     # TODO maybe allow passing movie in to not have to load it
                     # multiple times when plotting traces on same data?
                     # (then just use self.movie)
-                    util.plot_traces(pdf, show_footprints=False,
+                    viz.plot_traces(pdf, show_footprints=False,
                         gridspec=odor_order_trace_gs, n=n,
                         title='Top components'
                     )
                     presentation_order_trace_gs = all_blocks_trace_gs[1, i]
-                    util.plot_traces(pdf, show_footprints=False,
+                    viz.plot_traces(pdf, show_footprints=False,
                         gridspec=presentation_order_trace_gs,
                         order_by='presentation_order', n=n
                     )
@@ -2724,12 +2716,12 @@ class Segmentation(QWidget):
                         prow = 1
 
                     odor_order_trace_gs = all_blocks_trace_gs[orow, i]
-                    util.plot_traces(comparison_df, footprints=footprints,
+                    viz.plot_traces(comparison_df, footprints=footprints,
                         gridspec=odor_order_trace_gs, n=n, random=True,
                         title='Random components'
                     )
                     presentation_order_trace_gs = all_blocks_trace_gs[prow, i]
-                    util.plot_traces(comparison_df, footprints=footprints,
+                    viz.plot_traces(comparison_df, footprints=footprints,
                         gridspec=presentation_order_trace_gs,
                         order_by='presentation_order', n=n, random=True
                     )
@@ -2804,10 +2796,10 @@ class Segmentation(QWidget):
                     trial_mean_presentation_order.corr()
 
                 odor_order_ax = corr_axes[0, i]
-                ticklabels = util.matlabels(odor_order_trial_mean_corrs,
+                ticklabels = viz.matlabels(odor_order_trial_mean_corrs,
                     util.format_mixture
                 )
-                util.matshow(odor_order_trial_mean_corrs,
+                viz.matshow(odor_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     group_ticklabels=True,
                     colorbar_label=corr_cbar_label,
@@ -2817,10 +2809,10 @@ class Segmentation(QWidget):
                 self.mpl_canvas.draw()
 
                 presentation_order_ax = corr_axes[1, i]
-                ticklabels = util.matlabels(presentation_order_trial_mean_corrs,
+                ticklabels = viz.matlabels(presentation_order_trial_mean_corrs,
                     util.format_mixture
                 )
-                util.matshow(presentation_order_trial_mean_corrs,
+                viz.matshow(presentation_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     colorbar_label=corr_cbar_label,
                     ax=presentation_order_ax,
@@ -3610,7 +3602,7 @@ class Segmentation(QWidget):
 
         # TODO TODO smooth, just don't have that cause artifacts at the edges
         '''
-        smoothed_ff_avg_trace = util.smooth(self.full_frame_avg_trace,
+        smoothed_ff_avg_trace = util.smooth_1d(self.full_frame_avg_trace,
             window_len=7
         )
         ax.plot(smoothed_ff_avg_trace)

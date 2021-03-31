@@ -41,16 +41,12 @@ except ImportError:
     print('All possible (not necessarily installed) matplotlib backends:')
     pprint(mpl.rcsetup.all_backends)
 
-# Having all matplotlib-related imports come after `hong2p.util` import,
-# so that I can let `hong2p.util` set the backend, which it seems must be set
-# before the first import of `matplotlib.pyplot`
-import matplotlib.patches as patches
-# is just importing this potentially going to interfere w/ gui?
-# put import behind paths that use it?
+# Importing all matplotlib stuff besides mpl itself here to allow the above code
+# to change backend. Might just need to defer import pyplot though...
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from hong2p import matlab, db, thor
+from hong2p import matlab, db, thor, viz
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
@@ -61,6 +57,8 @@ np.set_printoptions(precision=2)
 # TODO maybe move all of these to __init__.py, or at least expose them there?
 # or maybe to a hong2p.py module (maybe importing all of its contents in
 # __init__.py ?)
+# TODO migrate all 'prep_date' -> 'date'? (seems i already use 'date' in a lot
+# of places...)
 recording_cols = [
     'prep_date',
     'fly_num',
@@ -83,6 +81,8 @@ data_root_name = 'mb_team'
 _data_root = None
 # TODO add verbose flag which says all the things it's searching? or log them to
 # loginfo level or something?
+# TODO maybe add a function to set _data_root (so that can be called in advance
+# rather than setting an environment variable)
 def data_root():
     # TODO doc how data_root_name above only used in here if prefix but not
     # explicit directory is set (HONG_NAS and not HONG_2P_DATA)
@@ -195,6 +195,38 @@ def analysis_fly_dir(date, fly):
     return join(analysis_output_root(), _fly_dir(date, fly))
 
 
+def _raw_data_root_grandchildren():
+    return glob.glob(join(raw_data_root(), '*/*/'))
+
+
+def _all_thorimage_dirs()
+    """
+    Returns list of all ThorImage directories two levels under data root (where
+    they should be given my folder structure conventions).
+
+    For testing functions on all of the data under the root.
+    """
+    return [d for d in _raw_data_root_grandchildren()
+        if thor.is_thorimage_dir(d)
+    ]
+
+
+def _all_thorsync_dirs()
+    """
+    Returns list of all ThorSync directories two levels under data root (where
+    they should be given my folder structure conventions).
+
+    For testing functions on all of the data under the root.
+    """
+    return [d for d in _raw_data_root_grandchildren()
+        if thor.is_thorsync_dir(d)
+    ]
+
+# TODO TODO provide a similar fn to above two (_all_thor[image/sync]_dirs) to
+# generate all pairs of directories (though will probably need to polish up
+# thor.pair_thor_subdirs more first / at leas skip erring directories)
+
+
 # TODO unit test
 def is_array_sorted(array):
     """Returns whether 1-dimensional np.ndarray is sorted."""
@@ -230,6 +262,7 @@ def md5(fname):
     return hash_md5.hexdigest()
 
 
+# TODO move to project specific repo
 def odorset_name(df_or_odornames):
     """Returns name for set of odors in DataFrame.
 
@@ -310,6 +343,8 @@ def load_stimfile(stimfile_path):
 # project specific repo
 # TODO delete (subsuming contents into load_experiment) if i'd never want to
 # call this in other circumstances
+# TODO can this be generalized nicely to load YAML files output by my newer
+# olfactometer code?
 def load_odor_metadata(stimfile_path):
     """Returns odor metadata loaded from pickle and additional computed values.
 
@@ -566,7 +601,7 @@ def calculate_df_over_f(raw_f, trial_start_frames, odor_onset_frames,
     trial_stop_frames):
     # TODO TODO maybe factor this into some kind of util fn that applies
     # another fn (perhaps inplace, perhaps onto new array) to each
-    # (cell, block) (or maybe just each block, if smooth can be vectorized,
+    # (cell, block) (or maybe just each block, if smooth_1d can be vectorized,
     # so it could also apply in frame-shape-preserved case?)
     '''
     for b_start, b_end in zip(block_first_frames, block_last_frames):
@@ -576,7 +611,7 @@ def calculate_df_over_f(raw_f, trial_start_frames, odor_onset_frames,
             # inclusive? (<-fixed) other problems like this elsewhere?????
             # TODO maybe smooth less now that df/f is being calculated more
             # sensibly...
-            raw_f[b_start:(b_end + 1), c] = smooth(
+            raw_f[b_start:(b_end + 1), c] = smooth_1d(
                 raw_f[b_start:(b_end + 1), c], window_len=11
             )
     '''
@@ -600,6 +635,7 @@ def calculate_df_over_f(raw_f, trial_start_frames, odor_onset_frames,
     return df_over_f
 
 
+# TODO move to project specific repo
 def stimfile_odorset(stimfile_path, strict=True):
     data = load_stimfile(stimfile_path)
 
@@ -2006,6 +2042,8 @@ def n_expected_repeats(df):
 
 # TODO TODO could now probably switch to using block metadata in recording table
 # (n_repeats should be in there)
+# TODO move to project specific repo unless stimulus metadata can be
+# meaningfully generalized
 def missing_repeats(df, n_repeats=None):
     """
     Requires at least recording_from, comparison, name1, name2, and repeat_num
@@ -2238,7 +2276,7 @@ def drop_incomplete_presentations():
     raise NotImplementedError
 
 
-def smooth(x, window_len=11, window='hanning'):
+def smooth_1d(x, window_len=11, window='hanning'):
     """smooth the data using a window with requested size.
     
     This method is based on the convolution of a scaled window with the signal.
@@ -2261,7 +2299,7 @@ def smooth(x, window_len=11, window='hanning'):
 
     t=linspace(-2,2,0.1)
     x=sin(t)+randn(len(t))*0.1
-    y=smooth(x)
+    y=smooth_1d(x)
     
     see also: 
     
@@ -2274,20 +2312,17 @@ def smooth(x, window_len=11, window='hanning'):
     y[(window_len/2-1):-(window_len/2)] instead of just y.
     """
     if x.ndim != 1:
-        raise ValueError("smooth only accepts 1 dimension arrays.")
+        raise ValueError("smooth_1d only accepts 1 dimension arrays.")
 
     if x.size < window_len:
         raise ValueError("Input vector needs to be bigger than window size.")
 
-
     if window_len<3:
         return x
-
 
     if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
         raise ValueError("Window is on of 'flat', 'hanning', " +
             "'hamming', 'bartlett', 'blackman'")
-
 
     # is this necessary?
     #s = np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
@@ -2437,15 +2472,6 @@ def cell_ids(df):
         raise ValueError("'cell' not in index or columns of DataFrame")
 
 
-def matlabels(df, rowlabel_fn):
-    """
-    Takes DataFrame and function that takes one row of index to a label.
-
-    `rowlabel_fn` should take a DataFrame row (w/ columns from index) to a str.
-    """
-    return df.index.to_frame().apply(rowlabel_fn, axis=1)
-
-
 def format_odor_conc(name, log10_conc):
     """Takes `str` odor name and log10 concentration to a formatted `str`.
     """
@@ -2475,7 +2501,7 @@ def format_mixture(*args):
     elif len(args) == 1:
         row = args[0]
 
-        # TODO maybe refactor to use this fn in plot_odor_corr fn too
+        # TODO maybe refactor to use this fn in viz.plot_odor_corrs fn too
         def single_var_with_prefix(prefix):
             single_var = None
             for v in row.keys():
@@ -2625,142 +2651,7 @@ def pair_ordering(comparison_df):
     return ordering
 
 
-# TODO factor this and stuff like it to a plotting/plot/vi[s|z] module
-def matshow(df, title=None, ticklabels=None, xticklabels=None,
-    yticklabels=None, xtickrotation=None, colorbar_label=None,
-    group_ticklabels=False, ax=None, fontsize=None, fontweight=None):
-    # TODO TODO w/ all ticklabels kwargs, also support them being functions,
-    # which operate on (what type exactly?) index rows
-    # TODO shouldn't this get ticklabels from matrix if nothing else?
-    # maybe at least in the case when both columns and row indices are all just
-    # one level of strings?
-
-    made_fig = False
-    if ax is None:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        made_fig = True
-
-    def one_level_str_index(index):
-        return (len(index.shape) == 1 and
-            all(index.map(lambda x: type(x) is str)))
-
-    if (xticklabels is None) and (yticklabels is None):
-        if ticklabels is None:
-            if one_level_str_index(df.columns):
-                xticklabels = df.columns
-            else:
-                xticklabels = None
-            if one_level_str_index(df.index):
-                yticklabels = df.index
-            else:
-                yticklabels = None
-        else:
-            # TODO maybe also assert indices are actually equal?
-            assert df.shape[0] == df.shape[1]
-
-            if callable(ticklabels):
-                ticklabels = matlabels(df, ticklabels)
-
-            xticklabels = ticklabels
-            yticklabels = ticklabels
-    else:
-        # TODO fix. probably need to specify axes of df or something.
-        # (maybe first modifying matlabels to accept that...)
-        '''
-        if callable(xticklabels):
-            xticklabels = matlabels(df, xticklabels)
-
-        if callable(yticklabels):
-            yticklabels = matlabels(df, yticklabels)
-        '''
-        pass
-
-
-    # TODO update this formula to work w/ gui corrs (too big now)
-    if fontsize is None:
-        fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
-
-    cax = ax.matshow(df)
-
-    # just doing it in this case now to support kc_analysis use case
-    # TODO put behind flag or something
-    if made_fig:
-        cbar = fig.colorbar(cax)
-
-        if colorbar_label is not None:
-            # rotation=270?
-            cbar.ax.set_ylabel(colorbar_label)
-
-        # TODO possible to provide facilities for colorbar in case when ax is
-        # passed in? pass in another ax for colorbar? or just as easy to handle
-        # outside in that case (probably)?
-
-    def grouped_labels_info(labels):
-        if not group_ticklabels or labels is None:
-            return labels, 1, 0
-
-        labels = pd.Series(labels)
-        n_repeats = int(len(labels) / len(labels.unique()))
-
-        # TODO TODO assert same # things from each unique element.
-        # that's what this whole tickstep thing seems to assume.
-
-        # Assumes order is preserved if labels are grouped at input.
-        # May need to calculate some other way if not always true.
-        labels = labels.unique()
-        tick_step = n_repeats
-        offset = n_repeats / 2 - 0.5
-        return labels, tick_step, offset
-
-    # TODO automatically only group labels in case where all repeats are
-    # adjacent?
-    # TODO make fontsize / weight more in group_ticklabels case?
-    xticklabels, xstep, xoffset = grouped_labels_info(xticklabels)
-    yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
-
-    if xticklabels is not None:
-        # TODO nan / None value aren't supported in ticklabels are they?
-        # (couldn't assume len is defined if so)
-        if xtickrotation is None:
-            if all([len(x) == 1 for x in xticklabels]):
-                xtickrotation = 'horizontal'
-            else:
-                xtickrotation = 'vertical'
-
-        ax.set_xticklabels(xticklabels, fontsize=fontsize,
-            fontweight=fontweight, rotation=xtickrotation)
-        #    rotation='horizontal' if group_ticklabels else 'vertical')
-        ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
-
-    if yticklabels is not None:
-        ax.set_yticklabels(yticklabels, fontsize=fontsize,
-            fontweight=fontweight, rotation='horizontal')
-        #    rotation='vertical' if group_ticklabels else 'horizontal')
-        ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
-
-    # TODO test this doesn't change rotation if we just set rotation above
-
-    # this doesn't seem like it will work, since it seems to clear the default
-    # ticklabels that there actually were...
-    #ax.set_yticklabels(ax.get_yticklabels(), fontsize=fontsize,
-    #    fontweight=fontweight)
-
-    # didn't seem to do what i was expecting
-    #ax.spines['bottom'].set_visible(False)
-    ax.tick_params(bottom=False)
-
-    if title is not None:
-        ax.set_xlabel(title, fontsize=(fontsize + 1.5), labelpad=12)
-
-    if made_fig:
-        plt.tight_layout()
-        return fig
-    else:
-        return cax
-
-
-# TODO TODO call this in gui / factor into plot_odor_corrs (though it would
+# TODO TODO call this in gui / factor into viz.plot_odor_corrs (though it would
 # require accesss to df...) and call that there
 def add_missing_odor_cols(df, missing_df):
     """
@@ -2803,264 +2694,10 @@ def add_missing_odor_cols(df, missing_df):
     return missing_df
 
 
-# TODO should i actually compute correlations in here too? check input, and
-# compute if input wasn't correlations (/ symmetric?)?
-# if so, probably return them as well.
-def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
-    trial_stat='mean', title_suffix='', **kwargs):
-    """Takes a symmetric DataFrame with odor x odor correlations and plots it.
-    """
-    # TODO TODO TODO test this fn w/ possible missing data case.
-    # bring guis support for that in here?
-    if odors_in_order is not None:
-        odor_order = True
-
-    if odor_order:
-        # 'name2' is just 'no_second_odor' for a lot of my data
-        # (the non-pair stuff)
-        name_prefix = 'name1'
-
-        # TODO probably refactor the two duped things below
-        odor_name_rows = [c for c in corr_df.index.names
-            if c.startswith(name_prefix)
-        ]
-        if len(odor_name_rows) != 1:
-            raise ValueError('expected the name of exactly one index level to '
-                f'start with {name_prefix}'
-            )
-        odor_name_row = odor_name_rows[0]
-
-        odor_name_cols = [c for c in corr_df.columns.names
-            if c.startswith(name_prefix)
-        ]
-        if len(odor_name_cols) != 1:
-            raise ValueError('expected the name of exactly one column level to '
-                f'start with {name_prefix}'
-            )
-        odor_name_col = odor_name_cols[0]
-        #
-
-        if len(corr_df.index.names) == 1:
-            assert len(corr_df.columns.names) == 1
-            # Necessary to avoid this error:
-            # KeyError: 'Requested level...does not match index name (None)'
-            odor_name_row = None
-            odor_name_col = None
-
-        corr_df = corr_df.reindex(odors_in_order, level=odor_name_row,
-            axis='index').reindex(odors_in_order, level=odor_name_col,
-            axis='columns'
-        )
-        if odors_in_order is None:
-            # TODO 
-            raise NotImplementedError
-
-        if 'group_ticklabels' not in kwargs:
-            kwargs['group_ticklabels'] = True
-    else:
-        corr_df = corr_df.sort_index(
-            axis=0, level='order', sort_remaining=False).sort_index(
-            axis=1, level='order', sort_remaining=False
-        )
-
-    if 'title' not in kwargs:
-        kwargs['title'] = ('Odor' if odor_order else 'Presentation') + ' order'
-        kwargs['title'] += title_suffix
-
-    if 'ticklabels' not in kwargs:
-        kwargs['ticklabels'] = format_mixture
-
-    if 'colorbar_label' not in kwargs:
-        kwargs['colorbar_label'] = \
-            trial_stat.title() + r' response $\frac{\Delta F}{F}$ correlation'
-
-    return matshow(corr_df, **kwargs)
-
-
-# TODO maybe one fn that puts in matrix format and another in table
-# (since matrix may be sparse...)
-def plot_pair_n(df, *args):
-    """Plots a matrix of odor1 X odor2 w/ counts of flies as entries.
-
-    Args:
-    df (pd.DataFrame): DataFrame with columns:
-        - prep_date
-        - fly_num
-        - thorimage_id
-        - name1
-        - name2
-        Data already collected w/ odor pairs.
-
-    odor_panel (pd.DataFrame): (optional) DataFrame with columns:
-        - odor_1
-        - odor_2
-        - reason (maybe make this optional?)
-        The odor pairs experiments are supposed to collect data for.
-    """
-    import imgkit
-    import seaborn as sns
-
-    odor_panel = None
-    if len(args) == 1:
-        odor_panel = args[0]
-    elif len(args) != 0:
-        raise ValueError('incorrect number of arguments')
-    # TODO maybe make df optional and read from database if it's not passed?
-    # TODO a flag to show all stuff marked attempt analysis in gsheet?
-
-    # TODO borrow more of this / call this in part of kc_analysis that made that
-    # table w/ these counts for repeats?
-
-    # TODO also handle no_second_odor
-    df = df.drop(
-        index=df[(df.name1 == 'paraffin') | (df.name2 == 'paraffin')].index)
-
-    # TODO possible to do at least a partial check w/ n_accepted_blocks sum?
-    # (would have to do outside of this fn. presentations here doesn't have it.
-    # whatever latest_analysis returns might.)
-
-    replicates = df[
-        ['prep_date','fly_num','recording_from','name1','name2']
-    ].drop_duplicates()
-
-    # TODO do i actually want margins? (would currently count single odors twice
-    # if in multiple comparison... may at least not want that?)
-    # hide margins for now.
-    pair_n = pd.crosstab(replicates.name1, replicates.name2) #, margins=True)
-
-    # Making the rectangular matrix pair_n square
-    # (same indexes on row and column axes)
-
-    if odor_panel is None:
-        # This is basically equivalent to the logic in the branch below,
-        # although the index is not defined separately here.
-        full_pair_n = pair_n.combine_first(pair_n.T).fillna(0.0)
-    else:
-        # TODO [change odor<n> to / handle] name<n>, to be consistent w/ above
-        # TODO TODO TODO also make this triangular / symmetric
-        odor_panel = odor_panel.pivot_table(index='odor_1', columns='odor_2',
-            aggfunc=lambda x: True, values='reason')
-
-        full_panel_index = odor_panel.index.union(odor_panel.columns)
-        full_data_index = pair_n.index.union(pair_n.columns)
-        assert full_data_index.isin(full_panel_index).all()
-        # TODO also check no pairs occur in data that are not in panel
-        # TODO isin-like check for tuples (or other combinations of rows)?
-        # just iterate over both after drop_duplicates?
-
-        full_pair_n = pair_n.reindex(index=full_panel_index
-            ).reindex(columns=full_panel_index)
-        # TODO maybe making symmetric is a matter of setting 0 to nan here?
-        # and maybe setting back to nan at the end if still 0?
-        full_pair_n.update(full_pair_n.T)
-        # TODO full_pair_n.fillna(0, inplace=True)?
-
-    # TODO TODO delete this hack once i find a nicer way to make the
-    # output of crosstab symmetric
-    for i in range(full_pair_n.shape[0]):
-        for j in range(full_pair_n.shape[1]):
-            a = full_pair_n.iat[i,j]
-            b = full_pair_n.iat[j,i]
-            if a > 0 and (pd.isnull(b) or b == 0):
-                full_pair_n.iat[j,i] = a
-            elif b > 0 and (pd.isnull(a) or a == 0):
-                full_pair_n.iat[i,j] = b
-    # TODO also delete this hack. this assumes that anything set to 0
-    # is not actually a pair in the panel (which should be true right now
-    # but will not always be)
-    full_pair_n.replace(0, np.nan, inplace=True)
-    #
-
-    # TODO TODO TODO make crosstab output actually symmetric, not just square
-    # (or is it always one diagonal that's filled in? if so, really just need
-    # that)
-    assert full_pair_n.equals(full_pair_n.T)
-
-    # TODO TODO TODO how to indicate which of the pairs we are actually
-    # interested in? grey out the others? white the others? (just set to nan?)
-    # (maybe only use to grey / white out if passed in?)
-    # (+ margins for now)
-
-    # TODO TODO TODO color code text labels by pair selection reason + key
-    # TODO what to do when one thing falls under two reasons though...?
-    # just like a key (or things alongside ticklabels) that has each color
-    # separately? just symbols in text, if that's easier?
-
-    # TODO TODO display actual counts in squares in matshow
-    # maybe make colorbar have discrete steps?
-
-    full_pair_n.fillna('', inplace=True)
-    cm = sns.light_palette('seagreen', as_cmap=True)
-    # TODO TODO if i'm going to continue using styler + imgkit
-    # at least figure out how to get the cmap to actually work
-    # need some css or something?
-    html = full_pair_n.style.background_gradient(cmap=cm).render()
-    imgkit.from_string(html, 'natural_odors_pair_n.png')
-
-
-# TODO get x / y from whether they were declared share<x/y> in facetgrid
-# creation?
-def fix_facetgrid_axis_labels(facet_grid, shared_in_center=False,
-    x=True, y=True) -> None:
-    """Modifies a FacetGrid to not duplicate X and Y axis text labels.
-    """
-    # regarding the choice of shared_in_center: WWMDD?
-    if shared_in_center:
-        # TODO maybe add a axes over / under the FacetGrid axes, with the same
-        # shape, and label that one (i think i did this in my gui or one of the
-        # plotting fns. maybe plot_traces?)
-        raise NotImplementedError
-    else:
-        for ax in facet_grid.axes.flat:
-            if not (ax.is_first_col() and ax.is_last_row()):
-                if x:
-                    ax.set_xlabel('')
-                if y:
-                    ax.set_ylabel('')
-
-
-def set_facetgrid_legend(facet_grid, **kwargs) -> None:
-    """
-    In cases where different axes have different subsets of the hue levels,
-    the legend may not contain the artists for the union of hue levels across
-    all axes. This sets a legend from the hue artists across all axes.
-    """
-    #from matplotlib.collections import PathCollection
-    legend_data = dict()
-    for ax in facet_grid.axes.flat:
-        handles, labels = ax.get_legend_handles_labels()
-        for label, h in zip(labels, handles):
-            #if type(h) is PathCollection:
-            # From inspecting facet_grid._legend_data in cases where some labels
-            # pointed to empty lines (the phenotype in the case where things
-            # weren't behaving as I wanted), the empty lines had this empty
-            # facecolor.
-            facecolor = h.get_facecolor()
-            if len(facecolor) == 0:
-                continue
-            #else:
-            #    print(type(h))
-            #    import ipdb; ipdb.set_trace()
-
-            if label in legend_data:
-                # TODO maybe assert a wide variety of properties of the
-                # matplotlib.collections.PathCollection objects are the same
-                # (line width, dash, etc)
-                past_facecolor = legend_data[label].get_facecolor()
-                # TODO TODO TODO fix! this is failing again 2020-08-25
-                # (after re-installing requirements.txt, when running
-                # kc_mix_analysis.py w/ no just -j arg)
-                assert np.array_equal(facecolor, past_facecolor), \
-                    f'{facecolor} != {past_facecolor}'
-            else:
-                legend_data[label] = h
-
-    facet_grid.add_legend(legend_data, **kwargs)
-
-
 # TODO test when ax actually is passed in now that I made it a kwarg
 # (also works as optional positional arg, right?)
 def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
+    # TODO doc / delete
     """
     Args:
         if_multiple (str): 'take_largest'|'join'|'err'
@@ -3148,610 +2785,6 @@ def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
     return contour - 1
 
 
-def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
-    n=20, random=False, title=None, response_calls=None, raw=False,
-    smoothed=True, show_footprints=True, show_footprints_alone=False,
-    show_cell_ids=True, show_footprint_with_mask=False, gridspec=None,
-    linewidth=0.5, verbose=True):
-    # TODO TODO be clear on requirements of df and cell_ids in docstring
-    """
-    n (int): (default=20) Number of cells to plot traces for if cell_ids not
-        passed as second positional argument.
-    random (bool): (default=False) Whether the `n` cell ids should be selected
-        randomly. If False, the first `n` cells are used.
-    order_by (str): 'odors' or 'presentation_order'
-    scale_within (str): 'none', 'cell', or 'trial'
-    gridspec (None or matplotlib.gridspec.*): region of a parent figure
-        to draw this plot on.
-    linewidth (float): 0.25 seemed ok on CNMF data, but too small w/ clean
-    traces.
-    """
-    import tifffile
-    import cv2
-    # TODO maybe use cv2 and get rid of this dep?
-    from skimage import color
-
-    # TODO make text size and the spacing of everything more invariant to figure
-    # size. i think the default size of this figure ended up being bigger when i
-    # was using it in kc_analysis than it is now in the gui, so it isn't display
-    # well in the gui, but fixing it here might break it in the kc_analysis case
-    if verbose:
-        print('Entering plot_traces...')
-
-    if len(args) == 1:
-        df = args[0]
-        # TODO flag to also subset to responders first?
-        all_cells = cell_ids(df)
-        n = min(n, len(all_cells))
-        if random:
-            # TODO maybe flag to disable seed?
-            cells = all_cells.sample(n=n, random_state=1)
-        else:
-            cells = all_cells[:n]
-
-    elif len(args) == 2:
-        df, cells = args
-
-    else:
-        raise ValueError('must call with either df or df and cells')
-
-    if show_footprints:
-        # or maybe just download (just the required!) footprints from sql?
-        if footprints is None:
-            raise ValueError('must pass footprints kwarg if show_footprints')
-        # decide whether this should be in the preconditions or just done here
-        # (any harm to just do here anyway?)
-        #else:
-        #    footprints = footprints.set_index(recording_cols + ['cell'])
-
-    # TODO TODO TODO fix odor labels as in matrix (this already done?)
-    # (either rotate or use abbreviations so they don't overlap!)
-
-    # TODO check order_by and scale_within are correct
-    assert raw or smoothed
-
-    # TODO maybe automatically show_cells if show_footprints is true,
-    # otherwise don't?
-    # TODO TODO maybe indicate somehow the multiple response criteria
-    # when it is a list (add border & color each half accordingly?)
-
-    extra_cols = 0
-    # TODO which of these cases do i want to support here?
-    if show_footprints:
-        if show_footprints_alone:
-            extra_cols = 2
-        else:
-            extra_cols = 1
-    elif show_footprints_alone:
-        raise NotImplementedError
-
-    # TODO possibility of other column for avg + roi overlays
-    # possible to make it larger, or should i use a layout other than
-    # gridspec? just give it more grid elements?
-    # TODO for combinatorial combinations of flags enabling cols on
-    # right, maybe set index for each of those flags up here
-
-    # TODO could also just could # trials w/ drop_duplicates, for more
-    # generality
-    n_repeats = n_expected_repeats(df)
-    n_trials = n_repeats * len(df[['name1','name2']].drop_duplicates())
-
-    if gridspec is None:
-        # This seems to hang... not sure if it's usable w/ some changes.
-        #fig = plt.figure(constrained_layout=True)
-        fig = plt.figure()
-        gs = fig.add_gridspec(4, 6, hspace=0.4, wspace=0.3)
-        made_fig = True
-    else:
-        fig = gridspec.get_topmost_subplotspec().get_gridspec().figure
-        gs = gridspec.subgridspec(4, 6, hspace=0.4, wspace=0.3)
-        made_fig = False
-
-    if show_footprints:
-        trace_gs_slice = gs[:3,:4]
-    else:
-        trace_gs_slice = gs[:,:]
-
-    # For common X/Y labels
-    bax = fig.add_subplot(trace_gs_slice, frameon=False)
-    # hide tick and tick label of the big axes
-    bax.tick_params(top=False, bottom=False, left=False, right=False,
-        labelcolor='none')
-    bax.grid(False)
-
-    trace_gs = trace_gs_slice.subgridspec(len(cells),
-        n_trials + extra_cols, hspace=0.15, wspace=0.06)
-
-    axs = []
-    for ti in range(trace_gs._nrows):
-        axs.append([])
-        for tj in range(trace_gs._ncols):
-            ax = fig.add_subplot(trace_gs[ti,tj])
-            axs[-1].append(ax)
-    axs = np.array(axs)
-
-    # TODO want all of these behind show_footprints?
-    if show_footprints:
-        # TODO use 2/3 for widgets?
-        # TODO or just text saying which keys to press? (if only
-        # selection mechanism is going to be hover, mouse clicks
-        # wouldn't make sense...)
-
-        avg_ax = fig.add_subplot(gs[:, -2:])
-        # TODO TODO maybe show trial movie beneath this?
-        # (also on hover/click like (trial,cell) data)
-
-    if title is not None:
-        #pad = 40
-        pad = 15
-        # was also using default fontsize here in kc_analysis use case
-        # increment pad by 5 for each newline in title?
-        bax.set_title(title, pad=pad, fontsize=9)
-
-    bax.set_ylabel('Cell')
-
-    # This pad is to make it not overlap w/ time label on example plot.
-    # Was left to default value for kc_analysis.
-    # TODO negative labelpad work? might get drawn over by axes?
-    labelpad = -10
-    if order_by == 'odors':
-        bax.set_xlabel('Trials ordered by odor', labelpad=labelpad)
-    elif order_by == 'presentation_order':
-        bax.set_xlabel('Trials in presentation order', labelpad=labelpad)
-
-    ordering = pair_ordering(df)
-
-    '''
-    display_start_time = -3.0
-    display_stop_time = 10
-    display_window = df[
-        (comparison_df.from_onset >= display_start_time) &
-        (comparison_df.from_onset <= display_stop_time)]
-    '''
-    display_window = df
-
-    smoothing_window_secs = 1.0
-    fps = thor.fps_from_thor(df)
-    window_size = int(np.round(smoothing_window_secs * fps))
-
-    group_cols = trial_cols + ['order']
-
-    xmargin = 1
-    xmin = display_window.from_onset.min() - xmargin
-    xmax = display_window.from_onset.max() + xmargin
-
-    response_rgb = (0.0, 1.0, 0.2)
-    nonresponse_rgb = (1.0, 0.0, 0.0)
-    response_call_alpha = 0.2
-
-    if scale_within == 'none':
-        ymin = None
-        ymax = None
-
-    cell2contour = dict()
-    cell2rect = dict()
-    cell2text_and_rect = dict()
-
-    seen_ij = set()
-    avg = None
-    for i, cell_id in enumerate(cells):
-        if verbose:
-            print('Plotting cell {}/{}...'.format(i + 1, len(cells)))
-
-        cell_data = display_window[display_window.cell == cell_id]
-        cell_trials = cell_data.groupby(group_cols, sort=False)[
-            ['from_onset','df_over_f']]
-
-        prep_date = pd.Timestamp(cell_data.prep_date.unique()[0])
-        date_dir = prep_date.strftime(date_fmt_str)
-        fly_num = cell_data.fly_num.unique()[0]
-        thorimage_id = cell_data.thorimage_id.unique()[0]
-
-        #assert len(cell_trials) == axs.shape[1]
-
-        if show_footprints:
-            if avg is None:
-                # only uncomment to support dff images and other stuff like that
-                '''
-                try:
-                    # TODO either put in docstring that datetime.datetime is
-                    # required, or cast input date as appropriate
-                    # (does pandas date type support strftime?)
-                    # or just pass date_dir?
-                    # TODO TODO should not use nr if going to end up using the
-                    # rig avg... but maybe lean towards computing the avg in
-                    # that case rather than deferring to rigid?
-                    tif = motion_corrected_tiff_filename(
-                        prep_date, fly_num, thorimage_id)
-                except IOError as e:
-                    if verbose:
-                        print(e)
-                    continue
-
-                # TODO maybe show progress bar / notify on this step
-                if verbose:
-                    print('Loading full movie from {} ...'.format(tif),
-                        end='', flush=True)
-                movie = tifffile.imread(tif)
-                if verbose:
-                    print(' done.')
-                '''
-
-                # TODO modify motion_corrected_tiff_filename to work in this
-                # case too?
-                tif_dir = join(analysis_output_root(), date_dir, str(fly_num),
-                    'tif_stacks')
-                avg_nr_tif = join(tif_dir, 'AVG', 'nonrigid',
-                    'AVG{}_nr.tif'.format(thorimage_id))
-                avg_rig_tif = join(tif_dir, 'AVG', 'rigid',
-                    'AVG{}_rig.tif'.format(thorimage_id))
-
-                avg_tif = None
-                if exists(avg_nr_tif):
-                    avg_tif = avg_nr_tif
-                elif exists(avg_rig_tif):
-                    avg_tif = avg_rig_tif
-
-                if avg_tif is None:
-                    raise IOError(('No average motion corrected TIFs ' +
-                        'found in {}').format(tif_dir))
-
-                avg = tifffile.imread(avg_tif)
-                '''
-                avg = cv2.normalize(avg, None, alpha=0, beta=1,
-                    norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
-                '''
-                # TODO find a way to histogram equalize w/o converting
-                # to 8 bit?
-                avg = cv2.normalize(avg, None, alpha=0, beta=255,
-                    norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1)
-                better_constrast = cv2.equalizeHist(avg)
-
-                rgb_avg = color.gray2rgb(better_constrast)
-
-            cell_row = (prep_date, fly_num, thorimage_id, cell_id)
-            footprint_row = footprints.loc[cell_row]
-
-            # TODO TODO TODO probably need to tranpose how footprint is handled
-            # downstream (would prefer not to transpose footprint though)
-            # (as i had to switch x_coords and y_coords in db as they were
-            # initially entered swapped)
-            footprint = db_row2footprint(footprint_row, shape=avg.shape)
-
-            # TODO maybe some percentile / fixed size about maximum
-            # density?
-            cropped_footprint, ((x_min, x_max), (y_min, y_max)) = \
-                crop_to_nonzero(footprint, margin=6)
-            cell2rect[cell_id] = (x_min, x_max, y_min, y_max)
-
-            cropped_avg = \
-                better_constrast[x_min:x_max + 1, y_min:y_max + 1]
-
-            if show_footprint_with_mask:
-                # TODO figure out how to suppress clipping warning in the case
-                # when it's just because of float imprecision (e.g. 1.0000001
-                # being clipped to 1) maybe just normalize to [0 + epsilon, 1 -
-                # epsilon]?
-                # TODO TODO or just set one channel to be this
-                # footprint?  scale first?
-                cropped_footprint_rgb = \
-                    color.gray2rgb(cropped_footprint)
-                for c in (1,2):
-                    cropped_footprint_rgb[:,:,c] = 0
-                # TODO plot w/ value == 1 to test?
-
-                cropped_footprint_hsv = \
-                    color.rgb2hsv(cropped_footprint_rgb)
-
-                cropped_avg_hsv = \
-                    color.rgb2hsv(color.gray2rgb(cropped_avg))
-
-                # TODO hue already seems to be constant at 0.0 (red?)
-                # so maybe just directly set to red to avoid confusion?
-                cropped_avg_hsv[..., 0] = cropped_footprint_hsv[..., 0]
-
-                alpha = 0.3
-                cropped_avg_hsv[..., 1] = cropped_footprint_hsv[..., 1] * alpha
-
-                composite = color.hsv2rgb(cropped_avg_hsv)
-
-                # TODO TODO not sure this is preserving hue/sat range to
-                # indicate how strong part of filter is
-                # TODO figure out / find some way that would
-                # TODO TODO maybe don't normalize within each ROI? might
-                # screw up stuff relative to histogram equalized
-                # version...
-                # TODO TODO TODO still normalize w/in crop in contour
-                # case?
-                composite = cv2.normalize(composite, None, alpha=0.0,
-                    beta=1.0, norm_type=cv2.NORM_MINMAX,
-                    dtype=cv2.CV_32F)
-
-            else:
-                # TODO could also use something more than this
-                # TODO TODO fix bug here. see 20190402_bug1.txt
-                # TODO TODO where are all zero footprints coming from?
-                cropped_footprint_nonzero = cropped_footprint > 0
-                if not np.any(cropped_footprint_nonzero):
-                    continue
-
-                level = \
-                    cropped_footprint[cropped_footprint_nonzero].min()
-
-            if show_footprints_alone:
-                ax = axs[i,-2]
-                f_ax = axs[i,-1]
-                f_ax.imshow(cropped_footprint, cmap='gray')
-                f_ax.axis('off')
-            else:
-                ax = axs[i,-1]
-
-            if show_footprint_with_mask:
-                ax.imshow(composite)
-            else:
-                ax.imshow(cropped_avg, cmap='gray')
-                # TODO TODO also show any other contours in this rectangular ROI
-                # in a diff color! (copy how gui does this)
-                cell2contour[cell_id] = \
-                    closed_mpl_contours(cropped_footprint, ax, colors='red')
-
-            ax.axis('off')
-
-            text = str(cell_id + 1)
-            h = y_max - y_min
-            w = x_max - x_min
-            rect = patches.Rectangle((y_min, x_min), h, w,
-                linewidth=1.5, edgecolor='b', facecolor='none')
-            cell2text_and_rect[cell_id] = (text, rect)
-
-        if scale_within == 'cell':
-            ymin = None
-            ymax = None
-
-        for n, cell_trial in cell_trials:
-            #(prep_date, fly_num, thorimage_id,
-            (_, _, _, comp, o1, o2, repeat_num, order) = n
-
-            # TODO TODO also support a 'fixed' order that B wanted
-            # (which should also include missing stuff[, again in gray,]
-            # ideally)
-            if order_by == 'odors':
-                j = n_repeats * ordering[(o1, o2)] + repeat_num
-
-            elif order_by == 'presentation_order':
-                j = order
-
-            else:
-                raise ValueError("supported orderings are 'odors' and "+
-                    "'presentation_order'")
-
-            if scale_within == 'trial':
-                ymin = None
-                ymax = None
-
-            assert (i,j) not in seen_ij
-            seen_ij.add((i,j))
-            ax = axs[i,j]
-
-            # So that events that get the axes can translate to cell /
-            # trial information.
-            ax.cell_id = cell_id
-            ax.trial_info = n
-
-            # X and Y axis major tick label fontsizes.
-            # Was left to default for kc_analysis.
-            ax.tick_params(labelsize=6)
-
-            trial_times = cell_trial['from_onset']
-
-            # TODO TODO why is *first* ea trial the one not shown, and
-            # apparently the middle pfo trial
-            # (was it not actually ordered by 'order'/frame_num outside of
-            # odor order???)
-            # TODO TODO TODO why did this not seem to work? (or only for
-            # 1/3.  the middle one. iaa.)
-            # (and actually title is still hidden for ea and pfo trials
-            # mentioned above, but numbers / ticks / box still there)
-            # (above notes only apply to odor order case. presentation order
-            # worked)
-            # TODO and why is gray title over correct axes in odor order case,
-            # but axes not displaying data are in wrong place?
-            # TODO is cell_trial messed up?
-
-            # Supports at least the case when there are missing odor
-            # presentations at the end of the ~block.
-            missing_this_presentation = \
-                trial_times.shape == (1,) and pd.isnull(trial_times.iat[0])
-
-            if i == 0:
-                # TODO group in odors case as w/ matshow?
-                if order_by == 'odors':
-                    trial_title = format_mixture({
-                        'name1': o1,
-                        'name2': o2,
-                    })
-                elif order_by == 'presentation_order':
-                    trial_title = format_mixture({
-                        'name1': o1,
-                        'name2': o2
-                    })
-
-                if missing_this_presentation:
-                    tc = 'gray'
-                else:
-                    tc = 'black'
-
-                ax.set_title(trial_title, fontsize=6, color=tc)
-                # TODO may also need to do tight_layout here...
-                # it apply to these kinds of titles?
-
-            if missing_this_presentation:
-                ax.axis('off')
-                continue
-
-            trial_dff = cell_trial['df_over_f']
-
-            if raw:
-                if ymax is None:
-                    ymax = trial_dff.max()
-                    ymin = trial_dff.min()
-                else:
-                    ymax = max(ymax, trial_dff.max())
-                    ymin = min(ymin, trial_dff.min())
-
-                ax.plot(trial_times, trial_dff, linewidth=linewidth)
-
-            if smoothed:
-                # TODO kwarg(s) to control smoothing?
-                sdff = smooth(trial_dff, window_len=window_size)
-
-                if ymax is None:
-                    ymax = sdff.max()
-                    ymin = sdff.min()
-                else:
-                    ymax = max(ymax, sdff.max())
-                    ymin = min(ymin, sdff.min())
-
-                # TODO TODO have plot_traces take kwargs to be passed to
-                # plotting fn + delete separate linewidth
-                ax.plot(trial_times, sdff, color='black', linewidth=linewidth)
-
-            # TODO also / separately subsample?
-
-            if response_calls is not None:
-                was_a_response = \
-                    response_calls.loc[(o1, o2, repeat_num, cell_id)]
-
-                if was_a_response:
-                    ax.set_facecolor(response_rgb +
-                        (response_call_alpha,))
-                else:
-                    ax.set_facecolor(nonresponse_rgb +
-                        (response_call_alpha,))
-
-            if i == axs.shape[0] - 1 and j == 0:
-                # want these centered on example plot or across all?
-
-                # I had not specified fontsize for kc_analysis case, so whatever
-                # the default value was probably worked OK there.
-                ax.set_xlabel('Seconds from odor onset', fontsize=6)
-
-                if scale_within == 'none':
-                    scaletext = ''
-                elif scale_within == 'cell':
-                    scaletext = '\nScaled within each cell'
-                elif scale_within == 'trial':
-                    scaletext = '\nScaled within each trial'
-
-                # TODO just change to "% maximum w/in <x>" or something?
-                # Was 70 for kc_analysis case. That's much too high here.
-                #labelpad = 70
-                labelpad = 10
-                ax.set_ylabel(r'$\frac{\Delta F}{F}$' + scaletext,
-                    rotation='horizontal', labelpad=labelpad)
-
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-                
-            else:
-                if show_cell_ids and j == len(cell_trials) - 1:
-                    # Indexes as they would be from one. For comparison
-                    # w/ Remy's MATLAB analysis.
-                    # This and default fontsize worked for kc_analysis case,
-                    # not for GUI.
-                    #labelpad = 18
-                    labelpad = 25
-                    ax.set_ylabel(str(cell_id + 1),
-                        rotation='horizontal', labelpad=labelpad, fontsize=5)
-                    ax.yaxis.set_label_position('right')
-                    # TODO put a label somewhere on the plot indicating
-                    # these are cell IDs
-
-                for d in ('top', 'right', 'bottom', 'left'):
-                    ax.spines[d].set_visible(False)
-
-                ax.set_xticks([])
-                ax.set_yticks([])
-                ax.set_xticklabels([])
-                ax.set_yticklabels([])
-
-        # TODO change units in this case on ylabel?
-        # (to reflect how it was scaled)
-        if scale_within == 'cell':
-            for r in range(len(cell_trials)):
-                ax = axs[i,r]
-                ax.set_ylim(ymin, ymax)
-
-    if scale_within == 'none':
-        for i in range(len(cells)):
-            for j in range(len(cell_trials)):
-                ax = axs[i,j]
-                ax.set_ylim(ymin, ymax)
-    
-    if show_footprints:
-        fly_title = '{}, fly {}, {}'.format(
-            date_dir, fly_num, thorimage_id)
-
-        # title like 'Recording average fluorescence'?
-        #avg_ax.set_title(fly_title)
-        avg_ax.imshow(rgb_avg)
-        avg_ax.axis('off')
-
-        cell2rect_artists = dict()
-        for cell_id in cells:
-            # TODO TODO fix bug that required this (zero nonzero pixel
-            # in cropped footprint thing...)
-            if cell_id not in cell2text_and_rect:
-                continue
-
-            (text, rect) = cell2text_and_rect[cell_id]
-
-            box = rect.get_bbox()
-            # TODO appropriate font properties? placement still good?
-            # This seemed to work be for (larger?) figures in kc_analysis,
-            # too large + too close to boxes in gui (w/ ~8"x5" gridspec,dpi 100)
-            # TODO set in relation to actual fig size (+ dpi?)
-            #boxlabel_fontsize = 9
-            boxlabel_fontsize = 6
-            text_artist = avg_ax.text(box.xmin, box.ymin - 2, text,
-                color='b', size=boxlabel_fontsize, fontweight='bold')
-            # TODO jitter somehow (w/ arrow pointing to box?) to ensure no
-            # overlap? (this would be ideal, but probably hard to implement)
-            avg_ax.add_patch(rect)
-
-            cell2rect_artists[cell_id] = (text_artist, rect)
-
-    for i in range(len(cells)):
-        for j in range(len(cell_trials)):
-            ax = axs[i,j]
-            ax.set_xlim(xmin, xmax)
-
-    if made_fig:
-        fig.tight_layout()
-        return fig
-
-
-def imshow(img, title):
-    fig, ax = plt.subplots()
-    ax.imshow(img, cmap='gray')
-    ax.set_title(title)
-    ax.axis('off')
-    return fig
-
-
-def image_grid(image_list):
-    n = int(np.ceil(np.sqrt(len(image_list))))
-    fig, axs = plt.subplots(n,n)
-    for ax, img in zip(axs.flat, image_list):
-        ax.imshow(img, cmap='gray')
-
-    for ax in axs.flat:
-        ax.axis('off')
-
-    plt.subplots_adjust(wspace=0, hspace=0.05)
-    return fig
-
-
 # TODO worth having min/max as inputs, so that maybe can use vals from
 # either scene or template for the other? i guess point of baselining
 # is to avoid need for stuff like that...
@@ -3762,6 +2795,18 @@ def baselined_normed_u8(img):
     baselined = img - img.min()
     normed = baselined / baselined.max()
     return (u8_max * normed).astype(np.uint8)
+
+
+# TODO refactor this behind a color=True kwarg baselined_normed_u8 above?
+def u8_color(draw_on):
+    # TODO figure out why background looks lighter here than in other 
+    # imshows of same input (w/o converting manually)
+    draw_on = draw_on - np.min(draw_on)
+    draw_on = draw_on / np.max(draw_on)
+    cmap = plt.get_cmap('gray') #, lut=256)
+    # (throwing away alpha coord w/ last slice)
+    draw_on = np.round((cmap(draw_on)[:, :, :3] * 255)).astype(np.uint8)
+    return draw_on
 
 
 def template_match(scene, template, method_str='cv2.TM_CCOEFF', hist=False,
@@ -3901,18 +2946,6 @@ def euclidean_dist(v1, v2):
     return np.linalg.norm(np.array(v1).astype(np.float64) -
         np.array(v2).astype(np.float64)
     )
-
-
-def u8_color(draw_on):
-    # TODO figure out why background looks lighter here than in other 
-    # imshows of same input (w/o converting manually)
-    draw_on = draw_on - np.min(draw_on)
-    draw_on = draw_on / np.max(draw_on)
-    cmap = plt.get_cmap('gray') #, lut=256)
-    # (throwing away alpha coord w/ last slice)
-    draw_on = np.round((cmap(draw_on)[:, :, :3] * 255)).astype(np.uint8)
-    return draw_on
-
 
 
 # TODO TODO TODO try updating to take max of two diff match images,
@@ -4533,11 +3566,11 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
     '''
     if debug and _show_packing_constraints:
         title = 'greedy_roi_packing overlap exlusion mask'
-        imshow(claimed, title)
+        viz.imshow(claimed, title)
     '''
 
     if debug and draw_on is not None and _show_fit:
-        imshow(draw_on, 'greedy_roi_packing fit')
+        viz.imshow(draw_on, 'greedy_roi_packing fit')
 
     # TODO also use kdtree for this step
     if not min_neighbors:
@@ -4653,6 +3686,7 @@ def get_circle_ijroi_input(center_px, radius_px):
     return bbox
 
 
+# TODO move to viz? or maybe move all roi stuff to a new module?
 def plot_circles(draw_on, centers, radii):
     import cv2
     draw_on = cv2.normalize(draw_on, None, alpha=0, beta=255,
@@ -5618,7 +4652,7 @@ def downsample_movie(movie, target_fps, current_fps, allow_overshoot=True,
     # frame_shape will not be screwed up in a way relevant to the average
     # when reshaping?
     # well, at least this looks reasonable:
-    # image_grid(downsampled[:64])
+    # viz.image_grid(downsampled[:64])
 
     return downsampled, best_downsampled_fps
 

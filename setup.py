@@ -50,6 +50,10 @@ setup(
 
         'latex',
         'jinja2',
+
+        # TODO move cv2 in here (opencv-python)?
+        # (only gui.py/extract_template.py and some other test scripts import
+        # it on module import, but maybe still nice to have by default?)
     ],
     #    # TODO some way to specify these urls in an authentication agnostic way,
     #    # so it defaults to ssh if we have that set up?

@@ -2,7 +2,7 @@
 
 from os.path import join
 
-import hong2p import util, db
+from hong2p import util, db
 
 
 def test_load_experiment():
