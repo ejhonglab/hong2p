@@ -29,8 +29,8 @@ def main():
     # of each path.
     exp2thor_dir_pairs = {
         ('2021-03-07', 1): [
-            ('t2h_single_plane', 'SyncData002'),
             ('glomeruli_diagnostics_192', 'SyncData001'),
+            ('t2h_single_plane', 'SyncData002'),
         ],
         # single plane KC recording w/ blocks
         ('2019-01-23', 6): [
@@ -74,10 +74,13 @@ def main():
             # slow b/c has to read whole movie... read_movie has an assert that
             # n_frames derived this way + using get_thorimage_n_frames_xml are
             # same anyway, and didn't find a case where that assertion failed
-            # yet
+            # yet (not true actually, the comparison in read_movie is against #
+            # of xy frames but len(movie) would be # of volumes in volumetric
+            # case)
             #movie = thor.read_movie(thorimage_dir)
             #print('n_frames:', len(movie))
 
+            # TODO perhaps this should take arg to drop flyback?
             n_frames = thor.get_thorimage_n_frames_xml(xml)
             print('n_frames:', n_frames)
 
@@ -108,19 +111,26 @@ def main():
             #print('frame_in.max():', df.frame_in.max())
             #print('frame_in.min():', df.frame_in.min())
 
-            frame_times, t0 = thor.get_frame_times(df, None)
+            #frame_times, t0 = thor.get_frame_times(df, xml)
+            frame_times, t0 = thor.get_frame_times(df, thorimage_dir)
 
-            assert len(frame_times) == n_frames, \
-                f'{len(frame_times)} != {n_frames}'
+            # (now that frame_times calculation drops flyback frame times,
+            # this won't work in volumetric data)
+            #assert len(frame_times) == n_frames, \
+            #    f'{len(frame_times)} != {n_frames}'
 
             bounding_frames = thor.assign_frames_to_odor_presentations(df,
-                frame_times
+                thorimage_dir
             )
             lens = [end - start + 1 for start, end in bounding_frames]
 
-            assert sum(lens) == n_frames, f'{sum(lens)} != {n_frames}'
+            # TODO update assertion for flyback case
+            #assert sum(lens) == n_frames, f'{sum(lens)} != {n_frames}'
 
             #'''
+            # TODO automatically show just a bit of start and end of each block
+            # (in subplot grid?)
+
             plt.plot(df.time_s, df.scopePin, label='trigger')
             plt.plot(df.time_s, df.frame_out, label='frame_out')
             plt.plot(df.time_s, df.frame_counter.diff(),
@@ -133,8 +143,10 @@ def main():
                 marker='x', label='frame_times'
             )
 
+            '''
             colors = ['r', 'g', 'b']
-            assert len(colors) == len(bounding_frames)
+            assert len(colors) == len(bounding_frames), \
+                f'!= {len(bounding_frames)}'
 
             for i, ((start_frame, end_frame), c) in enumerate(
                 zip(bounding_frames, colors)):
@@ -143,6 +155,7 @@ def main():
                 plt.plot(odor_frames, [2.5] * len(odor_frames),
                     linestyle='None', marker='x', color=c, label=f'{i}'
                 )
+            '''
 
             plt.legend()
             plt.show()

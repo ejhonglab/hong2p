@@ -34,6 +34,9 @@ def get_thorimage_xml_path(thorimage_dir):
     return join(thorimage_dir, thorimage_xml_basename)
 
 
+# TODO maybe allow this to return identify in case it's passed xml root?
+# so that *some* *_xml(...) fns can be collapsed into the corresponding fns
+# without the suffix.
 def get_thorimage_xmlroot(thorimage_dir):
     """Takes ThorImage output dir to object w/ XML data.
     """
@@ -58,15 +61,6 @@ def get_thorimage_time(thorimage_dir, use_mtime=False):
     """
     xml_path = get_thorimage_xml_path(thorimage_dir)
 
-    # TODO delete. for debugging matching.
-    '''
-    xml = xmlroot(xml_path)
-    print(thorimage_dir)
-    print(get_thorimage_time_xml(xml))
-    print(datetime.fromtimestamp(getmtime(xml_path)))
-    print('')
-    '''
-    #
     if not use_mtime:
         xml = xmlroot(xml_path)
         return get_thorimage_time_xml(xml)
@@ -84,6 +78,9 @@ def get_thorimage_n_frames_xml(xml):
 
 # TODO probably also include number of "frames" (*planes* over time) here too
 # (and in functions that call this)
+# (though would need to take into account flyback as well as potentially
+# averaging in order to have this dimension reflect shape of movie (as if the
+# output of this function were `movie.shape` for the corresponding movie))
 def get_thorimage_dims_xml(xml):
     """Takes etree XML root object to (xy, z, c) dimensions of movie.
 
@@ -171,6 +168,10 @@ def get_thorimage_n_flyback_xml(xml):
     return n_flyback_frames
 
 
+def get_thorimage_notes_xml(xml):
+    return xml.find('ExperimentNotes').attrib['text']
+
+
 def load_thorimage_metadata(thorimage_dir, return_xml=False):
     """Returns (fps, xy, z, c, n_flyback, raw_output_path) for ThorImage dir.
 
@@ -232,7 +233,7 @@ thorsync_h5_basename = 'Episode001.h5'
 def is_thorsync_h5(f):
     """True if filename indicates file is ThorSync HDF5 output.
     """
-    _, f_basename = split(f)[1]
+    _, f_basename = split(f)
     # So far I've only seen these files named *exactly* 'Episode001.h5', but
     # this function could be adapted if this naming convention has some
     # variations in the future.
@@ -300,6 +301,10 @@ def get_thorsync_h5(thorsync_dir):
 
 # TODO rename to indicate a thor (+raw?) format
 # TODO rename to 'load_movie' to be consistent w/ other similar fns in here?
+# TODO refactor this to something like 'load_thorimage_raw' + have
+# '[load/read]_movie' call either this or appropriate tifffile calls to load any
+# TIFF outputs thorimage might have saved (check that dimension orders are the
+# same!)?
 def read_movie(thorimage_dir, discard_flyback=True):
     """Returns (t,[z,]x,y) indexed timeseries as a numpy array.
     """
@@ -598,9 +603,47 @@ def threshold_crossings(signal, threshold=2.5, onsets=True, offsets=True):
     return onset_indices, offset_indices
 
 
-# TODO also take thorimage dir / metadata / # frames optionally to check against
-# # of frames we pull out in here
-def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
+# TODO TODO generalize + refactor other stuff to use / maybe delete
+# (and maybe just take xml / thorimage_dir as input, as may want to handle `c`
+# / averaging / etc later)
+def get_flyback_indices(n_frames, z, n_flyback, series=None):
+    """Returns indices of XY frames during piezo flyback.
+    """
+    if series is not None:
+        assert n_frames == len(series), f'{n_frames} != {len(series)}'
+
+    if n_flyback == 0:
+        return np.array([])
+
+    # TODO return appropriate values to cause no-op in subsequent operations if
+    # input does not have flyback frames (e.g. not volumetric)
+
+    z_total = z + n_flyback
+
+    orig_n_frames = n_frames
+    n_volumes, remainder = divmod(n_frames, z_total)
+    assert remainder == 0
+
+    #data = np.reshape(data, (n_frames, z_total, x, y))
+    # TODO TODO slice a movie with the opposite of these indices and verify it's
+    # same as what we'd get by reslicing as above (by checking equality)
+
+    # TODO TODO what extra info we need if this fn is also supposed to drop
+    # stuff beyond end of recording? maybe just leave that to other stuff and
+    # make clear in doc?
+
+    flyback_indices = np.concatenate([
+        np.arange((z_total * i) + z, (z_total * i) + z_total)
+        for i in range(n_volumes)
+    ])
+
+    return flyback_indices
+
+
+# TODO add (fn specific?) cacheing util (decorator?) so that df can be generated
+# automatically w/ thorsync dir input here / in assign_frames*, but so the df
+# loaded in the background can be shared across these calls?
+def get_frame_times(df, thorimage_dir, time_ref='mid'):
     # TODO update doc (+ maybe fn name) to reflect fact that initial acquisition
     # onset time also returned (and is this what i want to return? for zeroing
     # against odor stuff later)
@@ -608,7 +651,9 @@ def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
 
     Arguments:
     df (`DataFrame`): as returned by `load_thorsync_hdf5`
-    thorimage_dir_or_xml (not currently used)
+
+    thorimage_dir (str): path to ThorImage directory to load metadata from
+
     time_ref ('mid' | 'end')
 
     Returns a `np.array` that should be of length equal to the number of frames
@@ -639,11 +684,6 @@ def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
     if time_col not in df.columns:
         raise ValueError(f'{time_col} not in df.columns')
 
-    # TODO change (by wrapping, probably...) all of the functions that take a
-    # thorimage dir as input -> some metadata property so that they can use a
-    # cached version of the xml (so we don't need to reload nor have two
-    # versions of each function, one to accept xml and another to accept
-    # directory / path to xml file)
     # TODO TODO TODO factor in averaging here later
     # (not relevant on downstairs where i don't believe i'm using any averaging,
     # or 
@@ -678,16 +718,12 @@ def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
             f'no column with name in {acquisition_trigger_names} in df'
         )
 
-    # TODO TODO TODO see al_imaging/util.crop_trailing_frames to check that my
+    # TODO TODO see al_imaging/util.crop_trailing_frames to check that my
     # current understanding of frame_counter / frame_out is accurate
 
     frame_out_onsets, frame_out_offsets = threshold_crossings(frame_out,
         threshold=0.5
     )
-    '''
-    print('len(frame_out_onsets):', len(frame_out_onsets))
-    print('len(frame_out_offsets):', len(frame_out_offsets))
-    '''
     # TODO maybe just have threshold_crossings make this check by default, w/ a
     # kwarg to override (which gets threaded through here)
     assert np.all(frame_out_onsets < frame_out_offsets), \
@@ -696,10 +732,6 @@ def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
     acq_onsets, acq_offsets = threshold_crossings(acquisition_trigger,
         threshold=2.5
     )
-    '''
-    print('len(acq_onsets):', len(acq_onsets))
-    print('len(acq_offsets):', len(acq_offsets))
-    '''
     assert np.all(acq_onsets < acq_offsets), \
         'offset before onset OR mismatched number of the two'
 
@@ -734,6 +766,30 @@ def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
     elif time_ref == 'mid':
         frame_times = (offset_times - onset_times) / 2 + onset_times
 
+    _, _, z, c, n_flyback, _, xml = load_thorimage_metadata(thorimage_dir,
+        return_xml=True
+    )
+
+    # (# xy frames, even in vol case)
+    n_frames = get_thorimage_n_frames_xml(xml)
+
+    # TODO test this on more data
+    z_total = z + n_flyback
+    # TODO TODO TODO TODO update this implementation to handle case w/ multiple
+    # acquisition periods!
+    n_volumes, trailing_unsaved_frames = divmod(len(frame_times), z_total)
+
+    if trailing_unsaved_frames > 0:
+        frame_times = frame_times[:-trailing_unsaved_frames]
+
+    assert len(frame_times) == n_frames
+
+    flyback_indices = get_flyback_indices(n_frames, z, n_flyback, frame_times)
+
+    # https://stackoverflow.com/questions/47540800
+    frame_times = np.delete(frame_times, flyback_indices)
+    assert len(frame_times) == n_volumes * z
+
     initial_acquisition_onset_time = df[time_col][acq_onsets[0]]
 
     return frame_times, initial_acquisition_onset_time
@@ -741,13 +797,11 @@ def get_frame_times(df, thorimage_dir_or_xml, time_ref='mid'):
 
 # TODO how should this deal w/ blocks[/similar block handling functions i might
 # implement]
-# TODO TODO also take thorimage metadata arg here after implementing its support
-# in get_frame_times above
 # TODO maybe move this function to util or something?
 # TODO provide kwargs to crop (end of?) ranges so that all have same number of
 # frames? might also be some cases where something similar is needed at start,
 # especially when we have multiple blocks
-def assign_frames_to_odor_presentations(df, frame_times=None, **kwargs):
+def assign_frames_to_odor_presentations(df, thorimage_dir, **kwargs):
     """Returns list of (start, end) frame indices, one per odor presentation.
 
     end frames are included in range, and thus getting a presentation must be
@@ -770,8 +824,7 @@ def assign_frames_to_odor_presentations(df, frame_times=None, **kwargs):
             f'no column with name in {odor_timing_names} in df'
         )
 
-    if frame_times is None:
-        frame_times, _ = get_frame_times(df, None, **kwargs)
+    frame_times, _ = get_frame_times(df, thorimage_dir, **kwargs)
 
     # (when the valve(s) are given the signal to open)
     odor_onsets, _ = threshold_crossings(odor_timing, threshold=2.5,
@@ -859,13 +912,13 @@ def is_thorsync_dir(d, verbose=False):
         print('have_settings:', have_settings)
         print('have_h5:', have_h5)
 
-    return have_h5 and have_settings1
+    return have_h5 and have_settings
 
 
 def is_thorimage_raw(f):
     """True if filename indicates file is ThorImage raw output.
     """
-    _, f_basename = split(f)[1]
+    _, f_basename = split(f)
 
     # Needs to match at least 'Image_0001_0001.raw' and 'Image_001_001.raw'
     if f_basename.startswith('Image_00') and f_basename.endswith('001.raw'):
@@ -889,7 +942,7 @@ def is_thorimage_dir(d, verbose=False):
     have_xml = False
     have_raw = False
     # TODO support tif output case(s) as well
-    #have_processed_tiff = False
+    have_tiff = False
     for f in files:
         if f == thorimage_xml_basename:
             have_xml = True
@@ -898,9 +951,6 @@ def is_thorimage_dir(d, verbose=False):
         # TIFF output? or does it also save .raw in that case? fix if not.
         elif is_thorimage_raw(f):
             have_raw = True
-
-        #elif f == split(d)[-1] + '_ChanA.tif':
-        #    have_processed_tiff = True
 
     if verbose:
         print('have_xml:', have_xml)
