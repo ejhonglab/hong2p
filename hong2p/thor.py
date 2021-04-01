@@ -15,6 +15,13 @@ import numpy as np
 import pandas as pd
 
 
+# TODO delete frame out name handling after forcing it to be a constant name in
+# load_thorsync_hdf5
+_frame_out_names = ('frame_out', 'frameout')
+_acquisition_trigger_names = ('scopePin',)
+_odor_timing_names = ('olfDispPin',)
+
+
 def xmlroot(xml_path):
     """Loads contents of xml_path into xml.etree.ElementTree and returns root.
 
@@ -23,6 +30,7 @@ def xmlroot(xml_path):
     too, but see `xml` documentation for more information.
     """
     return etree.parse(xml_path).getroot()
+
 
 # TODO maybe rename everything to get rid of 'get_' prefix? mainly here so i
 # can name what these functions return naturally without shadowing...
@@ -400,10 +408,10 @@ def read_movie(thorimage_dir, discard_flyback=True):
 
 
 time_col = 'time_s'
-# TODO maybe refactor this a bit and and a function to list datasets, just so
+# TODO maybe refactor this a bit and add a function to list datasets, just so
 # people can figure out their own data post hoc w/o needing other tools
 def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
-    drop_gctr=True):
+    drop_gctr=True, return_dataset_names_only=False):
     """Loads ThorSync .h5 output within `thorsync_dir` into a `pd.DataFrame`
 
     A column 'time_s' will be added, which is derived from 'GCtr', and
@@ -480,10 +488,14 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     hdf5_fname = get_thorsync_h5(thorsync_dir)
 
     data_dict = dict()
+    full_dataset_names = []
     def load_datasets(name, obj):
         # Could also check if `obj` has a 'shape' attribute if this approach has
         # issues.
         if isinstance(obj, h5py.Dataset):
+            if return_dataset_names_only:
+                full_dataset_names.append(obj.name)
+
             parent_name = obj.parent.name
 
             # In data from 2019-05-03/3/SyncData002, this has keys 'Hz' and
@@ -528,6 +540,9 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
 
             data_dict[dataset_name] = values
 
+    # TODO warn/err (configurable via kwarg?) if any datasets requested were not
+    # found (to help identify naming convention changes in the HDF5 files, etc)
+
     # NOTE: for some reason, opening a debugger (e.g. via `ipdb.set_trace()`)
     # inside this context manager has `self` in `dir()`, seemingly pointing to
     # `f`, but `f` can not be referenced directly.
@@ -535,17 +550,33 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         # Populates data_dict
         f.visititems(load_datasets)
 
-        # TODO maybe compare performance w/ w/o conversion to Dataframe?
-        df = pd.DataFrame(data_dict)
+    if return_dataset_names_only:
+        return full_dataset_names
 
-    # TODO check whether this is (nearly) equivalent to multiplying arange len
-    # samples by 1 / thorsync sampling rate
-    # Dividing what I think is the clock cycle counter by the 20MHz mentioned in
-    # the 3.0 ThorSync manual (section 5.2 "Reviewing Data").
-    df[time_col] = df.gctr / int(2e7)
+    # TODO maybe compare performance w/ w/o conversion to Dataframe?
+    df = pd.DataFrame(data_dict)
 
-    if drop_gctr:
-        df.drop(columns='gctr', inplace=True)
+
+    gctr_col = 'gctr'
+    if gctr_col in df.columns:
+        # TODO check whether this is (nearly) equivalent to multiplying arange
+        # len samples by 1 / thorsync sampling rate
+        # Dividing what I think is the clock cycle counter by the 20MHz
+        # mentioned in the 3.0 ThorSync manual (section 5.2 "Reviewing Data").
+        df[time_col] = df[gctr_col] / int(2e7)
+
+        if drop_gctr:
+            df.drop(columns=gctr_col, inplace=True)
+
+    else:
+        # Valid as long as gctr_col has no spaces and (exclude_datasets and
+        # datasets) are mutually exclusive.
+        print(datasets is None)
+        print({x.lower() for x in datasets})
+        print(gctr_col.lower() in {x.lower() for x in datasets})
+        assert (datasets is not None and
+            gctr_col.lower() not in {x.lower() for x in datasets}
+        )
 
     # Just to illustrate what the sampling rate in the XML is. This check should
     # work, but no need for it to be routine.
@@ -643,7 +674,10 @@ def get_flyback_indices(n_frames, z, n_flyback, series=None):
 # TODO add (fn specific?) cacheing util (decorator?) so that df can be generated
 # automatically w/ thorsync dir input here / in assign_frames*, but so the df
 # loaded in the background can be shared across these calls?
-def get_frame_times(df, thorimage_dir, time_ref='mid'):
+# TODO delete frame out name handling after forcing it to be a constant name in
+# load_thorsync_hdf5
+def get_frame_times(df, thorimage_dir, time_ref='mid',
+    frame_out_names=None, acquisition_trigger_names=None):
     # TODO update doc (+ maybe fn name) to reflect fact that initial acquisition
     # onset time also returned (and is this what i want to return? for zeroing
     # against odor stuff later)
@@ -691,7 +725,9 @@ def get_frame_times(df, thorimage_dir, time_ref='mid'):
     # TODO confirm that some of the data actually does have the column named
     # FrameOut or something that ultimately produces 'frameout'
     # (and probably normalize all such built-in columns inside hdf5 load fn)
-    frame_out_names = ('frame_out', 'frameout')
+    if frame_out_names is None:
+        frame_out_names = _frame_out_names
+
     frame_out = None
     for n in frame_out_names:
         if n in df.columns:
@@ -705,8 +741,9 @@ def get_frame_times(df, thorimage_dir, time_ref='mid'):
     # future, and it does indeed serve the same function as our
     # "scopePin"/whatever, replace this with that (at least if it's available in
     # current data)
-    # TODO include my own names for this here
-    acquisition_trigger_names = ('scopePin',)
+    if acquisition_trigger_names is None:
+        acquisition_trigger_names = _acquisition_trigger_names
+
     acquisition_trigger = None
     for n in acquisition_trigger_names:
         if n in df.columns:
@@ -736,7 +773,7 @@ def get_frame_times(df, thorimage_dir, time_ref='mid'):
         'offset before onset OR mismatched number of the two'
 
     if len(acq_onsets) > 1:
-        raise NotImplementedError
+        raise NotImplementedError('multiple blocks not currently supported')
 
     # TODO TODO TODO TODO implement in a way that supports multiple blocks
     actually_saved = frame_out_onsets <= acq_offsets[0]
@@ -801,18 +838,20 @@ def get_frame_times(df, thorimage_dir, time_ref='mid'):
 # TODO provide kwargs to crop (end of?) ranges so that all have same number of
 # frames? might also be some cases where something similar is needed at start,
 # especially when we have multiple blocks
-def assign_frames_to_odor_presentations(df, thorimage_dir, **kwargs):
+def assign_frames_to_odor_presentations(df, thorimage_dir,
+    odor_timing_names=None, **kwargs):
     """Returns list of (start, end) frame indices, one per odor presentation.
 
-    end frames are included in range, and thus getting a presentation must be
+    End frames are included in range, and thus getting a presentation must be
     done like `movie[start_i:(end_i + 1)]` rather  than `movie[start_i:end_i]`.
 
     Not all frames necessarily included. No overlap.
     """
+    if odor_timing_names is None:
+        odor_timing_names = _odor_timing_names
+
     # TODO factor this out to private util fn in this file
     # (used twice in above fn too)
-    # TODO include my own names for this here
-    odor_timing_names = ('olfDispPin',)
     odor_timing = None
     for n in odor_timing_names:
         if n in df.columns:
@@ -1052,20 +1091,21 @@ def thor_subdirs(parent_dir, absolute_paths=True):
 # TODO TODO generalize / wrap in a way that also allows associating with
 # stimulus files / arbitrary other files.
 def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
-    use_ranking=True, check_against_naming_conv=True,
+    use_ranking=True, check_against_naming_conv=False,
     check_unique_thorimage_nums=None, verbose=False):
     """
     Takes lists (not necessarily same len) of dirs, and returns a list of
     lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
 
     Args:
-    check_against_naming_conv (bool): (default=True) If True, check ordering
+    check_against_naming_conv (bool): (default=False) If True, check ordering
         from pairing is consistent with ordering derived from our naming
         conventions for Thor software output.
 
-    check_unique_thorimage_nums (bool): (default=True) If True, check numbers
-        parsed from ThorImage directory names, as-per convention, are unique.
-        Requires check_against_naming_conv to be True.
+    check_unique_thorimage_nums (bool): If True, check numbers parsed from
+        ThorImage directory names, as-per convention, are unique.
+        Requires check_against_naming_conv to be True. Defaults to True if
+        check_against_naming_conv is True, else defaults to False. 
 
     Raises ValueError if two dirs of one type match to the same one of the
     other, but just returns shorter list of pairs if some matches can not be

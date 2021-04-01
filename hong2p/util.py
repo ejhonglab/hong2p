@@ -77,12 +77,30 @@ dff_latex = r'$\frac{\Delta F}{F}$'
 
 data_root_name = 'mb_team'
 
+
 # Module level cache.
 _data_root = None
+def set_data_root(new_data_root):
+    """Sets data root, so future calls to `data_root` will return the input.
+
+    You may either use this function or set one of the environment variables
+    that the `data_root` function checks.
+    """
+    global _data_root
+
+    if not isdir(new_data_root):
+        raise IOError(f'{new_data_root} is not a directory!')
+
+    if _data_root is not None:
+        warnings.warn('data_root was already defined. usually set_data_root '
+            'should only need to be called once.'
+        )
+
+    _data_root = new_data_root
+
+
 # TODO add verbose flag which says all the things it's searching? or log them to
 # loginfo level or something?
-# TODO maybe add a function to set _data_root (so that can be called in advance
-# rather than setting an environment variable)
 def data_root():
     # TODO doc how data_root_name above only used in here if prefix but not
     # explicit directory is set (HONG_NAS and not HONG_2P_DATA)
@@ -193,6 +211,38 @@ def thorsync_dir(date, fly, base_thorsync_dir):
 
 def analysis_fly_dir(date, fly):
     return join(analysis_output_root(), _fly_dir(date, fly))
+
+
+# TODO maybe rename suffix here / thor.pair_thor_subdirs(->_dirs) for
+# consistency. i think i was already thinking consolidating/renaming those two
+# thor functions
+# TODO maybe it would be better to have this return a data frame? maybe add
+# another fn that converts output of this to that?
+# TODO maybe also allow specification of optional third/additional keys to
+# restrict to only some thorimage / thorsync dirs for a subset? or maybe it'd
+# make more sense to add other functions for blacklisting/whitelisting stuff?
+def date_fly_list2paired_thor_dirs(date_fly_list, pair_kwargs=dict(),
+    verbose=False):
+    # TODO add code example to doc
+    """Takes list of (date, fly_num) tuples to pairs of their Thor outputs.
+
+    Each output is of the form:
+    ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
+    """
+    for date, fly_num in date_fly_list:
+        fly_dir = raw_fly_dir(date, fly_num)
+
+        if verbose:
+            print('fly_dir:', fly_dir)
+
+        paired_thor_dirs = thor.pair_thor_subdirs(fly_dir, **pair_kwargs)
+
+        for thorimage_dir, thorsync_dir in paired_thor_dirs:
+            if verbose:
+                print('thorimage_dir:', thorimage_dir)
+                print('thorsync_dir:', thorsync_dir)
+
+            yield (date, fly_num), (thorimage_dir, thorsync_dir)
 
 
 def _raw_data_root_grandchildren():
@@ -946,6 +996,7 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
                 # convention) are unique, we must check this before
                 # mb_team_gsheet returns.
                 image_and_sync_pairs = thor.pair_thor_subdirs(fly_dir,
+                     check_against_naming_conv=True,
                      check_unique_thorimage_nums=False
                 )
                 if verbose:
