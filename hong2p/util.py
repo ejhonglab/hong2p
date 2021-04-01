@@ -199,7 +199,7 @@ def _raw_data_root_grandchildren():
     return glob.glob(join(raw_data_root(), '*/*/'))
 
 
-def _all_thorimage_dirs()
+def _all_thorimage_dirs():
     """
     Returns list of all ThorImage directories two levels under data root (where
     they should be given my folder structure conventions).
@@ -211,7 +211,7 @@ def _all_thorimage_dirs()
     ]
 
 
-def _all_thorsync_dirs()
+def _all_thorsync_dirs():
     """
     Returns list of all ThorSync directories two levels under data root (where
     they should be given my folder structure conventions).
