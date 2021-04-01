@@ -3189,7 +3189,7 @@ class Segmentation(QWidget):
             # TODO TODO save the initial traces (+ in future pixel corr plot) as
             # well, in at least this case, but maybe also just on load?
             # TODO but at that point, maybe just factor out the plotting and
-            # generate in populate_db?
+            # generate in kc_natural_mixes/populate_db?
             # TODO TODO env var for fig output (might want in one flag
             # directory)
             # TODO make subdirs if they don't exist

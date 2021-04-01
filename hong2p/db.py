@@ -772,8 +772,9 @@ def latest_analysis_presentations(analysis_run_df):
         'AND analysis IN ' + sql_timestamp_list(analysis_run_df), conn)
 
     # TODO TODO maybe just do a migration on the db to fix all comparisons
-    # to not have to be renumbered, and fix gui(+populate_db?) so they don't
-    # restart numbering across sub-recordings that come from same recording?
+    # to not have to be renumbered, and fix gui(+kc_natural_mixes/populate_db?)
+    # so they don't restart numbering across sub-recordings that come from same
+    # recording?
 
     # TODO TODO TODO test that this is behaving as expected
     # - is there only one place where presentatinos.analysis == row.run_at?
@@ -1064,7 +1065,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     xml = thor.get_thorimage_xmlroot(image_dir)
     started_at = thor.get_thorimage_time_xml(xml)
 
-    # TODO upload full_frame_avg_trace like in populate_db?
+    # TODO upload full_frame_avg_trace like in kc_natural_mixes/populate_db?
     recording_df = pd.DataFrame({
         'started_at': [started_at],
         'thorsync_path': [sync_dir],

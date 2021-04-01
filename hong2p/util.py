@@ -3854,7 +3854,8 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
         fname = join(path, tiff_parts[0] + '_rois.zip')
 
         # TODO TODO change. fname needs to always be under
-        # analysis_output_root (or just change input in populate_db).
+        # analysis_output_root (or just change input in
+        # kc_natural_mixes/populate_db.py).
         # TODO or at least err if not subdir of it
         # see: https://stackoverflow.com/questions/3812849
 
@@ -4285,9 +4286,9 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
 
     `tif` must be named and placed according to convention, and a .mat file
     created from `ejhonglab/matlab_kc_plane` (typically run via `populate_db.py`
-    in this repo) must exist in the conventional path under the analysis root.
-    This .mat file is used for the timing information (ultimately derived mainly
-    from ThorSync data).
+    in what is now my `kc_natural_mixes` repo) must exist in the conventional
+    path under the analysis root. This .mat file is used for the timing
+    information (ultimately derived mainly from ThorSync data).
 
     Total length along time dimension should be preserved from input TIFF.
     """

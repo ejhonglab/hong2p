@@ -94,7 +94,7 @@ def matlab_engine(force=False):
 
 # TODO don't expose this if i can refactor other stuff to not use it
 # otherwise use this rather than their own separate definitions
-# (only currently used in populate_db)
+# (only currently used in kc_natural_mixes/populate_db.py)
 # Subdirectory within each fly's analysis directory that contains the .mat file
 # output by the matlab_kc_plane code.
 rel_to_cnmf_mat = 'cnmf'
@@ -229,7 +229,8 @@ def load_mat_timing_info(mat_file, use_matlab_engine=None):
     # value above number of entries in frame_times (- 1)
 
     # TODO just fix all existing saved to new naming convention in a script
-    # like populate_db? (for vars that produce block_<first/last>_frames)
+    # like kc_natural_mixes/populate_db? (for vars that produce
+    # block_<first/last>_frames)
 
     # Frame indices for CNMF output.
     # Of length equal to number of blocks. Each element is the frame

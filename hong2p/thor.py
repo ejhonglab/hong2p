@@ -102,9 +102,9 @@ def get_thorimage_dims_xml(xml):
     if z != 1:
         streaming = xml.find('Streaming')
         assert streaming.attrib['enable'] == '1'
-        # Not true, see: 2020-03-09/1/fn (though another run of populate_db.py
-        # seemed to indicate this dir was passed over for tiff creation
-        # anyway??? i'm confused...)
+        # Not true, see: 2020-03-09/1/fn (though another run of
+        # kc_natural_mixes/populate_db.py seemed to indicate this dir was passed
+        # over for tiff creation anyway??? i'm confused...)
         #assert streaming.attrib['zFastEnable'] == '1'
         if streaming.attrib['zFastEnable'] != '1':
             z = 1

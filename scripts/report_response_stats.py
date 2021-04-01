@@ -112,8 +112,8 @@ def main():
     fly_df = u.mb_team_gsheet(use_cache=True)
     # TODO TODO TODO how come this has a bunch more than what was put in the db
     # in the last run??
-    # (it's all natural_odors. populate_db should have not been restricted to 
-    # stuff marked attempt_analysis...)
+    # (it's all natural_odors. kc_natural_mixes/populate_db should have not been
+    # restricted to stuff marked attempt_analysis...)
     print(fly_df[['date','fly_num','thorimage_dir']].drop_duplicates())
 
 
