@@ -237,6 +237,8 @@ def _all_thorimage_dirs():
 
     For testing functions on all of the data under the root.
     """
+    # TODO fix so it's actually all children of these directories
+    raise NotImplementedError
     return [d for d in _raw_data_root_grandchildren()
         if thor.is_thorimage_dir(d)
     ]
@@ -249,13 +251,38 @@ def _all_thorsync_dirs():
 
     For testing functions on all of the data under the root.
     """
+    # TODO fix so it's actually all children of these directories
+    raise NotImplementedError
     return [d for d in _raw_data_root_grandchildren()
         if thor.is_thorsync_dir(d)
     ]
 
-# TODO TODO provide a similar fn to above two (_all_thor[image/sync]_dirs) to
-# generate all pairs of directories (though will probably need to polish up
-# thor.pair_thor_subdirs more first / at leas skip erring directories)
+
+def _all_paired_thor_dirs(skip_errors=True, **kwargs):
+    """
+    Returns a list of all (ThorImage, ThorSync) directories that can be paired
+    (i.e. determined to come from the same exerpiment) and that are both
+    immediate children of (the same) one of the directories returned by
+    `_raw_data_root_grandchildren()`.
+
+    skip_errors (bool): (default=True) if False, will raise any caught
+        `ValueError` rather than skipping results and continuing
+
+    `kwargs` are passed to `thor.pair_thor_subdirs`
+    """
+    all_pairs = []
+    for d in _raw_data_root_grandchildren():
+        try:
+            d_pairs = thor.pair_thor_subdirs(d, **kwargs)
+        except ValueError:
+            if skip_errors:
+                continue
+            else:
+                raise
+
+        all_pairs.extend(d_pairs)
+
+    return all_pairs
 
 
 # TODO unit test
