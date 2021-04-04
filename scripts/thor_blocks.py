@@ -164,7 +164,7 @@ def main():
             only_plot_near_acq_edges_s = True
 
             all_acq_edges = np.sort(np.concatenate([
-                acq_onsets_s.values, acq_offsets_s.values
+                acq_onsets_s, acq_offsets_s
             ]))
 
             # So that if we remove data for plotting efficiency, it doesn't
@@ -241,7 +241,7 @@ def main():
                 fig.legend(handles, labels, loc='upper right')
                 plt.show()
 
-            frame_times, acq_t0 = thor.get_frame_times(df, thorimage_dir)
+            frame_times = thor.get_frame_times(df, thorimage_dir)
 
             # Not plotting this stuff in this case just because we already
             # called `plt.show()` for the plot these should be added to above.

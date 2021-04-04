@@ -727,7 +727,7 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
 
 # TODO is this slow / are there faster alternatives?
 # (copied from my deprecated al_imaging/al_imaging/util.py)
-def threshold_crossings(signal, threshold=2.5, onsets=True, offsets=True):
+def threshold_crossings(signal, threshold=None, onsets=True, offsets=True):
     # TODO clarify "ignored" in equality case in doc
     """
     Returns indices where signal goes from < threshold to > threshold as onsets,
@@ -735,7 +735,12 @@ def threshold_crossings(signal, threshold=2.5, onsets=True, offsets=True):
     
     Cases where it at one index equals the threshold are ignored. Shouldn't
     happen and may indicate electrical problems for our application.
+
+    Uses a threshold of 2.5 by default. Use 0.5 for digital signals in {0, 1}.
     """
+    if threshold is None:
+        threshold = 2.5
+
     # TODO could redefine in terms of np.diff
     # might be off by one?
     # TODO TODO TODO detect whether input is pandas series and only use .values
@@ -806,13 +811,30 @@ def get_flyback_indices(n_frames, z, n_flyback, series=None):
     return flyback_indices
 
 
-def get_col_onset_offset_indices(df, possible_col_names, **kwargs):
+def get_col_onset_indices(df, possible_col_names, threshold=None):
     """Returns arrays onsets, offsets with appropriate indices in `df`.
 
     possible_col_names (str or tuple): can be either exact column name in
         `df` or an iterable of column names, where the first matching a column
         in `df` will be used.
 
+    `kwargs` are passed through to `threshold_crossings`.
+    """
+    col = _get_column(df, possible_col_names)
+    onsets, _ = threshold_crossings(col, threshold=threshold,
+        offsets=False
+    )
+    return onsets
+
+
+def get_col_onset_offset_indices(df, possible_col_names, threshold=None):
+    """Returns arrays onsets, offsets with appropriate indices in `df`.
+
+    possible_col_names (str or tuple): can be either exact column name in
+        `df` or an iterable of column names, where the first matching a column
+        in `df` will be used.
+
+    threshold (float): passed to `threshold_crossings` under the same name.
     """
     col = _get_column(df, possible_col_names)
 
@@ -820,7 +842,7 @@ def get_col_onset_offset_indices(df, possible_col_names, **kwargs):
     # (and maybe compare thresh to max/min/dtype values in generating warning to
     # indicate if that might be the cause of the error, which i guess it
     # must...)
-    onsets, offsets = threshold_crossings(col, **kwargs)
+    onsets, offsets = threshold_crossings(col, threshold=threshold)
 
     # TODO maybe just have threshold_crossings make this check by default, w/ a
     # kwarg to override (which gets threaded through here)
@@ -839,12 +861,13 @@ def get_col_onset_offset_times(df, possible_col_names, **kwargs):
         `df` or an iterable of column names, where the first matching a column
         in `df` will be used.
 
+    `kwargs` passed to `get_col_onset_offset_indices`
     """
     onsets, offsets = get_col_onset_offset_indices(df, possible_col_names,
         **kwargs
     )
-    onset_times = df.time_s[onsets]
-    offset_times = df.time_s[offsets]
+    onset_times = df.time_s[onsets].values
+    offset_times = df.time_s[offsets].values
     return onset_times, offset_times
 
 
@@ -870,9 +893,6 @@ def find_last_true(x):
 # load_thorsync_hdf5
 def get_frame_times(df, thorimage_dir, time_ref='mid',
     acquisition_trigger_names=None, _debug=False):
-    # TODO update doc (+ maybe fn name) to reflect fact that initial acquisition
-    # onset time also returned (and is this what i want to return? for zeroing
-    # against odor stuff later)
     """Returns seconds from start of ThorSync recording for each frame.
 
     Arguments:
@@ -883,7 +903,8 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
     time_ref ('mid' | 'end')
 
     Returns a `np.array` that should be of length equal to the number of frames
-    actually saved by ThorImage.
+    actually saved by ThorImage (i.e. `<output>.shape` should be equal to
+    `(movie.shape[0],)`).
     """
     # NOTE: initially I was planning on basing this off of one of the ThorLabs
     # supplied MATLAB scripts (see GenerateFrameTime.m referenced in ThorSync
@@ -1143,19 +1164,75 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
         frame_times = frame_times.reshape(-1, z).mean(axis=-1)
         assert len(frame_times) == n_volumes
 
-    initial_acquisition_onset_time = df[time_col][acq_onsets[0]]
-
-    return frame_times, initial_acquisition_onset_time
+    return frame_times
 
 
-# TODO how should this deal w/ blocks[/similar block handling functions i might
-# implement]
+def assign_frame_times_to_blocks(frame_times, rtol=1.5):
+    """Takes array of frame times to (start, stop) indices for each block.
+
+    Args:
+    `frame_times` (np.array): as output by `get_frame_times`.
+        should have a `shape` of `(movie.shape[0],)`.
+
+    `rtol` (float): (optional, default=1.5) time differences between frames must
+        be at least this multiplied by the median time difference in order for 
+        a block to be called there.
+
+    Notes:
+    This function defines blocks (periods of continuous acquisition) by regions
+    of `frame_times` where the time difference between frames remains
+    essentially constant. Large jumps in the time between two frames defines the
+    start of a new block. Indices returned would be suitable to index the first
+    dimension of the `movie`, the output of `get_frame_times`, etc. `stop`
+    indices are included as part of the block, so you should add one when using
+    them as the end of a slice.
+    """
+    dts = np.diff(frame_times, prepend=frame_times[0])
+    median_dt = np.median(dts)
+
+    # This should have <# of block> - 1 elements
+    discontinuities = np.where(dts > (rtol * median_dt))[0]
+
+    # This should contain the indices of the frames immediately AFTER each
+    # discontinuity (as well as a 0 that I add to the front).
+    start_frames = np.insert(discontinuities, 0, 0)
+
+    end_frames = np.append(discontinuities - 1, len(frame_times) - 1)
+
+    # TODO TODO (optional extra args+) tests involving checks of # of blocks
+    # determined here against # of blocks measured via
+    # get_col_onset_offset_indices or something like that. at least this, but
+    # could maybe check additional things too.
+
+    return list(zip(start_frames, end_frames))
+
+
+def assign_frames_to_blocks(df, thorimage_dir, **kwargs):
+    """Takes ThorSync+Image data to (start, stop) indices for each block.
+
+    Args:
+    df (DataFrame): as output by `load_thorsync_hdf5`
+
+    thorimage_dir (str): path to a directory created by ThorImage
+
+    kwargs (dict): passed through to `get_frame_times`
+
+    See documentation of `assign_frame_times_to_blocks` for more details on the
+    definition of blocks and the properties of the output.
+    """
+    frame_times = get_frame_times(df, thorimage_dir, **kwargs)
+    return assign_frame_times_to_blocks(frame_times)
+
+
 # TODO maybe move this function to util or something?
 # TODO provide kwargs to crop (end of?) ranges so that all have same number of
 # frames? might also be some cases where something similar is needed at start,
 # especially when we have multiple blocks
+# TODO maybe just take frame_times + odor_col instead? or rename in a way that
+# makes what input should be more clear?
 def assign_frames_to_odor_presentations(df, thorimage_dir,
-    odor_timing_names=None, **kwargs):
+    odor_timing_names=None, check_all_frames_assigned=True,
+    check_no_discontinuity=True, **kwargs):
     """Returns list of (start, end) frame indices, one per odor presentation.
 
     Frames are indexed as they are along the first dimension of the movie,
@@ -1166,46 +1243,87 @@ def assign_frames_to_odor_presentations(df, thorimage_dir,
     done like `movie[start_i:(end_i + 1)]` rather  than `movie[start_i:end_i]`.
 
     Not all frames necessarily included. No overlap.
+
+    `kwargs` are passed through to `get_frame_times`.
     """
     if odor_timing_names is None:
         odor_timing_names = _odor_timing_names
 
-    # TODO finish refactoring (do i want to thread onset/offset kwargs through
-    # this fn?)
-    '''
-    odor_onsets, odor_offsets = get_col_onset_offset_indices(df,
+    # (when the valve(s) are given the signal to open)
+    odor_onsets = get_col_onset_indices(df,
         odor_timing_names, threshold=2.5
     )
-    '''
 
-    odor_timing = _get_column(df, odor_timing_names)
-
-    # (when the valve(s) are given the signal to open)
-    odor_onsets, _ = threshold_crossings(odor_timing, threshold=2.5,
-        offsets=False
-    )
     odor_onset_times = df[time_col].values[odor_onsets]
 
-    frame_times, _ = get_frame_times(df, thorimage_dir, **kwargs)
+    frame_times = get_frame_times(df, thorimage_dir, **kwargs)
 
-    # (with respect to the odor onset in both of these cases)
-    first_frame_to_odor_s = odor_onset_times[0] - frame_times[0]
-    #print('first_frame_to_odor_s:', first_frame_to_odor_s)
+    block_ranges = assign_frame_times_to_blocks(frame_times)
 
-    start_times = odor_onset_times - first_frame_to_odor_s
-    #print([x in frame_times for x in start_times])
+    # TODO assert all odor_onset_times are in one of the block ranges somewhere
 
-    # If tied, seems to provide index that would insert the new element at the
-    # earlier position.
-    start_frames = np.searchsorted(frame_times, start_times)
+    start_frames = []
+    end_frames = []
+    curr_index_offset = 0
 
-    # Inclusive (so can NOT be used as the end of slices directly. need to add
-    # one because slice ends are not inclusive.)
-    end_frames = [x - 1 for x in start_frames[1:]] + [len(frame_times) - 1]
+    for start, end in block_ranges:
+        start_s = frame_times[start]
+        end_s = frame_times[end]
 
-    # TODO TODO probably want to at least check for discontinuities within the
-    # frames assigned to a given presentation, particularly in case where there
-    # are multiple blocks
+        curr_frame_times = frame_times[start:(end + 1)]
+
+        curr_odor_onset_times = odor_onset_times[np.logical_and(
+            start_s <= odor_onset_times, odor_onset_times <= end_s
+        )]
+
+        first_frame_to_odor_s = curr_odor_onset_times[0] - start_s
+
+        curr_start_times = curr_odor_onset_times - first_frame_to_odor_s
+
+        # If tied, seems to provide index that would insert the new element at
+        # the earlier position.
+        curr_start_frames = np.searchsorted(curr_frame_times, curr_start_times)
+
+        # TODO maybe refactor to share w/ one other place that does this now?
+        # Inclusive (so can NOT be used as the end of slices directly. need to
+        # add one because slice ends are not inclusive.)
+        curr_end_frames = np.append(
+            curr_start_frames[1:] - 1, len(curr_frame_times) - 1
+        )
+
+        start_frames.append(curr_start_frames + curr_index_offset)
+        end_frames.append(curr_end_frames + curr_index_offset)
+        curr_index_offset += len(curr_frame_times)
+
+    start_frames = np.concatenate(start_frames)
+    end_frames = np.concatenate(end_frames)
+
+    if check_all_frames_assigned:
+        indices = []
+        for s, e in zip(start_frames, end_frames):
+            indices.append(np.arange(s, e + 1))
+
+        indices = np.concatenate(indices)
+
+        assert len(frame_times[indices]) == len(frame_times), \
+            'not all frames were assigned'
+
+        assert len(np.unique(indices)) == len(indices), \
+            'nonunique (probably overlapping ranges of) indices'
+
+    if check_no_discontinuity:
+        # Mainly intending to check for large discontinuitie that might arise
+        # if, for example, the last odor presentation in one acquisition period
+        # was also assigned the first frame in the next acquisition period.
+
+        for s, e in zip(start_frames, end_frames):
+            curr_odor_times = frame_times[s:(e+1)]
+            dts = np.diff(curr_odor_times)
+            median_dt = np.median(dts)
+            max_dt = np.max(dts)
+
+            assert max_dt < 1.5 * median_dt, \
+                'discontinuity larger than usual frame delta t'
 
     return list(zip(start_frames, end_frames))
 

@@ -19,27 +19,8 @@ import numpy as np
 from numpy.ma import MaskedArray
 import pandas as pd
 
-import matplotlib as mpl
-try:
-    # TODO TODO TODO will i want to explicitly check sys.modules to see whether
-    # any code has imported pyplot, or will matplotlib fail / warn appropriately
-    # if we try to `mpl.use(...)` after pyplot has already been imported.
-    # what i'm trying to avoid is it just silently failing, such that the
-    # backend is not actually changed
-
-    # see https://stackoverflow.com/questions/30483246 if need to check
-    # sys.modules ourselves
-
-    # TODO maybe only hardcode it if current default backend happens to be
-    # "non-gui" as in this error:
-    # TODO some mpl fn to check if it is a "gui" backend?
-    # UserWarning: Matplotlib is currently using agg, which is a non-GUI
-    # backend, so cannot show the figure
-    # TODO re: above, does mpl.get_backend() interfere w/ future .use calls?
-    mpl.use('Qt5Agg')
-except ImportError:
-    print('All possible (not necessarily installed) matplotlib backends:')
-    pprint(mpl.rcsetup.all_backends)
+# TODO now that i'm not trying to force a particular backend, move all the
+# imports here and in a few other place back to a typical order
 
 # Importing all matplotlib stuff besides mpl itself here to allow the above code
 # to change backend. Might just need to defer import pyplot though...
