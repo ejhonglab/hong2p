@@ -22,7 +22,6 @@ def main():
         # (because only expecting one of these, but named seems to not always
         # have been the same)
         'frame_in',
-        'framein',
     ]
 
 
@@ -56,14 +55,8 @@ def main():
 
         if check_frame_in:
             df = ret
-            if 'frame_in' in df.columns:
-                frame_in = df.frame_in
-            elif 'framein' in df.columns:
-                frame_in = df.framein
-
-            print(frame_in.value_counts())
+            print(df.frame_in.value_counts())
             print()
-
         else:
             names = ret
             thorsync_dir2dataset_names[d] = names

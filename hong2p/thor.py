@@ -10,16 +10,14 @@ from datetime import datetime
 import warnings
 from pprint import pprint
 import glob
+from itertools import zip_longest
 
 import numpy as np
 import pandas as pd
 
 
-# TODO delete frame out name handling after forcing it to be a constant name in
-# load_thorsync_hdf5
-_frame_out_names = ('frame_out', 'frameout')
-_acquisition_trigger_names = ('scopePin',)
-_odor_timing_names = ('olfDispPin',)
+_acquisition_trigger_names = ('scope_pin',)
+_odor_timing_names = ('olf_disp_pin',)
 
 
 def xmlroot(xml_path):
@@ -79,9 +77,46 @@ def get_thorimage_time(thorimage_dir, use_mtime=False):
 def get_thorimage_n_frames_xml(xml):
     """Returns the number of XY planes (# of timepoints) in the recording.
 
-    Flyback frames are included.
+    This is the number of frames *after* any averaging configured in ThorImage.
+
+    Any flyback frames are included.
     """
     return int(xml.find('Streaming').attrib['frames'])
+
+
+def get_thorimage_z_xml(xml):
+    """Returns number of different Z depths measured in ThorImage recording.
+
+    Does NOT include any flyback frames there may be.
+    """
+    return int(xml.find('ZStage').attrib['steps'])
+
+
+def is_fast_z_enabled_xml(xml):
+    streaming = xml.find('Streaming')
+    # TODO may want to only do this check under certain other conditions / not
+    # at all (in case someone were to try to call this / a function that calls
+    # this on non-streaming data)
+    assert streaming.attrib['enable'] == '1'
+    enabled = streaming.attrib['zFastEnable'] == '1'
+
+    if enabled:
+        assert get_thorimage_z_xml(xml) > 1, 'z <= 1 but fast z seems enabled'
+
+    return enabled
+
+
+# TODO TODO maybe add a function to get expected movie.size from thorimage .raw
+# file, and then include a check that these sizes match those expected by
+# multiplying all the relevant dimensions (including flyback) in the metadata
+# (would also check assumption that n_frames in ThorImage XML always acurately
+# reflects the number of frames in the ThorImage .raw file, and would need to
+# modify / not do such a check if this assumption turns out to be false)
+# TODO also would need to check that i'm using the correct means of getting the
+# size of the file, as we want how much data it actually contains not like how
+# much space the particular storage media / filesystem happens to need to store
+# it (which i think can slightly exceed the real amount of data the file should
+# have, from what i remember using `du`)
 
 
 # TODO probably also include number of "frames" (*planes* over time) here too
@@ -99,23 +134,16 @@ def get_thorimage_dims_xml(xml):
     y = int(lsm_attribs['pixelY'])
     xy = (x, y)
 
-    # what is Streaming -> flybackLines? (we already have flybackFrames...)
+    # TODO what is Streaming -> flybackLines? (we already have flybackFrames...)
 
-    # TODO maybe either subtract flyback frames here or return that separately?
-    # (for now, just leaving it out of this fn)
-    z = int(xml.find('ZStage').attrib['steps'])
-    # may break on my existing single plane data if value of z not meaningful
-    # there
+    z = get_thorimage_z_xml(xml)
 
-    if z != 1:
-        streaming = xml.find('Streaming')
-        assert streaming.attrib['enable'] == '1'
-        # Not true, see: 2020-03-09/1/fn (though another run of
-        # kc_natural_mixes/populate_db.py seemed to indicate this dir was passed
-        # over for tiff creation anyway??? i'm confused...)
-        #assert streaming.attrib['zFastEnable'] == '1'
-        if streaming.attrib['zFastEnable'] != '1':
-            z = 1
+    # TODO maybe move this check to inside get_thorimage_z_xml / remove it
+    # (because it would probably not work correctly in the case of non-streaming
+    # volumetric acquisitions). would then want to move logic of z > 1 check
+    # from `is_fast_z_enabled_xml` to `get_thorimage_z_xml` most likely.
+    if z != 1 and not is_fast_z_enabled_xml(xml):
+        z = 1
 
     # still not sure how this is encoded in the XML...
     c = None
@@ -137,38 +165,67 @@ def get_thorimage_pixelsize_xml(xml):
     return float(xml.find('LSM').attrib['pixelSizeUM'])
 
 
-def get_thorimage_fps_xml(xml):
-    """Takes etree XML root object to (after-any-averaging) fps of recording.
-
-    XML object should be as returned by `get_thorimage_xmlroot`.
+def get_thorimage_n_averaged_frames_xml(xml):
+    """Returns how many frames ThorImage averaged for a single output frame.
     """
     lsm_attribs = xml.find('LSM').attrib
-    raw_fps = float(lsm_attribs['frameRate'])
+
     # TODO is this correct handling of averageMode?
     average_mode = int(lsm_attribs['averageMode'])
+
     if average_mode == 0:
         n_averaged_frames = 1
     else:
-        # TODO TODO TODO does this really not matter in the volumetric streaming
-        # case, as Remy said? (it's still displayed in the software, and still
-        # seems enabled in that averageMode=1...)
-        # (yes it does seem to matter TAKE INTO ACCOUNT!)
-        n_averaged_frames = int(lsm_attribs['averageNum'])
+        if is_fast_z_enabled_xml(xml):
+            n_averaged_frames = 1
+        else:
+            n_averaged_frames = int(lsm_attribs['averageNum'])
+
+    return n_averaged_frames
+
+
+def get_thorimage_fps_xml(xml, before_averaging=False):
+    # TODO TODO clarify in doc whether this is volumes-per-second or
+    # xy-planes-per-second in the volumetric case (latter, i believe, though
+    # maybe add kwarg to get former?)
+    """Takes XML root object to fps of recording.
+
+    xml: etree XML root object as returned by `get_thorimage_xmlroot`.
+
+    before_averaging (bool): (default=False) pass True to return the fps before
+        any averaging.
+
+    """
+    lsm_attribs = xml.find('LSM').attrib
+    raw_fps = float(lsm_attribs['frameRate'])
+
+    if before_averaging:
+        return raw_fps
+
+    n_averaged_frames = get_thorimage_n_averaged_frames_xml(xml)
+
     saved_fps = raw_fps / n_averaged_frames
     return saved_fps
 
 
-def get_thorimage_fps(thorimage_directory):
-    """Takes ThorImage dir to (after-any-averaging) fps of recording.
+def get_thorimage_fps(thorimage_directory, **kwargs):
+    # TODO TODO clarify in doc whether this is volumes-per-second or
+    # xy-planes-per-second in the volumetric case (latter, i believe, though
+    # maybe add kwarg to get former?)
+    """Takes ThorImage dir to fps of recording.
+
+    before_averaging (bool): (default=False) pass True to return the fps before
+        any averaging.
+
+    All `kwargs` are passed through to `get_thorimage_fps_xml`.
     """
     xml = get_thorimage_xmlroot(thorimage_directory)
-    return get_thorimage_fps_xml(xml)
+    return get_thorimage_fps_xml(xml, **kwargs)
 
 
 def get_thorimage_n_flyback_xml(xml):
-    streaming = xml.find('Streaming')
-    assert streaming.attrib['enable'] == '1'
-    if streaming.attrib['zFastEnable'] == '1':
+    if is_fast_z_enabled_xml(xml):
+        streaming = xml.find('Streaming')
         n_flyback_frames = int(streaming.attrib['flybackFrames'])
     else:
         n_flyback_frames = 0
@@ -196,6 +253,8 @@ def load_thorimage_metadata(thorimage_dir, return_xml=False):
     xy, z, c = get_thorimage_dims_xml(xml)
 
     n_flyback_frames = get_thorimage_n_flyback_xml(xml)
+    if z == 1:
+        assert n_flyback_frames == 0, 'n_flyback_frames > 0 but z == 1'
 
     # So far, I have seen this be one of:
     # - Image_0001_0001.raw
@@ -339,6 +398,9 @@ def read_movie(thorimage_dir, discard_flyback=True):
 
     # This does not fail in the volumetric case, because 'frames' here
     # refers to XY frames there too.
+    # TODO test this assertion on all data, though perhaps via a new function
+    # get get expected n_frames from size of .raw file + other metadata
+    # (mentioned in comments above get_thorimage_dims_xml)
     assert n_frames == get_thorimage_n_frames_xml(xml)
 
     # TODO how to reshape if there are also multiple channels?
@@ -407,11 +469,60 @@ def read_movie(thorimage_dir, discard_flyback=True):
     return data
 
 
+def _get_column(df, possible_col_names):
+    """Returns `pd.Series` corresponding to first matching column in `df`.
+
+    Raises ValueError if no matches are found.
+    """
+    if isinstance(possible_col_names, str):
+        return df[possible_col_names]
+
+    col = None
+    for n in possible_col_names:
+        if n in df.columns:
+            col = df[n]
+            break
+
+    if col is None:
+        raise ValueError(
+            f'no column with name in {possible_col_names} in df'
+        )
+
+    return col
+
+
 time_col = 'time_s'
+# Any datasets with names in the keys of this dict will have the corresponding
+# value used for the column name. This will happen before any lowercasing /
+# space->underscore conversion in `load_thorsync_hdf5`.
+hdf5_dataset_rename_dict = {
+    # Adding the space when column names lack it, so underscore separated
+    # version will become the standard after normalization.
+    'FrameIn': 'Frame In',
+    'FrameOut': 'Frame Out',
+    'FrameCounter': 'Frame Counter',
+
+    # Also lower casing this one since it's under the AI group, and wouldn't be
+    # lower cased automatically.
+    'PiezoMonitor': 'piezo monitor',
+    'Piezo Monitor': 'piezo monitor',
+
+    # Stuff under AI that wouldn't be lowercased automatically, but that I still
+    # want snakecase for, to be consistent. I believe the pockels monitor
+    # channel might be a Thor built-in output, even though it's under AI?
+    'Pockels1Monitor': 'pockels1_monitor',
+    'Pockels1 Monitor': 'pockels1_monitor',
+    'flipperMirror': 'flipper_mirror',
+    'lightPathShutter': 'light_path_shutter',
+    'lightpathshutter': 'light_path_shutter',
+    'olfDispPin': 'olf_disp_pin',
+    'scopePin': 'scope_pin',
+}
 # TODO maybe refactor this a bit and add a function to list datasets, just so
 # people can figure out their own data post hoc w/o needing other tools
 def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
-    drop_gctr=True, return_dataset_names_only=False):
+    drop_gctr=True, return_dataset_names_only=False, skip_dict_rename=False,
+    skip_normalization=False, rename_dict=None, use_tqdm=False, verbose=False):
     """Loads ThorSync .h5 output within `thorsync_dir` into a `pd.DataFrame`
 
     A column 'time_s' will be added, which is derived from 'GCtr', and
@@ -420,15 +531,18 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     Args:
     datasets (iterable of str | None): Load only datasets with these names.
         Do not include the group names preceding the dataset name. Pass only
-        one of either this or `exclude_datasets`. Names must be as they were
-        before the internal normalization (lowercasing/space conversion) that is
-        applied to some of the columns in this function.
+        one of either this or `exclude_datasets`. Names are checked after any
+        renaming via `rename_dict` or normalization.
 
     exclude_datasets (iterable of str | None): Load only datasets *except* those
-        with these names. Do not include 'GCtr' here.
+        with these names. Do not include 'gctr' here.
 
     drop_gctr (bool): (default=True) Drop '/Global/GCtr' data (would be returned
         as column 'gctr') after using it to calculate 'time_s' column.
+
+    rename_dict (None or dict): (default=None) a dict of original->new name. If
+        not passed, `hdf5_dataset_rename_dict` is used. Applied before any
+        further operations on the column (dataset) names.
 
     These HDF5 files have the following hierarchical structure, where leaves of
     this tree are "Datasets" and their parents are "Groups" (via inspection of a
@@ -462,12 +576,16 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     - AI:
       - <one entry for each user-configured analog input>
 
-    Two changes will be made in translating HDF5 dataset names to DataFrame
+    Three changes will be made in translating HDF5 dataset names to DataFrame
     column names:
-    1. Dataset names *except* those under the group 'AI' (the user configurable
-       ones) will be lowercased.
+    1. If any dataset name is in the keys of `rename_dict`, it will be replaced
+       with the corresponding value, unless `skip_dict_rename` is passed.
 
-    2. All dataset names will have any spaces converted to underscores.
+    2. Names *except* those under the group 'AI' (mostly user configurable
+       inputs) will be lowercased, unless `skip_normalization` is passed.
+
+    3. All names will have any spaces converted to underscores, unless
+       `skip_normalization` is passed.
 
     """
     # TODO TODO DI/Frame [In/Out] useful? how?
@@ -487,14 +605,20 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     # (need to `sudo apt install hdf5-tools` first)
     hdf5_fname = get_thorsync_h5(thorsync_dir)
 
+    if rename_dict is None:
+        rename_dict = hdf5_dataset_rename_dict
+
+    if return_dataset_names_only:
+        full_dataset_names = []
+
     data_dict = dict()
-    full_dataset_names = []
     def load_datasets(name, obj):
         # Could also check if `obj` has a 'shape' attribute if this approach has
         # issues.
         if isinstance(obj, h5py.Dataset):
             if return_dataset_names_only:
                 full_dataset_names.append(obj.name)
+                return
 
             parent_name = obj.parent.name
 
@@ -508,23 +632,34 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
 
             # Excluding the names of the Group(s) containing this Dataset.
             dataset_name = obj.name[(len(parent_name) + 1):]
+            if verbose:
+                print('parent name:', parent_name)
+                print('original name:', dataset_name)
+
+            if not skip_dict_rename and dataset_name in rename_dict:
+                dataset_name = rename_dict[dataset_name]
+
+            if not skip_normalization:
+                # Seemingly consistent with what the Thorlabs MATLAB scripts are
+                # doing, and something I'd want to do anyway.
+                dataset_name = dataset_name.replace(' ', '_')
+
+                if parent_name != '/AI':
+                    # This could in theory eliminate some uniqueness of the
+                    # names, but in practice it really shouldn't.  Not doing
+                    # this for all keys so that things like 'olfDispPin' don't
+                    # become hard to read.
+                    dataset_name = dataset_name.lower()
+
+            if verbose:
+                print('normalized name:', dataset_name)
+                print()
 
             if datasets and dataset_name not in datasets:
                 return
 
             if exclude_datasets and dataset_name in exclude_datasets:
                 return
-
-            # Seemingly consistent with what the Thorlabs MATLAB scripts are
-            # doing, and something I'd want to do anyway.
-            dataset_name = dataset_name.replace(' ', '_')
-
-            if parent_name != '/AI':
-                # This could in theory eliminate some uniqueness of the names,
-                # but in practice it really shouldn't.
-                # Not doing this for all keys so that things like 'olfDispPin'
-                # don't become hard to read.
-                dataset_name = dataset_name.lower()
 
             shape = obj.shape
             assert len(shape) == 2 and shape[1] == 1, 'unexpected shape'
@@ -593,7 +728,7 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
 # TODO is this slow / are there faster alternatives?
 # (copied from my deprecated al_imaging/al_imaging/util.py)
 def threshold_crossings(signal, threshold=2.5, onsets=True, offsets=True):
-    # TODO TODO clarify "ignored" in equality case in doc
+    # TODO clarify "ignored" in equality case in doc
     """
     Returns indices where signal goes from < threshold to > threshold as onsets,
     and where signal goes from > threshold to < threshold as offsets.
@@ -638,7 +773,7 @@ def threshold_crossings(signal, threshold=2.5, onsets=True, offsets=True):
 # (and maybe just take xml / thorimage_dir as input, as may want to handle `c`
 # / averaging / etc later)
 def get_flyback_indices(n_frames, z, n_flyback, series=None):
-    """Returns indices of XY frames during piezo flyback.
+    """Returns indices of XY frames during piezo flyback, or empty array if none
     """
     if series is not None:
         assert n_frames == len(series), f'{n_frames} != {len(series)}'
@@ -671,13 +806,70 @@ def get_flyback_indices(n_frames, z, n_flyback, series=None):
     return flyback_indices
 
 
+def get_col_onset_offset_indices(df, possible_col_names, **kwargs):
+    """Returns arrays onsets, offsets with appropriate indices in `df`.
+
+    possible_col_names (str or tuple): can be either exact column name in
+        `df` or an iterable of column names, where the first matching a column
+        in `df` will be used.
+
+    """
+    col = _get_column(df, possible_col_names)
+
+    # TODO have this (inside) probably warn if there are no threshold crossings
+    # (and maybe compare thresh to max/min/dtype values in generating warning to
+    # indicate if that might be the cause of the error, which i guess it
+    # must...)
+    onsets, offsets = threshold_crossings(col, **kwargs)
+
+    # TODO maybe just have threshold_crossings make this check by default, w/ a
+    # kwarg to override (which gets threaded through here)
+    assert np.all(onsets < offsets), \
+        'offset before onset OR mismatched number of the two'
+
+    return onsets, offsets
+
+
+def get_col_onset_offset_times(df, possible_col_names, **kwargs):
+    """Returns arrays onsets, offsets with appropriate values from `df.time_s`.
+
+    `df` must have a column `'time_s'`, as generated by `load_thorsync_hdf5`.
+
+    possible_col_names (str or tuple): can be either exact column name in
+        `df` or an iterable of column names, where the first matching a column
+        in `df` will be used.
+
+    """
+    onsets, offsets = get_col_onset_offset_indices(df, possible_col_names,
+        **kwargs
+    )
+    onset_times = df.time_s[onsets]
+    offset_times = df.time_s[offsets]
+    return onset_times, offset_times
+
+
+def find_last_true(x):
+    # TODO specify behavior + test in case there are NO True values
+    # (probably just raise ValueError)
+    """Returns the index of the last `True` in 1-dimensional `x`.
+    """
+    if len(x.shape) != 1:
+        raise ValueError('input must be 1-dimensional')
+
+    # may need to generalize this type checking...
+    if x.dtype != np.dtype('bool'):
+        raise ValueError('input must be of dtype bool')
+
+    return len(x) - np.argmax(x[::-1]) - 1
+
+
 # TODO add (fn specific?) cacheing util (decorator?) so that df can be generated
 # automatically w/ thorsync dir input here / in assign_frames*, but so the df
 # loaded in the background can be shared across these calls?
 # TODO delete frame out name handling after forcing it to be a constant name in
 # load_thorsync_hdf5
 def get_frame_times(df, thorimage_dir, time_ref='mid',
-    frame_out_names=None, acquisition_trigger_names=None):
+    acquisition_trigger_names=None, _debug=False):
     # TODO update doc (+ maybe fn name) to reflect fact that initial acquisition
     # onset time also returned (and is this what i want to return? for zeroing
     # against odor stuff later)
@@ -718,84 +910,192 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
     if time_col not in df.columns:
         raise ValueError(f'{time_col} not in df.columns')
 
-    # TODO TODO TODO factor in averaging here later
-    # (not relevant on downstairs where i don't believe i'm using any averaging,
-    # or 
+    frame_out_onsets, frame_out_offsets = get_col_onset_offset_indices(df,
+        'frame_out', threshold=0.5
+    )
+    if _debug:
+        # TODO delete if not useful
+        frame_out_lens = frame_out_offsets - frame_out_onsets
 
-    # TODO confirm that some of the data actually does have the column named
-    # FrameOut or something that ultimately produces 'frameout'
-    # (and probably normalize all such built-in columns inside hdf5 load fn)
-    if frame_out_names is None:
-        frame_out_names = _frame_out_names
+        frame_out_onsets_s = df.time_s[frame_out_onsets].values
+        frame_out_offsets_s = df.time_s[frame_out_offsets].values
+        frame_out_lens_s = frame_out_offsets_s - frame_out_onsets_s
 
-    frame_out = None
-    for n in frame_out_names:
-        if n in df.columns:
-            frame_out = df[n]
-            break
+        # TODO probably replace w/ median / something (if used...)
+        mean_frame_out_len = np.mean(frame_out_lens)
+        print('mean_frame_out_len:', mean_frame_out_len)
+        mean_frame_out_len_s = np.mean(frame_out_lens_s)
 
-    if frame_out is None:
-        raise ValueError(f'no column with name in {frame_out_names} in df')
+        min_frame_out_len = np.min(frame_out_lens)
+        print('min_frame_out_len:', min_frame_out_len)
+
+        max_frame_out_len = np.max(frame_out_lens)
+        print('max_frame_out_len:', max_frame_out_len)
+        max_frame_out_len_s = np.max(frame_out_lens_s)
+
+        sorted_fo_lens = np.sort(frame_out_lens)
+        sfo_n = 10
+        print(f'min {sfo_n} frame_out_lens:', sorted_fo_lens[:sfo_n])
+        print(f'max {sfo_n} frame_out_lens:', sorted_fo_lens[-sfo_n:])
+
+    # NOTE: in all the single block data i've tested so far (though both of
+    # these also happen to have been acquired downstairs...) the max is actually
+    # ~= the mean, whereas that's not the case for the other data tested so far.
+    # TODO check whether this explains why this data didn't work w/ matlab
+    # provided GetFrameTimes.m / related
+    #
+    # min < mean ~= max:
+    # - 2021-03-07/1
+    #   - image: glomeruli_diagnostics_192
+    #     sync: SyncData001
+    #   - image: t2h_single_plane
+    #     sync: SyncData002
+    #
+    # min ~= mean < max:
+    # - 2019-01-23/6
+    #   - image: _001
+    #     sync: SyncData001
+    # - 2020-04-01/2
+    #   - image: fn_002
+    #     sync: SyncData002
 
     # TODO TODO if frame_in can be recovered / configured to be saved in the
     # future, and it does indeed serve the same function as our
-    # "scopePin"/whatever, replace this with that (at least if it's available in
-    # current data)
+    # "scope_pin"/whatever, replace this with that (at least if it's available
+    # in current data)
     if acquisition_trigger_names is None:
         acquisition_trigger_names = _acquisition_trigger_names
 
-    acquisition_trigger = None
-    for n in acquisition_trigger_names:
-        if n in df.columns:
-            acquisition_trigger = df[n]
-            break
+    acq_onsets, acq_offsets = get_col_onset_offset_indices(df,
+        acquisition_trigger_names, threshold=2.5
+    )
 
-    if acquisition_trigger is None:
-        raise ValueError(
-            f'no column with name in {acquisition_trigger_names} in df'
+    _, _, z, c, n_flyback, _, xml = load_thorimage_metadata(thorimage_dir,
+        return_xml=True
+    )
+
+    # Number of XY frames, even in the volumetric case. This is however, the
+    # number of frames AFTER any frame averaging.
+    n_frames = get_thorimage_n_frames_xml(xml)
+
+    z_total = z + n_flyback
+
+    # TODO delete after figuring out what should really be used
+    #compare_to_acq_off = 'offset'
+    compare_to_acq_off = 'onset'
+    assert compare_to_acq_off in ('onset', 'offset')
+
+    n_orig_frame_out_pulses = len(frame_out_onsets)
+    #
+
+    n_averaged_frames = get_thorimage_n_averaged_frames_xml(xml)
+
+    if n_averaged_frames > 1:
+        assert z_total == 1, ('ThorImage does not support averaging while '
+            'recording fast Z'
         )
 
-    # TODO TODO see al_imaging/util.crop_trailing_frames to check that my
-    # current understanding of frame_counter / frame_out is accurate
+    # "Frame save groups" are either frames to be averaged to a single frame or
+    # frames that together make up a volume (including any flyback frames!)
+    n_frames_per_save_group = n_averaged_frames * z_total
 
-    frame_out_onsets, frame_out_offsets = threshold_crossings(frame_out,
-        threshold=0.5
-    )
-    # TODO maybe just have threshold_crossings make this check by default, w/ a
-    # kwarg to override (which gets threaded through here)
-    assert np.all(frame_out_onsets < frame_out_offsets), \
-        'offset before onset OR mismatched number of the two'
+    if _debug:
+        print('n_blocks:', len(acq_onsets))
+        print('z_total:', z_total)
+        print('n_averaged_frames:', n_averaged_frames)
+        print('N_FRAMES_PER_SAVE_GROUP:', n_frames_per_save_group)
+        if n_frames_per_save_group == 1:
+            print(f'comparing frame_out_{compare_to_acq_off.upper()}'
+                ' to acq_offsets'
+            )
 
-    acq_onsets, acq_offsets = threshold_crossings(acquisition_trigger,
-        threshold=2.5
-    )
-    assert np.all(acq_onsets < acq_offsets), \
-        'offset before onset OR mismatched number of the two'
+    not_saved_bool = None
+    on = acq_onsets[0]
 
-    if len(acq_onsets) > 1:
-        raise NotImplementedError('multiple blocks not currently supported')
+    for off, next_on in zip_longest(acq_offsets, acq_onsets[1:]):
+        if n_averaged_frames == 1 and z_total == 1:
+            if compare_to_acq_off == 'onset':
+                curr_not_saved_bool = off < frame_out_onsets
 
-    # TODO TODO TODO TODO implement in a way that supports multiple blocks
-    actually_saved = frame_out_onsets <= acq_offsets[0]
-    frame_out_onsets = frame_out_onsets[actually_saved]
-    frame_out_offsets = frame_out_offsets[actually_saved]
+            elif compare_to_acq_off == 'offset':
+                curr_not_saved_bool = off < frame_out_offsets
+
+            else:
+                assert False
+
+            if next_on is not None:
+                # Shouldn't matter which of the onsets/offsets we use to compare
+                # to next_on.
+                curr_not_saved_bool = np.logical_and(
+                    curr_not_saved_bool, frame_out_offsets < next_on
+                )
+
+        else:
+            # TODO TODO check whether we also need to do some advance filtering
+            # in either of these cases (likely based on length of a given frame
+            # out pulse, but also perhaps could always filter last one [/two] or
+            # perhaps actually still need to do something things in relation to
+            # acquisition trigger [sometimes])
+
+            curr_not_saved_bool = np.zeros_like(frame_out_onsets,
+                dtype=np.bool_
+            )
+
+            curr_frame_out_onsets_mask = on < frame_out_onsets
+
+            if next_on is not None:
+                curr_frame_out_onsets_mask = np.logical_and(
+                    curr_frame_out_onsets_mask, frame_out_onsets < next_on
+                )
+
+            curr_n_frame_out_pulses = curr_frame_out_onsets_mask.sum()
+
+            n_completed_frame_save_groups, n_trailing_unsaved_frames = divmod(
+                curr_n_frame_out_pulses, n_frames_per_save_group
+            )
+
+            if _debug:
+                print('curr_n_frame_out_pulses:', curr_n_frame_out_pulses)
+                print('n_completed_frame_save_groups:',
+                    n_completed_frame_save_groups
+                )
+                print('n_trailing_unsaved_frames:', n_trailing_unsaved_frames)
+
+            # TODO TODO TODO try to find test cases where there are exactly
+            # an even number of frame out pulses (both including and excluding
+            # the very last one), in both averaging and fast-Z cases
+            # (as another means of trying to find cases where an additional
+            # filtering step is required)
+
+            if n_trailing_unsaved_frames > 0:
+                last_curr_idx = find_last_true(curr_frame_out_onsets_mask)
+                i0 = last_curr_idx - n_trailing_unsaved_frames + 1
+                curr_not_saved_bool[i0:(last_curr_idx + 1)] = True
+
+            curr_n_dropped = curr_not_saved_bool.sum()
+
+            assert curr_n_dropped == n_trailing_unsaved_frames, \
+                f'{curr_n_dropped} != {n_trailing_unsaved_frames}'
+
+        if _debug:
+            print('curr_not_saved_bool.sum():', curr_not_saved_bool.sum())
+            print()
+
+        on = next_on
+
+        if not_saved_bool is None:
+            not_saved_bool = curr_not_saved_bool
+        else:
+            not_saved_bool = np.logical_or(not_saved_bool, curr_not_saved_bool)
+
+    not_saved_indices = np.flatnonzero(not_saved_bool)
+    frame_out_onsets = np.delete(frame_out_onsets, not_saved_indices)
+    frame_out_offsets = np.delete(frame_out_offsets, not_saved_indices)
 
     # NOTE: without the .values call here, the 'mid' case below does not work
     # because pandas tries to align the series.
     onset_times = df[time_col].values[frame_out_onsets]
-    # TODO maybe only calculate offset_times if using time_ref='end'?
-    # assuming they are the same width probably only need one anyway...
-    # except maybe for whatever i ultimately need to crop last frame references
-    # successfully
     offset_times = df[time_col].values[frame_out_offsets]
-
-    # TODO TODO try to determine what determines whether a given frame (where
-    # acquisition trigger goes low between frame out onset and offset) will be
-    # saved. is it:
-    # 1) any such frame will be saved?
-    # 2) acquisition offset must happen past a certain point in the interval
-    #    (maybe halfway?)
-    # (assuming #1 for now, for simplicity)
 
     if time_ref == 'end':
         frame_times = offset_times
@@ -803,29 +1103,45 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
     elif time_ref == 'mid':
         frame_times = (offset_times - onset_times) / 2 + onset_times
 
-    _, _, z, c, n_flyback, _, xml = load_thorimage_metadata(thorimage_dir,
-        return_xml=True
-    )
+    if _debug:
+        print('n_orig_frame_out_pulses:', n_orig_frame_out_pulses)
 
-    # (# xy frames, even in vol case)
-    n_frames = get_thorimage_n_frames_xml(xml)
+        n_frames_before_averaging = n_frames * n_averaged_frames
+        print('n_frames_before_averaging:', n_frames_before_averaging)
+        print('n_frames_after_dropping:', len(frame_times))
+        e1 = n_frames_before_averaging - len(frame_times)
 
-    # TODO test this on more data
-    z_total = z + n_flyback
-    # TODO TODO TODO TODO update this implementation to handle case w/ multiple
-    # acquisition periods!
-    n_volumes, trailing_unsaved_frames = divmod(len(frame_times), z_total)
+        n_frame_outs_to_drop = \
+            n_orig_frame_out_pulses - n_frames_before_averaging
 
-    if trailing_unsaved_frames > 0:
-        frame_times = frame_times[:-trailing_unsaved_frames]
+        print('n_frame_outs_to_drop:', n_frame_outs_to_drop)
+        print('n_actually_dropped:', len(not_saved_indices))
+        e2 = len(not_saved_indices) - n_frame_outs_to_drop
+        assert e1 == e2
+        print('EXCESS FRAMES DROPPED:', e1)
+        print('\n')
 
-    assert len(frame_times) == n_frames
+    if n_averaged_frames > 1:
+        frame_times = frame_times.reshape(-1, n_averaged_frames).mean(axis=-1)
 
-    flyback_indices = get_flyback_indices(n_frames, z, n_flyback, frame_times)
+    assert len(frame_times) == n_frames, f'{len(frame_times)} != {n_frames}'
 
-    # https://stackoverflow.com/questions/47540800
-    frame_times = np.delete(frame_times, flyback_indices)
-    assert len(frame_times) == n_volumes * z
+    if z > 1:
+        flyback_indices = get_flyback_indices(n_frames, z, n_flyback,
+            frame_times
+        )
+
+        # https://stackoverflow.com/questions/47540800
+        # This will raise `IndexError` if any exceed size of frame_times
+        # (though it shouldn't unless I made a mistake)
+        frame_times = np.delete(frame_times, flyback_indices)
+
+        # (we basically already know, but just for the sake of it...)
+        n_volumes, remainder = divmod(len(frame_times), z)
+        assert remainder == 0
+
+        frame_times = frame_times.reshape(-1, z).mean(axis=-1)
+        assert len(frame_times) == n_volumes
 
     initial_acquisition_onset_time = df[time_col][acq_onsets[0]]
 
@@ -842,6 +1158,10 @@ def assign_frames_to_odor_presentations(df, thorimage_dir,
     odor_timing_names=None, **kwargs):
     """Returns list of (start, end) frame indices, one per odor presentation.
 
+    Frames are indexed as they are along the first dimension of the movie,
+    including for volumetric data (where a scalar index of this dimension will
+    produce a volume) or data collectd via frame averaging.
+
     End frames are included in range, and thus getting a presentation must be
     done like `movie[start_i:(end_i + 1)]` rather  than `movie[start_i:end_i]`.
 
@@ -850,20 +1170,15 @@ def assign_frames_to_odor_presentations(df, thorimage_dir,
     if odor_timing_names is None:
         odor_timing_names = _odor_timing_names
 
-    # TODO factor this out to private util fn in this file
-    # (used twice in above fn too)
-    odor_timing = None
-    for n in odor_timing_names:
-        if n in df.columns:
-            odor_timing = df[n]
-            break
+    # TODO finish refactoring (do i want to thread onset/offset kwargs through
+    # this fn?)
+    '''
+    odor_onsets, odor_offsets = get_col_onset_offset_indices(df,
+        odor_timing_names, threshold=2.5
+    )
+    '''
 
-    if odor_timing is None:
-        raise ValueError(
-            f'no column with name in {odor_timing_names} in df'
-        )
-
-    frame_times, _ = get_frame_times(df, thorimage_dir, **kwargs)
+    odor_timing = _get_column(df, odor_timing_names)
 
     # (when the valve(s) are given the signal to open)
     odor_onsets, _ = threshold_crossings(odor_timing, threshold=2.5,
@@ -871,13 +1186,11 @@ def assign_frames_to_odor_presentations(df, thorimage_dir,
     )
     odor_onset_times = df[time_col].values[odor_onsets]
 
+    frame_times, _ = get_frame_times(df, thorimage_dir, **kwargs)
+
     # (with respect to the odor onset in both of these cases)
     first_frame_to_odor_s = odor_onset_times[0] - frame_times[0]
-    print('first_frame_to_odor_s:', first_frame_to_odor_s)
-
-    # don't actually think i need this
-    #last_odor_to_frame_s = frame_times[-1] - odor_onset_times[-1]
-    #print('last_odor_to_frame_s:', last_odor_to_frame_s)
+    #print('first_frame_to_odor_s:', first_frame_to_odor_s)
 
     start_times = odor_onset_times - first_frame_to_odor_s
     #print([x in frame_times for x in start_times])
