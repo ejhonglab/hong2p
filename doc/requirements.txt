@@ -1,0 +1,16 @@
+
+# TODO is there a better way to specify these? looks like suite2p puts their in setup.py
+# extras_require={'docs': <list here>}, but i'm not sure if that's the only place they
+# have it or what the install process looks like
+
+sphinx
+sphinx-rtd-theme
+
+sphinxcontrib-apidoc
+
+sphinx
+sphinx-prompt
+sphinx-autodoc-typehints
+
+# See comments in conf.py "Path setup" section
+-e ..
