@@ -24,6 +24,7 @@ setup(
         'pandas',
 
         'PyQt5',
+        'pyqtgraph',
 
         'matplotlib',
         'seaborn',
@@ -38,8 +39,11 @@ setup(
     ],
     tests_require=['pytest'],
     entry_points={
+        # I define all of these in hong2p/cli_entry_points.py, and then modify
+        # hong2p/__init__.py to import each of them explicitly.
         'console_scripts': [
-            'thor2tiff=hong2p:thor2tiff',
+            'thor2tiff=hong2p:thor2tiff_cli',
+            'showsync=hong2p:showsync_cli',
         ],
     },
     author="Tom O'Connell",

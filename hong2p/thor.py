@@ -377,10 +377,6 @@ def read_movie(thorimage_dir, discard_flyback=True):
     """
     fps, xy, z, c, n_flyback, imaging_file, xml = \
         load_thorimage_metadata(thorimage_dir, return_xml=True)
-    # TODO TODO make printing of this and stuff like it part of a -v arg to
-    # thor2tiff (maybe an opt to output all required input config for suite2p?
-    # or save it automatically to whatever format it uses?)
-    print('fps:', fps)
 
     x, y = xy
 
@@ -492,6 +488,15 @@ def _get_column(df, possible_col_names):
 
 
 time_col = 'time_s'
+hdf5_default_exclude_datasets = (
+    'piezo_monitor',
+    'pockels1_monitor',
+    'frame_in',
+    'light_path_shutter',
+    'flipper_mirror',
+    'pid',
+    'frame_counter',
+)
 # Any datasets with names in the keys of this dict will have the corresponding
 # value used for the column name. This will happen before any lowercasing /
 # space->underscore conversion in `load_thorsync_hdf5`.
@@ -535,7 +540,8 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         renaming via `rename_dict` or normalization.
 
     exclude_datasets (iterable of str | None): Load only datasets *except* those
-        with these names. Do not include 'gctr' here.
+        with these names. Do not include 'gctr' here. Defaults to 
+        `hdf5_default_exclude_datasets` if neither this nor `datasets` is passed.
 
     drop_gctr (bool): (default=True) Drop '/Global/GCtr' data (would be returned
         as column 'gctr') after using it to calculate 'time_s' column.
@@ -600,6 +606,12 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     if not (datasets is None or exclude_datasets is None):
         raise ValueError('only pass at most one of datasets or exclude_datasets')
 
+    using_default_excludes = False
+
+    if datasets is None and exclude_datasets is None:
+        using_default_excludes = True
+        exclude_datasets = hdf5_default_exclude_datasets
+
     # Structure of hdf5 can be explored via:
     # h5dump -H <h5 path>
     # (need to `sudo apt install hdf5-tools` first)
@@ -628,6 +640,11 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
             # both datasets were 0, so they don't seem to be used, at least as I
             # had the acquisition configured.
             if parent_name == '/Freq':
+                if verbose:
+                    print(f'skipping {obj.name} because it is under /Freq, and will '
+                        'have a different length than the other datasets'
+                    )
+
                 return
 
             # Excluding the names of the Group(s) containing this Dataset.
@@ -653,12 +670,21 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
 
             if verbose:
                 print('normalized name:', dataset_name)
-                print()
 
             if datasets and dataset_name not in datasets:
+                if verbose:
+                    print('skipping because not among names passed in datasets\n')
+
                 return
 
             if exclude_datasets and dataset_name in exclude_datasets:
+                if verbose:
+                    if using_default_excludes:
+                        print('skipping because in default exclude_datasets')
+                    else:
+                        print('skipping because in exclude_datasets')
+                    print()
+
                 return
 
             shape = obj.shape
@@ -674,6 +700,10 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
                 values = values.astype(np.bool_)
 
             data_dict[dataset_name] = values
+
+            if verbose:
+                print()
+
 
     # TODO warn/err (configurable via kwarg?) if any datasets requested were not
     # found (to help identify naming convention changes in the HDF5 files, etc)
@@ -844,10 +874,10 @@ def get_col_onset_offset_indices(df, possible_col_names, threshold=None):
     # must...)
     onsets, offsets = threshold_crossings(col, threshold=threshold)
 
-    # TODO maybe just have threshold_crossings make this check by default, w/ a
-    # kwarg to override (which gets threaded through here)
-    assert np.all(onsets < offsets), \
-        'offset before onset OR mismatched number of the two'
+    # TODO maybe just have threshold_crossings make these checks by default, w/ a
+    # kwarg to override (which gets threaded through here)?
+    assert len(onsets) == len(offsets), f'{len(onsets)} != {len(offsets)}'
+    assert np.all(onsets < offsets), 'at least one offset before onset'
 
     return onsets, offsets
 

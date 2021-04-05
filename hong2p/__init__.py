@@ -1,3 +1,5 @@
 
-from .cli_entry_points import thor2tiff
+# Importing these to be accessible under `hong2p` module directly is required for them
+# to be used in ../setup.py under the `entry_points` keyword argument.
+from .cli_entry_points import thor2tiff_cli, showsync_cli
 

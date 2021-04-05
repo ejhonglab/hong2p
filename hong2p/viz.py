@@ -4,6 +4,7 @@ provide context specfically useful for certain types of olfaction experiments.
 """
 
 from os.path import join, exists
+import time
 
 import numpy as np
 import pandas as pd
@@ -915,6 +916,81 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     if made_fig:
         fig.tight_layout()
         return fig
+
+
+def showsync(thorsync_dir, verbose=False, **kwargs):
+    """Shows ThorSync .h5 data interactively, using `pyqtgraph`.
+
+    Args:
+        thorsync_dir: path to a directory created by ThorSync
+        kwargs: passed through to `thor.load_thorsync_hdf5`
+    """
+    import pyqtgraph as pg
+
+    app = pg.mkQApp()
+
+    before = time.time()
+    print('loading HDF5...', flush=True, end='\n' if verbose else '')
+
+    df = thor.load_thorsync_hdf5(thorsync_dir, verbose=verbose, **kwargs)
+
+    took_s = time.time() - before
+    print(f'done ({took_s:.1f}s)')
+
+    # TODO set title to last 3 parts of path if parent two directories can be parsed as
+    # (date, fly_num) (or if just under raw_data_root maybe?)
+    title = thorsync_dir
+
+    # plot_widget if of type pyqtgraph.widgets.PlotWidget.PlotWidget
+    # not really sure how 'all' and 'pairs' differ... ('pairs' skip some?)
+    # TODO wanted to set clipToView=True and some other stuff here, but downsampling=100
+    # didn't seem to work at all (unlike call below), so i'm not sure anythere here
+    # will.
+    plot_widget = pg.plot(title=title)
+
+    plot_widget.setLabels(bottom='Seconds')
+
+    # Passing `autoDownsample=True` to either the `plot` call above or those in the loop
+    # below caused the startup time to increase beyond what is acceptable. Was also slow
+    # after loading. Not sure why it only seems to work here.
+    #plot_widget.setDownsampling(100)
+    # TODO TODO could downsampling cause problems? how? maybe add cli flag to disable
+    # it?
+    # TODO TODO in `auto` case, is automatically selected factor changed when zooming?
+    # (or would i (could i even?) need to link settting it to change in scale or
+    # something?)
+    plot_widget.setDownsampling(auto=True)
+
+    # Much snappier with this. Doesn't try to draw data out of bounds of view box.
+    plot_widget.setClipToView(True)
+
+    # TODO set initial view box and / or build in margin such that legend is out of way
+    # of traces immediately
+
+    plot_widget.addLegend()
+
+    time_col = thor.time_col
+
+    x_min = 0
+    x_max = df[time_col].iat[-1]
+    y_min = -1
+    y_max = 6
+    # TODO maybe add a margin around this, but only if it can be made clear where the
+    # region the data actually exists in is (not just black everywhere...)
+    plot_widget.setLimits(xMin=x_min, xMax=x_max, yMin=y_min, yMax=y_max)
+
+    plot_cols = [c for c in df.columns if c != time_col]
+    for i, c in enumerate(plot_cols):
+        col = df[c]
+        # Otherwise this produces an in error in pyqtgraph internals
+        if col.dtype == np.dtype('bool'):
+            col = col.astype(np.dtype('float64'))
+
+        # TODO maybe store hardcoded map for colors for these?
+        # not sure how consistent column order is as loaded from hdf5...
+        plot_widget.plot(df[time_col], col, name=c, pen=(i, len(plot_cols)))
+
+    app.exec_()
 
 
 # TODO maybe one fn that puts in matrix format and another in table

@@ -19,18 +19,6 @@ from hong2p import thor, util
 
 
 def main():
-    hdf5_exclude_datasets = [
-        'piezo_monitor',
-        'pockels1_monitor',
-        'frame_in',
-        'light_path_shutter',
-        'flipper_mirror',
-        'pid',
-        # Can comment to include this in some of the plots, or uncomment for
-        # *slightly* faster load times.
-        'frame_counter',
-    ]
-
     '''
     date = '2021-03-07'
     fly_num = 1
@@ -85,9 +73,8 @@ def main():
             before = time.time()
             print('loading HDF5...', flush=True, end='')
 
-            df = thor.load_thorsync_hdf5(thorsync_dir,
-                exclude_datasets=hdf5_exclude_datasets #, verbose=True
-            )
+            verbose = False
+            df = thor.load_thorsync_hdf5(thorsync_dir, verbose=verbose)
 
             took_s = time.time() - before
             print(f'done ({took_s:.1f}s)')
