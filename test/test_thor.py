@@ -8,13 +8,25 @@ from pprint import pprint
 
 import numpy as np
 import pandas as pd
+# TODO at least add to some kind of test requirements if i'm not also going to use this
+# in some of the main code
+import yaml
 
 from hong2p import thor, util, viz
 
 
-open_with_showsync = True
+open_with_showsync = False
 
 def analyze(df, image_and_sync_pairs=None, hdf5_corrupted_paths=None):
+
+    df['thorimage_xml_root'] = df.thorimage_dir.apply(thor.get_thorimage_xmlroot)
+
+    df['fast_z'] = df.thorimage_xml_root.apply(thor.is_fast_z_enabled_xml)
+    df['z'] = df.thorimage_xml_root.apply(thor.get_thorimage_z_xml)
+    df['n_flyback'] = df.thorimage_xml_root.apply(thor.get_thorimage_n_flyback_xml)
+    df['n_averaged_frames'] = df.thorimage_xml_root.apply(
+        thor.get_thorimage_n_averaged_frames_xml
+    )
 
     by_occurence = df.groupby(['file', 'lineno']).size().sort_values(ascending=False)
 
@@ -52,6 +64,11 @@ def analyze(df, image_and_sync_pairs=None, hdf5_corrupted_paths=None):
             print(x)
         print()
 
+        cols = ['fast_z', 'z', 'n_flyback', 'n_averaged_frames']
+        print(f'unique combinations of {cols}:')
+        print(gdf[cols].drop_duplicates())
+        print()
+
         print('affected data:')
         for row in gdf.itertuples():
             print(row.thorsync_dir)
@@ -68,15 +85,32 @@ def analyze(df, image_and_sync_pairs=None, hdf5_corrupted_paths=None):
 
 
 def main():
-    use_failing_pairs = True
-    #use_failing_pairs = False
+    # Whether to only test previously failed pairs, which were recorded in a CSV.
+    #use_failing_pairs = True
+    use_failing_pairs = False
 
     analyze_csv_only = True
+    #analyze_csv_only = False
 
-    test_paths_csv = 'test_thor_failing.csv'
+    failing_paths_csv = 'failing_test_thor.csv'
+    passing_paths_csv = 'passing_test_thor.csv'
 
-    if use_failing_pairs:
-        df = pd.read_csv(test_paths_csv)
+    # Files that are just not complete / acquisitions or had some other artifact making
+    # them worthy of further scrutiny.
+    known_garbage_thorsync_yaml = 'known_garbage_thorsync_data.yaml'
+    known_bad_sync_paths = []
+
+    if exists(known_garbage_thorsync_yaml):
+        with open(known_garbage_thorsync_yaml, 'r') as f:
+            # Keys are all ThorSync paths. Values under keys are just for me to manually
+            # enter reasons the data was bad if I feel like it, for my own reference.
+            data = yaml.safe_load(f)
+
+        known_bad_sync_paths.extend(list(data.keys()))
+
+    if use_failing_pairs or analyze_csv_only:
+        # Also contains information about the errors encountered.
+        df = pd.read_csv(failing_paths_csv)
 
         if analyze_csv_only:
             analyze(df)
@@ -92,10 +126,16 @@ def main():
         # TODO maybe also print which dirs couldn't be paired (via verbose flag to
         # this util fn perhaps?)
 
-    failing_pairs2err_info = dict()
+    failing_paths_info = []
+    passing_paths = []
     hdf5_corrupted_paths = []
 
     for thorimage_dir, thorsync_dir in image_and_sync_pairs:
+
+        if thorsync_dir in known_bad_sync_paths:
+            #print(f'skipping known bad {thorsync_dir}\n')
+            continue
+
         print('thorimage_dir:', thorimage_dir)
         print('thorsync_dir:', thorsync_dir)
 
@@ -129,6 +169,11 @@ def main():
             _ = thor.assign_frames_to_odor_presentations(df,
                 thorimage_dir
             )
+            passing_paths.append({
+                'thorimage_dir': thorimage_dir,
+                'thorsync_dir': thorsync_dir,
+            })
+
         except Exception as e:
             etype, eobj, etb = sys.exc_info()
             traceback.print_exception(etype, eobj, etb)
@@ -136,7 +181,7 @@ def main():
             stack_summary = traceback.extract_tb(etb)
             deepest_frame = stack_summary[-1]
 
-            failing_pairs2err_info[(thorimage_dir, thorsync_dir)] = {
+            failing_paths_info.append({
                 'thorimage_dir': thorimage_dir,
                 'thorsync_dir': thorsync_dir,
 
@@ -157,22 +202,38 @@ def main():
                 # Many of these would not be useful to group on, but can still
                 # use this to print a representative message at the end.
                 'msg': str(e),
-            }
-
+            })
             print()
             continue
 
         print()
 
-    df = pd.DataFrame(failing_pairs2err_info.values()).replace('', np.nan)
-    if exists(test_paths_csv):
-        print(f"{test_paths_csv} existed, saving with 'new_' prefix")
-        test_paths_csv = 'new_' + test_paths_csv
 
-        if exists(test_paths_csv):
+    df = pd.DataFrame(failing_paths_info).replace('', np.nan)
+    if exists(failing_paths_csv):
+        print(f"{failing_paths_csv} existed, saving with 'new_' prefix")
+
+        failing_paths_csv = 'new_' + failing_paths_csv
+        if exists(failing_paths_csv):
             print('overwriting!')
 
-    df.to_csv(test_paths_csv, index=False)
+    df.to_csv(failing_paths_csv, index=False)
+
+
+    passing_df = pd.DataFrame(passing_paths)
+    if exists(passing_paths_csv):
+        print(f"{passing_paths_csv} existed, saving with 'new_' prefix")
+
+        passing_paths_csv = 'new_' + passing_paths_csv
+        if exists(passing_paths_csv):
+            print('overwriting!')
+
+    passing_df.to_csv(passing_paths_csv, index=False)
+
+
+    if use_failing_pairs:
+        image_and_sync_pairs = None
+        hdf5_corrupted_paths = None
 
     analyze(df, image_and_sync_pairs=image_and_sync_pairs,
         hdf5_corrupted_paths=hdf5_corrupted_paths

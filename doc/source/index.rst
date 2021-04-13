@@ -5,7 +5,7 @@ Welcome to hong2p's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   api/modules
+   apidoc/modules
 
 Indices and tables
 ==================

@@ -84,26 +84,31 @@ def get_thorimage_n_frames_xml(xml):
     return int(xml.find('Streaming').attrib['frames'])
 
 
-def get_thorimage_z_xml(xml):
-    """Returns number of different Z depths measured in ThorImage recording.
-
-    Does NOT include any flyback frames there may be.
-    """
-    return int(xml.find('ZStage').attrib['steps'])
-
-
 def is_fast_z_enabled_xml(xml):
     streaming = xml.find('Streaming')
     # TODO may want to only do this check under certain other conditions / not
     # at all (in case someone were to try to call this / a function that calls
     # this on non-streaming data)
     assert streaming.attrib['enable'] == '1'
-    enabled = streaming.attrib['zFastEnable'] == '1'
+    return streaming.attrib['zFastEnable'] == '1'
 
-    if enabled:
-        assert get_thorimage_z_xml(xml) > 1, 'z <= 1 but fast z seems enabled'
 
-    return enabled
+def get_thorimage_z_xml(xml):
+    """Returns number of different Z depths measured in ThorImage recording.
+
+    Does NOT include any flyback frames there may be.
+    """
+    z = int(xml.find('ZStage').attrib['steps'])
+    assert z > 0
+
+    if z > 1 and not is_fast_z_enabled_xml(xml):
+        warnings.warn(f'z > 1 ({z}) despite fast z seeming disabled')
+        # TODO TODO presumably this fails in non-streamiong case. extend support to that
+        # case (handling z correctly, w/o warning. could still warn if we detect
+        # streaming / something else appropriate was enabled)
+        #z = 1
+
+    return z
 
 
 # TODO TODO maybe add a function to get expected movie.size from thorimage .raw
@@ -137,13 +142,6 @@ def get_thorimage_dims_xml(xml):
     # TODO what is Streaming -> flybackLines? (we already have flybackFrames...)
 
     z = get_thorimage_z_xml(xml)
-
-    # TODO maybe move this check to inside get_thorimage_z_xml / remove it
-    # (because it would probably not work correctly in the case of non-streaming
-    # volumetric acquisitions). would then want to move logic of z > 1 check
-    # from `is_fast_z_enabled_xml` to `get_thorimage_z_xml` most likely.
-    if z != 1 and not is_fast_z_enabled_xml(xml):
-        z = 1
 
     # still not sure how this is encoded in the XML...
     c = None
@@ -220,6 +218,7 @@ def get_thorimage_fps(thorimage_directory, **kwargs):
     All `kwargs` are passed through to `get_thorimage_fps_xml`.
     """
     xml = get_thorimage_xmlroot(thorimage_directory)
+
     return get_thorimage_fps_xml(xml, **kwargs)
 
 

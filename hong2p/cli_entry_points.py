@@ -78,5 +78,5 @@ def showsync_cli():
     thorsync_dir = args.thorsync_dir
     verbose = args.verbose
 
-    viz.showsync(thorsync_dir, verbose=verbose)
+    showsync(thorsync_dir, verbose=verbose)
 
