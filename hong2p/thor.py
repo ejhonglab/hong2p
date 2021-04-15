@@ -1111,6 +1111,18 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
                 )
                 print('n_trailing_unsaved_frames:', n_trailing_unsaved_frames)
 
+            # NOTE: hack to get number of frames to work out correctly
+            # Seemed to solve all issues on data from 2021-03-07 and 2021-03-08
+            # TODO TODO TODO test on more data! any cases this fails? and if so, how to
+            # handle differently?
+            if n_trailing_unsaved_frames in (0, 1):
+                n_trailing_unsaved_frames += n_frames_per_save_group
+
+                if _debug:
+                    print('increasing n_trailing_unsaved_frames by '
+                        'n_frames_per_save_group!!!'
+                    )
+
             # TODO TODO TODO try to find test cases where there are exactly
             # an even number of frame out pulses (both including and excluding
             # the very last one), in both averaging and fast-Z cases
