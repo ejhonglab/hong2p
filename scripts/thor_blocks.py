@@ -240,7 +240,7 @@ def main():
                     thorimage_dir
                 )
 
-                lens = [end - start + 1 for start, end in bounding_frames]
+                lens = [end - start + 1 for start, _, end in bounding_frames]
                 if n_flyback > 0:
                     z_total = z + n_flyback
                     n_frames, remainder = divmod(n_frames, z_total)
@@ -254,7 +254,7 @@ def main():
                     colors = ['r', 'g', 'b']
                     if len(bounding_frames) == len(colors):
 
-                        for i, ((start_frame, end_frame), c) in enumerate(
+                        for i, ((start_frame, _, end_frame), c) in enumerate(
                             zip(bounding_frames, colors)):
 
                             odor_frames = frame_times[
