@@ -1190,7 +1190,7 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
     if n_averaged_frames > 1:
         frame_times = frame_times.reshape(-1, n_averaged_frames).mean(axis=-1)
 
-    assert len(frame_times) == n_frames, f'{len(frame_times)} != {n_frames}'
+    assert len(frame_times) == n_frames, f'{len(frame_times)} != {n_frames} (from XML)'
 
     if z > 1:
         flyback_indices = get_flyback_indices(n_frames, z, n_flyback,
@@ -1380,7 +1380,7 @@ def assign_frames_to_odor_presentations(df, thorimage_dir,
         # If this is True, and the frame times is assigned to the middle of all
         # corresponding "Frame Out" pulses, then at least >half of the time should have
         # been after the odor onset (or at least when the valve was triggered).
-        assert np.all(curr_frame_times[curr_first_odor_frames] > odor_onset_times)
+        assert np.all(curr_frame_times[curr_first_odor_frames] > curr_odor_onset_times)
 
         '''
         # TODO delete
