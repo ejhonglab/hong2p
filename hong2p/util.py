@@ -58,9 +58,13 @@ dff_latex = r'$\frac{\Delta F}{F}$'
 
 data_root_name = 'mb_team'
 
+fast_data_dir_env_var = 'HONG2P_FAST_DATA_DIR'
+
 
 # Module level cache.
 _data_root = None
+_fast_data_root = None
+# TODO add _fast_data_root setting as kwarg here
 def set_data_root(new_data_root):
     """Sets data root, so future calls to `data_root` will return the input.
 
@@ -86,6 +90,7 @@ def data_root():
     # TODO doc how data_root_name above only used in here if prefix but not
     # explicit directory is set (HONG_NAS and not HONG_2P_DATA)
     global _data_root
+    global _fast_data_root
     if _data_root is None:
         # TODO separate env var for local one? or have that be the default?
         data_root_key = 'HONG_2P_DATA'
@@ -128,7 +133,15 @@ def data_root():
             )
             if source is not None:
                 emsg += f'\nDirectory chosen from environment variable {source}'
-            raise IOError(emsg)
+
+        # Sets optional faster-storage directory that is checked first (currently just
+        # in `raw_fly_dir`).
+        if fast_data_dir_env_var in os.environ:
+            _fast_data_root = os.environ[fast_data_dir_env_var]
+            if not isdir(_fast_data_root):
+                warnings.warn(f'{fast_data_dir_env_var} set but is not a directory')
+                _fast_data_root = None
+                raise IOError(emsg)
 
     # TODO err if nothing in data_root, saying which env var to set and how
     return _data_root
@@ -138,8 +151,12 @@ def data_root():
 # for faster repeat analysis)?
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 # (include mb_team in that part and rename from data_root?)
-def raw_data_root():
-    return join(data_root(), 'raw_data')
+def raw_data_root(root=None):
+
+    if root is None:
+        root = data_root()
+
+    return join(root, 'raw_data')
 
 
 def analysis_output_root():
@@ -178,8 +195,25 @@ def _fly_dir(date, fly):
     return join(date, fly)
 
 
-def raw_fly_dir(date, fly):
-    return join(raw_data_root(), _fly_dir(date, fly))
+def raw_fly_dir(date, fly, warn=True):
+
+    raw_fly_basedir = _fly_dir(date, fly)
+
+    # TODO TODO maybe refactor for more granularity (might need to change a lot of usage
+    # of data_root() and stuff that uses it though... perhaps also functions that
+    # operate on directories like the fn to pair thor dirs)
+    if _fast_data_root:
+        fast_raw_fly_dir = join(raw_data_root(root=_fast_data_root), raw_fly_basedir)
+        # TODO warn if not using this despite env var being set
+        if isdir(fast_raw_fly_dir):
+            return fast_raw_fly_dir
+        else:
+            if warn:
+                warnings.warn(f'{fast_data_dir_env_var} set ({_fast_data_root}) but '
+                    f'raw data directory for fly ({date}, {fly}) did not exist there'
+                )
+
+    return join(raw_data_root(), raw_fly_basedir)
 
 
 def thorimage_dir(date, fly, thorimage_id):
@@ -4768,14 +4802,29 @@ def tiff_title(tif):
 
 # TODO didn't i have some other fn for this? delete one if so
 # (or was it just in natural_odors?)
-def to_filename(x):
+def to_filename(x, period=True):
     """Take a str and normalizes it a bit to make it a better filename prefix.
 
     E.g. taking a plot title and using it to derive a filename for saving the
     plot.
     """
-    return x.replace('/','_').replace(' ','_').replace(',','').replace(
-        '.','') + '.'
+    # To handle things like consecutive whitespace (e.g. 'x\n y')
+    x = '_'.join(x.split())
+
+    replace_dict = {
+        '/': '_',
+        '@': '_',
+        ',': '',
+        '.': '',
+    }
+    for k, v in replace_dict.items():
+        x = x.replace(k, v)
+
+    # TODO delete this and refactor code that expects this behavior to add the period
+    if period:
+        x += '.'
+
+    return x
 
 
 def point_idx(xys_to_check, pt_xy, swap_xy=False):
