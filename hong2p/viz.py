@@ -174,7 +174,53 @@ def imshow(img, title):
     return fig
 
 
+# TODO take kwarg for label but default to something w/ dff?
+# TODO option to add on just one (bottom right prob) axes. need to figure out how to do
+# that though
+# TODO rename `im` to be more descriptive / find a way to compute it (at least so it can
+# be made optional)
+# TODO change so colorbar is always height of subplots / axes by default? (currently is
+# in 3 row case not in 1 row case, with some data at least)
+def add_colorbar(fig, im):
+    # Defaults values for arguments to `subplots_adjust`:
+    # pprint(
+    #     {k: v for k, v in plt.rcParams.items() if k.startswith('figure.subplot.')}
+    # )
+    # left=0.125, bottom=0.11, right=0.9, top=0.88, hspace=0.2, wspace=0.2
+
+    # Moving right edge in so we can have space there for the colorbar.
+    axs_r_edge = 0.85
+    fig.subplots_adjust(right=axs_r_edge)
+
+    cb_xmargin = 0.02
+    cb_l_edge = axs_r_edge + cb_xmargin
+
+    # TODO why was this cbar not exact height of subplots, if .11 is default
+    # bottom and .88 (.11 + .77) is default top? (comment was from when this was in
+    # al_pair_grids/volumetric_responses.py)
+    #cb_ax = fig.add_axes([cb_l_edge, 0.11, 0.02, 0.77])
+
+    # worked for 3row case from al_pair_grid/volumetric_responses.py
+    #cb_ax = fig.add_axes([cb_l_edge, 0.14, 0.015, 0.71])
+
+    # TODO at least some way to center on region of figure occupied by subplots?
+    # TODO at least refactor to make inputs to this overrideable via kwargs
+    # [left, bottom, width, height] all in fractions of figure width/height
+    cb_ax = fig.add_axes([cb_l_edge, 0.405, 0.015, 0.185])
+
+    cbar = fig.colorbar(im, cax=cb_ax)
+
+    # TODO factor out
+    dff_latex = r'$\frac{\Delta F}{F}$'
+
+    cbar.ax.set_ylabel(f'Evoked {dff_latex}')
+
+    return cbar
+
+
 def image_grid(image_list):
+    # TODO TODO see: https://stackoverflow.com/questions/42850225 or related to find a
+    # good solution for reliably eliminating all unwanted whitespace between subplots
     n = int(np.ceil(np.sqrt(len(image_list))))
     fig, axs = plt.subplots(n,n)
     for ax, img in zip(axs.flat, image_list):
@@ -255,6 +301,8 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
         kwargs['ticklabels'] = format_mixture
 
     if 'colorbar_label' not in kwargs:
+        # TODO factor out latex for delta f / f stuff (+ maybe use in analysis that uses
+        # this pkg: kc_natural_mixes, al_pair_grids)
         kwargs['colorbar_label'] = \
             trial_stat.title() + r' response $\frac{\Delta F}{F}$ correlation'
 
@@ -834,8 +882,10 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 # Was 70 for kc_analysis case. That's much too high here.
                 #labelpad = 70
                 labelpad = 10
+                # TODO factor out latex for delta f / f stuff
                 ax.set_ylabel(r'$\frac{\Delta F}{F}$' + scaletext,
-                    rotation='horizontal', labelpad=labelpad)
+                    rotation='horizontal', labelpad=labelpad
+                )
 
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
@@ -927,6 +977,9 @@ def showsync(thorsync_dir, verbose=False, **kwargs):
     """
     import pyqtgraph as pg
 
+    # TODO TODO make it possible to click to toggle display of lines like in thorsync
+    # itself
+
     app = pg.mkQApp()
 
     before = time.time()
@@ -981,6 +1034,11 @@ def showsync(thorsync_dir, verbose=False, **kwargs):
 
     plot_cols = [c for c in df.columns if c != time_col]
     for i, c in enumerate(plot_cols):
+        if c == 'frame_counter':
+            if verbose:
+                print('not plotting frame_counter')
+            continue
+
         col = df[c]
         # Otherwise this produces an in error in pyqtgraph internals
         if col.dtype == np.dtype('bool'):

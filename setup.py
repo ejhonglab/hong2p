@@ -44,6 +44,7 @@ setup(
         'console_scripts': [
             'thor2tiff=hong2p:thor2tiff_cli',
             'showsync=hong2p:showsync_cli',
+            'suite2p-params=hong2p:suite2p_params_cli',
         ],
     },
     author="Tom O'Connell",

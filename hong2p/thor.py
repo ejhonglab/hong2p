@@ -538,9 +538,10 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
             one of either this or `exclude_datasets`. Names are checked after any
             renaming via `rename_dict` or normalization.
 
-        exclude_datasets (iterable of str | None): Load only datasets *except* those
-            with these names. Do not include 'gctr' here. Defaults to 
+        exclude_datasets (iterable of str | False | None): Load only datasets *except*
+            those with these names. Do not include 'gctr' here. Defaults to
             `hdf5_default_exclude_datasets` if neither this nor `datasets` is passed.
+            If `False`, all datasets are loaded.
 
         drop_gctr (bool): (default=True) Drop '/Global/GCtr' data (would be returned
             as column 'gctr') after using it to calculate 'time_s' column.

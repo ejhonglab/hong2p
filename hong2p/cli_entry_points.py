@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 import argparse
 from os.path import isdir, exists, join
@@ -6,6 +5,7 @@ from os.path import isdir, exists, join
 from hong2p import util
 from hong2p.thor import read_movie
 from hong2p.viz import showsync
+from hong2p.suite2p import print_suite2p_params
 
 
 # NOTE: to add additional endpoints:
@@ -40,7 +40,7 @@ def thor2tiff_cli():
         output_name = join(raw_dir, 'converted' + tiff_ext)
 
     if not args.overwrite:
-        assert not exists(output_name)
+        assert not exists(output_name), f'{output_name} exists (pass -w to overwrite)'
 
     # TODO maybe also load metadata like fps (especially stuff, as w/ fps, that isn't
     # already baked into the TIFF, assuming the TIFF is saved correctly. so not
@@ -74,9 +74,26 @@ def showsync_cli():
         help='will print all column names as they are in .h5 file and any renaming'
         'that occurs inside thor.load_thorsync_hdf5'
     )
+    parser.add_argument('-a', '--all', action='store_true',
+        help='will display all data in HDF5 (except frame counter)'
+    )
     args = parser.parse_args()
     thorsync_dir = args.thorsync_dir
     verbose = args.verbose
+    exclude_datasets = False if args.all else None
 
-    showsync(thorsync_dir, verbose=verbose)
+    showsync(thorsync_dir, verbose=verbose, exclude_datasets=exclude_datasets)
+
+
+def suite2p_params_cli():
+    """Prints data specific parameters so they can be set in suite2p GUI
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('thorimage_dir',
+        help='path containing .raw and metadata created by ThorImage'
+    )
+    args = parser.parse_args()
+    thorimage_dir = args.thorimage_dir
+
+    print_suite2p_params(thorimage_dir)
 
