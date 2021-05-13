@@ -887,7 +887,20 @@ def gsheet_csv_export_link(file_with_edit_link): #, add_default_gid=True):
         base_url = file_with_edit_link
     else:
         pkg_data_dir = split(split(__file__)[0])[0]
-        with open(join(pkg_data_dir, file_with_edit_link), 'r') as f:
+
+        dirs_to_try = (os.getcwd(), pkg_data_dir)
+        # .txt file containing link
+        link_filename = None
+        for d in dirs_to_try:
+            fname = join(d, file_with_edit_link)
+            if exists(fname):
+                link_filename = fname
+                break
+
+        if link_filename is None:
+            raise IOError(f'{file_with_edit_link} not found in any of {dirs_to_try}')
+
+        with open(link_filename, 'r') as f:
             base_url = f.readline().split('/edit')[0]
 
     gsheet_link = base_url + '/export?format=csv&gid='
