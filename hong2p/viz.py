@@ -298,7 +298,7 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
         kwargs['title'] += title_suffix
 
     if 'ticklabels' not in kwargs:
-        kwargs['ticklabels'] = format_mixture
+        kwargs['ticklabels'] = util.format_mixture
 
     if 'colorbar_label' not in kwargs:
         # TODO factor out latex for delta f / f stuff (+ maybe use in analysis that uses
@@ -801,12 +801,12 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             if i == 0:
                 # TODO group in odors case as w/ matshow?
                 if order_by == 'odors':
-                    trial_title = format_mixture({
+                    trial_title = util.format_mixture({
                         'name1': o1,
                         'name2': o2,
                     })
                 elif order_by == 'presentation_order':
-                    trial_title = format_mixture({
+                    trial_title = util.format_mixture({
                         'name1': o1,
                         'name2': o2
                     })
