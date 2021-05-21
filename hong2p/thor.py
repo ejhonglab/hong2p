@@ -722,6 +722,8 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     df = pd.DataFrame(data_dict)
 
 
+    # TODO probably refactor this up top, along with time_col and something similar for
+    # 'frame_out'
     gctr_col = 'gctr'
     if gctr_col in df.columns:
         # TODO check whether this is (nearly) equivalent to multiplying arange
@@ -925,8 +927,8 @@ def find_last_true(x):
 # loaded in the background can be shared across these calls?
 # TODO delete frame out name handling after forcing it to be a constant name in
 # load_thorsync_hdf5
-def get_frame_times(df, thorimage_dir, time_ref='mid',
-    acquisition_trigger_names=None, _debug=False):
+def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
+    acquisition_trigger_names=None, warn=True, _debug=False):
     """Returns seconds from start of ThorSync recording for each frame.
 
     Arguments:
@@ -935,6 +937,12 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
         thorimage_dir (str): path to ThorImage directory to load metadata from
 
         time_ref ('mid' | 'end')
+
+        min_block_duration_s (float): (default=1.0) minimum time (in seconds) between
+            onset and offset of acquisition trigger. Shorter blocks that precede all
+            acceptable-length blocks will simply be disregarding, with a warning.
+            Shorter blocks following any acceptable-length blocks will currently trigger
+            an error.
 
     Returns a `np.array` that should be of length equal to the number of frames
     actually saved by ThorImage (i.e. `<output>.shape` should be equal to
@@ -965,9 +973,75 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
     if time_col not in df.columns:
         raise ValueError(f'{time_col} not in df.columns')
 
+    # TODO TODO if frame_in can be recovered / configured to be saved in the
+    # future, and it does indeed serve the same function as our
+    # "scope_pin"/whatever, replace this with that (at least if it's available
+    # in current data)
+    if acquisition_trigger_names is None:
+        acquisition_trigger_names = _acquisition_trigger_names
+
+    acq_onsets, acq_offsets = get_col_onset_offset_indices(df,
+        acquisition_trigger_names, threshold=2.5
+    )
+
+    acq_onset_times = df.time_s[acq_onsets].values
+    acq_offset_times = df.time_s[acq_offsets].values
+
+    first_real_block_onset_s = None
+    for block_idx, (on, off) in enumerate(zip(acq_onset_times, acq_offset_times)):
+
+        if off - on >= min_block_duration_s:
+            if first_real_block_onset_s is None:
+                first_real_block_onset_s = on
+                first_real_block_idx = block_idx
+        else:
+            if first_real_block_onset_s is not None:
+                raise ValueError('block shorter than min_block_duration_s '
+                    f'({min_block_duration_s}:.1f) after first acceptable-length block'
+                )
+
+    del acq_onset_times, acq_offset_times, block_idx, on, off
+
+    if first_real_block_onset_s is None:
+        raise ValueError('no blocks longer than min_block_duration_s '
+            f'({min_block_duration_s}:.1f)'
+        )
+
+    if warn and first_real_block_idx != 0:
+        warnings.warn(f'dropping data up to block with index {first_real_block_idx}, '
+            'because earlier "blocks" were shorter than min_block_duration_s '
+            f'({min_block_duration_s:.1f})'
+        )
+
+    df = df[df.time_s >= first_real_block_onset_s]
+
+    # I did some tests where I defined old_frame_out_[on/off]sets as below, just
+    # computed before subsetting the DataFrame on the line above, and these held true:
+    # np.array_equal(old_frame_out_onsets[3:] - new_first_thorsync_idx,
+    #     frame_out_onsets
+    # )
+    # np.array_equal(old_frame_out_offsets[3:] - new_first_thorsync_idx,
+    #     frame_out_offsets
+    # )
+    # (the 3 is just because that's how many spurious frame out pulses were filtered out
+    # for the data I was testing this on)
+    new_first_thorsync_idx = df.index[0]
+    acq_onsets = acq_onsets[first_real_block_idx:] - new_first_thorsync_idx
+    acq_offsets = acq_offsets[first_real_block_idx:] - new_first_thorsync_idx
+
+    df = df.reset_index(drop=True)
+
+    if _debug:
+        print('subsetting dataframe to rows where time_s >= '
+            f'{first_real_block_onset_s:.3f}'
+        )
+
+    # TODO refactor 'frame_out' and other hardcoded col name strings to top w/ variable
+    # (user renameable) ones
     frame_out_onsets, frame_out_offsets = get_col_onset_offset_indices(df,
         'frame_out', threshold=0.5
     )
+
     if _debug:
         # TODO delete if not useful
         frame_out_lens = frame_out_offsets - frame_out_onsets
@@ -1013,17 +1087,6 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
     # - 2020-04-01/2
     #   - image: fn_002
     #     sync: SyncData002
-
-    # TODO TODO if frame_in can be recovered / configured to be saved in the
-    # future, and it does indeed serve the same function as our
-    # "scope_pin"/whatever, replace this with that (at least if it's available
-    # in current data)
-    if acquisition_trigger_names is None:
-        acquisition_trigger_names = _acquisition_trigger_names
-
-    acq_onsets, acq_offsets = get_col_onset_offset_indices(df,
-        acquisition_trigger_names, threshold=2.5
-    )
 
     _, _, z, c, n_flyback, _, xml = load_thorimage_metadata(thorimage_dir,
         return_xml=True
@@ -1145,8 +1208,13 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
                 f'{curr_n_dropped} != {n_trailing_unsaved_frames}'
 
         if _debug:
+            # TODO also print which index is not saved
             print('curr_not_saved_bool.sum():', curr_not_saved_bool.sum())
             print()
+
+        # TODO assert that curr_not_saved_bool has no overlap with the stuff marked to
+        # not be saved in any other iterations (if not already doing something like
+        # this...)
 
         on = next_on
 
@@ -1174,15 +1242,21 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
         print('n_orig_frame_out_pulses:', n_orig_frame_out_pulses)
 
         n_frames_before_averaging = n_frames * n_averaged_frames
-        print('n_frames_before_averaging:', n_frames_before_averaging)
+        print('n_frames_before_averaging (from ThorImage XML):',
+            n_frames_before_averaging
+        )
         print('n_frames_after_dropping:', len(frame_times))
         e1 = n_frames_before_averaging - len(frame_times)
 
         n_frame_outs_to_drop = \
             n_orig_frame_out_pulses - n_frames_before_averaging
 
-        print('n_frame_outs_to_drop:', n_frame_outs_to_drop)
-        print('n_actually_dropped:', len(not_saved_indices))
+        print('n_frame_outs_to_drop (how many *should* be dropped):',
+            n_frame_outs_to_drop
+        )
+        print('n_actually_dropped (how many we are actually planning to drop):',
+            len(not_saved_indices)
+        )
         e2 = len(not_saved_indices) - n_frame_outs_to_drop
         assert e1 == e2
         print('EXCESS FRAMES DROPPED:', e1)
@@ -1191,7 +1265,10 @@ def get_frame_times(df, thorimage_dir, time_ref='mid',
     if n_averaged_frames > 1:
         frame_times = frame_times.reshape(-1, n_averaged_frames).mean(axis=-1)
 
-    assert len(frame_times) == n_frames, f'{len(frame_times)} != {n_frames} (from XML)'
+    assert len(frame_times) == n_frames, (f'{len(frame_times)} (how many the code '
+        f'thinks there were, from the ThorSync HDF5 data) != {n_frames} (from '
+        'ThorImage XML)'
+    )
 
     if z > 1:
         flyback_indices = get_flyback_indices(n_frames, z, n_flyback,
@@ -1276,7 +1353,7 @@ def assign_frames_to_blocks(df, thorimage_dir, **kwargs):
 # especially when we have multiple blocks
 # TODO maybe just take frame_times + odor_col instead? or rename in a way that
 # makes what input should be more clear?
-def assign_frames_to_odor_presentations(df, thorimage_dir,
+def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
     odor_onset_to_frame_rel=None, odor_onset_to_frame_const=None,
     odor_timing_names=None, check_all_frames_assigned=True,
     check_no_discontinuity=True, **kwargs):
@@ -1294,18 +1371,27 @@ def assign_frames_to_odor_presentations(df, thorimage_dir,
     Not all frames necessarily included. No overlap.
 
     Args:
-        odor_onset_to_frame_rel (float): factor of averaged volumes/frames per second
-            used to determine how long after odor onset to call first odor frame.
+        thorsync_input (str | pd.DataFrame): path to directory created by ThorSync
+            or a dataframe as would be created by passing such a directory to
+            `load_thorsync_hdf5`.
+
+        thorimage_dir (str): path to directory created by ThorImage that corresponds
+            to the same experiment as the ThorSync data in `thorsync_input`.
+
+        odor_onset_to_frame_rel (float): (NOT IMPLEMENTED) factor of averaged
+            volumes/frames per second used to determine how long after odor onset to
+            call first odor frame.
 
             No first odor frames will be before: (odor onset time +
             odor_onset_to_frame_rel * averaged volumes/frames per second +
             odor_onset_to_frame_const)
 
-        odor_onset_to_frame_const (float): seconds after odor onset to call first odor
-            frame. mainly to compensate for known lag between valve opening and odor
-            arriving at the animal.
+        odor_onset_to_frame_const (float): (NOT IMPLEMENTED) seconds after odor onset to
+            call first odor frame. mainly to compensate for known lag between valve
+            opening and odor arriving at the animal.
 
         **kwargs: passed through to `get_frame_times`.
+
     """
     if odor_onset_to_frame_rel is not None:
         raise NotImplementedError
@@ -1315,6 +1401,27 @@ def assign_frames_to_odor_presentations(df, thorimage_dir,
 
     if odor_timing_names is None:
         odor_timing_names = _odor_timing_names
+
+    if type(thorsync_input) is not str:
+        # Just assuming it's an appropriate DataFrame input in this case.
+        df = thorsync_input
+    else:
+        # TODO maybe unify definition of these cols w/ default dataset names loaded in
+        # load_thorsync_hdf5 (fn that takes kwargs to override certain manually-named
+        # names?)
+        dataset_names = ['gctr', 'frame_out'] + list(odor_timing_names)
+
+        # Since this might be passed as a kwarg to this function, in which case it
+        # would just get passed through to `get_frame_times`.
+        acq_trigger_names = kwargs.get('acquisition_trigger_names',
+            _acquisition_trigger_names
+        )
+        dataset_names += acq_trigger_names
+
+        df = load_thorsync_hdf5(thorsync_input, datasets=dataset_names)
+
+    del thorsync_input
+
 
     # (when the valve(s) are given the signal to open)
     odor_onsets = get_col_onset_indices(df,
