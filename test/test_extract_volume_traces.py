@@ -10,6 +10,7 @@ from hong2p.thor import read_movie
 
 
 def test_extract_volume_traces():
+    # TODO include some reduced test data in a submodule / dvc thing / etc?
     data_dir = util.thorimage_dir('2020-03-09', 1, 'fn_007')
     movie = read_movie(data_dir)
 

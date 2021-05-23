@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# TODO TODO TODO actually refactor this into some tests for pytest
+
 import sys
 import time
 import traceback

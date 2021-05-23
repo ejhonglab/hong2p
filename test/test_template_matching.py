@@ -15,6 +15,8 @@ from hong2p import util
 # automated tests.
 interactive = False
 
+# TODO test fixture this or something else to make it easier to get this (or at least
+# some representative) test data on fresh installs
 template_data = util.load_template_data()
 assert template_data is not None, 'could not load template data'
 template = template_data['template']

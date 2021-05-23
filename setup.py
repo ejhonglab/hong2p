@@ -31,13 +31,28 @@ setup(
 
         'scikit-learn',
         'gitpython',
+
+        # https://stackoverflow.com/questions/32688688
+        # TODO move all imports of this to top-level, since i don't think it's heavy
+        # enough to warrant conditional imports
+        'ijroi @ git+https://github.com/tom-f-oconnell/ijroi',
+
         'ipdb',
 
         # TODO move cv2 in here (opencv-python)?
         # (only gui.py/extract_template.py and some other test scripts import
         # it on module import, but maybe still nice to have by default?)
     ],
-    tests_require=['pytest'],
+    extras_require={
+        'test': [
+            'pytest',
+
+            # Provides `cv2`. Used in a few particular functions and imported early in
+            # the definitions of those functions. Tests of any of those functions would
+            # need it installed though.
+            'opencv-python',
+        ],
+    },
     entry_points={
         # I define all of these in hong2p/cli_entry_points.py, and then modify
         # hong2p/__init__.py to import each of them explicitly.
