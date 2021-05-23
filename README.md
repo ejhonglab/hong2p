@@ -30,7 +30,8 @@ pip install -e .[test]
 #### Testing
 
 ```
-# If for some reason `which pytest` gives you a path seemingly not managed by your
-# virtual environment, you may benefit from using `python -m pytest` instead.
+# If for some reason `pytest --version` prints a path seemingly not managed by your
+# virtual environment (where it says "...imported from <path>"), you may benefit from
+# using `python -m pytest` instead.
 pytest
 ```
