@@ -26,6 +26,14 @@ In RStudio, install the `reticulate` package via Tools -> Install Packages.
 Then copy paste the code in the `Example usage` section below into a new script in R
 studio.
 
+#### Updating
+
+```
+conda activate r-reticulate
+pip uninstall -y hong2p
+pip install git+https://github.com/ejhonglab/hong2p
+```
+
 #### Example usage
 
 Source (rather than Run) the following script in RStudio:
