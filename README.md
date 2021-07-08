@@ -21,6 +21,12 @@ conda activate r-reticulate
 pip install git+https://github.com/ejhonglab/hong2p
 ```
 
+If you also use ROS on this computer, you will probably want to run:
+```
+conda config --set auto_activate_base false
+```
+...which I think is sufficient to prevent `conda` from interfering with ROS operation.
+
 In RStudio, install the `reticulate` package via Tools -> Install Packages.
 
 Then copy paste the code in the `Example usage` section below into a new script in R
