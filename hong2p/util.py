@@ -18,6 +18,7 @@ import hashlib
 import numpy as np
 from numpy.ma import MaskedArray
 import pandas as pd
+import xarray as xr
 
 # TODO now that i'm not trying to force a particular backend, move all the
 # imports here and in a few other place back to a typical order
@@ -236,8 +237,7 @@ def analysis_fly_dir(date, fly):
 # TODO maybe also allow specification of optional third/additional keys to
 # restrict to only some thorimage / thorsync dirs for a subset? or maybe it'd
 # make more sense to add other functions for blacklisting/whitelisting stuff?
-def date_fly_list2paired_thor_dirs(date_fly_list, pair_kwargs=dict(),
-    verbose=False):
+def date_fly_list2paired_thor_dirs(date_fly_list, verbose=False, **pair_kwargs):
     # TODO add code example to doc
     """Takes list of (date, fly_num) tuples to pairs of their Thor outputs.
 
@@ -1628,6 +1628,9 @@ def metadata_filename(date, fly_num, thorimage_id):
 
 # TODO maybe something to indicate various warnings
 # (like mb team not being able to pair things) should be suppressed?
+# TODO wrap this + read_movie into loading that can also flip according to a key in the
+# yaml (L/R, for more easily comparing data from diff AL sides in flies in the same
+# orientation, for example)
 def metadata(date, fly_num, thorimage_id):
     """Returns metadata from YAML, with defaults added.
     """
@@ -1797,36 +1800,40 @@ def parent_recording_id(tiffname_or_thorimage_id):
     return match.group(1)
         
 
-def write_tiff(tiff_filename, movie):
+def write_tiff(tiff_filename, movie, strict_dtype=True):
     # TODO also handle diff color channels
     """Write a TIFF loading the same as the TIFFs we create with ImageJ.
 
     TIFFs are written in big-endian byte order to be readable by `imread_big`
     from MATLAB file exchange.
 
-    Dimensions of input should be (t,[z,],x,y).
+    Dimensions of input should be (t,[z,],y,x).
 
     Metadata may not be correct.
     """
     import tifffile
 
-    dtype = movie.dtype
-    if not (dtype.itemsize == 2 and
-        np.issubdtype(dtype, np.unsignedinteger)):
+    if strict_dtype:
+        dtype = movie.dtype
+        if not (dtype.itemsize == 2 and
+            np.issubdtype(dtype, np.unsignedinteger)):
 
-        raise ValueError('movie must have uint16 dtype')
+            # TODO TODO TODO handle casting from float (for df/f images, for example)
+            # (how does imagej do this type of casting? i would think it would also need
+            # to do something like that?) (at least if not strict_dtype)
+            raise ValueError('movie must have uint16 dtype')
 
-    if dtype.byteorder == '|':
-        raise ValueError('movie must have explicit endianness')
+        if dtype.byteorder == '|':
+            raise ValueError('movie must have explicit endianness')
 
-    # If little-endian, convert to big-endian before saving TIFF, almost
-    # exclusively for the benefit of MATLAB imread_big, which doesn't seem
-    # able to discern the byteorder.
-    if (dtype.byteorder == '<' or
-        (dtype.byteorder == '=' and sys.byteorder == 'little')):
-        movie = movie.byteswap().newbyteorder()
-    else:
-        assert dtype.byteorder == '>'
+        # If little-endian, convert to big-endian before saving TIFF, almost
+        # exclusively for the benefit of MATLAB imread_big, which doesn't seem
+        # able to discern the byteorder.
+        if (dtype.byteorder == '<' or
+            (dtype.byteorder == '=' and sys.byteorder == 'little')):
+            movie = movie.byteswap().newbyteorder()
+        else:
+            assert dtype.byteorder == '>'
 
     # TODO TODO maybe change so ImageJ considers appropriate dimension the time
     # dimension (both in 2d x T and 3d x T cases)
@@ -1885,6 +1892,10 @@ def full_frame_avg_trace(movie):
     return np.mean(movie, axis=tuple(range(1, movie.ndim)))
 
 
+# TODO TODO switch order of args, and allow passing just coords. if just coords are
+# passed, shift all towards 0 (+ margin). use for e.g. xpix/ypix stats elements in
+# suite2p stat output. corresponding pixel weights in lam output would not need to be
+# modified.
 def crop_to_coord_bbox(matrix, coords, margin=0):
     """Returns matrix cropped to bbox of coords and bounds.
     """
@@ -1894,24 +1905,22 @@ def crop_to_coord_bbox(matrix, coords, margin=0):
     assert x_min >= 0 and y_min >= 0, \
         f'mins must be >= 0 (x_min={x_min}, y_min={y_min})'
 
-    # TODO might need to fix this / fns that use this such a that 
-    # coord limits are actually < matrix dims, rather than <=
-    '''
-    assert x_max < matrix.shape[0] and y_max < matrix.shape[1], \
-        (f'maxes must be < matrix shape = {matrix.shape} (x_max={x_max}' +
-        f', y_max={y_max}')
-    '''
-    assert x_max <= matrix.shape[0] and y_max <= matrix.shape[1], \
-        (f'maxes must be <= matrix shape = {matrix.shape} (x_max={x_max}' +
-        f', y_max={y_max}')
+    # NOTE: apparently i had to use <= or else some cases in old use of this function
+    # (e.g. using certain CNMF outputs) would violate this. best to just fix that code
+    # if it ever comes up again though.
+    assert x_max < matrix.shape[0] and y_max < matrix.shape[1], (
+        f'maxes must be < matrix shape = {matrix.shape} (x_max={x_max}' +
+        f', y_max={y_max}'
+    )
 
     # Keeping min at 0 to prevent slicing error in that case
     # (I think it will be empty, w/ -1:2, for instance)
     # Capping max not necessary to prevent err, but to make behavior of bounds
     # consistent on both edges.
+    # TODO flag to err if margin would take it past edge? / warn?
     x_min = max(0, x_min - margin)
-    x_max = min(x_max + margin, matrix.shape[0] - 1)
     y_min = max(0, y_min - margin)
+    x_max = min(x_max + margin, matrix.shape[0] - 1)
     y_max = min(y_max + margin, matrix.shape[1] - 1)
 
     cropped = matrix[x_min:x_max+1, y_min:y_max+1]
@@ -1924,7 +1933,9 @@ def crop_to_nonzero(matrix, margin=0):
     input, and the bounding box coordinates to embed this matrix in a matrix
     with indices from (0,0) to the max coordinates in the input matrix.
     """
-    coords = np.argwhere(matrix > 0)
+    # nan_to_num will replace nan w/ 0 by default. infinities also converted but not
+    # expected to be in input.
+    coords = np.argwhere(np.nan_to_num(matrix) > 0)
     return crop_to_coord_bbox(matrix, coords, margin=margin)
 
 
@@ -1950,17 +1961,254 @@ def db_footprints2array(df, shape):
         axis=-1)
 
 
-# TODO test w/ mpl / cv2 contours that never see ij to see if transpose is
-# necessary!
+# TODO TODO rename / delete one-or-the-other of this and contour2mask etc
+# (+ accept ijroi[set] filename or something if actually gonna call it this)
+# (ALSO include ijrois2masks in consideration for refactoring. this fn might not be
+# necessary)
+def ijroi2mask(roi, shape, z=None):
+    """
+        z (None | int): (optional) z-index ROI was drawn on
+    """
+    # This mask creation was taken from Yusuke N.'s answer here:
+    # https://stackoverflow.com/questions/3654289
+    from matplotlib.path import Path
+
+    if z is None:
+        if len(shape) != 2:
+            raise ValueError(f'len(shape) == {len(shape)}. must be 2 if z keyword '
+                'argument not passed'
+            )
+
+        # TODO check transpose isn't necessary...
+        nx, ny = shape
+
+    else:
+        if len(shape) != 3:
+            raise ValueError(f'shape must be (z, x, y) if z is passed. shape == {shape}'
+                ', which has the wrong length'
+            )
+
+        # TODO check transpose (of x and y) isn't necessary...
+        nz, nx, ny = shape
+        if z >= nz:
+            raise ValueError(f'z ({z}) out of bounds with z size ({nz}) from shape[0]')
+
+    # TODO test + delete
+    #assert nx == ny, 'need to check code shoulnt be tranposing these'
+    #
+
+    # Create vertex coordinates for each grid cell...
+    # (<0,0> is at the top left of the grid in this system)
+    x, y = np.meshgrid(np.arange(nx), np.arange(ny))
+    x, y = x.flatten(), y.flatten()
+
+    points = np.vstack((x,y)).T
+
+    path = Path(roi)
+    grid = path.contains_points(points)
+    # Transpose makes this correct in testing on some of YZ's data
+    mask = grid.reshape((ny, nx)).T
+
+    if z is None:
+        return mask
+    else:
+        vol_mask = np.zeros(shape, dtype='bool')
+        vol_mask[z, :, :] = mask
+        return vol_mask
+
+
+# TODO TODO add option to translate ijroi labels to pandas index values?
+# (and check trace extraction downstream preserves those!)
+# TODO TODO TODO document type / structure expecations of `ijrois` arg!
+# TODO TODO accept either the input or output of ijroi.read_roi[_zip] for ijrois?
+# read_roi takes file object and read_roi_zip takes filename
+# TODO can ijroi lib be modified to read path to tif things were drawn over (is that
+# data there?), and can that be used to get shape? or can i also accept a path to tiff
+# / thorimage dir / etc for that?
+# TODO TODO option to use one of those scipy sparse arrays for the masks instead?
+# TODO TODO maybe update all of my roi stuff that currently has the roi index as the
+# last index so that it is the first index instead? feels more intuitive...
+# TODO TODO make as_xarray default behavior and remove if other places that use this
+# output don't break / change them
+def ijrois2masks(ijrois, shape, as_xarray=False):
+    # TODO be clear on where shape is coming from (just shape of the data in the TIFF
+    # the ROIs were draw in, right?)
+    """
+    Transforms ROIs loaded from my ijroi fork to an array full of boolean masks,
+    of dimensions (shape + (n_rois,)).
+    """
+    import ijroi
+
+    if len(shape) == 2:
+        dims = ['x', 'y', 'roi']
+    elif len(shape) == 3:
+        dims = ['z', 'x', 'y', 'roi']
+    else:
+        raise ValueError('shape must have length 2 or 3')
+
+    masks = []
+    names = []
+    if len(shape) == 3:
+        roi_z_indices = []
+        prefixes = []
+        suffixes = []
+
+    for name, roi in ijrois:
+        # TODO TODO need to modify this function to still return prefix / suffix parsed
+        # from ijroi name in 3D case or else refactor to just include full name or
+        # something in that case
+        # TODO TODO probably add kwarg to not fail and still return prefix / suffix
+        # surrounding an ROI named like xxxx-yyyy, rather than just the zzzz-xxxx-yyyy
+        # currently supported (former case currently raises ValueError)
+        if len(shape) == 3:
+            z_index, (prefix, suffix) = ijroi.parse_z_from_name(name,
+                return_unmatched=True
+            )
+        else:
+            z_index = None
+
+        # TODO may also need to reverse part of shape here, if really was
+        # necessary above (test would probably need to be in asymmetric
+        # case...)
+        masks.append(ijroi2mask(roi, shape, z=z_index))
+        names.append(name)
+
+        if len(shape) == 3:
+            roi_z_indices.append(z_index)
+
+            if len(prefix) == 0:
+                prefix = np.nan
+
+            if len(suffix) == 0:
+                suffix = np.nan
+
+            prefixes.append(prefix)
+            suffixes.append(suffix)
+
+    # This concatenates along the last element of the new shape
+    masks = np.stack(masks, axis=-1)
+
+    if not as_xarray:
+        return masks
+
+    # NOTE: 'roi_num' can't be replaced w/ 'roi' b/c conflict w/ name of 'roi' dim
+    roi_index_names = ['roi_num', 'roi_name']
+    roi_index_levels = [np.arange(len(ijrois)), names]
+    if len(shape) == 3:
+        roi_index_names += ['roi_z', 'ijroi_prefix', 'ijroi_suffix']
+        roi_index_levels += [roi_z_indices, prefixes, suffixes]
+
+    roi_index = pd.MultiIndex.from_arrays(roi_index_levels, names=roi_index_names)
+
+    masks = xr.DataArray(masks, dims=dims, coords={'roi': roi_index})
+    return masks
+
+
+# TODO maybe add a fn to plot single xarray masks for debugging?
+
+def merge_ijroi_masks(masks, on='ijroi_prefix', label_fn=None, check_no_overlap=False):
+    """
+    Args:
+        masks (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
+            'roi' should be indexed by a MultiIndex and one of the levels should have
+            the name of the `on` argument. Currently expect the dtype to be 'bool'.
+
+        on (str): name of other ROI metadata dimension to merge on
+
+        label_fn (callable): function mapping the values of the `on` column to labels
+            for the ROIs. Only ROIs created via merging will be given these labels,
+            while unmerged ROIs will recieve unique number labels. Defaults to a
+            function that takes strings, removes trailing/leading underscores, and
+            parses an int from what remains.
+
+        check_no_overlap (bool): (optional, default=False) If True, checks that no
+            merged masks shared any pixels before being merged. If merged ROIs are all
+            on different planes, this should be True because ImageJ ROIs are defined on
+            single planes.
+    """
+    n_pixels_before = masks.sum().item()
+    n_rois_before = len(masks.roi)
+
+    def get_nonroi_shape(arr):
+        return {k: n for k, n in zip(arr.dims, arr.shape) if k != 'roi'}
+
+    nonroi_shape_before = get_nonroi_shape(masks)
+
+    # If `on` contains NaN values, the groupby will not include groups for the NaN
+    # values, and there is no argument to configure this (as in pandas). Therefore,
+    # we need to drop things that were merged and then add these to what remains.
+    merged = masks.groupby(on).max().rename({on: 'roi'})
+
+    def parse_int_roi_label(s):
+        return int(s.strip('_'))
+
+    if label_fn is None:
+        label_fn = parse_int_roi_label
+
+    merged_roi_labels = [label_fn(x) for x in merged.roi.values]
+    # Trying to pass label_fn here instead of calling before didn't work b/c it seems to
+    # expect a fn that takes a DataArray (and it's not passing scalar DataArrays either)
+    merged = merged.assign_coords(roi=merged_roi_labels)
+
+    not_merged = masks[on].isnull()
+    unmerged = masks.where(not_merged, drop=True).reset_index('roi', drop=True)
+
+    n_orig_rois_merged = (~ not_merged).values.sum()
+    n_rois_after = n_rois_before - n_orig_rois_merged + len(merged.roi)
+
+    available_labels = [x for x in range(n_rois_after) if x not in merged_roi_labels]
+    unmerged_roi_labels = available_labels[:len(unmerged.roi)]
+    assert len(unmerged_roi_labels) == len(unmerged.roi)
+    unmerged = unmerged.assign_coords(roi=unmerged_roi_labels)
+
+    # The .groupby (seemingly with any function application, as .first() also does it)
+    # and .where both change the dtype to float64 from bool
+    was_bool = masks.dtype == 'bool'
+
+    masks = xr.concat([merged, unmerged], 'roi')
+
+    if was_bool:
+        masks = masks.astype('bool')
+
+    assert n_rois_after == len(masks.roi)
+    assert len(set(masks.roi.values)) == len(masks.roi)
+
+    n_pixels_after = masks.sum().item()
+    if check_no_overlap:
+        assert n_pixels_before == n_pixels_after
+    else:
+        assert n_pixels_before >= n_pixels_after
+
+    nonroi_shape_after = get_nonroi_shape(masks)
+    assert nonroi_shape_before == nonroi_shape_after
+
+    return masks
+
+
+# TODO test / document requirements for type / properties of contour. it's just a
+# numpy array of points, right? doesn't need start = end or anything, does it?
 def contour2mask(contour, shape):
     """Returns a boolean mask True inside contour and False outside.
     """
+    # TODO TODO TODO appropriate checking of contour input. i.e. any requirements on
+    # first/last point / order (do some orders imply overlapping edge segments, and if
+    # so, check there are none of those)
     import cv2
     # TODO any checking of contour necessary for it to be well behaved in
     # opencv?
     mask = np.zeros(shape, np.uint8)
+
+    # NOTE: at some point i think i needed convexHull in ijroi2mask to get that + this
+    # to work as I expected. AS I THINK CONVEXHULL MIGHT RESULT IN SOME UNEXPECTED
+    # MODIFICATIONS TO CONTOURS, i need to change that code, and that might break some
+    # of this code too
+    # TODO TODO TODO if drawContours truly does need convex hull inputs, need to change
+    # this function to no longer use drawContours
+    # TODO TODO TODO see strategy i recommended to yang recently and consider using it
+    # here instead
     # TODO draw into a sparse array maybe? or convert after?
     cv2.drawContours(mask, [contour.astype(np.int32)], 0, 1, -1)
+
     # TODO TODO TODO investigate need for this transpose
     # (imagej contour repr specific? maybe load to contours w/ dims swapped them
     # call this fn w/o transpose?)
@@ -1971,55 +2219,6 @@ def contour2mask(contour, shape):
     return mask.astype('bool')
 
 
-def ijrois2masks(ijrois, shape):
-    """
-    Transforms ROIs loaded from my ijroi fork to an array full of boolean masks,
-    of dimensions (shape + (n_rois,)).
-    """
-    # TODO maybe index final pandas thing by ijroi name (before .roi prefix)
-    # (or just return np array indexed as CNMF "A" is) (?)
-    if len(shape) == 2:
-        # TODO TODO why was i reversing the shape again...? maybe i shouldn't?
-        masks = [imagej2py_coords(contour2mask(c, shape[::-1]))
-            for _, c in ijrois
-        ]
-        # This concatenates along the last element of the new shape
-        masks = np.stack(masks, axis=-1)
-
-    # TODO TODO TODO actually make sure this works in the len(shape) == 3 case
-    elif len(shape) == 3:
-        # NOTE: only supporting case of one volumetric mask for now
-        # (probably make dimension that used to correspond to n_footprints
-        # singleton here)
-        mask = np.zeros(shape, np.uint8).astype('bool')
-        xy_shape = shape[1:]
-        # to not have to worry about reversing this part of shape for now
-        assert xy_shape[0] == xy_shape[1]
-        index_set = set()
-        for name, contour in ijrois:
-            # Uses automatic ROI naming convention from TIFFs created by my
-            # write_tiff (where what is really Z seems to be treated as C by
-            # ImageJ)
-            z_index = int(name.split('-')[0]) - 1
-            index_set.add(z_index)
-
-            # TODO may also need to reverse part of shape here, if really was
-            # necessary above (test would probably need to be in asymmetric
-            # case...)
-            z_mask = imagej2py_coords(contour2mask(contour, xy_shape))
-            mask[z_index, :, :] = z_mask
-
-        assert index_set == set(range(shape[0])), 'some z slices missing ijrois'
-        masks = np.stack([mask], axis=-1)
-    else:
-        raise ValueError('shape must have length 2 or 3')
-
-    # TODO maybe normalize here?
-    # (and if normalizing, might as well change dtype to match cnmf output?)
-    # and worth casting type to bool, rather than keeping 0/1 uint8 array?
-    return masks
-
-
 # TODO rename these two to indicate it only works on images (not coordinates)
 # TODO and make + use fns that operate on coordinates?
 def imagej2py_coords(array):
@@ -2028,14 +2227,20 @@ def imagej2py_coords(array):
     """
     # TODO how does this behave in the 3d case...?
     # still what i want, or should i exclude the z dimension somehow?
-    return array.T
+    # TODO TODO TODO probably just delete any code that actually relied on this?
+    # assuming it doesn't still make sense...
+    #return array.T
+    return array
 
 
 def py2imagej_coords(array):
     """
     Since ijroi source seems to have Y as first coord and X as second.
     """
-    return array.T
+    # TODO TODO TODO probably just delete any code that actually relied on this?
+    # assuming it doesn't still make sense...
+    #return array.T
+    return array
 
 
 # TODO maybe move to a submodule for interfacing w/ cnmf?
@@ -2055,7 +2260,7 @@ def footprints_to_flat_cnmf_dims(footprints):
     return np.reshape(footprints, (frame_pixels, n_footprints), order='F')
 
 
-def extract_traces_boolean_footprints(movie, footprints,
+def extract_traces_bool_masks(movie, footprints,
     footprint_framenums=None, verbose=True):
     """
     Averages the movie within each boolean mask in footprints
@@ -2802,11 +3007,14 @@ def add_missing_odor_cols(df, missing_df):
 
 # TODO test when ax actually is passed in now that I made it a kwarg
 # (also works as optional positional arg, right?)
+# TODO rename to be agnostic to fact mpl is used to implement it + to be more
+# descriptive of function
 def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
     # TODO doc / delete
     """
     Args:
         if_multiple (str): 'take_largest'|'join'|'err'
+        **kwargs: passed through to matplotlib `ax.contour` call
     """
     dims = footprint.shape
     padded_footprint = np.zeros(tuple(d + 2 for d in dims))
@@ -4764,7 +4972,7 @@ def downsample_movie(movie, target_fps, current_fps, allow_overshoot=True,
     return downsampled, best_downsampled_fps
 
 
-# TODO maybe move to ijroi
+# TODO delete (+ probably delete contour2mask too and replace use of both w/ ijroi2mask)
 # don't like this convexHull based approach though...
 # (because roi may be intentionally not a convex hull)
 def ijroi2cv_contour(roi):
@@ -6026,4 +6234,59 @@ def add_fly_id(df):
 def add_recording_id(df):
     name = 'recording_id'
     return add_group_id(df, recording_cols, name=name)
+
+
+def thor2tiff(thorimage_dir, output_name=None, if_exists='err', verbose=True):
+    """Converts ThorImage .raw file to .tif file in same directory
+
+    Args:
+        if_exists (str): 'err', 'overwrite', or 'ignore'
+    """
+    assert if_exists in ('err', 'overwrite', 'ignore')
+
+    # TODO .tif or .tiff?
+    tiff_ext = '.tif'
+
+    if output_name is None:
+        output_name = join(thorimage_dir, 'converted' + tiff_ext)
+
+    # TODO maybe options to just ignore and NOOP if exists
+    if exists(output_name):
+        if if_exists == 'err':
+            raise IOError(f'{output_name} exists (set if_exists to either '
+                "'overwrite' or 'ignore' for other behavior"
+            )
+
+        elif if_exists == 'ignore':
+            if verbose:
+                print(f'{output_name} exists. not regenerating tiff.')
+            return
+
+    # TODO maybe also load metadata like fps (especially stuff, as w/ fps, that isn't
+    # already baked into the TIFF, assuming the TIFF is saved correctly. so not
+    # including stuff like z, c, xy), and print w/ -v flag?
+
+    if verbose:
+        print('Reading RAW movie...', flush=True, end='')
+
+    from_raw = thor.read_movie(thorimage_dir)
+
+    if verbose:
+        print(' done', flush=True)
+
+    # TODO TODO TODO try to figure out if anything can be done about tifffile
+    # using so much memory on writing (says "Killed" and exits in the middle of
+    # writing when trying to write what should be a ~5.5GB movie when i have
+    # close to 20GB of RAM free...). maybe memory profile my own code to see if
+    # i'm doing something stupid.
+    # TODO test read_movie on all thorimage .raw outputs i have to check which can
+    # currently reproduce this issue
+
+    if verbose:
+        print(f'Writing TIFF to {output_name}...', flush=True, end='')
+
+    write_tiff(output_name, from_raw)
+
+    if verbose:
+        print(' done', flush=True)
 

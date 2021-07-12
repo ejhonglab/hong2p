@@ -1438,7 +1438,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     frame_shape = movie.shape[1:]
     footprints = ijrois2masks(ijrois, frame_shape)
 
-    raw_f = extract_traces_boolean_footprints(movie, footprints)
+    raw_f = extract_traces_bool_masks(movie, footprints)
     #n_footprints = raw_f.shape[1]
 
     df_over_f = calculate_df_over_f(raw_f, trial_start_frames,

@@ -26,8 +26,11 @@ def test_extract_volume_traces():
     footprints = util.ijrois2masks(ijrois, frame_shape)
 
     # TODO TODO what is appropriate test this is actually working?
-    raw_f = util.extract_traces_boolean_footprints(movie, footprints)
+    raw_f = util.extract_traces_bool_masks(movie, footprints)
     import ipdb; ipdb.set_trace()
+
+
+# TODO also include test w/ some of old ijrois for single plane KC stuff
 
 
 if __name__ == '__main__':

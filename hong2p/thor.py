@@ -80,6 +80,9 @@ def get_thorimage_n_frames_xml(xml):
     This is the number of frames *after* any averaging configured in ThorImage.
 
     Any flyback frames are included.
+
+    If additional color channels are enabled but other parameters remain the same, this
+    number will not change.
     """
     return int(xml.find('Streaming').attrib['frames'])
 
@@ -111,7 +114,7 @@ def get_thorimage_z_xml(xml):
     return z
 
 
-# TODO TODO maybe add a function to get expected movie.size from thorimage .raw
+# TODO maybe add a function to get expected movie.size from thorimage .raw
 # file, and then include a check that these sizes match those expected by
 # multiplying all the relevant dimensions (including flyback) in the metadata
 # (would also check assumption that n_frames in ThorImage XML always acurately
@@ -122,6 +125,22 @@ def get_thorimage_z_xml(xml):
 # much space the particular storage media / filesystem happens to need to store
 # it (which i think can slightly exceed the real amount of data the file should
 # have, from what i remember using `du`)
+
+
+def get_thorimage_n_channels_xml(xml):
+    pmt = xml.find('PMT').attrib
+
+    # It does seem that for channel B (perhaps also A but not C/D), you can have it
+    # enabled with zero gain and it will still have corresponding data in the file.
+    def is_enabled(channel):
+        return int(pmt['enable' + channel])
+
+    # Technically ThorImage metadata seems to go out to C and D as well, but even if
+    # those are accidentally enabled, it seems that no additional garbage data going in
+    # the .raw files at least (maybe it does into one of the TIFF output formats?), so
+    # I'm just not checking C and D.
+    n_channels = sum([is_enabled(c) for c in ['A', 'B']])
+    return n_channels
 
 
 # TODO probably also include number of "frames" (*planes* over time) here too
@@ -143,8 +162,7 @@ def get_thorimage_dims_xml(xml):
 
     z = get_thorimage_z_xml(xml)
 
-    # still not sure how this is encoded in the XML...
-    c = None
+    c = get_thorimage_n_channels_xml(xml)
 
     # may want to add ZStage -> stepSizeUM to TIFF metadata?
 
@@ -371,8 +389,9 @@ def get_thorsync_h5(thorsync_dir):
 # '[load/read]_movie' call either this or appropriate tifffile calls to load any
 # TIFF outputs thorimage might have saved (check that dimension orders are the
 # same!)?
-def read_movie(thorimage_dir, discard_flyback=True):
-    """Returns (t,[z,]x,y) indexed timeseries as a numpy array.
+def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
+    checks=True):
+    """Returns (t,[z,]y,x) indexed timeseries as a numpy array.
     """
     fps, xy, z, c, n_flyback, imaging_file, xml = \
         load_thorimage_metadata(thorimage_dir, return_xml=True)
@@ -381,6 +400,22 @@ def read_movie(thorimage_dir, discard_flyback=True):
 
     # From ThorImage manual: "unsigned, 16-bit, with little-endian byte-order"
     dtype = np.dtype('<u2')
+
+    pmt = xml.find('PMT').attrib
+    if checks:
+        assert int(pmt['enableA']) and int(pmt['gainA']) > 0, 'channel A not used'
+
+    if int(pmt['enableB']):
+        if int(pmt['gainB']) == 0:
+            warnings.warn('channel B was enabled but gain was zero. discarding.')
+            discard_channel_b = True
+
+        if not discard_channel_b:
+            raise NotImplementedError('you may set discard_channel_b=True for now')
+    else:
+        # Not warning / erroring in this case so that discard_channel_b can be specified
+        # for data that may or may not have channel B, without extra nuisance.
+        discard_channel_b = False
 
     with open(imaging_file, 'rb') as f:
         data = np.fromfile(f, dtype=dtype)
@@ -391,12 +426,16 @@ def read_movie(thorimage_dir, discard_flyback=True):
     n_frames = len(data) // n_frame_pixels
     assert len(data) % n_frame_pixels == 0, 'apparent incomplete frames'
 
+    n_frames, remainder = divmod(n_frames, c)
+    assert remainder == 0
+
     # This does not fail in the volumetric case, because 'frames' here
     # refers to XY frames there too.
     # TODO test this assertion on all data, though perhaps via a new function
     # get get expected n_frames from size of .raw file + other metadata
     # (mentioned in comments above get_thorimage_dims_xml)
-    assert n_frames == get_thorimage_n_frames_xml(xml)
+    assert n_frames == get_thorimage_n_frames_xml(xml), \
+        f'{n_frames} != {get_thorimage_n_frames_xml(xml)}'
 
     # TODO how to reshape if there are also multiple channels?
 
@@ -412,11 +451,10 @@ def read_movie(thorimage_dir, discard_flyback=True):
         date_part = thorimage_dir.split(sep)[-3]
         try_to_fix_flyback = False
 
-        # TODO TODO TODO do more testing to determine 1) if this really was a
-        # flyback issue and not some bug in thor / some change in thor behavior
-        # on update, and 2) what is appropriate flyback [and which change from
-        # 2020-04-* stuff is what made this flyback innapropriate? less
-        # averaging?]
+        # TODO do more testing to determine 1) if this really was a flyback issue and
+        # not some bug in thor / some change in thor behavior on update, and 2) what is
+        # appropriate flyback [and which change from 2020-04-* stuff is what made this
+        # flyback innapropriate? less averaging?]
         if date_part in {'2020-11-29', '2020-11-30'}:
             warnings.warn('trying to fix flyback frames since date_part match')
             # this branch is purely a hacky fix to what seems like an
@@ -454,12 +492,24 @@ def read_movie(thorimage_dir, discard_flyback=True):
 
         # TODO check this against method by reshaping as before and slicing
         # w/ appropriate strides [+ concatenating?] (what was "before"?)
-        data = np.reshape(data, (n_frames, z_total, x, y))
+        data = np.reshape(data, (n_frames, z_total, c, y, x))
 
         if discard_flyback:
-            data = data[:, :z, :, :]
+            data = data[:, :z]
     else:
-        data = np.reshape(data, (n_frames, x, y))
+        # TODO test multi-channel handling in this case
+        data = np.reshape(data, (n_frames, c, y, x))
+
+    if discard_channel_b:
+        slices = [slice(None)] * len(data.shape)
+
+        # (the channel dimension)
+        slices[-3] = 0
+
+        data = data[tuple(slices)]
+        assert len(data.shape) == len(slices) - 1, ('channel dimension should no longer'
+            'be in shape'
+        )
 
     return data
 
@@ -984,6 +1034,9 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
         acquisition_trigger_names, threshold=2.5
     )
 
+    if len(acq_onsets) == 0:
+        raise ValueError('no recording periods found in ThorSync data')
+
     acq_onset_times = df.time_s[acq_onsets].values
     acq_offset_times = df.time_s[acq_offsets].values
 
@@ -999,8 +1052,6 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
                 raise ValueError('block shorter than min_block_duration_s '
                     f'({min_block_duration_s}:.1f) after first acceptable-length block'
                 )
-
-    del acq_onset_times, acq_offset_times, block_idx, on, off
 
     if first_real_block_onset_s is None:
         raise ValueError('no blocks longer than min_block_duration_s '
@@ -1108,14 +1159,17 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
 
     n_averaged_frames = get_thorimage_n_averaged_frames_xml(xml)
 
+    # TODO fix wrt yangs data
+    '''
     if n_averaged_frames > 1:
         assert z_total == 1, ('ThorImage does not support averaging while '
             'recording fast Z'
         )
+    '''
 
     # "Frame save groups" are either frames to be averaged to a single frame or
     # frames that together make up a volume (including any flyback frames!)
-    n_frames_per_save_group = n_averaged_frames * z_total
+    n_frames_per_save_group = n_averaged_frames * z_total * c
 
     if _debug:
         print('n_blocks:', len(acq_onsets))
@@ -1737,7 +1791,7 @@ def thor_subdirs(parent_dir, absolute_paths=True):
 # stimulus files / arbitrary other files.
 def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     use_ranking=True, check_against_naming_conv=False,
-    check_unique_thorimage_nums=None, verbose=False):
+    check_unique_thorimage_nums=None, verbose=False, ignore_strs=None):
     """
     Takes lists (not necessarily same len) of dirs, and returns a list of
     lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
@@ -1750,7 +1804,11 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     check_unique_thorimage_nums (bool): If True, check numbers parsed from
         ThorImage directory names, as-per convention, are unique.
         Requires check_against_naming_conv to be True. Defaults to True if
-        check_against_naming_conv is True, else defaults to False. 
+        check_against_naming_conv is True, else defaults to False.
+
+    ignores_strs (None | iterable of str): An optional iterable of substrings. If any
+        are present in the name of a Thor directory, that directory will be excluded
+        from consideration in pairing.
 
     Raises ValueError if two dirs of one type match to the same one of the
     other, but just returns shorter list of pairs if some matches can not be
@@ -1760,6 +1818,14 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     Raises AssertionError when assumptions are violated in a way that should
     trigger re-evaluating the code.
     """
+    if ignore_strs is not None:
+        thorimage_dirs = [x for x in thorimage_dirs
+            if not any([sub_str in x for sub_str in ignore_strs])
+        ]
+        thorsync_dirs = [x for x in thorsync_dirs
+            if not any([sub_str in x for sub_str in ignore_strs])
+        ]
+
     if use_ranking:
         if len(thorimage_dirs) != len(thorsync_dirs):
             raise ValueError('can only pair with ranking when equal # dirs')

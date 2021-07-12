@@ -22,6 +22,7 @@ setup(
         'tifffile',
 
         'pandas',
+        'xarray',
 
         'PyQt5',
         'pyqtgraph',

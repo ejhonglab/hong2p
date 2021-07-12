@@ -457,14 +457,14 @@ def test_ijrois2masks():
         plt.show()
         '''
 
-        traces = util.extract_traces_boolean_footprints(movie, masks,
+        traces = util.extract_traces_bool_masks(movie, masks,
             verbose=False
         )
         assert traces.shape[0] == n_frames
         assert traces.shape[1] == n_rois
         assert np.all(traces > 0)
 
-        empty_traces = util.extract_traces_boolean_footprints(movie_t, masks,
+        empty_traces = util.extract_traces_bool_masks(movie_t, masks,
             verbose=False
         )
         assert empty_traces.shape[0] == n_frames
@@ -475,7 +475,7 @@ def test_ijrois2masks():
         for i in range(masks.shape[-1]):
             masks_t.append(masks[:,:,i].T)
         masks_t = np.stack(masks_t, axis=-1)
-        empty_traces2 = util.extract_traces_boolean_footprints(movie, masks_t,
+        empty_traces2 = util.extract_traces_bool_masks(movie, masks_t,
             verbose=False
         )
         assert empty_traces2.shape[0] == n_frames

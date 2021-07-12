@@ -1270,7 +1270,7 @@ class Segmentation(QWidget):
         # TODO superimpose on avg or something before calculating everything
         # (separate user action to confirm)?
 
-        self.raw_f = util.extract_traces_boolean_footprints(self.movie,
+        self.raw_f = util.extract_traces_bool_masks(self.movie,
             self.footprints
         )
         n_footprints = self.raw_f.shape[1]
