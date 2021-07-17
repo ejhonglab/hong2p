@@ -237,27 +237,51 @@ def analysis_fly_dir(date, fly):
 # TODO maybe also allow specification of optional third/additional keys to
 # restrict to only some thorimage / thorsync dirs for a subset? or maybe it'd
 # make more sense to add other functions for blacklisting/whitelisting stuff?
-def date_fly_list2paired_thor_dirs(date_fly_list, verbose=False, **pair_kwargs):
+def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
+    **pair_kwargs):
     # TODO add code example to doc
     """Takes list of (date, fly_num) tuples to pairs of their Thor outputs.
+
+    Args:
+        date_fly_list (list of (date-like, int)): (date, fly number) tuples
+
+        n_first (None | int): If passed, only up to this many of pairs are enumerated.
+            Intended for testing on subsets of data.
+
+        verbose (bool): (default=False) If True, prints the fly/ThorImage/ThorSync
+            directories as they are being iterated over.
+
+        **pair_kwargs: Passed through to `thor.pair_thor_subdirs`. See arguments to
+            `thor.pair_thor_dirs` (called by `thor.pair_thor_subdirs`) for most of the
+            useful options.
 
     Each output is of the form:
     ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
     """
+    n = 0
     for date, fly_num in date_fly_list:
         fly_dir = raw_fly_dir(date, fly_num)
 
         if verbose:
             print('fly_dir:', fly_dir)
 
+        # TODO if verbose and ignore is in pair_kwargs, maybe thread some other
+        # arguments through such that we can have the inner function print just which
+        # pairs it is ignoring?
+
         paired_thor_dirs = thor.pair_thor_subdirs(fly_dir, **pair_kwargs)
 
         for thorimage_dir, thorsync_dir in paired_thor_dirs:
+
+            if n_first is not None and n >= n_first:
+                return
+
             if verbose:
                 print('thorimage_dir:', thorimage_dir)
                 print('thorsync_dir:', thorsync_dir)
 
             yield (date, fly_num), (thorimage_dir, thorsync_dir)
+            n += 1
 
 
 def _raw_data_root_grandchildren():
