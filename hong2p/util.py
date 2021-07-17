@@ -262,12 +262,10 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
     for date, fly_num in date_fly_list:
         fly_dir = raw_fly_dir(date, fly_num)
 
-        if verbose:
-            print('fly_dir:', fly_dir)
-
         # TODO if verbose and ignore is in pair_kwargs, maybe thread some other
         # arguments through such that we can have the inner function print just which
-        # pairs it is ignoring?
+        # pairs it is ignoring? (or [opt to] return them from pair_thor_subdirs and then
+        # print here?)
 
         paired_thor_dirs = thor.pair_thor_subdirs(fly_dir, **pair_kwargs)
 
