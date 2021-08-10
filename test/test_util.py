@@ -12,7 +12,7 @@ test_df = pd.DataFrame({
     'int': 1,
     'arr1': [[0.3, 0.1, 0.5]],
     'float': 1.1
-}, index=[0]) 
+}, index=[0])
 
 # TODO test series vs length 1 dataframes?
 # TODO also test extra cols?
