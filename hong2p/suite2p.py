@@ -2,6 +2,15 @@
 Functions for working with suite2p as part of analysis.
 """
 
+from os.path import join, exists
+import subprocess
+from copy import deepcopy
+import warnings
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
 from hong2p import thor, util
 
 
@@ -192,7 +201,10 @@ def load_s2p_pickle(npy_path):
     return np.load(npy_path, allow_pickle=True)
 
 
-# TODO switch to using analysis_dir as input or at least by output
+def load_s2p_ops(ops_path):
+    return load_s2p_pickle(ops_path).item()
+
+
 def get_suite2p_dir(analysis_dir):
     return join(analysis_dir, 'suite2p')
 
@@ -209,6 +221,7 @@ def load_iscell(s2p_out_dir):
     return np.load(get_iscell_path(s2p_out_dir))
 
 
+# TODO delete?
 def set_suite2p_iscell_label(s2p_out_dir, roi_num, is_good):
     """
     Args:
@@ -279,6 +292,7 @@ def mark_all_suite2p_rois_good(s2p_out_dir):
     assert is_iscell_modified(s2p_out_dir, warn=False)
 
 
+# TODO delete?
 def modify_iscell_in_suite2p(stat_path):
     # TODO TODO maybe show a plot for the relevant df/f image(s) alongside this, to
     # see if i'm getting *those* glomeruli? would probably need to couple with main loop
@@ -357,7 +371,7 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
     stat_path = join(plane_or_combined_dir, 'stat.npy')
     stat = load_s2p_pickle(stat_path)
 
-    ops = load_s2p_pickle(join(plane_or_combined_dir, 'ops.npy')).item()
+    ops = load_s2p_ops(join(plane_or_combined_dir, 'ops.npy'))
 
     good_rois = iscell[:, 0].astype(np.bool_)
 
@@ -386,10 +400,6 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
         # TODO test in case where there are no merged rois
         traces = traces.loc[:, ~ traces.columns.isin(merge_input_indices)]
 
-        # TODO TODO maybe still leave them in stat dict / return separately tho, for
-        # display of rois? or maybe the new stat entry is already appropriate for those
-        # purposes anyway?
-
     if not merge_outputs:
         traces = traces.loc[:, [x for x in traces.columns if x not in merges]]
 
@@ -407,9 +417,6 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
     else:
         stat_dict = {r: stat[r] for r in range(len(stat))}
 
-    # TODO TODO TODO maybe return a 4th value that is a dict: <merge output roi #> ->
-    # <set of merge input roi #>, for use with manually recomputing "merged" ROIs
-    # (including just picking the best plane)
     return traces, stat_dict, ops, merges
 
 
