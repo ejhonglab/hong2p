@@ -34,6 +34,13 @@ from hong2p import matlab, db, thor, viz
 # use them, to reduce the number of hard dependencies.
 
 
+# Sets optional faster-storage directory that is checked first (currently just in
+# `raw_fly_dir`).
+fast_data_dir_env_var = 'HONG2P_FAST_DATA_DIR'
+_fast_data_root = os.environ.get(fast_data_dir_env_var)
+if _fast_data_root is not None and not isdir(_fast_data_root):
+    raise IOError(f'{fast_data_dir_env_var} set but is not a directory')
+
 np.set_printoptions(precision=2)
 
 # TODO maybe move all of these to __init__.py, or at least expose them there?
@@ -59,13 +66,10 @@ dff_latex = r'$\frac{\Delta F}{F}$'
 
 data_root_name = 'mb_team'
 
-fast_data_dir_env_var = 'HONG2P_FAST_DATA_DIR'
-
 
 # Module level cache.
 _data_root = None
-_fast_data_root = None
-# TODO add _fast_data_root setting as kwarg here
+# TODO add _fast_data_root setting as kwarg here?
 def set_data_root(new_data_root):
     """Sets data root, so future calls to `data_root` will return the input.
 
@@ -91,7 +95,6 @@ def data_root():
     # TODO doc how data_root_name above only used in here if prefix but not
     # explicit directory is set (HONG_NAS and not HONG_2P_DATA)
     global _data_root
-    global _fast_data_root
     if _data_root is None:
         # TODO separate env var for local one? or have that be the default?
         data_root_key = 'HONG_2P_DATA'
@@ -135,15 +138,6 @@ def data_root():
             if source is not None:
                 emsg += f'\nDirectory chosen from environment variable {source}'
 
-        # Sets optional faster-storage directory that is checked first (currently just
-        # in `raw_fly_dir`).
-        if fast_data_dir_env_var in os.environ:
-            _fast_data_root = os.environ[fast_data_dir_env_var]
-            if not isdir(_fast_data_root):
-                warnings.warn(f'{fast_data_dir_env_var} set but is not a directory')
-                _fast_data_root = None
-                raise IOError(emsg)
-
     # TODO err if nothing in data_root, saying which env var to set and how
     return _data_root
 
@@ -186,7 +180,9 @@ def format_timestamp(timestamp):
     return str(pd.Timestamp(timestamp))[:16]
 
 
-def _fly_dir(date, fly):
+def get_fly_dir(date, fly):
+    """Returns str path fragment as YYYY-MM-DD/<n> for variety of input types
+    """
     if not type(date) is str:
         date = format_date(date)
 
@@ -198,12 +194,12 @@ def _fly_dir(date, fly):
 
 def raw_fly_dir(date, fly, warn=True):
 
-    raw_fly_basedir = _fly_dir(date, fly)
+    raw_fly_basedir = get_fly_dir(date, fly)
 
     # TODO TODO maybe refactor for more granularity (might need to change a lot of usage
     # of data_root() and stuff that uses it though... perhaps also functions that
     # operate on directories like the fn to pair thor dirs)
-    if _fast_data_root:
+    if _fast_data_root is not None:
         fast_raw_fly_dir = join(raw_data_root(root=_fast_data_root), raw_fly_basedir)
         # TODO warn if not using this despite env var being set
         if isdir(fast_raw_fly_dir):
@@ -226,7 +222,7 @@ def thorsync_dir(date, fly, base_thorsync_dir):
 
 
 def analysis_fly_dir(date, fly):
-    return join(analysis_output_root(), _fly_dir(date, fly))
+    return join(analysis_output_root(), get_fly_dir(date, fly))
 
 
 # TODO maybe rename suffix here / thor.pair_thor_subdirs(->_dirs) for
@@ -237,6 +233,9 @@ def analysis_fly_dir(date, fly):
 # TODO maybe also allow specification of optional third/additional keys to
 # restrict to only some thorimage / thorsync dirs for a subset? or maybe it'd
 # make more sense to add other functions for blacklisting/whitelisting stuff?
+# TODO TODO function like this but that returns everything, with kwargs for only getting
+# stuff between a start and end date (w/ end date not specified as well, for analyzing
+# ongoing experiments)
 def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
     **pair_kwargs):
     # TODO add code example to doc
@@ -258,6 +257,9 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
     Each output is of the form:
     ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
     """
+    if n_first is not None:
+        warnings.warn(f'only returning first {n_first} paired Thor[Image/Sync] outputs')
+
     n = 0
     for date, fly_num in date_fly_list:
         fly_dir = raw_fly_dir(date, fly_num)
@@ -266,6 +268,121 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
         # arguments through such that we can have the inner function print just which
         # pairs it is ignoring? (or [opt to] return them from pair_thor_subdirs and then
         # print here?)
+
+        paired_thor_dirs = thor.pair_thor_subdirs(fly_dir, **pair_kwargs)
+
+        for thorimage_dir, thorsync_dir in paired_thor_dirs:
+
+            if n_first is not None and n >= n_first:
+                return
+
+            if verbose:
+                print('thorimage_dir:', thorimage_dir)
+                print('thorsync_dir:', thorsync_dir)
+
+            yield (date, fly_num), (thorimage_dir, thorsync_dir)
+            n += 1
+
+
+# TODO TODO TODO merge into date_fly_list2paired_thor_dirs or just delete that and add
+# kwarg here to replace above (too similar)
+def paired_thor_dirs(start_date=None, end_date=None, n_first=None, verbose=False,
+    **pair_kwargs):
+    # TODO add code example to doc
+    """
+
+    Args:
+        n_first (None | int): If passed, only up to this many of pairs are enumerated.
+            Intended for testing on subsets of data.
+
+        verbose (bool): (default=False) If True, prints the fly/ThorImage/ThorSync
+            directories as they are being iterated over.
+
+        **pair_kwargs: Passed through to `thor.pair_thor_subdirs`. See arguments to
+            `thor.pair_thor_dirs` (called by `thor.pair_thor_subdirs`) for most of the
+            useful options.
+
+    Each output is of the form:
+    ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
+    """
+    if n_first is not None:
+        warnings.warn(f'only returning first {n_first} paired Thor[Image/Sync] outputs')
+
+    if start_date is not None:
+        start_date = pd.Timestamp(start_date)
+
+    if end_date is not None:
+        end_date = pd.Timestamp(end_date)
+
+    n = 0
+
+    def grandchildren(d):
+        # Returns without the trailing '/' glob would normally add using this syntax.
+        return [split(x)[0] for x in glob.glob(join(d, '*/*/'))]
+
+    def date_fly_parts(d):
+        rest, fly_part = split(d)
+        _, date_part = split(rest)
+        return date_part, fly_part
+
+    if _fast_data_root is not None:
+        candidate_grandchildren = grandchildren(raw_data_root(root=_fast_data_root))
+        fast_parts = {date_fly_parts(d) for d in candidate_grandchildren}
+    else:
+        candidate_grandchildren = []
+        # Set of tuples representing deepest-level ("leaf") directories under
+        # `_fast_data_root`.
+        fast_parts = {}
+
+    gs = grandchildren(raw_data_root())
+    for g in gs:
+        date_fly = date_fly_parts(g)
+        if date_fly in fast_parts:
+            if verbose:
+                print(f'not using {g} because had equivalent fast dir under '
+                    f'{_fast_data_root}'
+                )
+
+            continue
+        candidate_grandchildren.append(g)
+
+    for d in candidate_grandchildren:
+        date_part, fly_part = date_fly_parts(d)
+
+        try:
+            fly_num = int(fly_part)
+        except ValueError:
+            if verbose:
+                print(f'skipping {d} because could not parse fly_num from {fly_part}')
+
+            continue
+
+        try:
+            date = pd.Timestamp(datetime.strptime(date_part, date_fmt_str))
+        except ValueError:
+            if verbose:
+                print(f'skipping {d} because could not parse date from {date_part}')
+
+            continue
+
+        if start_date is not None and date < start_date:
+            if verbose:
+                print(f'skipping {d} because earlier than {format_date(start_date)}')
+
+            continue
+
+        if end_date is not None and end_date < date:
+            if verbose:
+                print(f'skipping {d} because later than {format_date(end_date)}')
+
+            continue
+
+        # TODO if verbose and ignore is in pair_kwargs, maybe thread some other
+        # arguments through such that we can have the inner function print just which
+        # pairs it is ignoring? (or [opt to] return them from pair_thor_subdirs and then
+        # print here?)
+
+        fly_dir = raw_fly_dir(date, fly_num)
 
         paired_thor_dirs = thor.pair_thor_subdirs(fly_dir, **pair_kwargs)
 
@@ -401,7 +518,7 @@ def odorset_name(df_or_odornames):
         unique_odornames = set(df_or_odornames)
         # TODO maybe also support abbreviated names in this case?
         abbreviated = False
-        
+
     odor_set = None
     # TODO TODO derive these diagnostic odors from odor_set2order? would that
     # still be redundant w/ something else i hardcoded (if so, further
@@ -991,7 +1108,7 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
         sheets['recordings'].dropna(how='all', subset=na_cols, inplace=True)
 
         with open(gsheet_cache_file, 'wb') as f:
-            pickle.dump(sheets, f) 
+            pickle.dump(sheets, f)
 
     # TODO maybe make df some merge of the three sheets?
     df = sheets['recordings']
@@ -1661,7 +1778,7 @@ def metadata(date, fly_num, thorimage_id):
     metadata_file = metadata_filename(date, fly_num, thorimage_id)
 
     # TODO another var specifying number of frames that has *already* been
-    # cropped out of raw tiff (start/end), to resolve any descrepencies wrt 
+    # cropped out of raw tiff (start/end), to resolve any descrepencies wrt
     # thorsync data
     metadata = {
         'drop_first_n_frames': 0
@@ -1983,6 +2100,49 @@ def db_footprints2array(df, shape):
         axis=-1)
 
 
+# TODO maybe refactor so there is a function does this for single arrays, then concat
+# using xarray functions in here? or if i still want both functions, how to dedupe code?
+# allow this to accept single rois too (without that component of shape)?
+def numpy2xarray_rois(rois, roi_indices=None):
+    """Takes numpy array of shape ([z,]y,x,roi) to labelled xarray.
+
+    Args:
+        roi_indices (None | dict): values must be iterables of length equal to number of
+            ROIs. 'roi_num' will be included as an additional ROI index regardless.
+    """
+    shape = rois.shape
+    # TODO check that the fact that i swapped y and x now didn't break how i was using
+    # this w/ actual ijrois / anything else. wanted to be more consistent w/ how
+    # suite2p, ImageJ, etc seemed to do things.
+    if len(shape) == 3:
+        dims = ['y', 'x', 'roi']
+    elif len(shape) == 4:
+        dims = ['z', 'y', 'x', 'roi']
+    else:
+        raise ValueError('shape must have length 3 or 4')
+
+    # NOTE: 'roi_num' can't be replaced w/ 'roi' b/c conflict w/ name of 'roi' dim
+    roi_num_name = 'roi_num'
+    roi_index_names = [roi_num_name]
+    roi_index_levels = [np.arange(rois.shape[-1])]
+
+    if roi_indices is not None:
+        # If a 'roi_num' level is passed in, it will replace the one that would be added
+        # automatically.
+        if roi_num_name in roi_indices:
+            roi_index_names = []
+            roi_index_levels = []
+
+        n_rois = shape[-1]
+        for ns, xs in roi_indices.items():
+            assert len(xs) == n_rois
+            roi_index_names.append(ns)
+            roi_index_levels.append(xs)
+
+    roi_index = pd.MultiIndex.from_arrays(roi_index_levels, names=roi_index_names)
+    return xr.DataArray(rois, dims=dims, coords={'roi': roi_index})
+
+
 # TODO TODO rename / delete one-or-the-other of this and contour2mask etc
 # (+ accept ijroi[set] filename or something if actually gonna call it this)
 # (ALSO include ijrois2masks in consideration for refactoring. this fn might not be
@@ -2052,6 +2212,8 @@ def ijroi2mask(roi, shape, z=None):
 # last index so that it is the first index instead? feels more intuitive...
 # TODO TODO make as_xarray default behavior and remove if other places that use this
 # output don't break / change them
+# TODO TODO TODO fn to convert suite2p representation of masks to the same [xarray]
+# representation of masks this spits out
 def ijrois2masks(ijrois, shape, as_xarray=False):
     # TODO be clear on where shape is coming from (just shape of the data in the TIFF
     # the ROIs were draw in, right?)
@@ -2061,11 +2223,10 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
     """
     import ijroi
 
-    if len(shape) == 2:
-        dims = ['x', 'y', 'roi']
-    elif len(shape) == 3:
-        dims = ['z', 'x', 'y', 'roi']
-    else:
+    # TODO delete depending on how refactoring the below into xarray fn goes / whether
+    # the non-xarray parts of this fn have the same requirements (which they probably
+    # do...)
+    if len(shape) not in (2, 3):
         raise ValueError('shape must have length 2 or 3')
 
     masks = []
@@ -2113,25 +2274,25 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
     if not as_xarray:
         return masks
 
-    # NOTE: 'roi_num' can't be replaced w/ 'roi' b/c conflict w/ name of 'roi' dim
-    roi_index_names = ['roi_num', 'roi_name']
-    roi_index_levels = [np.arange(len(ijrois)), names]
+    roi_index_names = ['roi_name']
+    roi_index_levels = [names]
     if len(shape) == 3:
         roi_index_names += ['roi_z', 'ijroi_prefix', 'ijroi_suffix']
         roi_index_levels += [roi_z_indices, prefixes, suffixes]
 
-    roi_index = pd.MultiIndex.from_arrays(roi_index_levels, names=roi_index_names)
-
-    masks = xr.DataArray(masks, dims=dims, coords={'roi': roi_index})
-    return masks
+    return numpy2xarray_rois(masks,
+        roi_indices=dict(zip(roi_index_names, roi_index_levels))
+    )
 
 
 # TODO maybe add a fn to plot single xarray masks for debugging?
-
-def merge_ijroi_masks(masks, on='ijroi_prefix', label_fn=None, check_no_overlap=False):
+# TODO TODO at least if i refactor this to be less specific to ijrois, have label_fn
+# default to identity
+# TODO TODO change `on` default to something like `roi`
+def merge_rois(rois, on='ijroi_prefix', label_fn=None, check_no_overlap=False):
     """
     Args:
-        masks (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
+        rois (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
             'roi' should be indexed by a MultiIndex and one of the levels should have
             the name of the `on` argument. Currently expect the dtype to be 'bool'.
 
@@ -2144,22 +2305,28 @@ def merge_ijroi_masks(masks, on='ijroi_prefix', label_fn=None, check_no_overlap=
             parses an int from what remains.
 
         check_no_overlap (bool): (optional, default=False) If True, checks that no
-            merged masks shared any pixels before being merged. If merged ROIs are all
+            merged rois shared any pixels before being merged. If merged ROIs are all
             on different planes, this should be True because ImageJ ROIs are defined on
             single planes.
     """
-    n_pixels_before = masks.sum().item()
-    n_rois_before = len(masks.roi)
+    # TODO assert bool before this / rename to something like 'total_weight' that would
+    # apply in non-boolean-mask case too
+    total_weight_before = rois.sum().item()
+    n_rois_before = len(rois.roi)
 
     def get_nonroi_shape(arr):
         return {k: n for k, n in zip(arr.dims, arr.shape) if k != 'roi'}
 
-    nonroi_shape_before = get_nonroi_shape(masks)
+    nonroi_shape_before = get_nonroi_shape(rois)
 
+    # TODO maybe i should use sum instead, if i'm not going to make the aggregation
+    # function configurable?
     # If `on` contains NaN values, the groupby will not include groups for the NaN
     # values, and there is no argument to configure this (as in pandas). Therefore,
     # we need to drop things that were merged and then add these to what remains.
-    merged = masks.groupby(on).max().rename({on: 'roi'})
+    # TODO do i need to check that nothing else conflicts w/ what i plan on renaming
+    # `on` to ('roi')?
+    merged = rois.groupby(on).max().rename({on: 'roi'})
 
     def parse_int_roi_label(s):
         return int(s.strip('_'))
@@ -2172,8 +2339,8 @@ def merge_ijroi_masks(masks, on='ijroi_prefix', label_fn=None, check_no_overlap=
     # expect a fn that takes a DataArray (and it's not passing scalar DataArrays either)
     merged = merged.assign_coords(roi=merged_roi_labels)
 
-    not_merged = masks[on].isnull()
-    unmerged = masks.where(not_merged, drop=True).reset_index('roi', drop=True)
+    not_merged = rois[on].isnull()
+    unmerged = rois.where(not_merged, drop=True).reset_index('roi', drop=True)
 
     n_orig_rois_merged = (~ not_merged).values.sum()
     n_rois_after = n_rois_before - n_orig_rois_merged + len(merged.roi)
@@ -2185,26 +2352,74 @@ def merge_ijroi_masks(masks, on='ijroi_prefix', label_fn=None, check_no_overlap=
 
     # The .groupby (seemingly with any function application, as .first() also does it)
     # and .where both change the dtype to float64 from bool
-    was_bool = masks.dtype == 'bool'
+    was_bool = rois.dtype == 'bool'
 
-    masks = xr.concat([merged, unmerged], 'roi')
+    rois = xr.concat([merged, unmerged], 'roi')
 
     if was_bool:
-        masks = masks.astype('bool')
+        rois = rois.astype('bool')
 
-    assert n_rois_after == len(masks.roi)
-    assert len(set(masks.roi.values)) == len(masks.roi)
+    assert n_rois_after == len(rois.roi)
+    assert len(set(rois.roi.values)) == len(rois.roi)
 
-    n_pixels_after = masks.sum().item()
+    total_weight_after = rois.sum().item()
     if check_no_overlap:
-        assert n_pixels_before == n_pixels_after
+        assert total_weight_before == total_weight_after
     else:
-        assert n_pixels_before >= n_pixels_after
+        assert total_weight_before >= total_weight_after
 
-    nonroi_shape_after = get_nonroi_shape(masks)
+    nonroi_shape_after = get_nonroi_shape(rois)
     assert nonroi_shape_before == nonroi_shape_after
 
-    return masks
+    return rois
+
+
+def merge_ijroi_masks(masks, **kwargs):
+    """
+    Args:
+        masks (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
+            'roi' should be indexed by a MultiIndex and one of the levels should have
+            the name of the `on` argument. Currently expect the dtype to be 'bool'.
+    """
+    # TODO probably assert bool
+    # TODO assert ijroi_prefix in here / accept kwarg on (defaulting to same), and
+    # assert that's here
+
+    def parse_int_roi_label(s):
+        return int(s.strip('_'))
+
+    return merge_rois(masks, on='ijroi_prefix', label_fn=parse_int_roi_label, **kwargs)
+
+
+def remerge_suite2p_merged(traces, stat_dict, merges, how='best_plane'):
+    """
+    Accepts input as the output of `load_s2p_outputs` (currently in al_pair_grid.py).
+    """
+    if how != 'best_plane':
+        raise NotImplementedError("only how='best_plane' currently supported")
+
+    # TODO need to convert to xarray first?
+
+    import ipdb; ipdb.set_trace()
+
+
+# TODO TODO TODO make another function that groups rois based on spatial overlap
+# (params to include [variable-number-of?] dilation steps, fraction of pixels[/weight?]
+# that need to overlap, and correlation of responses required) -> generate appropriate
+# input to [refactored + renamed] merge_ijroi_masks fn below, particularly the `masks`
+# and `on` arguments, and have label_fn be identity
+
+# TODO TODO how to handle a correlation threshold? pass correlations of some kind in
+# or something to compute them from (probably the former, or make the correlation
+# thresholding a separate step)?
+def merge_single_plane_rois(rois, min_overlap_frac=0.3, n_dilations=1):
+    """
+    For handling single plane ROIs that are on adjacent Z planes, and correspond to the
+    same biological feature. This is to merge the single plane ROIs that suite2p
+    outputs.
+    """
+    raise NotImplementedError
+    import ipdb; ipdb.set_trace()
 
 
 # TODO test / document requirements for type / properties of contour. it's just a
@@ -3041,7 +3256,7 @@ def closed_mpl_contours(footprint, ax=None, if_multiple='err', **kwargs):
     dims = footprint.shape
     padded_footprint = np.zeros(tuple(d + 2 for d in dims))
     padded_footprint[tuple(slice(1,-1) for _ in dims)] = footprint
-    
+
     # TODO delete
     #fig = plt.figure()
     #
@@ -5105,7 +5320,7 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=euclidean_dist,
     right_unmatched: same as left_unmatched, but for (t + 1) with respect to t.
 
     total_costs: array of sums of costs from matching.
-    
+
     fig: matplotlib figure handle to the figure with all ROIs on it,
         for modification downstream.
     """
@@ -6198,7 +6413,7 @@ def latest_trace_pickles():
     def vars_from_filename(tp_path):
         final_part = split(tp_path)[1][:-2]
 
-        # Note that we have lost any more precise time resolution, so an 
+        # Note that we have lost any more precise time resolution, so an
         # exact search for this timestamp in database would fail.
         n_time_chars = len('YYYYMMDD_HHMM')
         run_at = pd.Timestamp(datetime.strptime(final_part[:n_time_chars],
@@ -6258,7 +6473,8 @@ def add_recording_id(df):
     return add_group_id(df, recording_cols, name=name)
 
 
-def thor2tiff(thorimage_dir, output_name=None, if_exists='err', verbose=True):
+def thor2tiff(thorimage_dir, output_name=None, output_basename=None,
+    output_dir=None, if_exists='err', verbose=True):
     """Converts ThorImage .raw file to .tif file in same directory
 
     Args:
@@ -6266,11 +6482,20 @@ def thor2tiff(thorimage_dir, output_name=None, if_exists='err', verbose=True):
     """
     assert if_exists in ('err', 'overwrite', 'ignore')
 
+    if all([x is not None for x in (output_name, output_basename)]):
+        raise ValueError('only pass at most one of output_name or output_basename')
+
     # TODO .tif or .tiff?
     tiff_ext = '.tif'
+    if output_name is None and output_basename is None:
+        output_basename = f'raw{tiff_ext}'
 
     if output_name is None:
-        output_name = join(thorimage_dir, 'converted' + tiff_ext)
+        if output_dir is None:
+            output_dir = thorimage_dir
+
+        assert isdir(output_dir), f'output_dir={output_dir} was not a directory'
+        output_name = join(output_dir, output_basename)
 
     # TODO maybe options to just ignore and NOOP if exists
     if exists(output_name):
