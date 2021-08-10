@@ -35,7 +35,13 @@ def matlabels(df, rowlabel_fn):
 # TODO maybe change __init__.py to make this directly accessible under hong2p?
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
     yticklabels=None, xtickrotation=None, colorbar_label=None,
-    group_ticklabels=False, ax=None, fontsize=None, fontweight=None):
+    group_ticklabels=False, ax=None, fontsize=None, fontweight=None,
+    transpose_sort_key=None, colorbar=True, **kwargs):
+    """
+    Args:
+        transpose_sort_key (None | function): takes df.index/df.columns and compares
+            output to decide whether matrix should be transposed before plotting
+    """
     # TODO TODO w/ all ticklabels kwargs, also support them being functions,
     # which operate on (what type exactly?) index rows
     # TODO shouldn't this get ticklabels from matrix if nothing else?
@@ -48,6 +54,21 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         ax = fig.add_subplot(111)
         made_fig = True
 
+    # NOTE: if i'd like to also sort on [x/y]ticklabels, would need to move this block
+    # after possible ticklabel enumeration, and then assign correctly to index/cols and
+    # use that as input to sort_key_val in appropriate instead
+    if transpose_sort_key is not None:
+        if any([x is not None for x in [ticklabels, xticklabels, yticklabels]]):
+            raise NotImplementedError('transpose_sort_key not supported if any '
+                'ticklabels are explicitly passed'
+            )
+
+        row_sort_key = transpose_sort_key(df.index)
+        col_sort_key = transpose_sort_key(df.columns)
+
+        if row_sort_key > col_sort_key:
+            df = df.T
+
     def one_level_str_index(index):
         return (len(index.shape) == 1 and
             all(index.map(lambda x: type(x) is str)))
@@ -58,6 +79,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
                 xticklabels = df.columns
             else:
                 xticklabels = None
+
             if one_level_str_index(df.index):
                 yticklabels = df.index
             else:
@@ -69,6 +91,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
             if callable(ticklabels):
                 ticklabels = matlabels(df, ticklabels)
 
+            # TODO should i check output is same on rows/cols in this case?
+            # currently, matlabels seems to just operate on the row labels...
             xticklabels = ticklabels
             yticklabels = ticklabels
     else:
@@ -87,10 +111,12 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     if fontsize is None:
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
-    cax = ax.matshow(df)
+    cax = ax.matshow(df, **kwargs)
 
     # just doing it in this case now to support kc_analysis use case
     # TODO put behind flag or something
+    # TODO TODO TODO why was it conditional on this before?
+    #if colorbar:
     if made_fig:
         cbar = fig.colorbar(cax)
 
@@ -134,15 +160,20 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
             else:
                 xtickrotation = 'vertical'
 
+        # TODO fix "UserWarning: FixedFormatter should only be used together with
+        # FixedLocator" on this line and set_yticklabels below. the rotation kwarg
+        # (alone, at least) isn't responsible.
         ax.set_xticklabels(xticklabels, fontsize=fontsize,
-            fontweight=fontweight, rotation=xtickrotation)
-        #    rotation='horizontal' if group_ticklabels else 'vertical')
+            fontweight=fontweight, rotation=xtickrotation
+        #    rotation='horizontal' if group_ticklabels else 'vertical'
+        )
         ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
 
     if yticklabels is not None:
         ax.set_yticklabels(yticklabels, fontsize=fontsize,
-            fontweight=fontweight, rotation='horizontal')
-        #    rotation='vertical' if group_ticklabels else 'horizontal')
+            fontweight=fontweight, rotation='horizontal'
+        #    rotation='vertical' if group_ticklabels else 'horizontal'
+        )
         ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
 
     # TODO test this doesn't change rotation if we just set rotation above
@@ -150,7 +181,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     # this doesn't seem like it will work, since it seems to clear the default
     # ticklabels that there actually were...
     #ax.set_yticklabels(ax.get_yticklabels(), fontsize=fontsize,
-    #    fontweight=fontweight)
+    #    fontweight=fontweight
+    #)
 
     # didn't seem to do what i was expecting
     #ax.spines['bottom'].set_visible(False)
@@ -166,10 +198,13 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         return cax
 
 
-def imshow(img, title):
+def imshow(img, title=None, cmap='gray'):
     fig, ax = plt.subplots()
-    ax.imshow(img, cmap='gray')
-    ax.set_title(title)
+    ax.imshow(img, cmap=cmap)
+
+    if title is not None:
+        ax.set_title(title)
+
     ax.axis('off')
     return fig
 
@@ -218,13 +253,13 @@ def add_colorbar(fig, im):
     return cbar
 
 
-def image_grid(image_list):
+def image_grid(image_list, **imshow_kwargs):
     # TODO TODO see: https://stackoverflow.com/questions/42850225 or related to find a
     # good solution for reliably eliminating all unwanted whitespace between subplots
     n = int(np.ceil(np.sqrt(len(image_list))))
     fig, axs = plt.subplots(n,n)
     for ax, img in zip(axs.flat, image_list):
-        ax.imshow(img, cmap='gray')
+        ax.imshow(img, cmap='gray', **imshow_kwargs)
 
     for ax in axs.flat:
         ax.axis('off')
@@ -643,7 +678,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             cell_row = (prep_date, fly_num, thorimage_id, cell_id)
             footprint_row = footprints.loc[cell_row]
 
-            # TODO TODO TODO probably need to tranpose how footprint is handled
+            # TODO TODO TODO probably need to transpose how footprint is handled
             # downstream (would prefer not to transpose footprint though)
             # (as i had to switch x_coords and y_coords in db as they were
             # initially entered swapped)
@@ -727,7 +762,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 # TODO TODO also show any other contours in this rectangular ROI
                 # in a diff color! (copy how gui does this)
                 cell2contour[cell_id] = \
-                    closed_mpl_contours(cropped_footprint, ax, colors='red')
+                    util.closed_mpl_contours(cropped_footprint, ax, colors='red')
 
             ax.axis('off')
 
