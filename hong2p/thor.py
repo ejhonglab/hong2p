@@ -8,7 +8,7 @@ from os.path import join, split, sep, isdir, normpath, getmtime, abspath
 import xml.etree.ElementTree as etree
 from datetime import datetime
 import warnings
-from pprint import pprint
+from pprint import pprint, pformat
 import glob
 from itertools import zip_longest
 
@@ -134,6 +134,10 @@ def get_thorimage_n_channels_xml(xml):
     # enabled with zero gain and it will still have corresponding data in the file.
     def is_enabled(channel):
         return int(pmt['enable' + channel])
+
+    # TODO also check gain is nonzero? or maybe we don't want that since it seems some
+    # data can have one channel w/ zero gain yet still "data" occupies that space in the
+    # (at least raw) file format
 
     # Technically ThorImage metadata seems to go out to C and D as well, but even if
     # those are accidentally enabled, it seems that no additional garbage data going in
@@ -390,7 +394,7 @@ def get_thorsync_h5(thorsync_dir):
 # TIFF outputs thorimage might have saved (check that dimension orders are the
 # same!)?
 def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
-    checks=True):
+    checks=True, _debug=False):
     """Returns (t,[z,]y,x) indexed timeseries as a numpy array.
     """
     fps, xy, z, c, n_flyback, imaging_file, xml = \
@@ -439,6 +443,8 @@ def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
 
     # TODO how to reshape if there are also multiple channels?
 
+    # TODO TODO TODO just delete the data that needed special casing here unless it
+    # actually seems like it might be useful -> delete the special casing in the code
     if z > 0:
         # TODO TODO some way to set pockel power to zero during flyback frames?
         # not sure why that data is even wasting space in the file...
@@ -501,6 +507,29 @@ def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
         data = np.reshape(data, (n_frames, c, y, x))
 
     if discard_channel_b:
+        if _debug:
+            from hong2p.viz import image_grid
+            import matplotlib.pyplot as plt
+
+            mean = data.mean(axis=0)
+
+            if len(mean.shape) == 4:
+                ch1_images = mean[:, 0]
+                ch2_images = mean[:, 1]
+
+            elif len(mean.shape) == 3:
+                ch1_images = [mean[0]]
+                ch2_images = [mean[1]]
+
+            else:
+                assert False
+
+            # To visually verify that the data in this channel (when gain is zero) is
+            # not meaningful and can be discarded
+            image_grid(ch1_images)
+            image_grid(ch2_images)
+            plt.show()
+
         slices = [slice(None)] * len(data.shape)
 
         # (the channel dimension)
@@ -510,6 +539,17 @@ def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
         assert len(data.shape) == len(slices) - 1, ('channel dimension should no longer'
             'be in shape'
         )
+
+    else:
+        # Just for now, since write_tiff currently doesn't support the extra dimension
+        # the 'c' channel would add.
+        assert (
+            all(x > 1 for x in data.shape[:-3]) and
+            all(x > 1 for x in data.shape[(-3 + 1):])
+        ), f'data.shape: {data.shape}'
+
+        assert data.shape[-3] == 1, f'c: {c}, data.shape: {data.shape}'
+        data = np.squeeze(data)
 
     return data
 
@@ -576,7 +616,8 @@ hdf5_dataset_rename_dict = {
 # people can figure out their own data post hoc w/o needing other tools
 def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     drop_gctr=True, return_dataset_names_only=False, skip_dict_rename=False,
-    skip_normalization=False, rename_dict=None, use_tqdm=False, verbose=False):
+    skip_normalization=False, rename_dict=None, use_tqdm=False, verbose=False,
+    _debug=False):
     """Loads ThorSync .h5 output within `thorsync_dir` into a `pd.DataFrame`
 
     A column 'time_s' will be added, which is derived from 'GCtr', and
@@ -667,6 +708,10 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     # (need to `sudo apt install hdf5-tools` first)
     hdf5_fname = get_thorsync_h5(thorsync_dir)
 
+    if _debug:
+        from os.path import getsize
+        print(f'HDF5 ({hdf5_fname}) size: {getsize(hdf5_fname):,} bytes')
+
     if rename_dict is None:
         rename_dict = hdf5_dataset_rename_dict
 
@@ -743,7 +788,11 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
             # analog inputs to be the same as one of the builtin dataset names
             assert dataset_name not in data_dict, 'dataset names not unique'
 
-            values = obj[:, 0]
+            # Seems to be about twice as fast as `values = obj[:, 0]`
+            # Doesn't seem like there is a faster way to do this. IO limited hopefully.
+            # There is h5py <dataset>.read_direct(<empty np array>, ...), but I think it
+            # would behave the same.
+            values = np.array(obj).squeeze()
 
             if parent_name == '/DI':
                 # Anything non-zero gets converted to True
@@ -783,6 +832,8 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         df[time_col] = df[gctr_col] / int(2e7)
 
         if drop_gctr:
+            # This is surprisingly slow. ~25% of runtime of this function loading a few
+            # columns of a ~1.7Gb file (kernprof). Faster way?
             df.drop(columns=gctr_col, inplace=True)
 
     else:
@@ -793,6 +844,11 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         print(gctr_col.lower() in {x.lower() for x in datasets})
         assert (datasets is not None and
             gctr_col.lower() not in {x.lower() for x in datasets}
+        )
+
+    if _debug:
+        print(f'ThorSync dataframe memory usage: {df.memory_usage(deep=True).sum():,} '
+            'bytes'
         )
 
     # Just to illustrate what the sampling rate in the XML is. This check should
@@ -814,7 +870,7 @@ def threshold_crossings(signal, threshold=None, onsets=True, offsets=True):
     """
     Returns indices where signal goes from < threshold to > threshold as onsets,
     and where signal goes from > threshold to < threshold as offsets.
-    
+
     Cases where it at one index equals the threshold are ignored. Shouldn't
     happen and may indicate electrical problems for our application.
 
@@ -978,7 +1034,7 @@ def find_last_true(x):
 # TODO delete frame out name handling after forcing it to be a constant name in
 # load_thorsync_hdf5
 def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
-    acquisition_trigger_names=None, warn=True, _debug=False):
+    acquisition_trigger_names=None, warn=True, _debug=False, _wont_use_df_after=False):
     """Returns seconds from start of ThorSync recording for each frame.
 
     Arguments:
@@ -1030,6 +1086,7 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
     if acquisition_trigger_names is None:
         acquisition_trigger_names = _acquisition_trigger_names
 
+    # ~28% of time (kernprof on one test input)
     acq_onsets, acq_offsets = get_col_onset_offset_indices(df,
         acquisition_trigger_names, threshold=2.5
     )
@@ -1037,6 +1094,7 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
     if len(acq_onsets) == 0:
         raise ValueError('no recording periods found in ThorSync data')
 
+    # weirdly, in my one test case so far, this 1st line took ~9% of time and 2nd ~0%
     acq_onset_times = df.time_s[acq_onsets].values
     acq_offset_times = df.time_s[acq_offsets].values
 
@@ -1064,7 +1122,9 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
             f'({min_block_duration_s:.1f})'
         )
 
-    df = df[df.time_s >= first_real_block_onset_s]
+    # Considerably faster than:
+    # `df = df[df.time_s >= first_real_block_onset_s]`
+    df = df.iloc[df.time_s.searchsorted(first_real_block_onset_s):]
 
     # I did some tests where I defined old_frame_out_[on/off]sets as below, just
     # computed before subsetting the DataFrame on the line above, and these held true:
@@ -1080,7 +1140,13 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
     acq_onsets = acq_onsets[first_real_block_idx:] - new_first_thorsync_idx
     acq_offsets = acq_offsets[first_real_block_idx:] - new_first_thorsync_idx
 
-    df = df.reset_index(drop=True)
+    # ~37% of time (kernprof on one test input)
+    # If we could guarantee we wouldn't use the dataframe after, we could do this
+    # inplace and save all of that time, but it's not worth the possible bugs.
+    if not _wont_use_df_after:
+        df = df.reset_index(drop=True)
+    else:
+        df.reset_index(drop=True, inplace=True)
 
     if _debug:
         print('subsetting dataframe to rows where time_s >= '
@@ -1089,6 +1155,7 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
 
     # TODO refactor 'frame_out' and other hardcoded col name strings to top w/ variable
     # (user renameable) ones
+    # ~24% of time (kernprof on one test input)
     frame_out_onsets, frame_out_offsets = get_col_onset_offset_indices(df,
         'frame_out', threshold=0.5
     )
@@ -1412,7 +1479,7 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
     odor_timing_names=None, check_all_frames_assigned=True,
     check_no_discontinuity=True, **kwargs):
     """Returns list of (start, first_odor_frame, end) frame indices
-    
+
     One 3-tuple per odor presentation.
 
     Frames are indexed as they are along the first dimension of the movie,
@@ -1456,9 +1523,11 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
     if odor_timing_names is None:
         odor_timing_names = _odor_timing_names
 
-    if type(thorsync_input) is not str:
+    # This also actually works w/ stuff of type np.str_, which old comparison did not.
+    if not isinstance(thorsync_input, str):
         # Just assuming it's an appropriate DataFrame input in this case.
         df = thorsync_input
+        df_was_passed_in = True
     else:
         # TODO maybe unify definition of these cols w/ default dataset names loaded in
         # load_thorsync_hdf5 (fn that takes kwargs to override certain manually-named
@@ -1472,7 +1541,10 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
         )
         dataset_names += acq_trigger_names
 
+        # ~78% of time (if called)
         df = load_thorsync_hdf5(thorsync_input, datasets=dataset_names)
+
+        df_was_passed_in = False
 
     del thorsync_input
 
@@ -1484,7 +1556,16 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
 
     odor_onset_times = df[time_col].values[odor_onsets]
 
-    frame_times = get_frame_times(df, thorimage_dir, **kwargs)
+    # unsafe if caller has a reference to `df`, but can save a small amount of time if
+    # they don't (i.e. if we loaded it in this function)
+    _wont_use_df_after = not df_was_passed_in
+
+    # assuming load_thorsync_hdf5 is called in this fn, this is ~19% of the time,
+    # and ~2/3rd that if _wont_use_df_after=True
+    frame_times = get_frame_times(df, thorimage_dir,
+        _wont_use_df_after=_wont_use_df_after, **kwargs
+    )
+    del df
 
     block_ranges = assign_frame_times_to_blocks(frame_times)
 
@@ -1672,7 +1753,7 @@ def is_thorimage_dir(d, verbose=False):
     """
     if not isdir(d):
         return False
-   
+
     # No matter how many directory levels `d` contains, `listdir` only returns
     # the basename of each file, not any preceding part of the path.
     files = {f for f in listdir(d)}
@@ -1690,14 +1771,21 @@ def is_thorimage_dir(d, verbose=False):
         elif is_thorimage_raw(f):
             have_raw = True
 
+        # TODO replace w/ regex that also matches number parts in middle
+        # (though exact number of digits may vary between 3 and 4, and not sure number
+        # of parts is always 4)
+        elif f.startswith('ChanA_') and f.endswith('.tif'):
+            have_tiff = True
+
+        if have_xml and (have_raw or have_tiff):
+            break
+
     if verbose:
         print('have_xml:', have_xml)
         print('have_raw:', have_raw)
-        if have_xml and not have_raw:
-            print('all dir contents:')
-            pprint(files)
+        print('have_tiff:', have_tiff)
 
-    if have_xml and have_raw:
+    if have_xml and (have_raw or have_tiff):
         return True
     else:
         return False
@@ -1791,7 +1879,8 @@ def thor_subdirs(parent_dir, absolute_paths=True):
 # stimulus files / arbitrary other files.
 def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     use_ranking=True, check_against_naming_conv=False,
-    check_unique_thorimage_nums=None, verbose=False, ignore_strs=None):
+    check_unique_thorimage_nums=None, verbose=False, ignore_prepairing=None,
+    ignore=None):
     """
     Takes lists (not necessarily same len) of dirs, and returns a list of
     lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
@@ -1806,9 +1895,18 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
         Requires check_against_naming_conv to be True. Defaults to True if
         check_against_naming_conv is True, else defaults to False.
 
-    ignores_strs (None | iterable of str): An optional iterable of substrings. If any
-        are present in the name of a Thor directory, that directory will be excluded
-        from consideration in pairing.
+    ignore_prepairing (None | iterable of str): An optional iterable of substrings. If
+        any are present in the name of a Thor directory, that directory will be excluded
+        from consideration in pairing. This is mainly to keep the (fragile)
+        implementation that requires equal numbers of ThorImage and ThorSync directories
+        for pairing working if some particular experiments named a certain way only have
+        data from one. Will also be try appending these to `ignore` if uneven numbers of
+        directories and `use_ranking=True`.
+
+    ignore (None | iterable of str): As `ignore_prepairing`, but ignore will happen
+        after pairing. Both the ThorImage and ThorSync directories of a pair will be
+        checked for these substrings and if any match the pair is not returned. This is
+        mainly intended to ignore known-bad data.
 
     Raises ValueError if two dirs of one type match to the same one of the
     other, but just returns shorter list of pairs if some matches can not be
@@ -1818,17 +1916,39 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     Raises AssertionError when assumptions are violated in a way that should
     trigger re-evaluating the code.
     """
-    if ignore_strs is not None:
+    if ignore_prepairing is not None:
+        orig_thorimage_dirs = list(thorimage_dirs)
+        orig_thorsync_dirs = list(thorsync_dirs)
+
         thorimage_dirs = [x for x in thorimage_dirs
-            if not any([sub_str in x for sub_str in ignore_strs])
+            if not any([sub_str in x for sub_str in ignore_prepairing])
         ]
         thorsync_dirs = [x for x in thorsync_dirs
-            if not any([sub_str in x for sub_str in ignore_strs])
+            if not any([sub_str in x for sub_str in ignore_prepairing])
         ]
 
     if use_ranking:
         if len(thorimage_dirs) != len(thorsync_dirs):
-            raise ValueError('can only pair with ranking when equal # dirs')
+
+            if ignore_prepairing is not None:
+                if ignore is None:
+                    ignore = []
+                else:
+                    ignore = list(ignore)
+
+                ignore.extend(ignore_prepairing)
+
+                return pair_thor_dirs(orig_thorimage_dirs, orig_thorsync_dirs,
+                    use_mtime=use_mtime, use_ranking=use_ranking,
+                    check_against_naming_conv=check_against_naming_conv,
+                    check_unique_thorimage_nums=check_unique_thorimage_nums,
+                    verbose=verbose, ignore_prepairing=None, ignore=ignore
+                )
+
+            raise ValueError('can only pair with ranking when equal # dirs.\n\n'
+                f'thorimage_dirs ({len(thorimage_dirs)}):\n{pformat(thorimage_dirs)}\n'
+                f'\nthorsync_dirs ({len(thorsync_dirs)}):\n{pformat(thorsync_dirs)}'
+            )
 
     if check_unique_thorimage_nums and not check_against_naming_conv:
         raise ValueError('check_unique_thorimage_nums=True requires '
@@ -1963,6 +2083,11 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
         # TODO maybe also re-order pairs by these rankings? or by their own,
         # to also include case where not check_against... ?
 
+    if ignore is not None:
+        pairs = [(ti, ts) for ti, ts in pairs
+            if not any([(sub_str in ti or sub_str in ts) for sub_str in ignore])
+        ]
+
     return pairs
 
     """
@@ -1989,7 +2114,7 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
         # where there are mismatched #'s of recordings
         # (first tid will get the tsd, even if another tid is closer)
         # scipy.optimize.linear_sum_assignment looks interesting, but
-        # not sure it can handle 
+        # not sure it can handle
 
         min_positive_td = None
         closest_tsd = None
@@ -2081,7 +2206,7 @@ def tif2xml_root(filename):
 # TODO + also likely refactor this outside here as mentioned for tif2... above
 def fps_from_thor(df):
     """Takes a DataFrame and returns fps from ThorImage XML.
-    
+
     df must have a 'thorimage_dir' column (that can be either a relative or
     absolute path, as long as it's under raw_data_root), which is expected to
     only contain one unique value.
