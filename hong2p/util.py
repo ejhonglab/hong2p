@@ -287,7 +287,7 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
 # TODO TODO TODO merge into date_fly_list2paired_thor_dirs or just delete that and add
 # kwarg here to replace above (too similar)
 def paired_thor_dirs(start_date=None, end_date=None, n_first=None, verbose=False,
-    **pair_kwargs):
+    print_skips=True, print_fast=True, **pair_kwargs):
     # TODO add code example to doc
     """
 
@@ -338,7 +338,7 @@ def paired_thor_dirs(start_date=None, end_date=None, n_first=None, verbose=False
     for g in gs:
         date_fly = date_fly_parts(g)
         if date_fly in fast_parts:
-            if verbose:
+            if verbose and print_fast:
                 print(f'not using {g} because had equivalent fast dir under '
                     f'{_fast_data_root}'
                 )
@@ -352,7 +352,7 @@ def paired_thor_dirs(start_date=None, end_date=None, n_first=None, verbose=False
         try:
             fly_num = int(fly_part)
         except ValueError:
-            if verbose:
+            if verbose and print_skips:
                 print(f'skipping {d} because could not parse fly_num from {fly_part}')
 
             continue
@@ -360,19 +360,19 @@ def paired_thor_dirs(start_date=None, end_date=None, n_first=None, verbose=False
         try:
             date = pd.Timestamp(datetime.strptime(date_part, date_fmt_str))
         except ValueError:
-            if verbose:
+            if verbose and print_skips:
                 print(f'skipping {d} because could not parse date from {date_part}')
 
             continue
 
         if start_date is not None and date < start_date:
-            if verbose:
+            if verbose and print_skips:
                 print(f'skipping {d} because earlier than {format_date(start_date)}')
 
             continue
 
         if end_date is not None and end_date < date:
-            if verbose:
+            if verbose and print_skips:
                 print(f'skipping {d} because later than {format_date(end_date)}')
 
             continue
@@ -1937,7 +1937,7 @@ def parent_recording_id(tiffname_or_thorimage_id):
     if match is None:
         raise ValueError('not a subrecording')
     return match.group(1)
-        
+
 
 def write_tiff(tiff_filename, movie, strict_dtype=True):
     # TODO also handle diff color channels
@@ -2009,7 +2009,7 @@ def write_tiff(tiff_filename, movie, strict_dtype=True):
     #movie = np.swapaxes(movie, -2, -1)
 
     # TODO TODO is "UserWarning: TiffWriter: truncating ImageJ file" actually
-    # something to mind? for example, w/ 2020-04-01/2/fn as input, the .raw is 
+    # something to mind? for example, w/ 2020-04-01/2/fn as input, the .raw is
     # 8.3GB and the .tif is 5.5GB (w/ 3 flyback frames for each 6 non-flyback
     # frames -> 8.3 * (2/3) = ~5.53  (~ 5.5...). some docs say bigtiff is not
     # supported w/ imagej=True, so maybe that wouldn't be a quick fix if the
@@ -2286,10 +2286,9 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
 
 
 # TODO maybe add a fn to plot single xarray masks for debugging?
-# TODO TODO at least if i refactor this to be less specific to ijrois, have label_fn
-# default to identity
 # TODO TODO change `on` default to something like `roi`
-def merge_rois(rois, on='ijroi_prefix', label_fn=None, check_no_overlap=False):
+def merge_rois(rois, on='ijroi_prefix', merge_fn=None, label_fn=None,
+    check_no_overlap=False):
     """
     Args:
         rois (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
@@ -2300,9 +2299,8 @@ def merge_rois(rois, on='ijroi_prefix', label_fn=None, check_no_overlap=False):
 
         label_fn (callable): function mapping the values of the `on` column to labels
             for the ROIs. Only ROIs created via merging will be given these labels,
-            while unmerged ROIs will recieve unique number labels. Defaults to a
-            function that takes strings, removes trailing/leading underscores, and
-            parses an int from what remains.
+            while unmerged ROIs will recieve unique number labels. Defaults to the
+            identity function.
 
         check_no_overlap (bool): (optional, default=False) If True, checks that no
             merged rois shared any pixels before being merged. If merged ROIs are all
@@ -2326,13 +2324,18 @@ def merge_rois(rois, on='ijroi_prefix', label_fn=None, check_no_overlap=False):
     # we need to drop things that were merged and then add these to what remains.
     # TODO do i need to check that nothing else conflicts w/ what i plan on renaming
     # `on` to ('roi')?
-    merged = rois.groupby(on).max().rename({on: 'roi'})
+    if merge_fn is None:
+        merged = rois.groupby(on).max()
+    else:
+        #raise NotImplementedError
+        # TODO maybe try reduce? might need other inputs tho...
+        merged = rois.groupby(on).map(merge_fn)
 
-    def parse_int_roi_label(s):
-        return int(s.strip('_'))
+    # TODO some kind of inplace version of this? or does xarray not really do that?
+    merged = merged.rename({on: 'roi'})
 
     if label_fn is None:
-        label_fn = parse_int_roi_label
+        label_fn = lambda x: x
 
     merged_roi_labels = [label_fn(x) for x in merged.roi.values]
     # Trying to pass label_fn here instead of calling before didn't work b/c it seems to
@@ -2380,6 +2383,12 @@ def merge_ijroi_masks(masks, **kwargs):
         masks (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
             'roi' should be indexed by a MultiIndex and one of the levels should have
             the name of the `on` argument. Currently expect the dtype to be 'bool'.
+
+        label_fn (callable): function mapping the values of the `on` column to labels
+            for the ROIs. Only ROIs created via merging will be given these labels,
+            while unmerged ROIs will recieve unique number labels. Defaults to a
+            function that takes strings, removes trailing/leading underscores, and
+            parses an int from what remains.
     """
     # TODO probably assert bool
     # TODO assert ijroi_prefix in here / accept kwarg on (defaulting to same), and
@@ -2389,18 +2398,6 @@ def merge_ijroi_masks(masks, **kwargs):
         return int(s.strip('_'))
 
     return merge_rois(masks, on='ijroi_prefix', label_fn=parse_int_roi_label, **kwargs)
-
-
-def remerge_suite2p_merged(traces, stat_dict, merges, how='best_plane'):
-    """
-    Accepts input as the output of `load_s2p_outputs` (currently in al_pair_grid.py).
-    """
-    if how != 'best_plane':
-        raise NotImplementedError("only how='best_plane' currently supported")
-
-    # TODO need to convert to xarray first?
-
-    import ipdb; ipdb.set_trace()
 
 
 # TODO TODO TODO make another function that groups rois based on spatial overlap
@@ -2826,14 +2823,14 @@ def drop_incomplete_presentations():
 
 def smooth_1d(x, window_len=11, window='hanning'):
     """smooth the data using a window with requested size.
-    
+
     This method is based on the convolution of a scaled window with the signal.
-    The signal is prepared by introducing reflected copies of the signal 
+    The signal is prepared by introducing reflected copies of the signal
     (with the window size) in both ends so that transient parts are minimized
     in the begining and end part of the output signal.
-    
+
     input:
-        x: the input signal 
+        x: the input signal
         window_len: the dimension of the smoothing window; should be an odd
             integer
         window: the type of window from 'flat', 'hanning', 'hamming',
@@ -2842,18 +2839,18 @@ def smooth_1d(x, window_len=11, window='hanning'):
 
     output:
         the smoothed signal
-        
+
     example:
 
     t=linspace(-2,2,0.1)
     x=sin(t)+randn(len(t))*0.1
     y=smooth_1d(x)
-    
-    see also: 
-    
+
+    see also:
+
     numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
     scipy.signal.lfilter
- 
+
     TODO: the window parameter could be the window itself if an array instead of
     a string
     NOTE: length(output) != length(input), to correct this: return
@@ -2938,7 +2935,7 @@ def motion_correct_to_tiffs(thorimage_dir, output_dir):
             'us_fac', 50,
             'init_batch', 100,
             'plot_flag', false,
-            'iter', 2) 
+            'iter', 2)
 
         # TODO so is nothing actually happening in parallel?
         ## rigid moco
@@ -2955,7 +2952,7 @@ def motion_correct_to_tiffs(thorimage_dir, output_dir):
 
         # save .tif
         M = MC_rigid.M
-        M = uint16(M) 
+        M = uint16(M)
         tiffoptions.overwrite = true
 
         print(['saving tiff to ' rig_tif])
@@ -3170,7 +3167,7 @@ def pair_ordering(comparison_df):
                         raise ValueError('multiple mixtures in odors to order')
             assert last is not None, 'expected a mix'
             ordering[(last, 'no_second_odor')] = len(odors) - 1
-            
+
             i = 0
             for o in sorted(odors):
                 if o == last:
@@ -3350,7 +3347,7 @@ def baselined_normed_u8(img):
 
 # TODO refactor this behind a color=True kwarg baselined_normed_u8 above?
 def u8_color(draw_on):
-    # TODO figure out why background looks lighter here than in other 
+    # TODO figure out why background looks lighter here than in other
     # imshows of same input (w/o converting manually)
     draw_on = draw_on - np.min(draw_on)
     draw_on = draw_on / np.max(draw_on)
@@ -3505,7 +3502,7 @@ def euclidean_dist(v1, v2):
 # TODO make sure match criteria is comparable across scales (one threshold
 # ideally) (possible? using one of normalized metrics sufficient? test this
 # on fake test data?)
-def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None, 
+def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
     exclusion_radius_frac=0.7, min_dist2neighbor_px=15, min_neighbors=3,
     exclusion_mask=None,
     draw_on=None, debug=False, draw_bboxes=True, draw_circles=True,
@@ -3517,7 +3514,7 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
     Args:
     match_images (np.ndarray / iterable of same): 2-dimensional array of match
     value higher means better match of that point to template.
-        
+
         Shape is determined by the number of possible offsets of the template in
         the original image, so it is smaller than the original image in each
         dimension. As an example, for a 3x3 image and a 2x2 template, the
@@ -3673,7 +3670,7 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
         if thresholds is None:
             assert total_n is not None
 
-    # TODO optimal non-greedy alg for this problem? (maximize weight of 
+    # TODO optimal non-greedy alg for this problem? (maximize weight of
     # match_image summed across all assigned ROIs)
 
     # TODO do away with this copying if not necessary
@@ -3980,14 +3977,8 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
 
                     per_scale_last_idx[scale_idx] += 1
 
-                    '''
-                    if per_scale_last_idx[scale_idx] == len(matches):
-                        # TODO 
-                        import ipdb; ipdb.set_trace()
-                    '''
-
                     yield scale_idx, match_pt
-                    
+
     match_iter = match_iter_fn()
 
     # TODO and any point to having subpixel circles anyway?
@@ -4416,8 +4407,8 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
             else:
                 fname = _force_write_to
 
-        # TODO TODO TODO also check for modifications before overwriting (mtime 
-        # in that hidden file)
+        # TODO also check for modifications before overwriting (mtime in that hidden
+        # file)
         elif not overwrite and exists(fname):
             print(fname, 'already existed. returning.')
             return None, None, None, None
@@ -4453,7 +4444,7 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
     if exclude_dark_regions:
         histvals, bins = np.histogram(scaled_avg.flat, bins=100, density=True)
         hv_deltas = np.diff(histvals)
-        # TODO get the + 3 from a parameter controller percentage beyond 
+        # TODO get the + 3 from a parameter controller percentage beyond
         # count delta min
         # min from: histvals[idx + 1] - histvals[idx]
         idx = np.argmin(hv_deltas)
@@ -4775,7 +4766,7 @@ def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
     #assert b2o_offsets[-1] == b2o_offsets[-2]
     onset_frame_offset = b2o_offsets[-1]
     #
-    
+
     # TODO TODO TODO instead of this frame # strategy for assigning frames
     # to trials, maybe do this:
     # 1) find ~max # frames from block start to onset, as above
@@ -6120,7 +6111,7 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
                     xy0_was_matched = False
 
                 #if xy0_was_matched:
-                #    assert 
+                #    assert
                 #import ipdb; ipdb.set_trace()
 
             #import ipdb; ipdb.set_trace()
@@ -6270,7 +6261,7 @@ def correspond_and_renumber_rois(roi_xyd_sequence, debug=False, checks=False,
 def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     exlusion_radius=None, p=0.05, max_n=None, round_=False, diam_px=20,
     add_diameters=True, verbose=False):
-    # TODO maybe adapt p so it's the p over the course of the 
+    # TODO maybe adapt p so it's the p over the course of the
     # nt steps, and derivce single timestep p from that?
 
     if exlusion_radius is not None:
@@ -6295,7 +6286,7 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     initial_centers = np.random.randint(d, size=(max_n, 2))
 
     # TODO more idiomatic numpy way to generate cumulative noise?
-    # (if so, just repeat initial_centers to generate centers, and add the 
+    # (if so, just repeat initial_centers to generate centers, and add the
     # two) (maybe not, with my constraints...)
     # TODO TODor generate inside the loop (only as many as non-NaN, and only
     # apply to non NaN)
@@ -6369,7 +6360,7 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     if add_diameters:
         roi_diams = np.expand_dims(np.ones(centers.shape[:2]) * diam_px, -1)
         centers = np.concatenate((centers, roi_diams), axis=-1)
-    
+
     # TODO check output is in same kind of format as output of my matching fns
 
     return centers

@@ -68,17 +68,9 @@ def print_suite2p_params(thorimage_dir):
 
 def invert_combined_view_offset(combined_ops, roi):
 
-    # TODO TODO TODO probably assert that all pixels (after this) are within bounds of
-    # [0, Lx) and [0, Ly), UNLESS i modify this function to handle stuff merged across
-    # multiple panes of combined view
-    # TODO TODO TODO does merging across planes in combined view mangle some of the
-    # information i am currently using here (e.g. iplane)? i suppose i could determine
-    # which of the tiled plane panes the various pixels for a given (merged) roi
-    # occupies, and assign that way rather than using iplane? perhaps just for the stuff
-    # marked as merged?
-    # TODO TODO TODO actually probably just use imerge to find the stat entries for the
-    # input cells and use the iplanes from them (because yes, 'iplane' is essentially
-    # meaningless for the merged cells)
+    # TODO probably assert that all pixels (after this) are within bounds of [0, Lx) and
+    # [0, Ly), UNLESS i modify this function to handle stuff merged across multiple
+    # panes of combined view
 
     def evendiv(x, y):
         div, mod = divmod(x, y)
@@ -110,8 +102,8 @@ def invert_combined_view_offset(combined_ops, roi):
     return orig_coords_roi
 
 
-# TODO TODO TODO handle stuff in suite2p that is merged cross planes in the combined
-# view, such that each part goes on the appropriate plane and isn't mangled by
+# TODO TODO handle stuff in suite2p that is merged cross planes in the combined view,
+# such that each part goes on the appropriate plane and isn't mangled by
 # `invert_combined_view_offset`
 def suite2p_roi_stat2roi(roi_stat, ops, xy_only=False, fillna_0=True,
     invert_combined=True):
@@ -135,8 +127,8 @@ def suite2p_roi_stat2roi(roi_stat, ops, xy_only=False, fillna_0=True,
 
     xpix = roi_stat['xpix']
     ypix = roi_stat['ypix']
-    # TODO TODO TODO split into appropriate grid coordinates (if more than one),
-    # subtract off the appropriate offsets, and put each into the approprite z-slice
+    # TODO TODO split into appropriate grid coordinates (if more than one), subtract off
+    # the appropriate offsets, and put each into the approprite z-slice
     xy_roi[ypix, xpix] = roi_stat['lam']
 
     if xy_only:
@@ -150,29 +142,45 @@ def suite2p_roi_stat2roi(roi_stat, ops, xy_only=False, fillna_0=True,
     return roi
 
 
-def suite2p_stat2rois(stat, ops, as_xarray=True, **kwargs):
+def suite2p_stat2rois(stat, ops, merges=None, as_xarray=True, **kwargs):
     """Takes suite2p 'stat' array / dict (roi # -> roi stat) to array / xarray ROIs.
     """
-    # TODO TODO TODO first get a list of all the merged indices, and then only load the
-    # non-merged stuff (or maybe do that in the load fn, though i might need the
-    # original ROIs there... i suppose i could modify 'iplane' on load for the merged
-    # ROIs to be a sequence containing all the respective ones? not sure that would
-    # solve all my possible needs for non-merged-ROI-data...)
+    # TODO TODO kwargs for adding extra roi metadata (like scalar-per-roi
+    # max-response-magnitude or something?) or just add in subsequent steps (perhaps via
+    # assign_coords. seems like a pain though... may need to first extract and modify
+    # the pandas multiindex)?
 
-    # TODO TODO implement support for array input (output of unprocessed load of suite2p
+    # TODO implement support for array input (output of unprocessed load of suite2p
     # stat.npy)
+
+    if merges is not None and not as_xarray:
+        raise ValueError('merge labels can not be added unless as_xarray=True')
 
     roi_dict = {i: suite2p_roi_stat2roi(s, ops, **kwargs) for i, s in stat.items()}
 
     roi_array = np.stack(list(roi_dict.values()), axis=-1)
 
     if as_xarray:
-        roi_nums = roi_dict.keys()
+        roi_nums = np.array(list(roi_dict.keys()))
+
+        # Could be checked against logical_or-ing ing  the ROIs to find the plane w/
+        # non-zero values, but shouldn't be worth it and could take some time.
+        roi_z_indices = [s['iplane'] for s in stat.values()]
+
+        if merges is not None:
+            for merged_roi_num, merge_input_roi_nums in merges.items():
+
+                for mi in merge_input_roi_nums:
+                    mi_indices = roi_nums == mi
+                    assert mi_indices.sum() == 1, f'{mi_indices.sum()=}'
+                    roi_nums[mi_indices] = merged_roi_num
+
         # TODO maybe overwrite default sequential 'roi_num'?
-        rois = util.numpy2xarray_rois(roi_array,
-            roi_indices={'s2p_roi_num': roi_nums}
-        )
-        return rois
+        return util.numpy2xarray_rois(roi_array, roi_indices={
+            's2p_roi_num': roi_nums,
+            'roi_z': roi_z_indices,
+        })
+
     else:
         return roi_array
 
@@ -343,7 +351,7 @@ class LabelsNotSelectiveError(ROIsNotLabeledError):
     pass
 
 
-def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
+def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=True,
     merge_outputs=False, subset_stat=True):
 
     traces_path = join(plane_or_combined_dir, 'F.npy')
@@ -427,4 +435,88 @@ def load_s2p_combined_outputs(analysis_dir, **kwargs):
     """
     combined_dir = get_suite2p_combined_dir(analysis_dir)
     return load_s2p_outputs(combined_dir, **kwargs)
+
+
+# TODO TODO kwarg for trials stats, so if i compute df/f somewhere else, i can pass that
+# in as a means of picking the 'best' plane, etc (otherwise just compute from max signal
+# or compute df/f in here? leaning towards former for simplicity / avoiding argument
+# bloat)
+def remerge_suite2p_merged(traces, stat_dict, ops, merges, response_stats=None,
+    how='best_plane', renumber=False, verbose=False):
+    """
+    Accepts input as the output of `load_s2p_outputs`
+
+    Args:
+        response_stats
+    """
+    if how != 'best_plane':
+        raise NotImplementedError("only how='best_plane' currently supported")
+
+    if renumber:
+        raise NotImplementedError
+
+    if response_stats is None:
+        response_stats = traces.max() - traces.min()
+
+    # TODO TODO implement another strategy where as long as the response_stats are
+    # within some tolerance of the best, they are averaged? or weighted according to
+    # response stat?
+    # TODO maybe also use 2/3rd highest lowest frame / percentile rather than actual min
+    # / max (for picking 'best' plane), to gaurd against spiking noise
+
+    rois = suite2p_stat2rois(stat_dict, ops)
+
+    merge_output_roi_nums = np.empty(len(traces.columns)) * np.nan
+    # TODO maybe build up set of seen merge input indices and check they are all seen in
+    # columns of traces by end (that set seen in traces columns is same as set from
+    # unioning all values in merges)
+    for merge_output_roi_num, merge_input_roi_nums in merges.items():
+
+        merge_output_roi_nums[traces.columns.isin(merge_input_roi_nums)] = \
+            merge_output_roi_num
+
+    response_stats = response_stats.to_frame(name='response_stat')
+    mo_key = 'merge_output_roi_num'
+    response_stats[mo_key] = merge_output_roi_nums
+    gb = response_stats.groupby(mo_key)
+    best_per_merge_output = gb.idxmax()
+    best_inputs = best_per_merge_output.values.squeeze()
+    best = response_stats.loc[best_inputs]
+
+    assert np.array_equal(
+        best.response_stat.values,
+        gb.max().response_stat.values
+    )
+
+    if verbose:
+        by_response = response_stats.dropna().set_index('merge_output_roi_num',
+            append=True).swaplevel()
+
+    notbest_to_drop = []
+    for row in best.itertuples():
+        merge_output_roi_num = int(row.merge_output_roi_num)
+        curr_best = row.Index
+        curr_notbest = [
+            x for x in merges[merge_output_roi_num] if x != curr_best
+        ]
+        notbest_to_drop.extend(curr_notbest)
+
+        if verbose:
+            print(f'suite2p merged ROI {merge_output_roi_num}')
+            print(f'selecting input ROI {curr_best} as best plane')
+            print(f'dropping other input ROIs {curr_notbest}')
+            print(by_response.loc[merge_output_roi_num])
+            print()
+
+    traces = traces.drop(columns=notbest_to_drop)
+
+    # TODO maybe combine in to one step by just passing subsetted s2p_roi_num to
+    # assign_coords?
+    rois = rois.sel(roi= ~ rois.s2p_roi_num.isin(notbest_to_drop))
+    rois = rois.assign_coords(roi=rois.s2p_roi_num)
+
+    assert set(rois.roi.values) == set(traces.columns)
+    assert traces.columns.name == 'roi'
+
+    return traces, rois
 
