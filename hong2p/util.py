@@ -39,11 +39,16 @@ from hong2p import matlab, db, thor, viz
 DATA_ROOT_ENV_VAR = 'HONG2P_DATA'
 # TODO rename to be more general (exclude specific references to 'nas')?
 NAS_PREFIX_ENV_VAR = 'HONG_NAS'
-FALLBACK_DATA_ROOT_ENV_VAR = 'DATA_DIR'
+
+# If NAS_PREFIX_ENV_VAR is selected (i.e. DATA_ROOT_ENV_VAR is not defined), this is
+# used to find a path on the NAS that would be suiteable as a value for
+# DATA_ROOT_ENV_VAR (it's where I put my data on the NAS).
+NAS_PATH_TO_HONG2P_DATA = 'mb_team'
 
 # Sets optional faster-storage directory that is checked first (currently just in
 # `raw_fly_dir`).
-FAST_DATA_DIR_ENV_VAR = 'HONG2P_FAST_DATA_DIR'
+FAST_DATA_DIR_ENV_VAR = 'HONG2P_FAST_DATA'
+
 _fast_data_root = os.environ.get(FAST_DATA_DIR_ENV_VAR)
 if _fast_data_root is not None and not isdir(_fast_data_root):
     raise IOError(f'{FAST_DATA_DIR_ENV_VAR} set but is not a directory')
@@ -71,8 +76,6 @@ trial_cols = recording_cols + trial_only_cols
 date_fmt_str = '%Y-%m-%d'
 dff_latex = r'$\frac{\Delta F}{F}$'
 
-data_root_name = 'mb_team'
-
 
 # Module level cache.
 _data_root = None
@@ -99,8 +102,6 @@ def set_data_root(new_data_root):
 # TODO add verbose flag which says all the things it's searching? or log them to
 # loginfo level or something?
 def data_root():
-    # TODO doc how data_root_name above only used in here if prefix but not
-    # explicit directory is set (HONG_NAS and not HONG_2P_DATA)
     global _data_root
     if _data_root is None:
         # TODO print priority order of these env vars in any failure below
@@ -115,27 +116,22 @@ def data_root():
             prefix = os.environ[NAS_PREFIX_ENV_VAR]
             source = NAS_PREFIX_ENV_VAR
 
-        elif FALLBACK_DATA_ROOT_ENV_VAR in os.environ:
-            data_root = os.environ[FALLBACK_DATA_ROOT_ENV_VAR]
-            source = FALLBACK_DATA_ROOT_ENV_VAR
-
         else:
             prefix = '/mnt/nas'
             warnings.warn('None of environment variables specifying data path '
                 f'found!\nUsing default data path of : {prefix}\n'
-                f'Set one of the following: {DATA_ROOT_ENV_VAR}, {NAS_PREFIX_ENV_VAR}, '
-                f'{FALLBACK_DATA_ROOT_ENV_VAR}'
+                f'Set one of {DATA_ROOT_ENV_VAR} or {NAS_PREFIX_ENV_VAR}'
             )
             source = None
 
         if prefix is not None:
-            data_root = join(prefix, data_root_name)
+            data_root = join(prefix, NAS_PATH_TO_HONG2P_DATA)
 
         _data_root = data_root
 
         if not isdir(_data_root):
             # TODO list all possible keys here or at least say how searches from
-            # other keys can be overridden with HONG_2P_DATA
+            # other keys can be overridden with HONG2P_DATA
             emsg = (f'data root expected at {_data_root}, but no directory '
                 'exists there!'
             )
