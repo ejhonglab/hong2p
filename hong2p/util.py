@@ -34,12 +34,19 @@ from hong2p import matlab, db, thor, viz
 # use them, to reduce the number of hard dependencies.
 
 
+# These three environment variables are in priority order (if first defined, it will be
+# the one used).
+DATA_ROOT_ENV_VAR = 'HONG2P_DATA'
+# TODO rename to be more general (exclude specific references to 'nas')?
+NAS_PREFIX_ENV_VAR = 'HONG_NAS'
+FALLBACK_DATA_ROOT_ENV_VAR = 'DATA_DIR'
+
 # Sets optional faster-storage directory that is checked first (currently just in
 # `raw_fly_dir`).
-fast_data_dir_env_var = 'HONG2P_FAST_DATA_DIR'
-_fast_data_root = os.environ.get(fast_data_dir_env_var)
+FAST_DATA_DIR_ENV_VAR = 'HONG2P_FAST_DATA_DIR'
+_fast_data_root = os.environ.get(FAST_DATA_DIR_ENV_VAR)
 if _fast_data_root is not None and not isdir(_fast_data_root):
-    raise IOError(f'{fast_data_dir_env_var} set but is not a directory')
+    raise IOError(f'{FAST_DATA_DIR_ENV_VAR} set but is not a directory')
 
 np.set_printoptions(precision=2)
 
@@ -96,37 +103,34 @@ def data_root():
     # explicit directory is set (HONG_NAS and not HONG_2P_DATA)
     global _data_root
     if _data_root is None:
-        # TODO separate env var for local one? or have that be the default?
-        data_root_key = 'HONG_2P_DATA'
-        # TODO rename to be more general (exclude specific references to 'nas')
-        nas_prefix_key = 'HONG_NAS'
-        fallback_data_root_key = 'DATA_DIR'
-        # TODO print priority order of the above env vars in any failure below
-
+        # TODO print priority order of these env vars in any failure below
+        # TODO TODO refactor (to loop, w/ break, probably) to also check if directories
+        # exist before picking one to use?
         prefix = None
-        if data_root_key in os.environ:
-            data_root = os.environ[data_root_key]
-            source = data_root_key
+        if DATA_ROOT_ENV_VAR in os.environ:
+            data_root = os.environ[DATA_ROOT_ENV_VAR]
+            source = DATA_ROOT_ENV_VAR
 
-        elif nas_prefix_key in os.environ:
-            prefix = os.environ[nas_prefix_key]
-            source = nas_prefix_key
+        elif NAS_PREFIX_ENV_VAR in os.environ:
+            prefix = os.environ[NAS_PREFIX_ENV_VAR]
+            source = NAS_PREFIX_ENV_VAR
 
-        elif fallback_data_root_key in os.environ:
-            data_root = os.environ[fallback_data_root_key]
-            source = fallback_data_root_key
+        elif FALLBACK_DATA_ROOT_ENV_VAR in os.environ:
+            data_root = os.environ[FALLBACK_DATA_ROOT_ENV_VAR]
+            source = FALLBACK_DATA_ROOT_ENV_VAR
 
         else:
             prefix = '/mnt/nas'
             warnings.warn('None of environment variables specifying data path '
                 f'found!\nUsing default data path of : {prefix}\n'
-                f'Set one of the following: {data_root_key}, {nas_prefix_key}, '
-                f'{fallback_data_root_key}'
+                f'Set one of the following: {DATA_ROOT_ENV_VAR}, {NAS_PREFIX_ENV_VAR}, '
+                f'{FALLBACK_DATA_ROOT_ENV_VAR}'
             )
             source = None
 
         if prefix is not None:
             data_root = join(prefix, data_root_name)
+
         _data_root = data_root
 
         if not isdir(_data_root):
@@ -214,7 +218,7 @@ def raw_fly_dir(date, fly, warn=True, short=False):
             return fast_raw_fly_dir
         else:
             if warn:
-                warnings.warn(f'{fast_data_dir_env_var} set ({_fast_data_root}) but '
+                warnings.warn(f'{FAST_DATA_DIR_ENV_VAR} set ({_fast_data_root}) but '
                     f'raw data directory for fly ({date}, {fly}) did not exist there'
                 )
 
