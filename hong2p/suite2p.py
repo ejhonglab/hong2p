@@ -441,6 +441,7 @@ def load_s2p_combined_outputs(analysis_dir, **kwargs):
 # in as a means of picking the 'best' plane, etc (otherwise just compute from max signal
 # or compute df/f in here? leaning towards former for simplicity / avoiding argument
 # bloat)
+# TODO unit test
 def remerge_suite2p_merged(traces, stat_dict, ops, merges, response_stats=None,
     how='best_plane', renumber=False, verbose=False):
     """
@@ -480,9 +481,22 @@ def remerge_suite2p_merged(traces, stat_dict, ops, merges, response_stats=None,
     response_stats[mo_key] = merge_output_roi_nums
     gb = response_stats.groupby(mo_key)
     best_per_merge_output = gb.idxmax()
-    best_inputs = best_per_merge_output.values.squeeze()
+
+    # Selecting the only column this DataFrame has (i.e. shape (n, 1))
+    best_inputs = best_per_merge_output.iloc[:, 0]
+    # The groupby -> idxmax() otherwise would have left this column named
+    # 'response_stat', which is what we were picking an index to maximize, but the
+    # indices themselves are not response statistics.
+    best_inputs.name = 'roi'
+
     best = response_stats.loc[best_inputs]
 
+    # TODO delete eventually
+    assert np.array_equal(
+       response_stats.loc[best_inputs.values],
+       response_stats.loc[best_inputs]
+    )
+    #
     assert np.array_equal(
         best.response_stat.values,
         gb.max().response_stat.values

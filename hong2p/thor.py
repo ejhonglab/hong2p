@@ -51,6 +51,7 @@ def get_thorimage_xmlroot(thorimage_dir):
 
 
 def get_thorimage_time_xml(xml):
+    # TODO what type / format is 'recording start time' in? doc.
     """Takes etree XML root object to recording start time.
 
     XML object should be as returned by `get_thorimage_xmlroot`.
