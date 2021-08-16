@@ -61,6 +61,14 @@ setup(
             'thor2tiff=hong2p:thor2tiff_cli',
             'showsync=hong2p:showsync_cli',
             'suite2p-params=hong2p:suite2p_params_cli',
+
+            # Mainly to support shell functions that cd to these directories, e.g.
+            # 2p() {
+            #     cd "$(hong2p-data)"
+            # }
+            'hong2p-data=hong2p:print_data_root',
+            'hong2p-raw=hong2p:print_raw_data_root',
+            'hong2p-analysis=hong2p:print_analysis_intermediates_root',
         ],
     },
     author="Tom O'Connell",

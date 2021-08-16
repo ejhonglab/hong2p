@@ -73,3 +73,15 @@ def suite2p_params_cli():
 
     print_suite2p_params(thorimage_dir)
 
+
+def print_data_root():
+    print(util.data_root())
+
+
+def print_raw_data_root():
+    print(util.raw_data_root())
+
+
+def print_analysis_intermediates_root():
+    print(util.analysis_intermediates_root())
+

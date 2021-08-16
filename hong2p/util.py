@@ -47,11 +47,11 @@ NAS_PATH_TO_HONG2P_DATA = 'mb_team'
 
 # Sets optional faster-storage directory that is checked first (currently just in
 # `raw_fly_dir`).
-FAST_DATA_DIR_ENV_VAR = 'HONG2P_FAST_DATA'
+FAST_DATA_ROOT_ENV_VAR = 'HONG2P_FAST_DATA'
 
-_fast_data_root = os.environ.get(FAST_DATA_DIR_ENV_VAR)
+_fast_data_root = os.environ.get(FAST_DATA_ROOT_ENV_VAR)
 if _fast_data_root is not None and not isdir(_fast_data_root):
-    raise IOError(f'{FAST_DATA_DIR_ENV_VAR} set but is not a directory')
+    raise IOError(f'{FAST_DATA_ROOT_ENV_VAR} set but is not a directory')
 
 np.set_printoptions(precision=2)
 
@@ -154,6 +154,24 @@ def raw_data_root(root=None):
     return join(root, 'raw_data')
 
 
+# TODO kwarg / default to makeing dir if not exist (and for similar fns above)?
+def analysis_intermediates_root():
+    # TODO probably prefer using $HONG2P_DATA over os.getcwd() (assuming it's not on NAS
+    # and it therefore acceptably fast if not instead using $HONG_NAS)
+    if FAST_DATA_ROOT_ENV_VAR in os.environ:
+        intermediates_root_parent = os.environ[FAST_DATA_ROOT_ENV_VAR]
+    else:
+        warnings.warn(f'environment variable {FAST_DATA_ROOT_ENV_VAR} not set, so '
+            'storing analysis intermediates under current directory'
+        )
+        intermediates_root_parent = os.getcwd()
+
+    intermediates_root = join(intermediates_root_parent, 'analysis_intermediates')
+    return intermediates_root
+
+
+# TODO replace this w/ above (need to change kc_natural_mixes / natural_odors, or at
+# least pin an older version of hong2p for them)
 def analysis_output_root():
     return join(data_root(), 'analysis_output')
 
@@ -201,7 +219,6 @@ def raw_fly_dir(date, fly, warn=True, short=False):
             path. Intended for creating more readable paths, where absolute paths are
             not required.
     """
-
     raw_fly_basedir = get_fly_dir(date, fly)
 
     # TODO TODO maybe refactor for more granularity (might need to change a lot of usage
@@ -214,7 +231,7 @@ def raw_fly_dir(date, fly, warn=True, short=False):
             return fast_raw_fly_dir
         else:
             if warn:
-                warnings.warn(f'{FAST_DATA_DIR_ENV_VAR} set ({_fast_data_root}) but '
+                warnings.warn(f'{FAST_DATA_ROOT_ENV_VAR} set ({_fast_data_root}) but '
                     f'raw data directory for fly ({date}, {fly}) did not exist there'
                 )
 
