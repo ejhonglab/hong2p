@@ -160,21 +160,19 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
             else:
                 xtickrotation = 'vertical'
 
-        # TODO fix "UserWarning: FixedFormatter should only be used together with
-        # FixedLocator" on this line and set_yticklabels below. the rotation kwarg
-        # (alone, at least) isn't responsible.
-        ax.set_xticklabels(xticklabels, fontsize=fontsize,
-            fontweight=fontweight, rotation=xtickrotation
+        ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
+        ax.set_xticklabels(
+            xticklabels, fontsize=fontsize, fontweight=fontweight,
+            rotation=xtickrotation
         #    rotation='horizontal' if group_ticklabels else 'vertical'
         )
-        ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
 
     if yticklabels is not None:
-        ax.set_yticklabels(yticklabels, fontsize=fontsize,
-            fontweight=fontweight, rotation='horizontal'
+        ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
+        ax.set_yticklabels(
+            yticklabels, fontsize=fontsize, fontweight=fontweight, rotation='horizontal'
         #    rotation='vertical' if group_ticklabels else 'horizontal'
         )
-        ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
 
     # TODO test this doesn't change rotation if we just set rotation above
 
