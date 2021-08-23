@@ -74,14 +74,30 @@ def suite2p_params_cli():
     print_suite2p_params(thorimage_dir)
 
 
-def print_data_root():
-    print(util.data_root())
+def print_dir_fn_cli_wrapper(fn):
+
+    def cli_wrapper():
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-v', '--verbose', action='store_true')
+        args = parser.parse_args()
+        verbose = args.verbose
+
+        fn(verbose=verbose)
+
+    return cli_wrapper
 
 
-def print_raw_data_root():
-    print(util.raw_data_root())
+@print_dir_fn_cli_wrapper
+def print_data_root(verbose=False):
+    print(util.data_root(verbose=verbose))
+
+
+@print_dir_fn_cli_wrapper
+def print_raw_data_root(verbose=False):
+    print(util.raw_data_root(verbose=verbose))
 
 
 def print_analysis_intermediates_root():
+    # This one doesn't take have a `verbose` kwarg like the others
     print(util.analysis_intermediates_root())
 

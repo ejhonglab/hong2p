@@ -37,7 +37,6 @@ from hong2p import matlab, db, thor, viz
 # These three environment variables are in priority order (if first defined, it will be
 # the one used).
 DATA_ROOT_ENV_VAR = 'HONG2P_DATA'
-# TODO rename to be more general (exclude specific references to 'nas')?
 NAS_PREFIX_ENV_VAR = 'HONG_NAS'
 
 # If NAS_PREFIX_ENV_VAR is selected (i.e. DATA_ROOT_ENV_VAR is not defined), this is
@@ -101,42 +100,42 @@ def set_data_root(new_data_root):
 
 # TODO add verbose flag which says all the things it's searching? or log them to
 # loginfo level or something?
-def data_root():
+def data_root(verbose=False):
     global _data_root
+
     if _data_root is None:
         # TODO print priority order of these env vars in any failure below
         # TODO TODO refactor (to loop, w/ break, probably) to also check if directories
         # exist before picking one to use?
         prefix = None
+
         if DATA_ROOT_ENV_VAR in os.environ:
-            data_root = os.environ[DATA_ROOT_ENV_VAR]
+            root = os.environ[DATA_ROOT_ENV_VAR]
             source = DATA_ROOT_ENV_VAR
 
+            if verbose:
+                print(f'found {DATA_ROOT_ENV_VAR}')
+
         elif NAS_PREFIX_ENV_VAR in os.environ:
-            prefix = os.environ[NAS_PREFIX_ENV_VAR]
+            root = join(os.environ[NAS_PREFIX_ENV_VAR], NAS_PATH_TO_HONG2P_DATA)
             source = NAS_PREFIX_ENV_VAR
 
+            if verbose:
+                print(f'did not find {DATA_ROOT_ENV_VAR}')
+                print(f'found {NAS_PREFIX_ENV_VAR}')
+
         else:
-            prefix = '/mnt/nas'
-            warnings.warn('None of environment variables specifying data path '
-                f'found!\nUsing default data path of : {prefix}\n'
-                f'Set one of {DATA_ROOT_ENV_VAR} or {NAS_PREFIX_ENV_VAR}'
+            raise IOError('either set one of the environment variables '
+                f'({DATA_ROOT_ENV_VAR} or {NAS_PREFIX_ENV_VAR}) or call '
+                'hong2p.util.set_data_root(<data root>) before this data_root call'
             )
-            source = None
 
-        if prefix is not None:
-            data_root = join(prefix, NAS_PATH_TO_HONG2P_DATA)
-
-        _data_root = data_root
+        _data_root = root
 
         if not isdir(_data_root):
-            # TODO list all possible keys here or at least say how searches from
-            # other keys can be overridden with HONG2P_DATA
-            emsg = (f'data root expected at {_data_root}, but no directory '
-                'exists there!'
+            warnings.warn(f'data root expected at {_data_root}, but no directory exists'
+                f' there!\nDirectory chosen from environment variable {source}'
             )
-            if source is not None:
-                emsg += f'\nDirectory chosen from environment variable {source}'
 
     # TODO err if nothing in data_root, saying which env var to set and how
     return _data_root
@@ -146,10 +145,10 @@ def data_root():
 # for faster repeat analysis)?
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 # (include mb_team in that part and rename from data_root?)
-def raw_data_root(root=None):
+def raw_data_root(root=None, **kwargs):
 
     if root is None:
-        root = data_root()
+        root = data_root(**kwargs)
 
     return join(root, 'raw_data')
 
@@ -170,14 +169,14 @@ def analysis_intermediates_root():
     return intermediates_root
 
 
+def stimfile_root(**kwargs):
+    return join(data_root(**kwargs), 'stimulus_data_files')
+
+
 # TODO replace this w/ above (need to change kc_natural_mixes / natural_odors, or at
 # least pin an older version of hong2p for them)
 def analysis_output_root():
     return join(data_root(), 'analysis_output')
-
-
-def stimfile_root():
-    return join(data_root(), 'stimulus_data_files')
 
 
 def format_date(date):
