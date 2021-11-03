@@ -979,6 +979,11 @@ def get_col_onset_offset_indices(df, possible_col_names, threshold=None):
     """
     col = _get_column(df, possible_col_names)
 
+    # TODO TODO refactor to delete this hack (fixes change to scope_pin)
+    if col.dtype == np.dtype('bool'):
+        threshold = 0.5
+    #
+
     # TODO have this (inside) probably warn if there are no threshold crossings
     # (and maybe compare thresh to max/min/dtype values in generating warning to
     # indicate if that might be the cause of the error, which i guess it

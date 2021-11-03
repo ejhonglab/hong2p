@@ -461,7 +461,8 @@ def remerge_suite2p_merged(traces, stat_dict, ops, merges, response_stats=None,
 
     # TODO TODO implement another strategy where as long as the response_stats are
     # within some tolerance of the best, they are averaged? or weighted according to
-    # response stat?
+    # response stat? weight according to variance of response stat (see examples of
+    # weighted averages using something derived from variance for weights online)
     # TODO maybe also use 2/3rd highest lowest frame / percentile rather than actual min
     # / max (for picking 'best' plane), to gaurd against spiking noise
 

@@ -4,7 +4,7 @@ our databases / movies / CNMF output.
 """
 
 import os
-from os.path import join, split, exists, sep, isdir, getmtime
+from os.path import join, split, exists, sep, isdir, isfile, getmtime
 import pickle
 import sys
 from types import ModuleType
@@ -2298,23 +2298,45 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
         suffixes = []
 
     for name, roi in ijrois:
-        # TODO TODO need to modify this function to still return prefix / suffix parsed
-        # from ijroi name in 3D case or else refactor to just include full name or
-        # something in that case
-        # TODO TODO probably add kwarg to not fail and still return prefix / suffix
-        # surrounding an ROI named like xxxx-yyyy, rather than just the zzzz-xxxx-yyyy
-        # currently supported (former case currently raises ValueError)
+
         if len(shape) == 3:
-            z_index, (prefix, suffix) = ijroi.parse_z_from_name(name,
-                return_unmatched=True
-            )
+            # Otherwise, it should simply be a numpy array with points.
+            # `points_only=False` to either `read_roi_zip` or `read_roi` should produce
+            # input suitable for this branch.
+            if hasattr(roi, 'z'):
+                z_index = roi.z
+
+                # This should be the same as the `name` this shadows, just without the
+                # '.roi' suffix.
+                name = roi.name
+
+                try:
+                    _, (prefix, suffix) = ijroi.parse_z_from_name(name,
+                        return_unmatched=True
+                    )
+                except ValueError:
+                    prefix = name
+                    suffix = ''
+
+            else:
+                warnings.warn('trying to parse Z from ROI name. pass points_only=False'
+                    ' to ijroi loading function to read Z directly.'
+                )
+                z_index, (prefix, suffix) = ijroi.parse_z_from_name(name,
+                    return_unmatched=True
+                )
         else:
             z_index = None
+
+        if hasattr(roi, 'points'):
+            points = roi.points
+        else:
+            points = roi
 
         # TODO may also need to reverse part of shape here, if really was
         # necessary above (test would probably need to be in asymmetric
         # case...)
-        masks.append(ijroi2mask(roi, shape, z=z_index))
+        masks.append(ijroi2mask(points, shape, z=z_index))
         names.append(name)
 
         if len(shape) == 3:
@@ -2455,10 +2477,7 @@ def merge_ijroi_masks(masks, **kwargs):
     # TODO assert ijroi_prefix in here / accept kwarg on (defaulting to same), and
     # assert that's here
 
-    def parse_int_roi_label(s):
-        return int(s.strip('_'))
-
-    return merge_rois(masks, on='ijroi_prefix', label_fn=parse_int_roi_label, **kwargs)
+    return merge_rois(masks, on='ijroi_prefix', **kwargs)
 
 
 # TODO TODO TODO make another function that groups rois based on spatial overlap
@@ -2478,6 +2497,145 @@ def merge_single_plane_rois(rois, min_overlap_frac=0.3, n_dilations=1):
     """
     raise NotImplementedError
     import ipdb; ipdb.set_trace()
+
+
+# TODO TODO TODO refactor this + hong2p.suite2p.remerge_suite2p_merged to share core
+# code here!!! (this initially copied from other fn and then adapted)
+def rois2best_planes_only(rois, roi_quality):
+    """
+    Currently assumes input only has non-zero values in a single plane for a given
+    unique combination of ROI identifier variables.
+    """
+
+    verbose = True
+
+    # TODO TODO implement another strategy where as long as the roi_quality are
+    # within some tolerance of the best, they are averaged? or weighted according to
+    # response stat? weight according to variance of response stat (see examples of
+    # weighted averages using something derived from variance for weights online)
+    # TODO maybe also use 2/3rd highest lowest frame / percentile rather than actual min
+    # / max (for picking 'best' plane), to gaurd against spiking noise
+
+    '''
+    merge_output_roi_nums = np.empty(len(roi_quality.columns)) * np.nan
+    # TODO maybe build up set of seen merge input indices and check they are all seen in
+    # columns of traces by end (that set seen in traces columns is same as set from
+    # unioning all values in merges)
+    for merge_output_roi_num, merge_input_roi_nums in merges.items():
+
+        #merge_output_roi_nums[traces.columns.isin(merge_input_roi_nums)] = \
+        merge_output_roi_nums[roi_quality.columns.isin(merge_input_roi_nums)] = \
+            merge_output_roi_num
+    '''
+
+    roi_quality = roi_quality.to_frame(name='roi_quality')
+    mo_key = 'name'
+    #roi_quality[mo_key] = merge_output_roi_nums
+    roi_quality[mo_key] = rois.roi.roi_name.to_numpy()
+    gb = roi_quality.groupby(mo_key)
+    best_per_merge_output = gb.idxmax()
+
+    # Selecting the only column this DataFrame has (i.e. shape (n, 1))
+    best_inputs = best_per_merge_output.iloc[:, 0]
+    # The groupby -> idxmax() otherwise would have left this column named
+    # 'roi_quality', which is what we were picking an index to maximize, but the
+    # indices themselves are not response statistics.
+    best_inputs.name = 'roi'
+
+    best = roi_quality.loc[best_inputs]
+
+    # TODO delete eventually
+    assert np.array_equal(
+       roi_quality.loc[best_inputs.values],
+       roi_quality.loc[best_inputs]
+    )
+    #
+    assert np.array_equal(
+        best.roi_quality.values,
+        gb.max().roi_quality.values
+    )
+
+    if verbose:
+        by_response = roi_quality.dropna().set_index('name',
+            append=True).swaplevel()
+
+    notbest_to_drop = []
+    for row in best.itertuples():
+        merged_name = row.name
+        curr_best = row.Index
+        curr_notbest = list(rois.roi[
+            (rois.roi_name == merged_name) & (rois.roi_num != curr_best)
+        ].roi_num.values)
+
+        notbest_to_drop.extend(curr_notbest)
+
+        if verbose:
+            print(f'merging ROI {merged_name}')
+            print(f'selecting input ROI {curr_best} as best plane')
+            print(f'dropping other input ROIs {curr_notbest}')
+            print(by_response.loc[merged_name])
+            print()
+
+    # TODO maybe combine in to one step by just passing subsetted s2p_roi_num to
+    # assign_coords?
+    rois = rois.sel(roi= ~ rois.roi_num.isin(notbest_to_drop))
+
+    roi_nums = rois.roi_num.values
+
+    # TODO should i also include roi_z? would want to also do / use in s2p case for
+    # consistency... also, how to modify this call to accomplish that?
+    rois = rois.assign_coords(roi=rois.roi_name)
+
+    # TODO TODO if i can figure out how to keep multiple levels for the roi dimension,
+    # do that rather than return multiple things
+    return roi_nums, rois
+
+
+def ijroi_masks(ijroiset_dir_or_fname, thorimage_dir, as_xarray=True, **kwargs):
+
+    # This must be my fork at https://github.com/tom-f-oconnell/ijroi
+    import ijroi
+
+    if isdir(ijroiset_dir_or_fname):
+
+        ijroiset_basename = 'RoiSet.zip'
+
+        # TODO if i standardize path to analysis intermediates, update this to look for
+        # RoiSet.zip there?
+        ijroiset_fname = join(ijroiset_dir_or_fname, ijroiset_basename)
+
+        if not isfile(ijroiset_fname):
+            raise IOError('directory passed for ijroiset_dir_or_fname, but '
+                f'{ijroiset_fname} did not exist'
+            )
+
+    name_and_roi_list = ijroi.read_roi_zip(ijroiset_fname, points_only=False)
+
+    _, (x, y), z, c, _, _ =  thor.load_thorimage_metadata(thorimage_dir)
+
+    assert x == y, 'not tested in case x != y'
+
+    # From what `thor.read_movie` says the output dimensions are (except the first
+    # dimension, which is time).
+    if z == 1:
+        movie_shape_without_time = (y, x)
+    else:
+        movie_shape_without_time = (z, y, x)
+
+    masks = ijrois2masks(name_and_roi_list, movie_shape_without_time,
+        as_xarray=as_xarray
+    )
+    return masks
+
+    ## TODO modify check_no_overlap to make sure it's also erring if two things that
+    ## would be merged (by having same name / whatever) are not in the same z-plane
+    ## (assuming the intention was to have one per plane, to make a single volumetric
+    ## ROI)
+    #merged = merge_ijroi_masks(masks, check_no_overlap=True)
+    #
+    #import ipdb; ipdb.set_trace()
+    #
+    #return merged
 
 
 # TODO test / document requirements for type / properties of contour. it's just a
@@ -5326,9 +5484,14 @@ def to_filename(x, period=True):
         '@': '_',
         ',': '',
         '.': '',
+        '(': '',
+        ')': '',
     }
     for k, v in replace_dict.items():
         x = x.replace(k, v)
+
+    # Replace multiple consecutive '_' with a single '_'
+    x = re.sub('_+', '_', x)
 
     # TODO delete this and refactor code that expects this behavior to add the period
     if period:
