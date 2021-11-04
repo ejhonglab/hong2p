@@ -1074,13 +1074,14 @@ def df_to_odor_order(df, observed=True, return_name1=False):
     return order
 
 
-# TODO rethink gid kwarg(s)
-def gsheet_csv_export_link(file_with_edit_link): #, add_default_gid=True):
+# TODO maybe also allow using GID from file?
+def gsheet_csv_export_link(file_with_edit_link, gid=0, no_append_gid=False):
     """
     Takes a gsheet link copied from browser while editing it, and returns a
     URL suitable for reading it as a CSV into a DataFrame.
 
-    Must append appropriate GID to what is returned.
+    GID seems to default to 0 for the first sheet, but seems unpredictable for further
+    sheets in the same document, though you can extract it from the URL in those cases.
     """
     # TODO make expectations on URL consistent whether from file or not
     if file_with_edit_link.startswith('http'):
@@ -1104,7 +1105,102 @@ def gsheet_csv_export_link(file_with_edit_link): #, add_default_gid=True):
             base_url = f.readline().split('/edit')[0]
 
     gsheet_link = base_url + '/export?format=csv&gid='
+
+    if not no_append_gid:
+        gsheet_link += str(gid)
+
     return gsheet_link
+
+
+def gsheet_to_frame(file_with_edit_link, *, gid=0, bool_fillna_false=True,
+    convert_date_col=True, drop_trailing_bools=True, restore_ints=True,
+    normalize_col_names=False):
+    """
+    Args:
+        bool_fillna_false (bool): whether to replace missing values in columns that
+            otherwise only contain True/False with False. will convert column dtype to
+            'bool' as well.
+
+        convert_date_col (bool): whether to convert the contents of any columns named
+            'date' (case insensitive) to `pd.Timestamp`
+
+        drop_trailing_bools (bool): whether to drop blocks of False in bool columns
+            beyond the last row where all non-bool columns have any non-NaN values.
+
+            If a column has data validation for a boolean, the frame will have values
+            (False as I've seen it so far) through to the end of the validation range,
+            despite the fact that no data has been entered.
+
+        restore_ints (bool): whether to convert columns parsed as floats (because
+            missing data in rows where only default values for bool cols are present)
+            to an integer type. Requires that drop_trailing_bools actually gets rid of
+            all the NaN values in the columns to be converted to ints (float columns
+            with only whole number / NaN values).
+
+        normalize_col_names (bool): (default=False) whether to rename columns using the
+            `hong2p.util.to_filename` (with `period=False` to that function) as well as
+            lowercasing.
+    """
+
+    gsheet_link = gsheet_csv_export_link(file_with_edit_link, gid=gid)
+
+    df = pd.read_csv(gsheet_link)
+
+    bool_col_unique_vals = {True, False, np.nan}
+    bool_cols = [c for c in df.columns if df[c].dtype == 'bool' or
+        (df[c].dtype == 'object' and set(df[c].unique()) == bool_col_unique_vals)
+    ]
+
+    if bool_fillna_false:
+        for c in bool_cols:
+            df[c] = df[c].fillna(False).astype('bool')
+
+    # Could consider replacing this w/ just parse_dates [+ infer_datetime_format] kwargs
+    # to pd.read_csv
+    if convert_date_col:
+        date_cols = [c for c in df.columns if c.lower() == 'date']
+        for c in date_cols:
+           df[c] = pd.to_datetime(df[c])
+
+    if drop_trailing_bools:
+        nonbool_cols = [c for c in df.columns if c not in bool_cols]
+        nonbool_cols_some_data = ~ df[nonbool_cols].isna().all(axis='columns')
+
+        last_row_with_data_idx = nonbool_cols_some_data.where(nonbool_cols_some_data
+            ).last_valid_index()
+
+        will_be_dropped = df.iloc[(last_row_with_data_idx + 1):]
+
+        # We expect all bool_cols beyond last data in non-bool cols to be False
+        # (default value as I currently have the data validation for those columns in
+        # most / all Gsheets where I use them)
+        assert not will_be_dropped[bool_cols].any(axis=None)
+
+        df = df.iloc[:last_row_with_data_idx].copy()
+
+    if restore_ints:
+        # (works for 'float64' at least, presumably all float types)
+        float_cols = [c for c in df.columns if df[c].dtype == 'float']
+
+        for c in float_cols:
+            col = df[c]
+
+            # If dropping trailing NaN values didn't get rid of all the NaN, we can't
+            # change the dtype of the column to a numpy integer type.
+            if col.isna().any():
+                continue
+
+            mod1 = np.mod(col, 1)
+
+            # TODO actually a risk of floats not exactly having mod 1 of 0 if input is
+            # indeed an integer for all of them? assuming no for now.
+            if (mod1 == 0).all():
+                df[c] = col.astype('int')
+
+    if normalize_col_names:
+        df.rename(columns=lambda x: to_filename(x, period=False).lower(), inplace=True)
+
+    return df
 
 
 # TODO TODO for this and other stuff that depends on network access (if not
@@ -1122,8 +1218,7 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
 
     gsheet_cache_file = '.gsheet_cache.p'
     if use_cache and exists(gsheet_cache_file):
-        print('Loading MB team sheet data from cache at {}'.format(
-            gsheet_cache_file))
+        print(f'Loading MB team sheet data from cache at {gsheet_cache_file}')
 
         with open(gsheet_cache_file, 'rb') as f:
             sheets = pickle.load(f)
@@ -1133,7 +1228,9 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
         # TODO maybe just get relative path from __file__ w/ /.. or something?
         # TODO TODO TODO give this an [add_]default_gid=True (set to False here)
         # so other code of mine can use this function
-        gsheet_link = gsheet_csv_export_link('mb_team_sheet_link.txt')
+        gsheet_link = gsheet_csv_export_link('mb_team_sheet_link.txt',
+            no_append_gid=True
+        )
 
         # If you want to add more sheets, when you select the new sheet in your
         # browser, the GID will be at the end of the URL in the address bar.
@@ -5486,6 +5583,8 @@ def to_filename(x, period=True):
         '.': '',
         '(': '',
         ')': '',
+        '[': '',
+        ']': '',
     }
     for k, v in replace_dict.items():
         x = x.replace(k, v)
