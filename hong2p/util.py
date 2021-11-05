@@ -6763,6 +6763,8 @@ def latest_trace_pickles():
     return df
 
 
+# TODO TODO kwarg to have this replace the multiindex levels / columns values it is
+# derived from (and thread through add_fly_id/add_recording_id)
 def add_group_id(df, group_keys, name=None, start_at_one=True):
     """Adds integer column to df to identify unique combinations of group_keys.
     """
@@ -6777,6 +6779,8 @@ def add_group_id(df, group_keys, name=None, start_at_one=True):
     return df
 
 
+# TODO replace hardcoded recording_cols[:2] w/ kwarg that defaults to None where None
+# gets replaced by current hardcoded value
 def add_fly_id(df):
     name = 'fly_id'
     return add_group_id(df, recording_cols[:2], name=name)

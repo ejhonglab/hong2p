@@ -19,8 +19,9 @@ from hong2p import util, thor
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 
-# TODO TODO check that refactoring from util was successful (no function
-# references to other util stuff that hasn't been prefixed w/ 'util.')
+
+# TODO use this other places that redefine, now that it's module-level
+dff_latex = r'$\frac{\Delta F}{F}$'
 
 
 def matlabels(df, rowlabel_fn):
@@ -35,12 +36,15 @@ def matlabels(df, rowlabel_fn):
 # TODO maybe change __init__.py to make this directly accessible under hong2p?
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
     yticklabels=None, xtickrotation=None, colorbar_label=None,
-    group_ticklabels=False, ax=None, fontsize=None, fontweight=None,
-    transpose_sort_key=None, colorbar=True, **kwargs):
+    group_ticklabels=False, ax=None, fontsize=None, fontweight=None, figsize=None,
+    transpose_sort_key=None, colorbar=True, shrink=None, colorbar_kwargs=None,
+    **kwargs):
     """
     Args:
         transpose_sort_key (None | function): takes df.index/df.columns and compares
             output to decide whether matrix should be transposed before plotting
+
+        **kwargs: passed thru to `matplotlib.pyplot.matshow`
     """
     # TODO TODO w/ all ticklabels kwargs, also support them being functions,
     # which operate on (what type exactly?) index rows
@@ -48,11 +52,13 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     # maybe at least in the case when both columns and row indices are all just
     # one level of strings?
 
-    made_fig = False
     if ax is None:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        made_fig = True
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        if figsize is not None:
+            raise ValueError('figsize only allowed if ax not passed in')
+
+        fig = ax.get_figure()
 
     # NOTE: if i'd like to also sort on [x/y]ticklabels, would need to move this block
     # after possible ticklabel enumeration, and then assign correctly to index/cols and
@@ -75,6 +81,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
 
     if (xticklabels is None) and (yticklabels is None):
         if ticklabels is None:
+            # TODO maybe default to joining str representations of values at each level,
+            # joined on some kwarg delim like '/'?
             if one_level_str_index(df.columns):
                 xticklabels = df.columns
             else:
@@ -111,22 +119,16 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     if fontsize is None:
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
-    cax = ax.matshow(df, **kwargs)
+    im = ax.matshow(df, **kwargs)
 
-    # just doing it in this case now to support kc_analysis use case
-    # TODO put behind flag or something
-    # TODO TODO TODO why was it conditional on this before?
-    #if colorbar:
-    if made_fig:
-        cbar = fig.colorbar(cax)
+    if colorbar:
+        if colorbar_kwargs is None:
+            colorbar_kwargs = dict()
 
-        if colorbar_label is not None:
-            # rotation=270?
-            cbar.ax.set_ylabel(colorbar_label)
-
-        # TODO possible to provide facilities for colorbar in case when ax is
-        # passed in? pass in another ax for colorbar? or just as easy to handle
-        # outside in that case (probably)?
+        # rotation=270?
+        cbar = add_colorbar(fig, im, label=colorbar_label, shrink=shrink,
+            **colorbar_kwargs
+        )
 
     def grouped_labels_info(labels):
         if not group_ticklabels or labels is None:
@@ -189,11 +191,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     if title is not None:
         ax.set_xlabel(title, fontsize=(fontsize + 1.5), labelpad=12)
 
-    if made_fig:
-        plt.tight_layout()
-        return fig
-    else:
-        return cax
+    return fig, im
 
 
 def imshow(img, title=None, cmap='gray'):
@@ -207,46 +205,13 @@ def imshow(img, title=None, cmap='gray'):
     return fig
 
 
-# TODO take kwarg for label but default to something w/ dff?
-# TODO option to add on just one (bottom right prob) axes. need to figure out how to do
-# that though
-# TODO rename `im` to be more descriptive / find a way to compute it (at least so it can
-# be made optional)
-# TODO change so colorbar is always height of subplots / axes by default? (currently is
-# in 3 row case not in 1 row case, with some data at least)
-def add_colorbar(fig, im):
-    # Defaults values for arguments to `subplots_adjust`:
-    # pprint(
-    #     {k: v for k, v in plt.rcParams.items() if k.startswith('figure.subplot.')}
-    # )
-    # left=0.125, bottom=0.11, right=0.9, top=0.88, hspace=0.2, wspace=0.2
+def add_colorbar(fig, im, label=None, shrink=None, **kwargs):
 
-    # Moving right edge in so we can have space there for the colorbar.
-    axs_r_edge = 0.85
-    fig.subplots_adjust(right=axs_r_edge)
+    # I think this relies on use of Matplotlib's constrained layout
+    cbar = fig.colorbar(im, ax=fig.axes, shrink=shrink, **kwargs)
 
-    cb_xmargin = 0.02
-    cb_l_edge = axs_r_edge + cb_xmargin
-
-    # TODO why was this cbar not exact height of subplots, if .11 is default
-    # bottom and .88 (.11 + .77) is default top? (comment was from when this was in
-    # al_pair_grids/volumetric_responses.py)
-    #cb_ax = fig.add_axes([cb_l_edge, 0.11, 0.02, 0.77])
-
-    # worked for 3row case from al_pair_grid/volumetric_responses.py
-    #cb_ax = fig.add_axes([cb_l_edge, 0.14, 0.015, 0.71])
-
-    # TODO at least some way to center on region of figure occupied by subplots?
-    # TODO at least refactor to make inputs to this overrideable via kwargs
-    # [left, bottom, width, height] all in fractions of figure width/height
-    cb_ax = fig.add_axes([cb_l_edge, 0.405, 0.015, 0.185])
-
-    cbar = fig.colorbar(im, cax=cb_ax)
-
-    # TODO factor out
-    dff_latex = r'$\frac{\Delta F}{F}$'
-
-    cbar.ax.set_ylabel(f'Evoked {dff_latex}')
+    if label is not None:
+        cbar.ax.set_ylabel(label)
 
     return cbar
 
