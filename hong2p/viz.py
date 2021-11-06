@@ -34,6 +34,7 @@ def matlabels(df, rowlabel_fn):
 
 
 # TODO maybe change __init__.py to make this directly accessible under hong2p?
+# TODO consider calling sns.heatmap internally? or replacing some uses of this w/ that?
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
     yticklabels=None, xtickrotation=None, colorbar_label=None,
     group_ticklabels=False, ax=None, fontsize=None, fontweight=None, figsize=None,
@@ -76,22 +77,14 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
             df = df.T
 
     def one_level_str_index(index):
-        return (len(index.shape) == 1 and
-            all(index.map(lambda x: type(x) is str)))
+        return len(index.shape) == 1 and all(index.map(lambda x: type(x) is str))
 
     if (xticklabels is None) and (yticklabels is None):
         if ticklabels is None:
             # TODO maybe default to joining str representations of values at each level,
             # joined on some kwarg delim like '/'?
-            if one_level_str_index(df.columns):
-                xticklabels = df.columns
-            else:
-                xticklabels = None
-
-            if one_level_str_index(df.index):
-                yticklabels = df.index
-            else:
-                yticklabels = None
+            xticklabels = df.columns if one_level_str_index(df.columns) else None
+            yticklabels = df.index if one_level_str_index(df.index) else None
         else:
             # TODO maybe also assert indices are actually equal?
             assert df.shape[0] == df.shape[1]
@@ -116,6 +109,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         pass
 
     # TODO update this formula to work w/ gui corrs (too big now)
+    # TODO see whether default font actually is inappropriate in any cases where i'm
+    # currently calling this (particularly using constrained layout from
+    # al_pair_grids.py)
     if fontsize is None:
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 

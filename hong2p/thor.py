@@ -4,13 +4,15 @@ with naming conventions we use for outputs of these programs.
 """
 
 from os import listdir
-from os.path import join, split, sep, isdir, normpath, getmtime, abspath
+from os.path import join, split, sep, exists, isdir, normpath, getmtime, abspath
 import xml.etree.ElementTree as etree
 from datetime import datetime
 import warnings
 from pprint import pprint, pformat
 import glob
 from itertools import zip_longest
+import functools
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -20,7 +22,7 @@ _acquisition_trigger_names = ('scope_pin',)
 _odor_timing_names = ('olf_disp_pin',)
 
 
-def xmlroot(xml_path):
+def xmlroot(xml_path: str) -> etree.Element:
     """Loads contents of xml_path into xml.etree.ElementTree and returns root.
 
     Use calls to <node>.find(<child name>) to traverse down tree and at leaves,
@@ -34,20 +36,55 @@ def xmlroot(xml_path):
 # can name what these functions return naturally without shadowing...
 
 thorimage_xml_basename = 'Experiment.xml'
-def get_thorimage_xml_path(thorimage_dir):
+def get_thorimage_xml_path(thorimage_dir: str) -> str:
     """Takes ThorImage output dir to (expected) path to its XML output.
+
+    Raises IOError if either thorimage_dir or Experiment.xml contained within it do not
+    exist.
     """
-    return join(thorimage_dir, thorimage_xml_basename)
+    if not isdir(thorimage_dir):
+        raise IOError(f'thorimage_dir {thorimage_dir} does not exist!')
+
+    xml_path = join(thorimage_dir, thorimage_xml_basename)
+    if not exists(xml_path):
+        raise IOError(f'{thorimage_xml_basename} did not exist in {thorimage_dir}')
+
+    return xml_path
 
 
-# TODO maybe allow this to return identify in case it's passed xml root?
-# so that *some* *_xml(...) fns can be collapsed into the corresponding fns
-# without the suffix.
-def get_thorimage_xmlroot(thorimage_dir):
+# TODO does this work?
+PathOrXML = Union[str, etree.Element]
+
+
+# TODO TODO now that this behaves as identity if given xml object, actually use that to
+# collapse some of the functions w/ and w/o _xml suffix and allow those of only one type
+# to work with both types of input
+def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> etree.Element:
     """Takes ThorImage output dir to object w/ XML data.
+
+    Returns the input without doing anything if it is already the same type of XML
+    object that would be returned, to allow writing functions that can either be given
+    paths to ThorImage directories or re-use an already loaded representation of its
+    XML.
     """
+    if isinstance(thorimage_dir_or_xmlroot, etree.Element):
+        return thorimage_dir_or_xmlroot
+
+    thorimage_dir = thorimage_dir_or_xmlroot
+
     xml_path = get_thorimage_xml_path(thorimage_dir)
     return xmlroot(xml_path)
+
+
+def thorimage_xml(fn_taking_xml):
+
+    @functools.wraps(fn_taking_xml)
+    def fn_taking_path_or_xml(thorimage_dir_or_xmlroot: PathOrXML, **kwargs):
+
+        xml = get_thorimage_xmlroot(thorimage_dir_or_xmlroot)
+        return fn_taking_xml(xml, **kwargs)
+
+    return fn_taking_path_or_xml
 
 
 def get_thorimage_time_xml(xml):
@@ -255,7 +292,8 @@ def get_thorimage_n_flyback_xml(xml):
     return n_flyback_frames
 
 
-def get_thorimage_notes_xml(xml):
+@thorimage_xml
+def get_thorimage_notes(xml):
     return xml.find('ExperimentNotes').attrib['text']
 
 
@@ -1719,7 +1757,7 @@ def is_thorsync_dir(d, verbose=False):
     """
     if not isdir(d):
         return False
-    
+
     # No matter how many directory levels `d` contains, `listdir` only returns
     # the basename of each file, not any preceding part of the path.
     files = {f for f in listdir(d)}

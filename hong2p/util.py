@@ -4,7 +4,7 @@ our databases / movies / CNMF output.
 """
 
 import os
-from os.path import join, split, exists, sep, isdir, isfile, getmtime
+from os.path import join, split, exists, sep, isdir, isfile, getmtime, splitext
 import pickle
 import sys
 from types import ModuleType
@@ -14,11 +14,13 @@ from pprint import pprint
 import glob
 import re
 import hashlib
+import functools
 
 import numpy as np
 from numpy.ma import MaskedArray
 import pandas as pd
 import xarray as xr
+import yaml
 
 # TODO now that i'm not trying to force a particular backend, move all the
 # imports here and in a few other place back to a typical order
@@ -28,7 +30,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from hong2p import matlab, db, thor, viz
+from hong2p import matlab, db, thor, viz, olf
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
@@ -98,8 +100,6 @@ def set_data_root(new_data_root):
     _data_root = new_data_root
 
 
-# TODO add verbose flag which says all the things it's searching? or log them to
-# loginfo level or something?
 def data_root(verbose=False):
     global _data_root
 
@@ -133,7 +133,7 @@ def data_root(verbose=False):
         _data_root = root
 
         if not isdir(_data_root):
-            warnings.warn(f'data root expected at {_data_root}, but no directory exists'
+            raise IOError(f'data root expected at {_data_root}, but no directory exists'
                 f' there!\nDirectory chosen from environment variable {source}'
             )
 
@@ -141,10 +141,26 @@ def data_root(verbose=False):
     return _data_root
 
 
+def check_dir_exists(fn_returning_dir):
+
+    @functools.wraps(fn_returning_dir)
+    def optionally_checked_fn_returning_dir(*args, check=True, **kwargs):
+
+        directory = fn_returning_dir(*args, **kwargs)
+
+        if check and not isdir(directory):
+            raise IOError('directory {directory} does not exist!')
+
+        return directory
+
+    return optionally_checked_fn_returning_dir
+
+
 # TODO (for both below) support a local and a remote one ([optional] local copy
 # for faster repeat analysis)?
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 # (include mb_team in that part and rename from data_root?)
+@check_dir_exists
 def raw_data_root(root=None, **kwargs):
 
     if root is None:
@@ -154,6 +170,7 @@ def raw_data_root(root=None, **kwargs):
 
 
 # TODO kwarg / default to makeing dir if not exist (and for similar fns above)?
+@check_dir_exists
 def analysis_intermediates_root():
     # TODO probably prefer using $HONG2P_DATA over os.getcwd() (assuming it's not on NAS
     # and it therefore acceptably fast if not instead using $HONG_NAS)
@@ -169,12 +186,14 @@ def analysis_intermediates_root():
     return intermediates_root
 
 
+@check_dir_exists
 def stimfile_root(**kwargs):
     return join(data_root(**kwargs), 'stimulus_data_files')
 
 
 # TODO replace this w/ above (need to change kc_natural_mixes / natural_odors, or at
 # least pin an older version of hong2p for them)
+@check_dir_exists
 def analysis_output_root():
     return join(data_root(), 'analysis_output')
 
@@ -518,6 +537,106 @@ def _all_paired_thor_dirs(skip_errors=True, **kwargs):
         all_pairs.extend(d_pairs)
 
     return all_pairs
+
+
+def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
+    """Returns absolute path to stimulus YAML file from note field in ThorImage XML.
+
+    Args:
+        thorimage_dir_or_xml: path to ThorImage output directory or XML Element
+            containing parsed contents of the corresponding Experiment.xml file.
+
+        stimfile_dir (str): (optional) directory containing stimulus .yaml files.
+            If not passed, `stimfile_root()` is used.
+
+    Raises:
+        IOError if stimulus file directory does not exist
+        ValueError if multiple or no substrings of note field end with .yaml
+
+    XML should contain a manually-entered path relative to where the olfactometer code
+    that generated it was run, but assuming it was copied to the appropriate location
+    (directly under `stimfile_dir` if passed or `stimfile_root()` otherwise), this
+    absolute path should exist.
+    """
+    if stimfile_dir is None:
+        stimfile_dir = stimfile_root()
+
+    elif not isdir(stimfile_dir):
+        raise IOError(f'passed stimfile_dir={stimfile_dir} is not a directory!')
+
+    notes = thor.get_thorimage_notes(thorimage_dir_or_xml)
+
+    yaml_path = None
+    parts = notes.split()
+    for p in parts:
+        p = p.strip()
+        if p.endswith('.yaml'):
+            if yaml_path is not None:
+                raise ValueError('encountered multiple *.yaml substrings!')
+
+            yaml_path = p
+
+    if yaml_path is None:
+        raise ValueError('no string ending in .yaml found in ThorImage note field')
+
+    assert yaml_path is not None
+
+    # TODO change data that has this to expand paths + delete this hack
+    if '""' in yaml_path:
+        date_str = '_'.join(yaml_path.split('_')[:2])
+        old_yaml_path = yaml_path
+        yaml_path = yaml_path.replace('""', date_str)
+
+        warnings.warn(f'replacing of stimulus YAML path of {old_yaml_path} with '
+            f'{yaml_path}'
+        )
+    #
+
+    # Since paths copied/pasted within Windows may have '\' as a file
+    # separator character.
+    yaml_path = yaml_path.replace('\\', '/')
+
+    if not exists(join(stimfile_dir, yaml_path)):
+        prefix, ext = splitext(yaml_path)
+        yaml_dir = '_'.join(prefix.split('_')[:3])
+        subdir_path = join(stimfile_dir, yaml_dir, yaml_path)
+        if exists(subdir_path):
+            yaml_path = subdir_path
+
+    yaml_path = join(stimfile_dir, yaml_path)
+    assert exists(yaml_path), f'{yaml_path}'
+
+    return yaml_path
+
+
+def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
+    """Returns yaml_path, yaml_data, odor_lists
+
+    Args:
+        thorimage_dir_or_xml: path to ThorImage output directory or XML Element object
+            parsed from corresponding Experiment.xml file
+
+        stimfile_dir (str): (optional) directory containing stimulus .yaml files.
+            If not passed, `stimfile_root()` is used.
+
+    Returns:
+        yaml_path (str): path to YAML
+
+        yaml_data (dict): loaded contents of `yaml_path`
+
+        odor_lists (list-of-lists-of-dicts): each list this contains is a representation
+            of all the odors presented together on a given trial
+    """
+    yaml_path = stimulus_yaml_from_thorimage(thorimage_dir_or_xml,
+        stimfile_dir=stimfile_dir
+    )
+
+    with open(yaml_path, 'r') as f:
+        yaml_data = yaml.safe_load(f)
+
+    odor_lists = olf.yaml_data2odor_lists(yaml_data)
+
+    return yaml_path, yaml_data, odor_lists
 
 
 def is_array_sorted(array):
@@ -3333,6 +3452,7 @@ def cell_ids(df):
         raise ValueError("'cell' not in index or columns of DataFrame")
 
 
+# TODO move to olf / delete
 def format_odor_conc(name, log10_conc):
     """Takes `str` odor name and log10 concentration to a formatted `str`.
     """
@@ -3344,6 +3464,7 @@ def format_odor_conc(name, log10_conc):
         return '{} @ $10^{{{:.2f}}}$'.format(name, log10_conc)
 
 
+# TODO move to olf / delete
 def format_mixture(*args):
     """Returns `str` representing 2-component odor mixture.
 
@@ -3404,6 +3525,7 @@ def format_mixture(*args):
     return title
 
 
+# TODO move to olf / delete
 def split_odor_w_conc(row_or_str):
     try:
         odor_w_conc = row_or_str.odor_w_conc
