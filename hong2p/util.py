@@ -21,12 +21,6 @@ from numpy.ma import MaskedArray
 import pandas as pd
 import xarray as xr
 import yaml
-
-# TODO now that i'm not trying to force a particular backend, move all the
-# imports here and in a few other place back to a typical order
-
-# Importing all matplotlib stuff besides mpl itself here to allow the above code
-# to change backend. Might just need to defer import pyplot though...
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -454,6 +448,8 @@ def paired_thor_dirs(start_date=None, end_date=None, n_first=None, skip_redone=T
             }
 
         # TODO test that the mtime of the directories reliably gives me the order i want
+        # TODO TODO or better yet, probably switch to getting time from one of the xml
+        # files (in case some error in them would best be corrected after the fact)
         for image_dir, sync_dir in sorted(paired_dirs, key=lambda p: getmtime(p[0])):
 
             if skip_redone and image_dir in prefixes_of_thorimage_redos:

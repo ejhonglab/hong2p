@@ -2802,7 +2802,7 @@ class Segmentation(QWidget):
                 viz.matshow(odor_order_trial_mean_corrs,
                     ticklabels=ticklabels,
                     group_ticklabels=True,
-                    colorbar_label=corr_cbar_label,
+                    cbar_label=corr_cbar_label,
                     ax=odor_order_ax,
                     fontsize=6
                 )
@@ -2814,7 +2814,7 @@ class Segmentation(QWidget):
                 )
                 viz.matshow(presentation_order_trial_mean_corrs,
                     ticklabels=ticklabels,
-                    colorbar_label=corr_cbar_label,
+                    cbar_label=corr_cbar_label,
                     ax=presentation_order_ax,
                     fontsize=6
                 )

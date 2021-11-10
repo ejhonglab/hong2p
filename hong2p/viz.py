@@ -5,40 +5,190 @@ provide context specfically useful for certain types of olfaction experiments.
 
 from os.path import join, exists
 import time
+import functools
 
 import numpy as np
 import pandas as pd
+from scipy.cluster.hierarchy import linkage
+import matplotlib.patches as patches
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from hong2p import util, thor
 
-# Having all matplotlib-related imports come after `hong2p.util` import,
-# so that I can let `hong2p.util` set the backend, which it seems must be set
-# before the first import of `matplotlib.pyplot`
-# TODO maybe put these imports (and those in util) back to standard order if
-# this backend thing is no longer an issue? was it just because of gui.py?
-import matplotlib.patches as patches
-import matplotlib.pyplot as plt
 
+# TODO consider making a style sheet as in:
+# https://matplotlib.org/stable/tutorials/introductory/customizing.html?highlight=style%20sheets
 
 # TODO use this other places that redefine, now that it's module-level
-dff_latex = r'$\frac{\Delta F}{F}$'
+dff_latex = r'$\Delta F/F$'
 
+# TODO machinery to register combinations of level names -> how they should be formatted
+# into str labels for matshow (e.g. ('odor1','odor2') -> olf.format_mix_from_strs)?
+# TODO and like to set default cmap(s)?
 
-def matlabels(df, rowlabel_fn):
+def matlabels(df, rowlabel_fn, axis='index'):
+    # TODO should i modify so it takes an Index/MultiIndex rather than a DataFrame row?
+    # what would make these functions more natural to write?
     """
     Takes DataFrame and function that takes one row of index to a label.
 
     `rowlabel_fn` should take a DataFrame row (w/ columns from index) to a str.
     """
-    return df.index.to_frame().apply(rowlabel_fn, axis=1)
+    if axis == 'index':
+        index = df.index
+    elif axis == 'columns':
+        index = df.columns
+    else:
+        raise ValueError("axis must be either 'index' or 'columns'")
+
+    return index.to_frame().apply(rowlabel_fn, axis=1)
 
 
-# TODO maybe change __init__.py to make this directly accessible under hong2p?
+def row_labels(df, label_fn):
+    return matlabels(df, label_fn, axis='index')
+
+
+def col_labels(df, label_fn):
+    return matlabels(df, label_fn, axis='columns')
+
+
+def callable_ticklabels(plot_fn):
+    """Allows [x/y]ticklabel functions evaluated on indices of `df` (`plot_fn(df, ...)`)
+
+    First parameter to `plot_fn` must be a `pandas.DataFrame` to compute the `str`
+    ticklabels from.
+    """
+
+    @functools.wraps(plot_fn)
+    def wrapped_plot_fn(df, *args, xticklabels=None, yticklabels=None, **kwargs):
+        if callable(xticklabels):
+            xticklabels = col_labels(df, xticklabels)
+
+        if callable(yticklabels):
+            yticklabels = row_labels(df, yticklabels)
+
+        return plot_fn(df, *args, xticklabels=xticklabels, yticklabels=yticklabels,
+            **kwargs
+        )
+
+    return wrapped_plot_fn
+
+
+# Was originally wanting to make enable a kwarg, but it seems the code to do that would
+# be excessively complicated. See norok2's answer here:
+# https://stackoverflow.com/questions/5929107
+def _mpl_constrained_layout(enable):
+    """
+    To make decorators for fns that create Figure(s) and need contrained layout on/off.
+
+    Use `@constrained_layout` or `@no_constrained_layout` rather than this directly.
+    """
+    def wrap_plot_fn(plot_fn):
+        """
+        Args:
+            plot_fn: must make figure from start to finish inside, so changing
+                constrained layout setting works
+        """
+        @functools.wraps(plot_fn)
+        def wrapped_plot_fn(*args, **kwargs):
+            with mpl.rc_context({'figure.constrained_layout.use': enable}):
+                return plot_fn(*args, **kwargs)
+
+        return wrapped_plot_fn
+
+    return wrap_plot_fn
+
+
+constrained_layout = _mpl_constrained_layout(True)
+no_constrained_layout = _mpl_constrained_layout(False)
+
+
+@no_constrained_layout
+@callable_ticklabels
+def clustermap(df, *, optimal_ordering=True, xlabel=None, ylabel=None, cbar_label=None,
+    cbar_kws=None, row_cluster=True, col_cluster=True, row_linkage=None,
+    col_linkage=None, method='average', metric='euclidean', **kwargs):
+    """Same as seaborn.clustermap but allows callable [x/y]ticklabels + adds opts.
+
+    Adds `optimal_ordering` kwarg to `scipy.cluster.hierarchy.linkage` that is not
+    exposed by seaborn version.
+
+    Also turns off constrained layout for the duration of the seaborn function, to
+    prevent warnings + disabling that would otherwise happen.
+    """
+
+    if row_linkage is not None:
+        # seaborn will just show a subset of the data if passed a linkage of a smaller
+        # shape. Not sure what happens in reverse case. Either way, I think failing
+        # is safer.
+        expected_row_linkage_shape = (df.shape[0] - 1, 4)
+        if row_linkage.shape != expected_row_linkage_shape:
+            raise ValueError(f'row_linkage.shape must be {expected_row_linkage_shape}')
+
+    if col_linkage is not None:
+        expected_col_linkage_shape = (df.shape[1] - 1, 4)
+        if col_linkage.shape != expected_col_linkage_shape:
+            raise ValueError(f'col_linkage.shape must be {expected_col_linkage_shape}')
+
+    if cbar_label is not None:
+        if cbar_kws is None:
+            cbar_kws = dict()
+
+        cbar_kws['label'] = cbar_label
+
+    if optimal_ordering:
+        def _linkage(df):
+            return linkage(df.values, optimal_ordering=True, method=method,
+                metric=metric
+            )
+
+        # This behavior of when to transpose for which linkage is consistent w/ seaborn
+        # (I read clustermap implementation)
+
+        if row_cluster:
+            if row_linkage is not None:
+                raise ValueError('can not pass row_linkage if using '
+                    'optimal_ordering=True'
+                )
+
+            row_linkage = _linkage(df)
+
+        if col_cluster:
+            if col_linkage is not None:
+                raise ValueError('can not pass col_linkage if using '
+                    'optimal_ordering=True'
+                )
+
+            col_linkage = _linkage(df.T)
+
+    clustergrid = sns.clustermap(df, row_cluster=row_cluster, col_cluster=col_cluster,
+        row_linkage=row_linkage, col_linkage=col_linkage, method=method, metric=metric,
+        cbar_kws=cbar_kws, **kwargs
+    )
+
+    if xlabel is not None:
+        # This will overwrite whatever labels the seaborn call slaps on
+        clustergrid.ax_heatmap.set_xlabel(xlabel)
+
+    if ylabel is not None:
+        clustergrid.ax_heatmap.set_ylabel(ylabel)
+
+    return clustergrid
+
+
 # TODO consider calling sns.heatmap internally? or replacing some uses of this w/ that?
+# TODO may want to add xlabel / ylabel kwargs to be consistent w/ my clustermap wrapper,
+# but then again i'm currently using xlabel for a "title" here...
+# TODO do any uses of this actually use the returned `im` (output of plt.matshow)?
+# if not, maybe delete?
+@constrained_layout
+@callable_ticklabels
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
-    yticklabels=None, xtickrotation=None, colorbar_label=None,
+    yticklabels=None, xtickrotation=None, ylabel=None, cbar_label=None,
     group_ticklabels=False, ax=None, fontsize=None, fontweight=None, figsize=None,
-    transpose_sort_key=None, colorbar=True, shrink=None, colorbar_kwargs=None,
+    transpose_sort_key=None, colorbar=True, cbar_shrink=None, cbar_kws=None,
     **kwargs):
     """
     Args:
@@ -47,8 +197,6 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
 
         **kwargs: passed thru to `matplotlib.pyplot.matshow`
     """
-    # TODO TODO w/ all ticklabels kwargs, also support them being functions,
-    # which operate on (what type exactly?) index rows
     # TODO shouldn't this get ticklabels from matrix if nothing else?
     # maybe at least in the case when both columns and row indices are all just
     # one level of strings?
@@ -76,17 +224,17 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         if row_sort_key > col_sort_key:
             df = df.T
 
-    def one_level_str_index(index):
+    def is_one_level_str_index(index):
         return len(index.shape) == 1 and all(index.map(lambda x: type(x) is str))
 
     if (xticklabels is None) and (yticklabels is None):
         if ticklabels is None:
             # TODO maybe default to joining str representations of values at each level,
             # joined on some kwarg delim like '/'?
-            xticklabels = df.columns if one_level_str_index(df.columns) else None
-            yticklabels = df.index if one_level_str_index(df.index) else None
+            xticklabels = df.columns if is_one_level_str_index(df.columns) else None
+            yticklabels = df.index if is_one_level_str_index(df.index) else None
         else:
-            # TODO maybe also assert indices are actually equal?
+            # TODO TODO assert indices are actually equal
             assert df.shape[0] == df.shape[1]
 
             if callable(ticklabels):
@@ -96,17 +244,6 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
             # currently, matlabels seems to just operate on the row labels...
             xticklabels = ticklabels
             yticklabels = ticklabels
-    else:
-        # TODO fix. probably need to specify axes of df or something.
-        # (maybe first modifying matlabels to accept that...)
-        '''
-        if callable(xticklabels):
-            xticklabels = matlabels(df, xticklabels)
-
-        if callable(yticklabels):
-            yticklabels = matlabels(df, yticklabels)
-        '''
-        pass
 
     # TODO update this formula to work w/ gui corrs (too big now)
     # TODO see whether default font actually is inappropriate in any cases where i'm
@@ -118,13 +255,11 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     im = ax.matshow(df, **kwargs)
 
     if colorbar:
-        if colorbar_kwargs is None:
-            colorbar_kwargs = dict()
+        if cbar_kws is None:
+            cbar_kws = dict()
 
         # rotation=270?
-        cbar = add_colorbar(fig, im, label=colorbar_label, shrink=shrink,
-            **colorbar_kwargs
-        )
+        cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink, **cbar_kws)
 
     def grouped_labels_info(labels):
         if not group_ticklabels or labels is None:
@@ -187,6 +322,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     if title is not None:
         ax.set_xlabel(title, fontsize=(fontsize + 1.5), labelpad=12)
 
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=(fontsize + 1.5))
+
     return fig, im
 
 
@@ -203,6 +341,9 @@ def imshow(img, title=None, cmap='gray'):
 
 def add_colorbar(fig, im, label=None, shrink=None, **kwargs):
 
+    # TODO check whether kwargs `label=label` to fig.colorbar can replace
+    # cbar.ax.set_ylabel. i think so, but poorly documented.
+
     # I think this relies on use of Matplotlib's constrained layout
     cbar = fig.colorbar(im, ax=fig.axes, shrink=shrink, **kwargs)
 
@@ -213,8 +354,10 @@ def add_colorbar(fig, im, label=None, shrink=None, **kwargs):
 
 
 def image_grid(image_list, **imshow_kwargs):
-    # TODO TODO see: https://stackoverflow.com/questions/42850225 or related to find a
+    # TODO see: https://stackoverflow.com/questions/42850225 or related to find a
     # good solution for reliably eliminating all unwanted whitespace between subplots
+    # (honestly i think it will ultimately come down to figsize, potentially more so
+    # when using constrained layout, as i'd now generally like to)
     n = int(np.ceil(np.sqrt(len(image_list))))
     fig, axs = plt.subplots(n,n)
     for ax, img in zip(axs.flat, image_list):
@@ -294,11 +437,11 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
     if 'ticklabels' not in kwargs:
         kwargs['ticklabels'] = util.format_mixture
 
-    if 'colorbar_label' not in kwargs:
+    if 'cbar_label' not in kwargs:
         # TODO factor out latex for delta f / f stuff (+ maybe use in analysis that uses
         # this pkg: kc_natural_mixes, al_pair_grids)
-        kwargs['colorbar_label'] = \
-            trial_stat.title() + r' response $\frac{\Delta F}{F}$ correlation'
+        kwargs['cbar_label'] = \
+            trial_stat.title() + f' response {dff_latex} correlation'
 
     return matshow(corr_df, **kwargs)
 
