@@ -2821,6 +2821,9 @@ def ijroi_masks(ijroiset_dir_or_fname, thorimage_dir, as_xarray=True, **kwargs):
                 f'{ijroiset_fname} did not exist'
             )
 
+    else:
+        ijroiset_fname = ijroiset_dir_or_fname
+
     name_and_roi_list = ijroi.read_roi_zip(ijroiset_fname, points_only=False)
 
     _, (x, y), z, c, _, _ =  thor.load_thorimage_metadata(thorimage_dir)
