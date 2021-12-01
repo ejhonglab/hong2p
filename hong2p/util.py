@@ -1263,7 +1263,7 @@ def gsheet_to_frame(file_with_edit_link, *, gid=0, bool_fillna_false=True,
 
     bool_col_unique_vals = {True, False, np.nan}
     bool_cols = [c for c in df.columns if df[c].dtype == 'bool' or
-        (df[c].dtype == 'object' and set(df[c].unique()) == bool_col_unique_vals)
+        (df[c].dtype == 'object' and set(df[c].unique()).issubset(bool_col_unique_vals))
     ]
 
     if bool_fillna_false:
@@ -1291,7 +1291,12 @@ def gsheet_to_frame(file_with_edit_link, *, gid=0, bool_fillna_false=True,
         # most / all Gsheets where I use them)
         assert not will_be_dropped[bool_cols].any(axis=None)
 
-        df = df.iloc[:last_row_with_data_idx].copy()
+        len_before = len(df)
+
+        # TODO still works if last row actually does have data, right?
+        df = df.iloc[:(last_row_with_data_idx + 1)].copy()
+
+        assert len_before - len(will_be_dropped) == len(df)
 
     if restore_ints:
         # (works for 'float64' at least, presumably all float types)
