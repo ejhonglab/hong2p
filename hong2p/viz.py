@@ -339,7 +339,10 @@ def imshow(img, title=None, cmap='gray'):
     return fig
 
 
-def add_colorbar(fig, im, label=None, shrink=None, **kwargs):
+def add_colorbar(fig, im, label=None, shrink=1.0, **kwargs):
+    """
+        shrink: same default as matplotlib
+    """
 
     # TODO check whether kwargs `label=label` to fig.colorbar can replace
     # cbar.ax.set_ylabel. i think so, but poorly documented.
