@@ -351,9 +351,39 @@ class LabelsNotSelectiveError(ROIsNotLabeledError):
     pass
 
 
-def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=True,
-    merge_outputs=False, subset_stat=True):
+def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
+    merge_outputs=False, subset_stat=True, err=False):
+    """Returns suite2p outputs, with traces as a DataFrame
 
+    Loads outputs from `plane_or_combined_dir`, tossing data for ROIs marked "not a
+    cell" and ROIs merged to create others (by default).
+
+    Args:
+        plane_or_combined_dir: directory containing suite2p outputs
+        good_only: whether to drop data for ROIs marked "not a cell" in suite2p GUI
+        merge_inputs: whether to drop data for ROIs merged to create other ROIs
+        merge_outputs: whether to drop data for ROIs created via merging in suite2p
+        subset_stat: whether to also drop data in `roi_stats` according to the above
+            criteria.
+
+    Returns:
+        traces: DataFrame w/ ROI numbers and extracted signals
+        stat_dict: dict of ROI num -> suite2ps "stat" ROI data
+        ops: suite2p options
+        merges: dict of ROI nums of ROIs created via merging pointing to a list of the
+            ROI nums merged to create them. can be used for implementing your own
+            merging strategies.
+        err: whether to raise errors about ROI "cell / not cell" labels if `good_only`
+
+    Raises:
+        IOError: if suite2p outputs did not exist
+        LabelsNotModifiedError: if `err and good_only` and the "cell / not cell" labels
+            have not been modified.
+        LabelsNotSelectiveError: if `err and good_only` and no ROIs were marked "not a
+            cell" in suite2p (assumes that some noise ROIs would have been pulled out).
+            This can be caused by setting the threshold to 0 and not modifying the ROIs
+            further manually.
+    """
     traces_path = join(plane_or_combined_dir, 'F.npy')
     if not exists(traces_path):
         raise IOError(f'suite2p needs to be run on this data ({traces_path} '
@@ -364,7 +394,9 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=True,
     # (seems like just F, though not i'm pretty sure there were some options for using
     # some percentile as a baseline, so need to check again)
 
-    if good_only and not is_iscell_modified(plane_or_combined_dir):
+    if err and good_only and not is_iscell_modified(plane_or_combined_dir):
+        # TODO maybe this should be a warning by default and my code that currently
+        # relies on this error should convert this warning to an error?
         raise LabelsNotModifiedError('suite2p ROI labels not modified')
 
     iscell = load_iscell(plane_or_combined_dir)
@@ -383,7 +415,7 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=True,
 
     good_rois = iscell[:, 0].astype(np.bool_)
 
-    if good_only and len(good_rois) == good_rois.sum():
+    if err and good_only and len(good_rois) == good_rois.sum():
         # (and that probably means probability threshold was set to ~0 and no ROIs were
         # marked bad since then, though it would almost certainly be necessary)
         raise LabelsNotSelectiveError('*all* ROIs marked good')
@@ -419,10 +451,14 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=True,
         # dropped above
         traces = traces.loc[:, good_roi_nums]
 
+    # TODO would modifying traces downstream produce a set with copy warning as i'm
+    # currently creating it here? fix if so.
+
     # Converting type so it can be sensibly indexed after subsetting
     if subset_stat:
         stat_dict = {r: stat[r] for r in traces.columns}
     else:
+        # So the type is consistent w/ above
         stat_dict = {r: stat[r] for r in range(len(stat))}
 
     return traces, stat_dict, ops, merges
