@@ -635,6 +635,35 @@ def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
     return yaml_path, yaml_data, odor_lists
 
 
+# TODO maybe accept dict of names / values? which pd fn to copy the interfact of
+# names/values from (DataFrame creation probably)?
+def addlevel(df, names, values, *, axis='index'):
+    """Add level to pandas MultiIndex
+
+    Intended to be an inverse to pandas.DataFrame.droplevel. pandas.DataFrame.set_index
+    with `append=True` would work *except* that there is no `axis` kwarg to that
+    function, so it does not work for the columns. pandas.DataFrame.unstack is almost
+    what I would want, but it can seemingly arbitrarily change order of rows.
+
+    Args:
+        df: DataFrame to add MultiIndex levels to
+        names: `str`/sequence-of-`str` name(s) for the new levels
+        values: values for the new levels. If `names` is a sequence, this should be of
+            the same length.
+        axis: 0/'index' or 1/'columns', defauling to 'index' as in pandas
+
+    Returns: DataFrame with MultiIndex containing names/levels from input
+    """
+    if isinstance(names, str):
+        names = [names]
+        values = [values]
+
+    for name, value in list(zip(names, values))[::-1]:
+        df = pd.concat([df], names=[name], keys=[value], axis=axis)
+
+    return df
+
+
 def is_array_sorted(array):
     """Returns whether 1-dimensional np.ndarray is sorted."""
     # could implement an `axis` kwarg if i wanted to support multidimensional
@@ -1262,6 +1291,9 @@ def gsheet_to_frame(file_with_edit_link, *, gid=0, bool_fillna_false=True,
     df = pd.read_csv(gsheet_link)
 
     bool_col_unique_vals = {True, False, np.nan}
+    # TODO may want to change issubset call to exclude cols where there is somehow only
+    # NaN with dtype is still being 'object' (shouldn't be possible though, at least as
+    # long as this is the first step?)
     bool_cols = [c for c in df.columns if df[c].dtype == 'bool' or
         (df[c].dtype == 'object' and set(df[c].unique()).issubset(bool_col_unique_vals))
     ]

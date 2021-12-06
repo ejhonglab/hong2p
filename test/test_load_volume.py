@@ -9,6 +9,9 @@ import tifffile
 from hong2p import util, thor
 
 
+# Meaning all tests in this file are slow
+pytestmark = pytest.mark.slow
+
 _data = None
 def read_movie():
     global _data
@@ -55,9 +58,4 @@ def test_save_volume():
 
     data2 = tifffile.imread(fname)
     assert np.array_equal(data, data2)
-
-
-if __name__ == '__main__':
-    #test_read_movie_volume()
-    test_save_volume()
 
