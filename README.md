@@ -111,3 +111,8 @@ pip install -e .[test]
 # using `python -m pytest` instead.
 pytest
 ```
+
+To just run tests not marked as "slow":
+```
+pytest -m "not slow"
+```

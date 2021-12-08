@@ -48,6 +48,10 @@ def test_addlevel():
     check_index(odf.index, n=n, v=v)
     check_index(odf.columns, n=n, v=v)
 
+    # TODO add tests where values contains something of length equal to the
+    # corresponding axis, rather than just a single unique value (+ one test w/ a mix of
+    # each)
+
 
 diff_df = pd.DataFrame({
     'str': 'asdf',

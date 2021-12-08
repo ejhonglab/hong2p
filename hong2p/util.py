@@ -654,6 +654,8 @@ def addlevel(df, names, values, *, axis='index'):
 
     Returns: DataFrame with MultiIndex containing names/levels from input
     """
+    # https://stackoverflow.com/questions/14744068
+
     if isinstance(names, str):
         names = [names]
         values = [values]
@@ -2249,7 +2251,7 @@ def parent_recording_id(tiffname_or_thorimage_id):
     return match.group(1)
 
 
-def write_tiff(tiff_filename, movie, strict_dtype=True):
+def write_tiff(tiff_filename, movie, strict_dtype=True, dims=None):
     # TODO also handle diff color channels
     """Write a TIFF loading the same as the TIFFs we create with ImageJ.
 
@@ -2259,6 +2261,9 @@ def write_tiff(tiff_filename, movie, strict_dtype=True):
     Dimensions of input should be (t,[z,],y,x).
 
     Metadata may not be correct.
+
+    Args:
+        dims: may or may not have the same meaning as `tifffile.imsave` `axes` kwarg
     """
     import tifffile
 
@@ -2284,39 +2289,54 @@ def write_tiff(tiff_filename, movie, strict_dtype=True):
         else:
             assert dtype.byteorder == '>'
 
+    else:
+        # To avoid `ValueError: ImageJ does not support data type 'd'` from tifffile.py
+        if movie.dtype == 'float64':
+            movie = movie.astype('float32')
+
     # TODO TODO maybe change so ImageJ considers appropriate dimension the time
     # dimension (both in 2d x T and 3d x T cases)
     # TODO TODO TODO convert from thor data to appropriate dimension order (w/
     # singleton dimensions as necessary) (or keep dimensions + dimension order
     # of array, and pass metadata={'axes': 'TCXY'}, w/ the value constructed
-    # appropriately? that work w/ imagej=True?)
+    # appropriately? that work w/ imagej=True?) (i dont think it did)
 
     # TODO TODO TODO since scipy docs say [their version] of tifffile expects
     # channels in TZCYXS order
     # https://scikit-image.org/docs/0.14.x/api/skimage.external.tifffile.html
 
-    if len(movie.shape) == 3:
-        #axes = 'TXY'
-        # Z and C
-        new_dim_indices = (1, 2)
-    elif len(movie.shape) == 4:
-        #axes = 'TZXY'
-        # C
-        new_dim_indices = (2,)
+    imagej_dims = 'TZCYX'
+
+    if dims is not None:
+        if len(dims) != len(movie.shape):
+            raise ValueError('wrong number of dimensions')
+
+        dims = dims.upper()
+        for c in dims:
+            if c not in imagej_dims:
+                raise ValueError(f'dimension {c} not among {imagej_dims}')
     else:
-        raise ValueError('unexpected number of dimensions to movie. have '
-            f'{len(movie.shape)}. expected 3 (TXY) or 4 (TZXY).'
-        )
+        if len(movie.shape) == 3:
+            dims = 'TYX'
+            # Z and C
+            #new_dim_indices = (1, 2)
+        elif len(movie.shape) == 4:
+            dims = 'TZYX'
+            # C
+            #new_dim_indices = (2,)
+        else:
+            raise ValueError('unexpected number of dimensions to movie. have '
+                f'{len(movie.shape)}. expected 3 (TYX) or 4 (TZYX).'
+            )
 
-    # I believe in some installation this line failed in (2d x t) case where
-    # (415, 1, 192, 192) was initial movie.shape (a single plane expt), but now
-    # I can't reproduce it in a python3.8 venv.
-    movie = np.expand_dims(movie, new_dim_indices)
+    n_dims_to_add = len(imagej_dims) - len(movie.shape)
+    movie = np.expand_dims(movie, axis=tuple(range(n_dims_to_add)))
 
-    # not doing this still seems to produce output consistent w/ what i see on
-    # the scope, in constrast to what i see if i *do* swap these
-    # Switches from last two dimensions being XY to YX
-    #movie = np.swapaxes(movie, -2, -1)
+    new_dims = ''.join([c for c in imagej_dims if c not in dims])
+    dims = new_dims + dims
+    assert set(dims) == set(imagej_dims)
+
+    movie = np.transpose(movie, axes=[dims.index(c) for c in imagej_dims])
 
     # TODO TODO is "UserWarning: TiffWriter: truncating ImageJ file" actually
     # something to mind? for example, w/ 2020-04-01/2/fn as input, the .raw is
@@ -2325,13 +2345,9 @@ def write_tiff(tiff_filename, movie, strict_dtype=True):
     # supported w/ imagej=True, so maybe that wouldn't be a quick fix if the
     # warning actually does matter. if not, maybe suppress it somehow?
 
-    # TODO actually make sure any metadata we use is the same
     # TODO maybe just always do test from test_readraw here?
     # (or w/ flag to disable the check)
     tifffile.imsave(tiff_filename, movie, imagej=True)
-    # doesn't seem to work (reading it into imagej still has a slider for C at
-    # the bottom, and it jumps across Z planes when scrolling either slider)
-    #tifffile.imsave(tiff_filename, movie, metadata={'axes': axes})
 
 
 def full_frame_avg_trace(movie):
@@ -2548,17 +2564,27 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
 
     for name, roi in ijrois:
 
+        z_index = None
+
         if len(shape) == 3:
             # Otherwise, it should simply be a numpy array with points.
             # `points_only=False` to either `read_roi_zip` or `read_roi` should produce
             # input suitable for this branch.
-            if hasattr(roi, 'z'):
+            if getattr(roi, 'z', None) is not None:
                 z_index = roi.z
 
+            # ROI was drawn on an image w/ only 3 dimensions (assuming the non-XY one
+            # was Z)
+            elif getattr(roi, 'position', None) is not None:
+                z_index = roi.position
+
+            if z_index is not None:
                 # This should be the same as the `name` this shadows, just without the
                 # '.roi' suffix.
                 name = roi.name
 
+                # TODO eventually delete everything that uses parse_z_from_name.
+                # is there any old code that depends on it?
                 try:
                     _, (prefix, suffix) = ijroi.parse_z_from_name(name,
                         return_unmatched=True
@@ -2566,7 +2592,6 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
                 except ValueError:
                     prefix = name
                     suffix = ''
-
             else:
                 warnings.warn('trying to parse Z from ROI name. pass points_only=False'
                     ' to ijroi loading function to read Z directly.'
@@ -2574,13 +2599,8 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
                 z_index, (prefix, suffix) = ijroi.parse_z_from_name(name,
                     return_unmatched=True
                 )
-        else:
-            z_index = None
 
-        if hasattr(roi, 'points'):
-            points = roi.points
-        else:
-            points = roi
+        points = getattr(roi, 'points', roi)
 
         # TODO may also need to reverse part of shape here, if really was
         # necessary above (test would probably need to be in asymmetric
