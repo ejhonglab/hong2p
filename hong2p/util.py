@@ -5,6 +5,7 @@ our databases / movies / CNMF output.
 
 import os
 from os.path import join, split, exists, sep, isdir, isfile, getmtime, splitext
+from pathlib import Path
 import pickle
 import sys
 from types import ModuleType
@@ -15,6 +16,7 @@ import glob
 import re
 import hashlib
 import functools
+from typing import Optional
 
 import numpy as np
 from numpy.ma import MaskedArray
@@ -633,6 +635,19 @@ def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
     odor_lists = olf.yaml_data2odor_lists(yaml_data)
 
     return yaml_path, yaml_data, odor_lists
+
+
+def most_recent_contained_file_mtime(path) -> Optional[float]:
+    """Recursively find the `os.path.getmtime` of the most recently modified file
+
+    Testing on Ubuntu, this does not recurse into symlinks to directories, as I want for
+    at least current use case.
+    """
+    files = [x for x in Path(path).rglob('*') if x.is_file()]
+    if len(files) == 0:
+        return None
+
+    return max(getmtime(f) for f in files)
 
 
 # TODO maybe accept dict of names / values? which pd fn to copy the interfact of
@@ -2768,8 +2783,8 @@ def merge_single_plane_rois(rois, min_overlap_frac=0.3, n_dilations=1):
     import ipdb; ipdb.set_trace()
 
 
-# TODO TODO TODO refactor this + hong2p.suite2p.remerge_suite2p_merged to share core
-# code here!!! (this initially copied from other fn and then adapted)
+# TODO TODO refactor this + hong2p.suite2p.remerge_suite2p_merged to share core code
+# here! (this initially copied from other fn and then adapted)
 def rois2best_planes_only(rois, roi_quality):
     """
     Currently assumes input only has non-zero values in a single plane for a given
@@ -2838,7 +2853,8 @@ def rois2best_planes_only(rois, roi_quality):
 
         notbest_to_drop.extend(curr_notbest)
 
-        if verbose:
+        # only print if multiple inputs (i.e. actually 'merging' in some sense)
+        if verbose and len(curr_notbest) > 0:
             print(f'merging ROI {merged_name}')
             print(f'selecting input ROI {curr_best} as best plane')
             print(f'dropping other input ROIs {curr_notbest}')
@@ -2860,26 +2876,43 @@ def rois2best_planes_only(rois, roi_quality):
     return roi_nums, rois
 
 
-def ijroi_masks(ijroiset_dir_or_fname, thorimage_dir, as_xarray=True, **kwargs):
+ijroiset_default_basename = 'RoiSet.zip'
 
-    # This must be my fork at https://github.com/tom-f-oconnell/ijroi
-    import ijroi
-
+def ijroi_filename(ijroiset_dir_or_fname, must_exist=True):
     if isdir(ijroiset_dir_or_fname):
-
-        ijroiset_basename = 'RoiSet.zip'
 
         # TODO if i standardize path to analysis intermediates, update this to look for
         # RoiSet.zip there?
-        ijroiset_fname = join(ijroiset_dir_or_fname, ijroiset_basename)
+        ijroiset_fname = join(ijroiset_dir_or_fname, ijroiset_default_basename)
 
-        if not isfile(ijroiset_fname):
+        if must_exist and not isfile(ijroiset_fname):
             raise IOError('directory passed for ijroiset_dir_or_fname, but '
                 f'{ijroiset_fname} did not exist'
             )
 
     else:
         ijroiset_fname = ijroiset_dir_or_fname
+
+    return ijroiset_fname
+
+
+def has_ijrois(ijroiset_dir_or_fname):
+    # NOTE: not actually checking it contains any
+    ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname, must_exist=False)
+    return exists(ijroiset_fname)
+
+
+def ijroi_mtime(ijroiset_dir_or_fname):
+    ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
+    return getmtime(ijroiset_fname)
+
+
+def ijroi_masks(ijroiset_dir_or_fname, thorimage_dir, as_xarray=True, **kwargs):
+
+    # This must be my fork at https://github.com/tom-f-oconnell/ijroi
+    import ijroi
+
+    ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
 
     name_and_roi_list = ijroi.read_roi_zip(ijroiset_fname, points_only=False)
 

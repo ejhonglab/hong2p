@@ -34,7 +34,7 @@ def thor2tiff_cli():
     output_name = args.output_name
 
     # Options are 'err', 'overwrite', or 'ignore'
-    if_exists = 'overwrite' if  args.overwrite else 'err'
+    if_exists = 'overwrite' if args.overwrite else 'err'
 
     util.thor2tiff(raw_dir, output_name=output_name, if_exists=if_exists)
 
