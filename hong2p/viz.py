@@ -6,6 +6,7 @@ provide context specfically useful for certain types of olfaction experiments.
 from os.path import join, exists
 import time
 import functools
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -105,11 +106,34 @@ constrained_layout = _mpl_constrained_layout(True)
 no_constrained_layout = _mpl_constrained_layout(False)
 
 
+# TODO maybe combine w/ decorator to add title/xlabel/ylabel/etc kwargs + their
+# reformatting (+ setting? some differences in how i do this, and would need Axes to
+# call on...)
+def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws=None):
+    # Will no longer have same behavior as passing rotation=None explicitly to the
+    # corresponding set_ylabel call, but would need another sentinel for unset
+    # values than None to fix.
+    if ylabel_kws is None:
+        ylabel_kws = dict()
+
+    if ylabel_rotation is not None:
+        if ylabel_kws is not None and 'ylabel_rotation' in ylabel_kws:
+            raise ValueError('only specify either ylabel_rotation or '
+                "ylabel_kws['rotation']"
+            )
+
+        ylabel_kws['rotation'] = ylabel_rotation
+
+    return ylabel_kws
+
+
 @no_constrained_layout
 @callable_ticklabels
-def clustermap(df, *, optimal_ordering=True, xlabel=None, ylabel=None, cbar_label=None,
-    cbar_kws=None, row_cluster=True, col_cluster=True, row_linkage=None,
-    col_linkage=None, method='average', metric='euclidean', **kwargs):
+def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=None,
+    ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
+    row_cluster=True, col_cluster=True, row_linkage=None, col_linkage=None,
+    method='average', metric='euclidean', z_score=None, standard_scale=None,
+    **kwargs):
     """Same as seaborn.clustermap but allows callable [x/y]ticklabels + adds opts.
 
     Adds `optimal_ordering` kwarg to `scipy.cluster.hierarchy.linkage` that is not
@@ -132,12 +156,30 @@ def clustermap(df, *, optimal_ordering=True, xlabel=None, ylabel=None, cbar_labe
         if col_linkage.shape != expected_col_linkage_shape:
             raise ValueError(f'col_linkage.shape must be {expected_col_linkage_shape}')
 
+    valid_preproc_kw_values = {None, 0, 1}
+
+    if z_score not in valid_preproc_kw_values:
+        raise ValueError(f'z_score must be in {valid_preproc_kw_values}')
+
+    if standard_scale not in valid_preproc_kw_values:
+        raise ValueError(f'standard_scale must be in {valid_preproc_kw_values}')
+
     if cbar_label is not None:
         if cbar_kws is None:
             cbar_kws = dict()
 
         cbar_kws['label'] = cbar_label
 
+    if z_score is not None or standard_scale is not None:
+        warnings.warn('disabling optimal_ordering since z_score or standard_scale')
+        optimal_ordering = False
+
+        kwargs['z_score'] = z_score
+        kwargs['standard_scale'] = standard_scale
+
+    # TODO if z-scoring / standard-scaling requested, calculate before in this case
+    # (so it actually affects linkage, as it would w/ seaborn version)
+    # (currently just disabling optimal ordering in these cases)
     if optimal_ordering:
         def _linkage(df):
             return linkage(df.values, optimal_ordering=True, method=method,
@@ -168,12 +210,18 @@ def clustermap(df, *, optimal_ordering=True, xlabel=None, ylabel=None, cbar_labe
         cbar_kws=cbar_kws, **kwargs
     )
 
+    if title is not None:
+        clustergrid.ax_heatmap.set_title(title)
+
     if xlabel is not None:
         # This will overwrite whatever labels the seaborn call slaps on
         clustergrid.ax_heatmap.set_xlabel(xlabel)
 
     if ylabel is not None:
-        clustergrid.ax_heatmap.set_ylabel(ylabel)
+        ylabel_kws = _ylabel_kwargs(
+            ylabel_rotation=ylabel_rotation, ylabel_kws=ylabel_kws
+        )
+        clustergrid.ax_heatmap.set_ylabel(ylabel, **ylabel_kws)
 
     return clustergrid
 
@@ -186,10 +234,10 @@ def clustermap(df, *, optimal_ordering=True, xlabel=None, ylabel=None, cbar_labe
 @constrained_layout
 @callable_ticklabels
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
-    yticklabels=None, xtickrotation=None, ylabel=None, cbar_label=None,
-    group_ticklabels=False, ax=None, fontsize=None, fontweight=None, figsize=None,
-    transpose_sort_key=None, colorbar=True, cbar_shrink=None, cbar_kws=None,
-    **kwargs):
+    yticklabels=None, xtickrotation=None, ylabel=None, ylabel_rotation=None,
+    ylabel_kws=None, cbar_label=None, group_ticklabels=False, ax=None, fontsize=None,
+    fontweight=None, figsize=None, transpose_sort_key=None, colorbar=True,
+    cbar_shrink=1.0, cbar_kws=None, **kwargs):
     """
     Args:
         transpose_sort_key (None | function): takes df.index/df.columns and compares
@@ -323,7 +371,10 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         ax.set_xlabel(title, fontsize=(fontsize + 1.5), labelpad=12)
 
     if ylabel is not None:
-        ax.set_ylabel(ylabel, fontsize=(fontsize + 1.5))
+        ylabel_kws = _ylabel_kwargs(
+            ylabel_rotation=ylabel_rotation, ylabel_kws=ylabel_kws
+        )
+        ax.set_ylabel(ylabel, fontsize=(fontsize + 1.5), **ylabel_kws)
 
     return fig, im
 
