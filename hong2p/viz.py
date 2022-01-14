@@ -63,16 +63,18 @@ def callable_ticklabels(plot_fn):
     """
 
     @functools.wraps(plot_fn)
-    def wrapped_plot_fn(df, *args, xticklabels=None, yticklabels=None, **kwargs):
-        if callable(xticklabels):
-            xticklabels = col_labels(df, xticklabels)
+    def wrapped_plot_fn(df, *args, **kwargs):
+        if 'xticklabels' in kwargs:
+            xticklabels = kwargs['xticklabels']
+            if callable(xticklabels):
+                kwargs['xticklabels'] = col_labels(df, xticklabels)
 
-        if callable(yticklabels):
-            yticklabels = row_labels(df, yticklabels)
+        if 'yticklabels' in kwargs:
+            yticklabels = kwargs['yticklabels']
+            if callable(yticklabels):
+                kwargs['yticklabels'] = col_labels(df, yticklabels)
 
-        return plot_fn(df, *args, xticklabels=xticklabels, yticklabels=yticklabels,
-            **kwargs
-        )
+        return plot_fn(df, *args, **kwargs)
 
     return wrapped_plot_fn
 
