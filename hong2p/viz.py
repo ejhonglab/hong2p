@@ -72,7 +72,7 @@ def callable_ticklabels(plot_fn):
         if 'yticklabels' in kwargs:
             yticklabels = kwargs['yticklabels']
             if callable(yticklabels):
-                kwargs['yticklabels'] = col_labels(df, yticklabels)
+                kwargs['yticklabels'] = row_labels(df, yticklabels)
 
         return plot_fn(df, *args, **kwargs)
 
@@ -238,7 +238,7 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 def matshow(df, title=None, ticklabels=None, xticklabels=None,
     yticklabels=None, xtickrotation=None, ylabel=None, ylabel_rotation=None,
     ylabel_kws=None, cbar_label=None, group_ticklabels=False, ax=None, fontsize=None,
-    fontweight=None, figsize=None, transpose_sort_key=None, colorbar=True,
+    fontweight=None, figsize=None, dpi=None, transpose_sort_key=None, colorbar=True,
     cbar_shrink=1.0, cbar_kws=None, **kwargs):
     """
     Args:
@@ -252,7 +252,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     # one level of strings?
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     else:
         if figsize is not None:
             raise ValueError('figsize only allowed if ax not passed in')
