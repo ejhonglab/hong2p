@@ -7,6 +7,7 @@ import os
 from os.path import join, split, exists, sep, isdir, isfile, getmtime, splitext
 from pathlib import Path
 import pickle
+import platform
 import sys
 from types import ModuleType
 from datetime import datetime
@@ -31,6 +32,32 @@ from hong2p import matlab, db, thor, viz, olf
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
+
+# 1 to indicate computer is an acquisition computer, 0/unset otherwise.
+ACQUISITION_ENV_VAR = 'HONG2P_ACQUISITION'
+
+def is_acquisition_host():
+    _is_acquisition_host = False
+
+    if ACQUISITION_ENV_VAR in os.environ:
+        val = os.environ[ACQUISITION_ENV_VAR]
+        if val == '1':
+            _is_acquisition_host = True
+        elif val == '0':
+            _is_acquisition_host = False
+        else:
+            raise ValueError(f'invalid value {val} for {ACQUISITION_ENV_VAR}. must be '
+                '0 or 1.'
+            )
+    else:
+        # Returns the system/OS name, such as 'Linux','Darwin','Windows'
+        if platform.system() == 'Windows':
+            warnings.warn('assuming this is an acquisition computer because it is '
+                f'windows. set {ACQUISITION_ENV_VAR} to 0/1 to silence this.'
+            )
+            _is_acquisition_host = True
+
+    return _is_acquisition_host
 
 
 # These three environment variables are in priority order (if first defined, it will be
