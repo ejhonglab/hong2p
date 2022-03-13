@@ -17,6 +17,7 @@ import re
 import hashlib
 import functools
 from typing import Optional
+import xml.etree.ElementTree as etree
 
 import numpy as np
 from numpy.ma import MaskedArray
@@ -601,10 +602,19 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
         if exists(subdir_path):
             yaml_path = subdir_path
 
-    yaml_path = join(stimfile_dir, yaml_path)
-    assert exists(yaml_path), f'{yaml_path}'
+    yaml_abspath = join(stimfile_dir, yaml_path)
 
-    return yaml_path
+    if not exists(yaml_abspath):
+        if isinstance(thorimage_dir_or_xml, etree.Element):
+            name = thor.get_thorimage_name(thorimage_dir_or_xml)
+        else:
+            name = thorimage_dir_or_xml
+
+        raise IOError(f'{name} references {yaml_path}, but it did not '
+            f'exist under stimfile_dir={stimfile_dir}'
+        )
+
+    return yaml_abspath
 
 
 def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
@@ -5796,6 +5806,7 @@ def to_filename(x, period=True):
         ')': '',
         '[': '',
         ']': '',
+        '?': '',
     }
     for k, v in replace_dict.items():
         x = x.replace(k, v)

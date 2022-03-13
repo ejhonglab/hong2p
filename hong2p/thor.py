@@ -297,6 +297,11 @@ def get_thorimage_notes(xml):
     return xml.find('ExperimentNotes').attrib['text']
 
 
+@thorimage_xml
+def get_thorimage_name(xml):
+    return xml.find('Name').attrib['name']
+
+
 def load_thorimage_metadata(thorimage_dir, return_xml=False):
     """Returns (fps, xy, z, c, n_flyback, raw_output_path) for ThorImage dir.
 
