@@ -74,6 +74,8 @@ NAS_PATH_TO_HONG2P_DATA = 'mb_team'
 # `raw_fly_dir`).
 FAST_DATA_ROOT_ENV_VAR = 'HONG2P_FAST_DATA'
 
+STIMFILE_DIR_ENV_VAR = 'HONG2P_STIMFILE_DIR'
+
 _fast_data_root = os.environ.get(FAST_DATA_ROOT_ENV_VAR)
 if _fast_data_root is not None and not isdir(_fast_data_root):
     raise IOError(f'{FAST_DATA_ROOT_ENV_VAR} set but is not a directory')
@@ -168,12 +170,23 @@ def data_root(verbose=False):
 def check_dir_exists(fn_returning_dir):
 
     @functools.wraps(fn_returning_dir)
-    def optionally_checked_fn_returning_dir(*args, check=True, **kwargs):
+    def optionally_checked_fn_returning_dir(*args, check=True, create=False, **kwargs):
 
         directory = fn_returning_dir(*args, **kwargs)
 
-        if check and not isdir(directory):
-            raise IOError('directory {directory} does not exist!')
+        if not isdir(directory):
+
+            if create:
+                print(f'Creating directory {directory}')
+                # This will error if `directory` points to something that exists that
+                # is NOT a directory (as intended).
+                os.makedirs(directory)
+
+            elif check:
+                raise IOError(f'directory {directory} (returned by '
+                    f'{fn_returning_dir.__name__}) does not exist! check the relevant '
+                    'environment variables are set correctly.'
+                )
 
         return directory
 
@@ -198,13 +211,13 @@ def raw_data_root(root=None, **kwargs):
 def analysis_intermediates_root():
     # TODO probably prefer using $HONG2P_DATA over os.getcwd() (assuming it's not on NAS
     # and it therefore acceptably fast if not instead using $HONG_NAS)
-    if FAST_DATA_ROOT_ENV_VAR in os.environ:
-        intermediates_root_parent = os.environ[FAST_DATA_ROOT_ENV_VAR]
-    else:
+    if _fast_data_root is None:
         warnings.warn(f'environment variable {FAST_DATA_ROOT_ENV_VAR} not set, so '
             'storing analysis intermediates under current directory'
         )
         intermediates_root_parent = os.getcwd()
+    else:
+        intermediates_root_parent = _fast_data_root
 
     intermediates_root = join(intermediates_root_parent, 'analysis_intermediates')
     return intermediates_root
@@ -212,7 +225,9 @@ def analysis_intermediates_root():
 
 @check_dir_exists
 def stimfile_root(**kwargs):
-    return join(data_root(**kwargs), 'stimulus_data_files')
+    return os.environ.get(STIMFILE_DIR_ENV_VAR,
+        join(data_root(**kwargs), 'stimulus_data_files')
+    )
 
 
 # TODO replace this w/ above (need to change kc_natural_mixes / natural_odors, or at
