@@ -607,18 +607,25 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
 
     notes = thor.get_thorimage_notes(thorimage_dir_or_xml)
 
+    if isinstance(thorimage_dir_or_xml, etree.Element):
+        name = thor.get_thorimage_name(thorimage_dir_or_xml)
+    else:
+        name = thorimage_dir_or_xml
+
     yaml_path = None
     parts = notes.split()
     for p in parts:
         p = p.strip()
         if p.endswith('.yaml'):
             if yaml_path is not None:
-                raise ValueError('encountered multiple *.yaml substrings!')
+                raise ValueError(f'{name}: encountered multiple *.yaml substrings!')
 
             yaml_path = p
 
     if yaml_path is None:
-        raise ValueError('no string ending in .yaml found in ThorImage note field')
+        raise ValueError(f'{name}: no string ending in .yaml found in ThorImage note '
+            'field'
+        )
 
     assert yaml_path is not None
 
@@ -628,8 +635,8 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
         old_yaml_path = yaml_path
         yaml_path = yaml_path.replace('""', date_str)
 
-        warnings.warn(f'replacing of stimulus YAML path of {old_yaml_path} with '
-            f'{yaml_path}'
+        warnings.warn(f'{name}: replacing of stimulus YAML path of {old_yaml_path} '
+            f'with {yaml_path}'
         )
     #
 
@@ -647,11 +654,6 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
     yaml_abspath = join(stimfile_dir, yaml_path)
 
     if not exists(yaml_abspath):
-        if isinstance(thorimage_dir_or_xml, etree.Element):
-            name = thor.get_thorimage_name(thorimage_dir_or_xml)
-        else:
-            name = thorimage_dir_or_xml
-
         raise IOError(f'{name} references {yaml_path}, but it did not '
             f'exist under stimfile_dir={stimfile_dir}'
         )
