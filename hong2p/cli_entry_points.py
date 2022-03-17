@@ -50,15 +50,22 @@ def showsync_cli():
         help='will print all column names as they are in .h5 file and any renaming'
         'that occurs inside thor.load_thorsync_hdf5'
     )
+    # TODO say what is show by default (or excluded...)
     parser.add_argument('-a', '--all', action='store_true',
         help='will display all data in HDF5 (except frame counter)'
+    )
+    parser.add_argument('-d', '--datasets', action='store',
+        help='comma separated list of (normalized) names of traces to plot'
     )
     args = parser.parse_args()
     thorsync_dir = args.thorsync_dir
     verbose = args.verbose
     exclude_datasets = False if args.all else None
+    datasets = None if not args.datasets else ['gctr'] + args.datasets.split(',')
 
-    showsync(thorsync_dir, verbose=verbose, exclude_datasets=exclude_datasets)
+    showsync(thorsync_dir, verbose=verbose, exclude_datasets=exclude_datasets,
+        datasets=datasets
+    )
 
 
 def suite2p_params_cli():
