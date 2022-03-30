@@ -29,6 +29,9 @@ dff_latex = r'$\Delta F/F$'
 # into str labels for matshow (e.g. ('odor1','odor2') -> olf.format_mix_from_strs)?
 # TODO and like to set default cmap(s)?
 
+
+# TODO change docstring to indicate rowlabel_fn should take a pd.Series, if that is
+# always correct (for multiindex / not input, etc)
 def matlabels(df, rowlabel_fn, axis='index'):
     # TODO should i modify so it takes an Index/MultiIndex rather than a DataFrame row?
     # what would make these functions more natural to write?
@@ -37,6 +40,7 @@ def matlabels(df, rowlabel_fn, axis='index'):
 
     `rowlabel_fn` should take a DataFrame row (w/ columns from index) to a str.
     """
+    # TODO move to something like util._validate_axis?
     if axis == 'index':
         index = df.index
     elif axis == 'columns':
@@ -44,9 +48,11 @@ def matlabels(df, rowlabel_fn, axis='index'):
     else:
         raise ValueError("axis must be either 'index' or 'columns'")
 
-    return index.to_frame().apply(rowlabel_fn, axis=1)
+    return list(index.to_frame().apply(rowlabel_fn, axis=1))
 
 
+# TODO should i thread delim kwarg to default fn thru here (e.g. just threading all
+# kwargs through to label_fn)?
 def row_labels(df, label_fn):
     return matlabels(df, label_fn, axis='index')
 
@@ -55,22 +61,50 @@ def col_labels(df, label_fn):
     return matlabels(df, label_fn, axis='columns')
 
 
+def format_index_row(row: pd.Series, delim: str = ' / '):
+    """Takes Series to a str with the concatenated values, separated by `delim`.
+    """
+    return delim.join([str(x) for x in row.values])
+
+
 def callable_ticklabels(plot_fn):
     """Allows [x/y]ticklabel functions evaluated on indices of `df` (`plot_fn(df, ...)`)
 
     First parameter to `plot_fn` must be a `pandas.DataFrame` to compute the `str`
-    ticklabels from.
+    ticklabels from. `plot_fn` must also accept the kwargs '[x|y]'
     """
+    def _check_bools(ticklabels):
+        """Makes True equivalent to passing str, and False equivalent to None.
+        """
+        if ticklabels == True:
+            # TODO TODO probably also default to this in case ticklabels=None
+            # (might just need to modify some of the calling code)
+            return format_index_row
+
+        elif ticklabels == False:
+            return None
+
+        # TODO delete after checking code that could be affected to see if it trips.
+        #
+        # I.e. if it is specifically the callable `str`, which I had sometimes used for
+        # single level indices in the past, but have encountered issues with and made
+        # `format_index_row` to replace.
+        elif ticklabels is str:
+            warnings.warn('replace usage of str with hong2p.viz.format_index_row')
+            return ticklabels
+
+        else:
+            return ticklabels
 
     @functools.wraps(plot_fn)
     def wrapped_plot_fn(df, *args, **kwargs):
         if 'xticklabels' in kwargs:
-            xticklabels = kwargs['xticklabels']
+            xticklabels = _check_bools(kwargs['xticklabels'])
             if callable(xticklabels):
                 kwargs['xticklabels'] = col_labels(df, xticklabels)
 
         if 'yticklabels' in kwargs:
-            yticklabels = kwargs['yticklabels']
+            yticklabels = _check_bools(kwargs['yticklabels'])
             if callable(yticklabels):
                 kwargs['yticklabels'] = row_labels(df, yticklabels)
 
@@ -131,6 +165,8 @@ def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws=None):
 
 @no_constrained_layout
 @callable_ticklabels
+# TODO TODO do [x|y]ticklabels now need to be extracted from kwargs? if seaborn doesn't
+# handle that, then the @callable_ticklabels decorator is doing nothing here.
 def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=None,
     ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
     row_cluster=True, col_cluster=True, row_linkage=None, col_linkage=None,
@@ -274,6 +310,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         if row_sort_key > col_sort_key:
             df = df.T
 
+    # TODO can probably delete this and replace w/ usage of format_index_row, maybe with
+    # some slight modifications
     def is_one_level_str_index(index):
         return len(index.shape) == 1 and all(index.map(lambda x: type(x) is str))
 
@@ -1082,7 +1120,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
 
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
-                
+
             else:
                 if show_cell_ids and j == len(cell_trials) - 1:
                     # Indexes as they would be from one. For comparison
@@ -1117,7 +1155,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             for j in range(len(cell_trials)):
                 ax = axs[i,j]
                 ax.set_ylim(ymin, ymax)
-    
+
     if show_footprints:
         fly_title = '{}, fly {}, {}'.format(
             date_dir, fly_num, thorimage_id)
