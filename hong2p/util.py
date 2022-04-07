@@ -317,6 +317,18 @@ def shorten_path(full_path, n_parts=3):
     return '/'.join(full_path.split(sep)[-n_parts:])
 
 
+def print_thor_paths(image_dir, sync_dir, print_full_paths=True) -> None:
+    if print_full_paths:
+        image_dir_toprint = image_dir
+        sync_dir_toprint = sync_dir
+    else:
+        image_dir_toprint = shorten_path(image_dir)
+        sync_dir_toprint = shorten_path(sync_dir)
+
+    print('thorimage_dir:', image_dir_toprint)
+    print('thorsync_dir:', sync_dir_toprint)
+
+
 # TODO maybe rename suffix here / thor.pair_thor_subdirs(->_dirs) for
 # consistency. i think i was already thinking consolidating/renaming those two
 # thor functions
@@ -328,8 +340,8 @@ def shorten_path(full_path, n_parts=3):
 # TODO TODO function like this but that returns everything, with kwargs for only getting
 # stuff between a start and end date (w/ end date not specified as well, for analyzing
 # ongoing experiments)
-def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
-    **pair_kwargs):
+def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths=True,
+    verbose=False, **pair_kwargs):
     # TODO add code example to doc
     """Takes list of (date, fly_num) tuples to pairs of their Thor outputs.
 
@@ -369,8 +381,7 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, verbose=False,
                 return
 
             if verbose:
-                print('thorimage_dir:', image_dir)
-                print('thorsync_dir:', sync_dir)
+                print_thor_paths(image_dir, sync_dir, print_full_paths=print_full_paths)
 
             yield (date, fly_num), (image_dir, sync_dir)
             n += 1
@@ -507,15 +518,7 @@ def paired_thor_dirs(start_date=None, end_date=None, n_first=None, skip_redone=T
                 return
 
             if verbose:
-                if print_full_paths:
-                    image_dir_toprint = image_dir
-                    sync_dir_toprint = sync_dir
-                else:
-                    image_dir_toprint = shorten_path(image_dir)
-                    sync_dir_toprint = shorten_path(sync_dir)
-
-                print('thorimage_dir:', image_dir_toprint)
-                print('thorsync_dir:', sync_dir_toprint)
+                print_thor_paths(image_dir, sync_dir, print_full_paths=print_full_paths)
 
             yield (date, fly_num), (image_dir, sync_dir)
             n += 1
@@ -580,6 +583,26 @@ def _all_paired_thor_dirs(skip_errors=True, **kwargs):
     return all_pairs
 
 
+def _stimfile_dir(stimfile_dir=None):
+    if stimfile_dir is None:
+        stimfile_dir = stimfile_root()
+    elif not isdir(stimfile_dir):
+        raise IOError(f'passed stimfile_dir={stimfile_dir} is not a directory!')
+
+    return stimfile_dir
+
+
+def shorten_stimfile_path(stimfile_path, stimfile_dir=None):
+    """Shortens absolute stimulus YAML path to one relative to stimfile_dir.
+    """
+    stimfile_dir = _stimfile_dir(stimfile_dir)
+    assert type(stimfile_dir) is str and stimfile_path.startswith(stimfile_dir)
+
+    # + 1 to also exclude the os.sep character separating parent dir and relative
+    # stimfile path.
+    return stimfile_path[(len(stimfile_dir) + 1):]
+
+
 def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
     """Returns absolute path to stimulus YAML file from note field in ThorImage XML.
 
@@ -599,11 +622,7 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
     (directly under `stimfile_dir` if passed or `stimfile_root()` otherwise), this
     absolute path should exist.
     """
-    if stimfile_dir is None:
-        stimfile_dir = stimfile_root()
-
-    elif not isdir(stimfile_dir):
-        raise IOError(f'passed stimfile_dir={stimfile_dir} is not a directory!')
+    stimfile_dir = _stimfile_dir(stimfile_dir)
 
     notes = thor.get_thorimage_notes(thorimage_dir_or_xml)
 
