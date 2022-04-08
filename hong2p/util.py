@@ -494,14 +494,6 @@ def paired_thor_dirs(matching_substr: Optional[str] = None,
 
             continue
 
-        # TODO maybe only match the part starting with date (strip prefix)?
-        if matching_substr is not None and matching_substr not in d:
-            if verbose and print_skips:
-                print(f'skipping {d} because did not contain matching_substr='
-                    f'"{matching_substr}"'
-                )
-            continue
-
         # TODO if verbose and ignore is in pair_kwargs, maybe thread some other
         # arguments through such that we can have the inner function print just which
         # pairs it is ignoring? (or [opt to] return them from pair_thor_subdirs and then
@@ -525,6 +517,14 @@ def paired_thor_dirs(matching_substr: Optional[str] = None,
         # TODO TODO or better yet, probably switch to getting time from one of the xml
         # files (in case some error in them would best be corrected after the fact)
         for image_dir, sync_dir in sorted(paired_dirs, key=lambda p: getmtime(p[0])):
+
+            # TODO maybe only match the part starting with date (strip prefix)?
+            if matching_substr is not None and matching_substr not in image_dir:
+                if verbose and print_skips:
+                    print(f'skipping {image_dir} because did not contain '
+                        f'matching_substr="{matching_substr}"'
+                    )
+                continue
 
             if skip_redone and image_dir in prefixes_of_thorimage_redos:
                 if verbose and print_skips:
