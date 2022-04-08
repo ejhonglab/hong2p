@@ -17,7 +17,7 @@ import glob
 import re
 import hashlib
 import functools
-from typing import Optional
+from typing import Optional, Tuple, Generator
 import xml.etree.ElementTree as etree
 
 import numpy as np
@@ -29,14 +29,16 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from hong2p import matlab, db, thor, viz, olf
+from hong2p.types import Pathlike, Datelike, FlyNum, PathlikePair, DateAndFlyNum
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
 
+
 # 1 to indicate computer is an acquisition computer, 0/unset otherwise.
 ACQUISITION_ENV_VAR = 'HONG2P_ACQUISITION'
 
-def is_acquisition_host():
+def is_acquisition_host() -> bool:
     _is_acquisition_host = False
 
     if ACQUISITION_ENV_VAR in os.environ:
@@ -107,7 +109,7 @@ dff_latex = r'$\frac{\Delta F}{F}$'
 # Module level cache.
 _data_root = None
 # TODO add _fast_data_root setting as kwarg here?
-def set_data_root(new_data_root):
+def set_data_root(new_data_root: Pathlike) -> None:
     """Sets data root, so future calls to `data_root` will return the input.
 
     You may either use this function or set one of the environment variables
@@ -126,7 +128,7 @@ def set_data_root(new_data_root):
     _data_root = new_data_root
 
 
-def data_root(verbose=False):
+def data_root(verbose: bool = False) -> Pathlike:
     global _data_root
 
     if _data_root is None:
@@ -198,7 +200,7 @@ def check_dir_exists(fn_returning_dir):
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 # (include mb_team in that part and rename from data_root?)
 @check_dir_exists
-def raw_data_root(root=None, **kwargs):
+def raw_data_root(root: Optional[Pathlike] = None, **kwargs) -> Pathlike:
 
     if root is None:
         root = data_root(**kwargs)
@@ -208,7 +210,7 @@ def raw_data_root(root=None, **kwargs):
 
 # TODO kwarg / default to makeing dir if not exist (and for similar fns above)?
 @check_dir_exists
-def analysis_intermediates_root():
+def analysis_intermediates_root() -> Pathlike:
     # TODO probably prefer using $HONG2P_DATA over os.getcwd() (assuming it's not on NAS
     # and it therefore acceptably fast if not instead using $HONG_NAS)
     if _fast_data_root is None:
@@ -224,7 +226,7 @@ def analysis_intermediates_root():
 
 
 @check_dir_exists
-def stimfile_root(**kwargs):
+def stimfile_root(**kwargs) -> Pathlike:
     return os.environ.get(STIMFILE_DIR_ENV_VAR,
         join(data_root(**kwargs), 'stimulus_data_files')
     )
@@ -233,11 +235,11 @@ def stimfile_root(**kwargs):
 # TODO replace this w/ above (need to change kc_natural_mixes / natural_odors, or at
 # least pin an older version of hong2p for them)
 @check_dir_exists
-def analysis_output_root():
+def analysis_output_root() -> Pathlike:
     return join(data_root(), 'analysis_output')
 
 
-def format_date(date):
+def format_date(date: Datelike) -> str:
     """
     Takes a pandas Timestamp or something that can be used to construct one
     and returns a str with the formatted date.
@@ -247,16 +249,18 @@ def format_date(date):
     return pd.Timestamp(date).strftime(date_fmt_str)
 
 
-def format_timestamp(timestamp):
+def format_timestamp(timestamp: Datelike) -> str:
     # TODO example of when this should be used. maybe explicitly say use
     # `format_date` for dates
-    """Returns human-readable str for timestamp accepted by `pd.Timestamp`.
+    """Returns human-readable str for timestamp accepted by `pd.Timestamp`, to minute.
+
+    Ex: '2022-04-07 16:53'
     """
     return str(pd.Timestamp(timestamp))[:16]
 
 
 # TODO maybe rename to [get_]fly_basedir?
-def get_fly_dir(date, fly):
+def get_fly_dir(date: Datelike, fly: FlyNum) -> Pathlike:
     """Returns str path fragment as YYYY-MM-DD/<n> for variety of input types
     """
     if not type(date) is str:
@@ -268,13 +272,13 @@ def get_fly_dir(date, fly):
     return join(date, fly)
 
 
-def raw_fly_dir(date, fly, warn=True, short=False):
+def raw_fly_dir(date: Datelike, fly: FlyNum, warn: bool = True, short: bool = False
+    ) -> Pathlike:
     """
     Args:
-        short (bool): (default=False) If True, returns in format
-            YYYY-MM-DD/<fly #>/<ThorImage dir>, without the prefix specifying the full
-            path. Intended for creating more readable paths, where absolute paths are
-            not required.
+        short: If True, returns in format YYYY-MM-DD/<fly #>/<ThorImage dir>, without
+            the prefix specifying the full path. Intended for creating more readable
+            paths, where absolute paths are not required.
     """
     raw_fly_basedir = get_fly_dir(date, fly)
 
@@ -341,7 +345,8 @@ def print_thor_paths(image_dir, sync_dir, print_full_paths=True) -> None:
 # stuff between a start and end date (w/ end date not specified as well, for analyzing
 # ongoing experiments)
 def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths=True,
-    verbose=False, **pair_kwargs):
+    verbose=False, **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathlikePair],
+    None, None]:
     # TODO add code example to doc
     """Takes list of (date, fly_num) tuples to pairs of their Thor outputs.
 
@@ -389,18 +394,23 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths
 
 # TODO TODO merge date_fly_list2paired_thor_dirs into this or just delete that and add
 # kwarg here to replace above (too similar)
-def paired_thor_dirs(start_date=None, end_date=None, n_first=None, skip_redone=True,
-    verbose=False, print_skips=True, print_fast=True, print_full_paths=True,
-    **pair_kwargs):
+def paired_thor_dirs(matching_substr: Optional[str] = None,
+    start_date: Optional[Datelike] = None, end_date: Optional[Datelike] = None,
+    n_first: Optional[int] = None, skip_redone: bool = True, verbose: bool = False,
+    print_skips: bool = True, print_fast: bool = True, print_full_paths: bool = True,
+    **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathlikePair], None, None]:
     # TODO add code example to doc
     """
 
     Args:
-        n_first (None | int): If passed, only up to this many of pairs are enumerated.
+        matching_substr: If passed, only experiments whose paths contains this substring
+            will be included.
+
+        n_first: If passed, only up to this many of pairs are enumerated.
             Intended for testing on subsets of data.
 
-        verbose (bool): (default=False) If True, prints the fly/ThorImage/ThorSync
-            directories as they are being iterated over.
+        verbose: If True, prints the fly/ThorImage/ThorSync directories as they are
+            being iterated over.
 
         **pair_kwargs: Passed through to `thor.pair_thor_subdirs`. See arguments to
             `thor.pair_thor_dirs` (called by `thor.pair_thor_subdirs`) for most of the
@@ -482,6 +492,14 @@ def paired_thor_dirs(start_date=None, end_date=None, n_first=None, skip_redone=T
             if verbose and print_skips:
                 print(f'skipping {d} because later than {format_date(end_date)}')
 
+            continue
+
+        # TODO maybe only match the part starting with date (strip prefix)?
+        if matching_substr is not None and matching_substr not in d:
+            if verbose and print_skips:
+                print(f'skipping {d} because did not contain matching_substr='
+                    f'"{matching_substr}"'
+                )
             continue
 
         # TODO if verbose and ignore is in pair_kwargs, maybe thread some other
