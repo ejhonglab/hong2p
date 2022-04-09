@@ -17,7 +17,7 @@ import glob
 import re
 import hashlib
 import functools
-from typing import Optional, Tuple, Generator
+from typing import Optional, Tuple, Generator, Sequence
 import xml.etree.ElementTree as etree
 
 import numpy as np
@@ -394,7 +394,7 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths
 
 # TODO TODO merge date_fly_list2paired_thor_dirs into this or just delete that and add
 # kwarg here to replace above (too similar)
-def paired_thor_dirs(matching_substr: Optional[str] = None,
+def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
     start_date: Optional[Datelike] = None, end_date: Optional[Datelike] = None,
     n_first: Optional[int] = None, skip_redone: bool = True, verbose: bool = False,
     print_skips: bool = True, print_fast: bool = True, print_full_paths: bool = True,
@@ -403,8 +403,8 @@ def paired_thor_dirs(matching_substr: Optional[str] = None,
     """
 
     Args:
-        matching_substr: If passed, only experiments whose paths contains this substring
-            will be included.
+        matching_substrs: If passed, only experiments whose ThorImage path contains at
+            least one of these substring will be included.
 
         n_first: If passed, only up to this many of pairs are enumerated.
             Intended for testing on subsets of data.
@@ -518,13 +518,13 @@ def paired_thor_dirs(matching_substr: Optional[str] = None,
         # files (in case some error in them would best be corrected after the fact)
         for image_dir, sync_dir in sorted(paired_dirs, key=lambda p: getmtime(p[0])):
 
-            # TODO maybe only match the part starting with date (strip prefix)?
-            if matching_substr is not None and matching_substr not in image_dir:
-                if verbose and print_skips:
-                    print(f'skipping {image_dir} because did not contain '
-                        f'matching_substr="{matching_substr}"'
-                    )
-                continue
+            if matching_substrs is not None and len(matching_substrs) > 0:
+                if not any([s in image_dir for s in matching_substrs]):
+                    if verbose and print_skips:
+                        print(f'skipping {image_dir} because did not contain >=1 of '
+                            f'matching_substrs="{matching_substrs}"'
+                        )
+                    continue
 
             if skip_redone and image_dir in prefixes_of_thorimage_redos:
                 if verbose and print_skips:
