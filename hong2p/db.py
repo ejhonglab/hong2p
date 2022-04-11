@@ -969,7 +969,7 @@ def latest_response_stats(*args):
 # spreadsheet i might discontinue use of in general / as long as stimulus
 # handling is ~experiment specific.
 # TODO or maybe just move this + other project specific stuff to their own repo
-# that uses hong2p, similar to what i'm doing w/ al_pair_grids
+# that uses hong2p, similar to what i'm doing w/ al_analysis
 def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     allow_missing_odor_presentations=False, verbose=True):
     # TODO summarize the various errors this could possibly raise

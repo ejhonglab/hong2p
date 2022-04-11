@@ -336,7 +336,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     # TODO update this formula to work w/ gui corrs (too big now)
     # TODO see whether default font actually is inappropriate in any cases where i'm
     # currently calling this (particularly using constrained layout from
-    # al_pair_grids.py)
+    # al_analysis.py)
     if fontsize is None:
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
@@ -533,7 +533,7 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
 
     if 'cbar_label' not in kwargs:
         # TODO factor out latex for delta f / f stuff (+ maybe use in analysis that uses
-        # this pkg: kc_natural_mixes, al_pair_grids)
+        # this pkg: kc_natural_mixes, al_analysis)
         kwargs['cbar_label'] = \
             trial_stat.title() + f' response {dff_latex} correlation'
 

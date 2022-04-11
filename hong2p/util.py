@@ -307,7 +307,7 @@ def thorsync_dir(date, fly, base_thorsync_dir, **kwargs):
     return join(raw_fly_dir(date, fly, **kwargs), base_thorsync_dir)
 
 
-# TODO use new name in al_pair_grids + also handle fast data dir here.
+# TODO use new name in al_analysis + also handle fast data dir here.
 # (maybe always returning directories under fast? or kwarg to behave that way?)
 def analysis_fly_dir(date, fly):
     return join(analysis_output_root(), get_fly_dir(date, fly))
