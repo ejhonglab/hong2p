@@ -1,9 +1,10 @@
 
-from typing import Tuple, NewType, Union, Sequence
+from typing import Tuple, NewType, Union, Sequence, Type
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import xarray as xr
 
 
 Date = pd.Timestamp
@@ -29,4 +30,8 @@ OdorDict = NewType('OdorDict', dict)
 # list/tuple or something
 SingleTrialOdors = Sequence[OdorDict]
 ExperimentOdors = Sequence[SingleTrialOdors]
+
+# TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray /
+# better check for both?)? maybe in another type?
+DataFrameOrDataArray = Union[Type[pd.DataFrame], Type[xr.DataArray]]
 

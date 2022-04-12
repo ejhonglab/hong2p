@@ -10,6 +10,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 from scipy.cluster.hierarchy import linkage
 import matplotlib.patches as patches
 import matplotlib as mpl
@@ -17,6 +18,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from hong2p import util, thor
+from hong2p.types import DataFrameOrDataArray
 
 
 # TODO consider making a style sheet as in:
@@ -67,11 +69,20 @@ def format_index_row(row: pd.Series, delim: str = ' / '):
     return delim.join([str(x) for x in row.values])
 
 
+# TODO rename to indicate xarray coersion (/ move that to a separate decorator called
+# first?)?
+# TODO specify plot_fn must take a df (maybe also numpy?) input (via type hinting)?
 def callable_ticklabels(plot_fn):
+    # TODO still true that fn must accept [x|y]ticklabels? change doc if not.
     """Allows [x/y]ticklabel functions evaluated on indices of `df` (`plot_fn(df, ...)`)
 
-    First parameter to `plot_fn` must be a `pandas.DataFrame` to compute the `str`
-    ticklabels from. `plot_fn` must also accept the kwargs '[x|y]'
+    First parameter to `plot_fn` must be a `pandas.DataFrame` (or `xarray.DataArray`
+    convertable to one) to compute the `str` ticklabels from. `plot_fn` must also accept
+    the kwargs '[x|y]ticklabels'.
+
+    If the input to the decorated function is a `xarray.DataArray`, the decorated
+    function will receive a `DataFrame` (created via `arr.to_pandas()`) as input
+    instead.
     """
     def _check_bools(ticklabels):
         """Makes True equivalent to passing str, and False equivalent to None.
@@ -96,8 +107,16 @@ def callable_ticklabels(plot_fn):
         else:
             return ticklabels
 
+    # TODO should this also include numpy.ndarray subclasses in input types?
     @functools.wraps(plot_fn)
-    def wrapped_plot_fn(df, *args, **kwargs):
+    def wrapped_plot_fn(df_or_arr: DataFrameOrDataArray, *args, **kwargs):
+
+        if isinstance(df_or_arr, xr.DataArray):
+            # Requires df_or_arr to be <=2d
+            df = df_or_arr.to_pandas()
+        else:
+            df = df_or_arr
+
         if 'xticklabels' in kwargs:
             xticklabels = _check_bools(kwargs['xticklabels'])
             if callable(xticklabels):

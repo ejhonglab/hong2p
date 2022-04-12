@@ -17,7 +17,7 @@ import glob
 import re
 import hashlib
 import functools
-from typing import Optional, Tuple, Generator, Sequence
+from typing import Optional, Tuple, Generator, Sequence, Union
 import xml.etree.ElementTree as etree
 
 import numpy as np
@@ -29,7 +29,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from hong2p import matlab, db, thor, viz, olf
-from hong2p.types import Pathlike, Datelike, FlyNum, PathlikePair, DateAndFlyNum
+from hong2p.types import (Pathlike, Datelike, FlyNum, PathlikePair, DateAndFlyNum,
+    DataFrameOrDataArray
+)
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
@@ -7066,32 +7068,54 @@ def latest_trace_pickles():
     return df
 
 
-# TODO TODO kwarg to have this replace the multiindex levels / columns values it is
-# derived from (and thread through add_fly_id/add_recording_id)
-def add_group_id(df, group_keys, name=None, start_at_one=True):
-    """Adds integer column to df to identify unique combinations of group_keys.
+# TODO kwarg to have this replace the multiindex levels / columns values it is derived
+# from (and thread through add_fly_id/add_recording_id)
+def add_group_id(data: DataFrameOrDataArray, group_keys, name=None,
+    dim=None, start_at_one=True, sort=True):
+    """Adds integer column to identify unique combinations of group_keys.
+
+    Args:
+        data: DataFrame or DataArray to add metadata to
     """
     if name is None:
         name = '_'.join(group_keys) + '_id'
-    assert name not in df.columns
-    df[name] = df.groupby(group_keys).ngroup()
+
+    if isinstance(data, pd.DataFrame):
+        assert name not in data.columns
+    else:
+        if dim is None or dim not in data.dims:
+            # TODO maybe don't raise this if there are valid cases where the
+            # assign_coords call wouldn't need the tuple RHS (with this dim value)
+            raise ValueError('must pass dim=<dimension from data.dims to add group ID '
+                'to> for xarray input'
+            )
+
+        assert name not in data.coords
+        # Using data[n].values didn't make a difference in one test (same result).
+        df = pd.DataFrame({n: data[n] for n in group_keys})
+
+    group_numbers = df.groupby(group_keys, sort=sort).ngroup()
 
     if start_at_one:
-        df[name] = df[name] + 1
+        group_numbers = group_numbers + 1
 
-    return df
+    if isinstance(data, pd.DataFrame):
+        df[name] = group_numbers
+        return df
+    else:
+        return data.assign_coords({name: (dim, group_numbers)})
 
 
 # TODO replace hardcoded recording_cols[:2] w/ kwarg that defaults to None where None
 # gets replaced by current hardcoded value
-def add_fly_id(df):
+def add_fly_id(df, **kwargs):
     name = 'fly_id'
-    return add_group_id(df, recording_cols[:2], name=name)
+    return add_group_id(df, recording_cols[:2], name=name, **kwargs)
 
 
-def add_recording_id(df):
+def add_recording_id(df, **kwargs):
     name = 'recording_id'
-    return add_group_id(df, recording_cols, name=name)
+    return add_group_id(df, recording_cols, name=name, **kwargs)
 
 
 def thor2tiff(image_dir, output_name=None, output_basename=None,
