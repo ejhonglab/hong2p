@@ -7,6 +7,10 @@ somewhat heavy dependencies that the analysis side of things will generally not 
 """
 
 from collections import Counter
+import warnings
+from typing import Union, Sequence, Optional
+
+import pandas as pd
 
 
 solvent_str = 'solvent'
@@ -136,7 +140,20 @@ def format_odor(odor_dict, conc=True, name_conc_delim=' @ ', conc_key='log10_con
     return ostr
 
 
-def format_mix_from_strs(odor_strs, delim=None):
+def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
+    delim: Optional[str] = None):
+
+    if isinstance(odor_strs, pd.Series):
+        odor_keys = [x for x in odor_strs.keys() if x.startswith('odor')]
+
+        if len(odor_keys) < len(odor_strs):
+            nonodor_keys = [x for x in odor_strs.keys() if x not in odor_keys]
+            warnings.warn('format_mix_from_strs: ignoring levels not starting with '
+                f"'odor' ({nonodor_keys})"
+            )
+
+        odor_strs = [odor_strs[k] for k in odor_keys]
+
     if delim is None:
         delim = ' + '
 
