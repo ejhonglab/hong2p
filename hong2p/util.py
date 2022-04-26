@@ -309,7 +309,30 @@ def thorsync_dir(date, fly, base_thorsync_dir, **kwargs):
     return join(raw_fly_dir(date, fly, **kwargs), base_thorsync_dir)
 
 
-# TODO use new name in al_analysis + also handle fast data dir here.
+def thorimage_dir_input(fn):
+
+    # TODO functools wraps
+    def wrapped_fn(*args, **kwargs):
+
+        if len(args) == 3:
+            date, fly, thorimage_id = args
+
+            image_dir = thorimage_dir(date, fly, thorimage_id)
+
+        elif len(args) == 1:
+            image_dir = args[0]
+
+        else:
+            raise ValueError('functions wrapped with thorimage_dir_input must be '
+                'passed either date, fly_num, thorimage_id or thorimage_dir'
+            )
+
+        return fn(image_dir, **kwargs)
+
+    return wrapped_fn
+
+
+# TODO use new name in al_pair_grids + also handle fast data dir here.
 # (maybe always returning directories under fast? or kwarg to behave that way?)
 def analysis_fly_dir(date, fly):
     return join(analysis_output_root(), get_fly_dir(date, fly))
@@ -2179,10 +2202,15 @@ def tiff_thorimage_id(tiff_filename):
     return '_'.join(parts)
 
 
-def metadata_filename(date, fly_num, thorimage_id):
+# TODO test that date, fly_num, thorimage_id args still work here after refactoring to
+# use wrapper
+@thorimage_dir_input
+def metadata_filename(thorimage_dir):
     """Returns filename of YAML for extra metadata.
     """
-    return join(raw_fly_dir(date, fly_num), thorimage_id + '_metadata.yaml')
+    # TODO port over any metadata yamls i have in the raw data tree in this old location
+    #return join(raw_fly_dir(date, fly_num), thorimage_id + '_metadata.yaml')
+    return join(thorimage_dir(date, fly, thorimage_id), 'metadata.yaml')
 
 
 # TODO maybe something to indicate various warnings
@@ -2190,23 +2218,24 @@ def metadata_filename(date, fly_num, thorimage_id):
 # TODO wrap this + read_movie into loading that can also flip according to a key in the
 # yaml (L/R, for more easily comparing data from diff AL sides in flies in the same
 # orientation, for example)
-def metadata(date, fly_num, thorimage_id):
+#def load_metadata(date, fly_num, thorimage_id):
+def load_metadata(*args):
     """Returns metadata from YAML, with defaults added.
     """
     import yaml
 
-    metadata_file = metadata_filename(date, fly_num, thorimage_id)
+    metadata_file = metadata_filename(*args)
 
     # TODO another var specifying number of frames that has *already* been
     # cropped out of raw tiff (start/end), to resolve any descrepencies wrt
     # thorsync data
     metadata = {
-        'drop_first_n_frames': 0
+        'flip_lr': False,
+        'drop_first_n_frames': 0,
     }
     if exists(metadata_file):
-        # TODO TODO TODO also load single odors (or maybe other trial
-        # structures) from stuff like this, so analysis does not need my own
-        # pickle based stim format
+        # TODO also load single odors (or maybe other trial structures) from stuff like
+        # this, so analysis does not need my own pickle based stim format
         with open(metadata_file, 'r') as mdf:
             yaml_metadata = yaml.load(mdf)
 
@@ -2215,6 +2244,15 @@ def metadata(date, fly_num, thorimage_id):
                 metadata[k] = yaml_metadata[k]
 
     return metadata
+
+
+def load_movie(thorimage_dir, **kwargs):
+    """Loads movie and pre-processes (e.g. flipping) if metadata requests it.
+    """
+    movie = thor.read_movie(thorimage_dir, **kwargs)
+
+    # TODO TODO TODO finish implementing
+    #metadata = load_metadata(
 
 
 def tiff_filename2keys(tiff_filename):
@@ -5666,7 +5704,7 @@ def movie_blocks(tif, movie=None, allow_gsheet_to_restrict_blocks=True,
     # combine w/ remy's .mat metadata (+ my stimfile?)
 
     # This will return defaults if the YAML file is not found.
-    meta = metadata(*keys)
+    meta = load_metadata(*keys)
 
     # TODO want / need to do more than just slice to free up memory from
     # other pixels? is that operation worth it?
