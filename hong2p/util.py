@@ -27,6 +27,7 @@ import xarray as xr
 import yaml
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import tifffile
 
 from hong2p import matlab, db, thor, viz, olf
 from hong2p.types import (Pathlike, Datelike, FlyNum, PathlikePair, DateAndFlyNum,
@@ -241,6 +242,11 @@ def analysis_output_root() -> Pathlike:
     return join(data_root(), 'analysis_output')
 
 
+class IOPerformanceWarning(Warning):
+    """Warning that data does not seem to be read/written from fast storage
+    """
+
+
 def format_date(date: Datelike) -> str:
     """
     Takes a pandas Timestamp or something that can be used to construct one
@@ -274,7 +280,7 @@ def get_fly_dir(date: Datelike, fly: FlyNum) -> Pathlike:
     return join(date, fly)
 
 
-def raw_fly_dir(date: Datelike, fly: FlyNum, warn: bool = True, short: bool = False
+def raw_fly_dir(date: Datelike, fly: FlyNum, *, warn: bool = True, short: bool = False
     ) -> Pathlike:
     """
     Args:
@@ -295,7 +301,8 @@ def raw_fly_dir(date: Datelike, fly: FlyNum, warn: bool = True, short: bool = Fa
         else:
             if warn:
                 warnings.warn(f'{FAST_DATA_ROOT_ENV_VAR} set ({_fast_data_root}) but '
-                    f'raw data directory for fly ({date}, {fly}) did not exist there'
+                    f'raw data directory for fly ({date}, {fly}) did not exist there',
+                    IOPerformanceWarning
                 )
 
     return join(raw_data_root(), raw_fly_basedir)
@@ -311,7 +318,7 @@ def thorsync_dir(date, fly, base_thorsync_dir, **kwargs):
 
 def thorimage_dir_input(fn):
 
-    # TODO functools wraps
+    @functools.wraps(fn)
     def wrapped_fn(*args, **kwargs):
 
         if len(args) == 3:
@@ -323,8 +330,11 @@ def thorimage_dir_input(fn):
             image_dir = args[0]
 
         else:
+            # TODO maybe just check if dir args[0] exists / if args[0:3] are all
+            # parseable, and then pass thru any remaining args? or would it get too
+            # complicated for too little benefit?
             raise ValueError('functions wrapped with thorimage_dir_input must be '
-                'passed either date, fly_num, thorimage_id or thorimage_dir'
+                'passed either date, fly_num, thorimage_id OR thorimage_dir'
             )
 
         return fn(image_dir, **kwargs)
@@ -2493,6 +2503,10 @@ def write_tiff(tiff_filename, movie, strict_dtype=True, dims=None):
 
     # TODO maybe just always do test from test_readraw here?
     # (or w/ flag to disable the check)
+
+    # TODO TODO maybe just don't save w/ imagej=True? suite2p docs (or maybe it was
+    # caiman docs?) seemed to suggest imagej tiffs might have some potentially-relevant
+    # limitations... super specific i know
     tifffile.imsave(tiff_filename, movie, imagej=True)
 
 
@@ -7156,22 +7170,48 @@ def add_recording_id(df, **kwargs):
     return add_group_id(df, recording_cols, name=name, **kwargs)
 
 
-def thor2tiff(image_dir, output_name=None, output_basename=None,
-    output_dir=None, if_exists='err', verbose=True):
+@thorimage_dir_input
+def thor2tiff(image_dir, *, output_name=None, output_basename=None, output_dir=None,
+    if_exists: str = 'err', flip_lr: Optional[bool] = None, check_round_trip=False,
+    verbose=True, _debug=False) -> Optional[np.ndarray]:
     """Converts ThorImage .raw file to .tif file in same directory
 
     Args:
-        if_exists (str): 'err', 'overwrite', or 'ignore'
+        if_exists: 'load', 'ignore', 'overwrite', or 'err'
+
+        flip_lr: If True, flip the raw movie along the left/right axis, to make
+            experiments including both left/right side data more comparable.
+            If True/False, default output basename will be 'flipped.tif'. If None,
+            default output basename will remain 'raw.tif'.
+
+        check_round_trip: If True, and a TIFF was written, read it and check it is equal
+            to data loaded from ThorImage raw.
+
+    Returns an np.ndarray movie if TIFF was created OR if if_exists='load' and
+    the corresponding TIFF already exists. Returns None if if_exists='ignore' and the
+    corresponding TIFF already exists.
     """
-    assert if_exists in ('err', 'overwrite', 'ignore')
+    if_exists_options = ('load', 'ignore', 'err', 'overwrite')
+    if if_exists not in if_exists_options:
+        raise ValueError(f'if_exists must be one of {if_exists_options}')
 
     if all([x is not None for x in (output_name, output_basename)]):
         raise ValueError('only pass at most one of output_name or output_basename')
 
     # TODO .tif or .tiff?
     tiff_ext = '.tif'
+
+    if flip_lr is None:
+        default_output_basename = f'raw{tiff_ext}'
+    else:
+        # Naming it 'flipped' in both the cases where we do/don't flip (as long as
+        # flip_lr is specified True/False, so other analysis can know that we at least
+        # made the decision as to whether to flip this data, whether or not we actually
+        # flipped it)
+        default_output_basename = f'flipped{tiff_ext}'
+
     if output_name is None and output_basename is None:
-        output_basename = f'raw{tiff_ext}'
+        output_basename = default_output_basename
 
     if output_name is None:
         if output_dir is None:
@@ -7180,43 +7220,87 @@ def thor2tiff(image_dir, output_name=None, output_basename=None,
         assert isdir(output_dir), f'output_dir={output_dir} was not a directory'
         output_name = join(output_dir, output_basename)
 
-    # TODO maybe options to just ignore and NOOP if exists
     if exists(output_name):
-        if if_exists == 'err':
+        if if_exists == 'ignore':
+            if _debug:
+                print(f'TIFF {output_name} already exists. Doing nothing.')
+
+            return None
+
+        elif if_exists == 'load':
+            if _debug:
+                print(f'TIFF {output_name} exists. Reading it (instead of raw)...',
+                    flush=True, end=''
+                )
+
+            movie = tifffile.imread(output_name)
+
+            if _debug:
+                print(' done', flush=True)
+
+            # NOTE that if this will not returned any flipped version that might exist
+            # UNLESS 1) it already exists, AND 2) flip_lr=False/True (not None)
+            # TODO return as xarray? w/ flag to disable?
+            return movie
+
+        elif if_exists == 'err':
             raise IOError(f'{output_name} exists (set if_exists to either '
                 "'overwrite' or 'ignore' for other behavior"
             )
 
-        elif if_exists == 'ignore':
-            if verbose:
-                print(f'{output_name} exists. not regenerating tiff.')
-            return
+        elif if_exists == 'overwrite':
+            if _debug:
+                print(f'TIFF {output_name} existed. Overwriting.')
 
     # TODO maybe also load metadata like fps (especially stuff, as w/ fps, that isn't
     # already baked into the TIFF, assuming the TIFF is saved correctly. so not
     # including stuff like z, c, xy), and print w/ -v flag?
 
     if verbose:
-        print('Reading RAW movie...', flush=True, end='')
+        print('Reading raw movie...', flush=True, end='')
 
-    from_raw = thor.read_movie(image_dir)
+    movie = thor.read_movie(image_dir)
 
     if verbose:
         print(' done', flush=True)
 
-    # TODO TODO TODO try to figure out if anything can be done about tifffile
-    # using so much memory on writing (says "Killed" and exits in the middle of
-    # writing when trying to write what should be a ~5.5GB movie when i have
-    # close to 20GB of RAM free...). maybe memory profile my own code to see if
-    # i'm doing something stupid.
+    if flip_lr:
+        # axis=-1 should be the X axis (in a ([z,], y, x) shape movie), and does
+        # visually flip left/right when plotting frames.
+        movie = np.flip(movie, axis=-1)
+
+    # TODO TODO try to figure out if anything can be done about tifffile using so much
+    # memory on writing (says "Killed" and exits in the middle of writing when trying to
+    # write what should be a ~5.5GB movie when i have close to 20GB of RAM free...).
+    # maybe memory profile my own code to see if i'm doing something stupid. related to
+    # imagej=True kwarg?
     # TODO test read_movie on all thorimage .raw outputs i have to check which can
     # currently reproduce this issue
 
     if verbose:
         print(f'Writing TIFF to {output_name}...', flush=True, end='')
 
-    write_tiff(output_name, from_raw)
+    write_tiff(output_name, movie)
 
     if verbose:
         print(' done', flush=True)
+
+    if check_round_trip:
+        # Leaving this on verbose rather than _debug, because it could take some time
+        # and we don't want it to become a core pare of a pipeline w/o being aware of
+        # it.
+        if verbose:
+            print('Reading written TIFF for round trip check...', flush=True, end='')
+
+        round_tripped = tifffile.imread(output_name)
+
+        if verbose:
+            print(' done', flush=True)
+
+        assert np.array_equal(movie, round_tripped)
+
+    # TODO return as xarray? w/ flag to disable? maybe build a decorator to
+    # automatically handle that conversion + add kwarg to toggle (how to get metadata
+    # though...)?
+    return movie
 

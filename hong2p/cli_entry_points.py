@@ -23,20 +23,28 @@ def thor2tiff_cli():
     )
     # TODO default to just changing extention of input raw? or something like
     # that (or make output name required...)
-    parser.add_argument('-o', '--output-name', default=None,
-        help='full path of .tif to create. converted.tif in same directory by default'
+    parser.add_argument('-o', '--output-name',
+        help='full path of .tif to create. raw.tif in same directory by default'
     )
-    parser.add_argument('-w', '--overwrite', action='store_true', default=False,
+    parser.add_argument('-w', '--overwrite', action='store_true',
         help='otherwise, will fail if output already exists'
+    )
+    # TODO also expose flip_lr? name can be handled more consistently in code...
+    parser.add_argument('-c', '--check-round-trip', action='store_true',
+        help='reads created TIFF and checks it is equal to data from ThorImage raw'
     )
     args = parser.parse_args()
     raw_dir = args.thor_raw_dir
     output_name = args.output_name
 
-    # Options are 'err', 'overwrite', or 'ignore'
+    # Options are 'err', 'overwrite', 'ignore', or 'load'
     if_exists = 'overwrite' if args.overwrite else 'err'
 
-    util.thor2tiff(raw_dir, output_name=output_name, if_exists=if_exists)
+    check_round_trip = args.check_round_trip
+
+    util.thor2tiff(raw_dir, output_name=output_name, if_exists=if_exists,
+        check_round_trip=check_round_trip
+    )
 
 
 def showsync_cli():
