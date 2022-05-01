@@ -7265,6 +7265,9 @@ def thor2tiff(image_dir, *, output_name=None, output_basename=None, output_dir=N
         print(' done', flush=True)
 
     if flip_lr:
+        if verbose:
+            print('Flipping movie along left/right axis, as requested')
+
         # axis=-1 should be the X axis (in a ([z,], y, x) shape movie), and does
         # visually flip left/right when plotting frames.
         movie = np.flip(movie, axis=-1)
@@ -7293,11 +7296,9 @@ def thor2tiff(image_dir, *, output_name=None, output_basename=None, output_dir=N
             print('Reading written TIFF for round trip check...', flush=True, end='')
 
         round_tripped = tifffile.imread(output_name)
-
-        if verbose:
-            print(' done', flush=True)
-
         assert np.array_equal(movie, round_tripped)
+        if verbose:
+            print(' passed', flush=True)
 
     # TODO return as xarray? w/ flag to disable? maybe build a decorator to
     # automatically handle that conversion + add kwarg to toggle (how to get metadata

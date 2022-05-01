@@ -1,5 +1,6 @@
 
 import argparse
+import os
 from os.path import isdir, exists, join
 
 from hong2p import util
@@ -80,13 +81,14 @@ def suite2p_params_cli():
     """Prints data specific parameters so they can be set in suite2p GUI
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('thorimage_dir',
+    parser.add_argument('thorimage_dir', nargs='?', default=os.getcwd(),
         help='path containing .raw and metadata created by ThorImage'
     )
+    parser.add_argument('-s', '--shape', action='store_true', help='also print movie '
+        'shape (for picking registration block size, batch size, etc)'
+    )
     args = parser.parse_args()
-    thorimage_dir = args.thorimage_dir
-
-    print_suite2p_params(thorimage_dir)
+    print_suite2p_params(args.thorimage_dir, print_movie_shape=args.shape)
 
 
 def print_dir_fn_cli_wrapper(fn):

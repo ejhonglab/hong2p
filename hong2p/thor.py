@@ -112,7 +112,7 @@ def get_thorimage_time(thorimage_dir, use_mtime=False):
         return datetime.fromtimestamp(getmtime(xml_path))
 
 
-def get_thorimage_n_frames_xml(xml):
+def get_thorimage_n_frames_xml(xml, without_flyback=False, num_volumes=False):
     """Returns the number of XY planes (# of timepoints) in the recording.
 
     This is the number of frames *after* any averaging configured in ThorImage.
@@ -121,8 +121,33 @@ def get_thorimage_n_frames_xml(xml):
 
     If additional color channels are enabled but other parameters remain the same, this
     number will not change.
+
+    Args:
+        without_flyback: if True, subtract the number of flyback frames (if any)
+
+        num_volumes: if True, return number of volumes instead of number of XY frames.
+            since there are a fixed number of flyback frames per volume, this option
+            will return the same number regardless of without_flyback.
     """
-    return int(xml.find('Streaming').attrib['frames'])
+    if num_volumes:
+        without_flyback = True
+
+    n_raw_xy_frames = int(xml.find('Streaming').attrib['frames'])
+    if not without_flyback:
+        return n_raw_xy_frames
+
+    n_flyback = get_thorimage_n_flyback_xml(xml)
+
+    z = get_thorimage_z_xml(xml)
+    z_total = z + n_flyback
+
+    n_volumes, remainder = divmod(n_raw_xy_frames, z_total)
+    assert remainder == 0
+
+    if num_volumes:
+        return n_volumes
+    else:
+        return n_raw_xy_frames - (n_flyback * n_volumes)
 
 
 def is_fast_z_enabled_xml(xml):
@@ -973,7 +998,6 @@ def get_flyback_indices(n_frames, z, n_flyback, series=None):
 
     z_total = z + n_flyback
 
-    orig_n_frames = n_frames
     n_volumes, remainder = divmod(n_frames, z_total)
     assert remainder == 0
 

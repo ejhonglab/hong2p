@@ -59,11 +59,24 @@ def suite2p_params(thorimage_dir):
     return ops
 
 
-def print_suite2p_params(thorimage_dir):
+def print_suite2p_params(thorimage_dir, print_movie_shape=False):
     ops = suite2p_params(thorimage_dir)
     print('nplanes:', ops['nplanes'])
     print(f'fs: {ops["fs"]:.2f}')
     print('tau: 0.7 (recommended for GCaMP6f)')
+
+    if print_movie_shape:
+        _, (x, y), z, c, n_flyback, _, xml = thor.load_thorimage_metadata(thorimage_dir,
+            return_xml=True
+        )
+        n_volumes = thor.get_thorimage_n_frames_xml(xml, num_volumes=True)
+
+        shape_str = f't={n_volumes} {z=} {y=} {x=}'
+        if c > 1:
+            shape_str += f' {c=}'
+
+        print('\nmovie shape:', shape_str)
+        print(f'# of XY frames (z * t): {z * n_volumes}')
 
 
 def invert_combined_view_offset(combined_ops, roi):
