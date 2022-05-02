@@ -548,10 +548,8 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
                 if ti.endswith(redo_suffix)
             }
 
-        # TODO test that the mtime of the directories reliably gives me the order i want
-        # TODO TODO or better yet, probably switch to getting time from one of the xml
-        # files (in case some error in them would best be corrected after the fact)
-        for image_dir, sync_dir in sorted(paired_dirs, key=lambda p: getmtime(p[0])):
+        for image_dir, sync_dir in sorted(paired_dirs, key=lambda p:
+            thor.get_thorimage_time(p[0])):
 
             if matching_substrs is not None and len(matching_substrs) > 0:
                 if not any([s in image_dir for s in matching_substrs]):

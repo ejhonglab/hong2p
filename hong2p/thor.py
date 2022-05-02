@@ -87,8 +87,7 @@ def thorimage_xml(fn_taking_xml):
     return fn_taking_path_or_xml
 
 
-def get_thorimage_time_xml(xml):
-    # TODO what type / format is 'recording start time' in? doc.
+def get_thorimage_time_xml(xml) -> datetime:
     """Takes etree XML root object to recording start time.
 
     XML object should be as returned by `get_thorimage_xmlroot`.
@@ -100,7 +99,10 @@ def get_thorimage_time_xml(xml):
     return from_utime
 
 
-def get_thorimage_time(thorimage_dir, use_mtime=False):
+# TODO consider deleting use_mtime. only potentially useful if a time ~end of experiment
+# is more useful for matching things up, assuming mtime of XML file meets that criteria
+# (and assuming it never gets changed accidentally / by needing to edit the file...)
+def get_thorimage_time(thorimage_dir, use_mtime=False) -> datetime:
     """Takes ThorImage directory to recording start time (from XML).
     """
     xml_path = get_thorimage_xml_path(thorimage_dir)
