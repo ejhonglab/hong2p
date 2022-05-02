@@ -90,15 +90,14 @@ def main():
                 thor.load_thorimage_metadata(thorimage_dir, return_xml=True)
 
             # slow b/c has to read whole movie... read_movie has an assert that
-            # n_frames derived this way + using get_thorimage_n_frames_xml are
-            # same anyway, and didn't find a case where that assertion failed
-            # yet (not true actually, the comparison in read_movie is against #
-            # of xy frames but len(movie) would be # of volumes in volumetric
-            # case)
+            # n_frames derived this way + using get_thorimage_n_frames are same anyway,
+            # and didn't find a case where that assertion failed yet (not true actually,
+            # the comparison in read_movie is against # of xy frames but len(movie)
+            # would be # of volumes in volumetric case)
             #movie = thor.read_movie(thorimage_dir)
 
             # TODO perhaps this should take arg to drop flyback?
-            n_frames = thor.get_thorimage_n_frames_xml(xml)
+            n_frames = thor.get_thorimage_n_frames(xml)
 
             n_averaged_frames = thor.get_thorimage_n_averaged_frames_xml(xml)
 

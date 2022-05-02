@@ -12,10 +12,12 @@ from pprint import pprint, pformat
 import glob
 from itertools import zip_longest
 import functools
-from typing import Union
+from typing import Union, List, Tuple
 
 import numpy as np
 import pandas as pd
+
+from hong2p.types import Pathlike, Path, PathPair
 
 
 _acquisition_trigger_names = ('scope_pin',)
@@ -114,7 +116,8 @@ def get_thorimage_time(thorimage_dir, use_mtime=False) -> datetime:
         return datetime.fromtimestamp(getmtime(xml_path))
 
 
-def get_thorimage_n_frames_xml(xml, without_flyback=False, num_volumes=False):
+@thorimage_xml
+def get_thorimage_n_frames(xml, without_flyback=False, num_volumes=False):
     """Returns the number of XY planes (# of timepoints) in the recording.
 
     This is the number of frames *after* any averaging configured in ThorImage.
@@ -236,6 +239,13 @@ def get_thorimage_dims_xml(xml):
     # may want to add ZStage -> stepSizeUM to TIFF metadata?
 
     return xy, z, c
+
+
+# TODO replace all instances of above w/ calls to this
+@thorimage_xml
+def get_thorimage_dims(xml):
+    # TODO replace this w/ body of above when replace calls to the above
+    return get_thorimage_dims_xml(xml)
 
 
 def get_thorimage_pixelsize_xml(xml):
@@ -509,8 +519,8 @@ def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
     # TODO test this assertion on all data, though perhaps via a new function
     # get get expected n_frames from size of .raw file + other metadata
     # (mentioned in comments above get_thorimage_dims_xml)
-    assert n_frames == get_thorimage_n_frames_xml(xml), \
-        f'{n_frames} != {get_thorimage_n_frames_xml(xml)}'
+    assert n_frames == get_thorimage_n_frames(xml), \
+        f'{n_frames} != {get_thorimage_n_frames(xml)}'
 
     # TODO how to reshape if there are also multiple channels?
 
@@ -1287,7 +1297,7 @@ def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
 
     # Number of XY frames, even in the volumetric case. This is however, the
     # number of frames AFTER any frame averaging.
-    n_frames = get_thorimage_n_frames_xml(xml)
+    n_frames = get_thorimage_n_frames(xml)
 
     z_total = z + n_flyback
 
@@ -1777,13 +1787,13 @@ def new_fmt_thorimage_num(x):
 
 
 thorsync_dir_prefix = 'SyncData'
-def thorsync_num(thorsync_dir):
+def thorsync_num(thorsync_dir: Pathlike) -> int:
     """Returns number in suffix of ThorSync output directory name as an int.
     """
-    return int(thorsync_dir[len(thorsync_dir_prefix):])
+    return int(str(thorsync_dir)[len(thorsync_dir_prefix):])
 
 
-def is_thorsync_dir(d, verbose=False):
+def is_thorsync_dir(d: Pathlike, verbose=False) -> bool:
     """True if dir has expected ThorSync outputs, False otherwise.
     """
     if not isdir(d):
@@ -1809,7 +1819,7 @@ def is_thorsync_dir(d, verbose=False):
     return have_h5 and have_settings
 
 
-def is_thorimage_raw(f):
+def is_thorimage_raw(f: Pathlike) -> bool:
     """True if filename indicates file is ThorImage raw output.
     """
     _, f_basename = split(f)
@@ -1821,7 +1831,7 @@ def is_thorimage_raw(f):
     return False
 
 
-def is_thorimage_dir(d, verbose=False):
+def is_thorimage_dir(d: Pathlike, verbose=False) -> bool:
     """True if dir has expected ThorImage outputs, False otherwise.
 
     Looks for .raw not any TIFFs now.
@@ -1866,7 +1876,11 @@ def is_thorimage_dir(d, verbose=False):
         return False
 
 
-def _filtered_subdirs(parent_dir, filter_funcs, exclusive=True, verbose=False):
+# TODO some way to type hint the fact that if filter_funcs is a fn (not an iterable of
+# them), the output will also be ~"squeezed"? otherwise it might be useful to change
+# type to always be consistent idk
+def _filtered_subdirs(parent_dir: Pathlike, filter_funcs, exclusive=True,
+    verbose=False):
     """Takes dir and indicator func(s) to subdirs satisfying them.
 
     Output is a flat list of directories if filter_funcs is a function.
@@ -1907,7 +1921,7 @@ def _filtered_subdirs(parent_dir, filter_funcs, exclusive=True, verbose=False):
                 print(val)
 
             if val:
-                filtered_subdirs.append(d[:-1])
+                filtered_subdirs.append(Path(d))
                 if exclusive:
                     break
 
@@ -1920,7 +1934,7 @@ def _filtered_subdirs(parent_dir, filter_funcs, exclusive=True, verbose=False):
     return all_filtered_subdirs
 
 
-def thorimage_subdirs(parent_dir):
+def thorimage_subdirs(parent_dir: Pathlike) -> List[Path]:
     """
     Returns a list of any immediate child directories of `parent_dir` that have
     all expected ThorImage outputs.
@@ -1928,14 +1942,15 @@ def thorimage_subdirs(parent_dir):
     return _filtered_subdirs(parent_dir, is_thorimage_dir)
 
 
-def thorsync_subdirs(parent_dir):
+def thorsync_subdirs(parent_dir: Pathlike) -> List[Path]:
     """Returns a list of any immediate child directories of `parent_dir`
     that have all expected ThorSync outputs.
     """
     return _filtered_subdirs(parent_dir, is_thorsync_dir)
 
 
-def thor_subdirs(parent_dir, absolute_paths=True):
+def thor_subdirs(parent_dir: Pathlike, absolute_paths=True
+    ) -> Tuple[List[Path], List[Path]]:
     """
     Returns a length-2 tuple, where the first element is all ThorImage children
     and the second element is all ThorSync children (of `parent_dir`).
@@ -1947,7 +1962,7 @@ def thor_subdirs(parent_dir, absolute_paths=True):
         thorimage_dirs = [split(d)[-1] for d in thorimage_dirs]
         thorsync_dirs = [split(d)[-1] for d in thorsync_dirs]
 
-    return (thorimage_dirs, thorsync_dirs)
+    return thorimage_dirs, thorsync_dirs
 
 
 # TODO TODO generalize / wrap in a way that also allows associating with
@@ -1955,7 +1970,7 @@ def thor_subdirs(parent_dir, absolute_paths=True):
 def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     use_ranking=True, check_against_naming_conv=False,
     check_unique_thorimage_nums=None, verbose=False, ignore_prepairing=None,
-    ignore=None):
+    ignore=None) -> List[PathPair]:
     """
     Takes lists (not necessarily same len) of dirs, and returns a list of
     lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
@@ -1996,10 +2011,10 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
         orig_thorsync_dirs = list(thorsync_dirs)
 
         thorimage_dirs = [x for x in thorimage_dirs
-            if not any([sub_str in x for sub_str in ignore_prepairing])
+            if not any([sub_str in str(x) for sub_str in ignore_prepairing])
         ]
         thorsync_dirs = [x for x in thorsync_dirs
-            if not any([sub_str in x for sub_str in ignore_prepairing])
+            if not any([sub_str in str(x) for sub_str in ignore_prepairing])
         ]
 
     if use_ranking:
@@ -2159,8 +2174,8 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
         # to also include case where not check_against... ?
 
     if ignore is not None:
-        pairs = [(ti, ts) for ti, ts in pairs
-            if not any([(sub_str in ti or sub_str in ts) for sub_str in ignore])
+        pairs = [(ti, ts) for ti, ts in pairs if not
+            any([(sub_str in str(ti) or sub_str in str(ts)) for sub_str in ignore])
         ]
 
     return pairs
@@ -2234,7 +2249,7 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
 
 # TODO maybe allow calling a fn 'pair_thor_dirs' with either this interface of
 # that of current 'pair_thor_dirs', detecting type from args
-def pair_thor_subdirs(parent_dir, verbose=False, **kwargs):
+def pair_thor_subdirs(parent_dir, verbose=False, **kwargs) -> List[PathPair]:
     """
     Raises ValueError/AssertionError when pair_thor_dirs does.
 

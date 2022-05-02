@@ -17,7 +17,7 @@ import glob
 import re
 import hashlib
 import functools
-from typing import Optional, Tuple, Generator, Sequence, Union
+from typing import Optional, Tuple, List, Generator, Sequence, Union
 import xml.etree.ElementTree as etree
 
 import numpy as np
@@ -30,7 +30,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import tifffile
 
 from hong2p import matlab, db, thor, viz, olf
-from hong2p.types import (Pathlike, Datelike, FlyNum, PathlikePair, DateAndFlyNum,
+from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
     DataFrameOrDataArray
 )
 
@@ -81,8 +81,8 @@ FAST_DATA_ROOT_ENV_VAR = 'HONG2P_FAST_DATA'
 
 STIMFILE_DIR_ENV_VAR = 'HONG2P_STIMFILE_DIR'
 
-_fast_data_root = os.environ.get(FAST_DATA_ROOT_ENV_VAR)
-if _fast_data_root is not None and not isdir(_fast_data_root):
+_fast_data_root: Optional[Path] = Path(os.environ.get(FAST_DATA_ROOT_ENV_VAR))
+if _fast_data_root is not None and not _fast_data_root.is_dir():
     raise IOError(f'{FAST_DATA_ROOT_ENV_VAR} set but is not a directory')
 
 np.set_printoptions(precision=2)
@@ -131,7 +131,7 @@ def set_data_root(new_data_root: Pathlike) -> None:
     _data_root = new_data_root
 
 
-def data_root(verbose: bool = False) -> Pathlike:
+def data_root(verbose: bool = False) -> Path:
     global _data_root
 
     if _data_root is None:
@@ -141,14 +141,14 @@ def data_root(verbose: bool = False) -> Pathlike:
         prefix = None
 
         if DATA_ROOT_ENV_VAR in os.environ:
-            root = os.environ[DATA_ROOT_ENV_VAR]
+            root = Path(os.environ[DATA_ROOT_ENV_VAR])
             source = DATA_ROOT_ENV_VAR
 
             if verbose:
                 print(f'found {DATA_ROOT_ENV_VAR}')
 
         elif NAS_PREFIX_ENV_VAR in os.environ:
-            root = join(os.environ[NAS_PREFIX_ENV_VAR], NAS_PATH_TO_HONG2P_DATA)
+            root = Path(os.environ[NAS_PREFIX_ENV_VAR]) / NAS_PATH_TO_HONG2P_DATA
             source = NAS_PREFIX_ENV_VAR
 
             if verbose:
@@ -163,7 +163,7 @@ def data_root(verbose: bool = False) -> Pathlike:
 
         _data_root = root
 
-        if not isdir(_data_root):
+        if not _data_root.is_dir():
             raise IOError(f'data root expected at {_data_root}, but no directory exists'
                 f' there!\nDirectory chosen from environment variable {source}'
             )
@@ -203,43 +203,43 @@ def check_dir_exists(fn_returning_dir):
 # TODO use env var like kc_analysis currently does for prefix after refactoring
 # (include mb_team in that part and rename from data_root?)
 @check_dir_exists
-def raw_data_root(root: Optional[Pathlike] = None, **kwargs) -> Pathlike:
+def raw_data_root(root: Optional[Pathlike] = None, **kwargs) -> Path:
 
     if root is None:
         root = data_root(**kwargs)
 
-    return join(root, 'raw_data')
+    return root / 'raw_data'
 
 
 # TODO kwarg / default to makeing dir if not exist (and for similar fns above)?
 @check_dir_exists
-def analysis_intermediates_root() -> Pathlike:
+def analysis_intermediates_root() -> Path:
     # TODO probably prefer using $HONG2P_DATA over os.getcwd() (assuming it's not on NAS
     # and it therefore acceptably fast if not instead using $HONG_NAS)
     if _fast_data_root is None:
         warnings.warn(f'environment variable {FAST_DATA_ROOT_ENV_VAR} not set, so '
             'storing analysis intermediates under current directory'
         )
-        intermediates_root_parent = os.getcwd()
+        intermediates_root_parent = Path.cwd()
     else:
         intermediates_root_parent = _fast_data_root
 
-    intermediates_root = join(intermediates_root_parent, 'analysis_intermediates')
+    intermediates_root = intermediates_root_parent / 'analysis_intermediates'
     return intermediates_root
 
 
 @check_dir_exists
-def stimfile_root(**kwargs) -> Pathlike:
-    return os.environ.get(STIMFILE_DIR_ENV_VAR,
-        join(data_root(**kwargs), 'stimulus_data_files')
-    )
+def stimfile_root(**kwargs) -> Path:
+    return Path(os.environ.get(STIMFILE_DIR_ENV_VAR,
+        data_root(**kwargs) / 'stimulus_data_files'
+    ))
 
 
 # TODO replace this w/ above (need to change kc_natural_mixes / natural_odors, or at
 # least pin an older version of hong2p for them)
 @check_dir_exists
-def analysis_output_root() -> Pathlike:
-    return join(data_root(), 'analysis_output')
+def analysis_output_root() -> Path:
+    return data_root() / 'analysis_output'
 
 
 class IOPerformanceWarning(Warning):
@@ -268,7 +268,7 @@ def format_timestamp(timestamp: Datelike) -> str:
 
 
 # TODO maybe rename to [get_]fly_basedir?
-def get_fly_dir(date: Datelike, fly: FlyNum) -> Pathlike:
+def get_fly_dir(date: Datelike, fly: FlyNum) -> Path:
     """Returns str path fragment as YYYY-MM-DD/<n> for variety of input types
     """
     if not type(date) is str:
@@ -277,11 +277,11 @@ def get_fly_dir(date: Datelike, fly: FlyNum) -> Pathlike:
     if not type(fly) is str:
         fly = str(int(fly))
 
-    return join(date, fly)
+    return Path(date, fly)
 
 
 def raw_fly_dir(date: Datelike, fly: FlyNum, *, warn: bool = True, short: bool = False
-    ) -> Pathlike:
+    ) -> Path:
     """
     Args:
         short: If True, returns in format YYYY-MM-DD/<fly #>/<ThorImage dir>, without
@@ -294,9 +294,9 @@ def raw_fly_dir(date: Datelike, fly: FlyNum, *, warn: bool = True, short: bool =
     # of data_root() and stuff that uses it though... perhaps also functions that
     # operate on directories like the fn to pair thor dirs)
     if _fast_data_root is not None:
-        fast_raw_fly_dir = join(raw_data_root(root=_fast_data_root), raw_fly_basedir)
+        fast_raw_fly_dir = raw_data_root(root=_fast_data_root) / raw_fly_basedir
         # TODO warn if not using this despite env var being set
-        if isdir(fast_raw_fly_dir):
+        if fast_raw_fly_dir.is_dir():
             return fast_raw_fly_dir
         else:
             if warn:
@@ -305,15 +305,15 @@ def raw_fly_dir(date: Datelike, fly: FlyNum, *, warn: bool = True, short: bool =
                     IOPerformanceWarning
                 )
 
-    return join(raw_data_root(), raw_fly_basedir)
+    return raw_data_root() / raw_fly_basedir
 
 
-def thorimage_dir(date, fly, thorimage_id, **kwargs):
-    return join(raw_fly_dir(date, fly, **kwargs), thorimage_id)
+def thorimage_dir(date, fly, thorimage_id, **kwargs) -> Path:
+    return raw_fly_dir(date, fly, **kwargs) / thorimage_id
 
 
-def thorsync_dir(date, fly, base_thorsync_dir, **kwargs):
-    return join(raw_fly_dir(date, fly, **kwargs), base_thorsync_dir)
+def thorsync_dir(date, fly, base_thorsync_dir, **kwargs) -> Path:
+    return raw_fly_dir(date, fly, **kwargs) / base_thorsync_dir
 
 
 def thorimage_dir_input(fn):
@@ -344,19 +344,23 @@ def thorimage_dir_input(fn):
 
 # TODO use new name in al_pair_grids + also handle fast data dir here.
 # (maybe always returning directories under fast? or kwarg to behave that way?)
-def analysis_fly_dir(date, fly):
-    return join(analysis_output_root(), get_fly_dir(date, fly))
+def analysis_fly_dir(date, fly) -> Path:
+    return analysis_output_root() / get_fly_dir(date, fly)
 
 
-def shorten_path(full_path, n_parts=3):
+# TODO maybe this should stay returning a str? i'm assuming a lot of what i do with this
+# is print it / format it? or change to Path to be consistent w/ other path fns now?
+def shorten_path(full_path: Pathlike, n_parts=3):
     """Returns a string containing just the last n_parts (default=3) of input path.
 
     For making IDs / easier-to-read paths, when the full path isn't required.
     """
-    return '/'.join(full_path.split(sep)[-n_parts:])
+    return '/'.join(Path(full_path).parts[-n_parts:])
 
 
-def print_thor_paths(image_dir, sync_dir, print_full_paths=True) -> None:
+def print_thor_paths(image_dir: Pathlike, sync_dir: Pathlike, print_full_paths=True
+    ) -> None:
+
     if print_full_paths:
         image_dir_toprint = image_dir
         sync_dir_toprint = sync_dir
@@ -380,8 +384,8 @@ def print_thor_paths(image_dir, sync_dir, print_full_paths=True) -> None:
 # stuff between a start and end date (w/ end date not specified as well, for analyzing
 # ongoing experiments)
 def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths=True,
-    verbose=False, **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathlikePair],
-    None, None]:
+    verbose=False, **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathPair], None,
+    None]:
     # TODO add code example to doc
     """Takes list of (date, fly_num) tuples to pairs of their Thor outputs.
 
@@ -433,7 +437,7 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
     start_date: Optional[Datelike] = None, end_date: Optional[Datelike] = None,
     n_first: Optional[int] = None, skip_redone: bool = True, verbose: bool = False,
     print_skips: bool = True, print_fast: bool = True, print_full_paths: bool = True,
-    **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathlikePair], None, None]:
+    **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathPair], None, None]:
     # TODO add code example to doc
     """
 
@@ -467,6 +471,7 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
 
     def grandchildren(d):
         # Returns without the trailing '/' glob would normally add using this syntax.
+        # TODO replace join w/ pathlib alternative
         return [split(x)[0] for x in glob.glob(join(d, '*/*/'))]
 
     def date_fly_parts(d):
@@ -544,8 +549,9 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
         if skip_redone:
             redo_suffix = '_redo'
             prefixes_of_thorimage_redos = {
-                ti[:-len(redo_suffix)] for ti, td in paired_dirs
-                if ti.endswith(redo_suffix)
+                # TODO pathlib alternatives for these str ops?
+                str(ti)[:-len(redo_suffix)] for ti, td in paired_dirs
+                if str(ti).endswith(redo_suffix)
             }
 
         for image_dir, sync_dir in sorted(paired_dirs, key=lambda p:
@@ -576,6 +582,7 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
 
 
 def _raw_data_root_grandchildren():
+    # TODO replace join w/ pathlib alternative
     return glob.glob(join(raw_data_root(), '*/*/'))
 
 
@@ -607,10 +614,10 @@ def _all_thorsync_dirs():
     ]
 
 
-def _all_paired_thor_dirs(skip_errors=True, **kwargs):
+def _all_paired_thor_dirs(skip_errors=True, **kwargs) -> List[PathPair]:
     """
     Returns a list of all (ThorImage, ThorSync) directories that can be paired
-    (i.e. determined to come from the same exerpiment) and that are both
+    (i.e. determined to come from the same experiment) and that are both
     immediate children of (the same) one of the directories returned by
     `_raw_data_root_grandchildren()`.
 
@@ -647,11 +654,13 @@ def shorten_stimfile_path(stimfile_path, stimfile_dir=None):
     """Shortens absolute stimulus YAML path to one relative to stimfile_dir.
     """
     stimfile_dir = _stimfile_dir(stimfile_dir)
-    assert type(stimfile_dir) is str and stimfile_path.startswith(stimfile_dir)
+    # TODO convert to a pathlib call
+    assert str(stimfile_path).startswith(str(stimfile_dir))
 
     # + 1 to also exclude the os.sep character separating parent dir and relative
     # stimfile path.
-    return stimfile_path[(len(stimfile_dir) + 1):]
+    # TODO convert to pathlib
+    return stimfile_path[(len(str(stimfile_dir)) + 1):]
 
 
 def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
@@ -2405,7 +2414,9 @@ def parent_recording_id(tiffname_or_thorimage_id):
     return match.group(1)
 
 
-def write_tiff(tiff_filename, movie, strict_dtype=True, dims=None):
+# TODO test this works w/ both Path and str input
+def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True, dims=None
+    ) -> None:
     # TODO also handle diff color channels
     """Write a TIFF loading the same as the TIFFs we create with ImageJ.
 

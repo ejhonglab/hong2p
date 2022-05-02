@@ -2,9 +2,9 @@
 Functions for working with suite2p as part of analysis.
 """
 
-from os.path import join, exists
-import subprocess
 from copy import deepcopy
+from pathlib import Path
+import subprocess
 import warnings
 
 import numpy as np
@@ -12,9 +12,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from hong2p import thor, util
+from hong2p.types import Pathlike
 
 
-def suite2p_params(thorimage_dir):
+def suite2p_params(thorimage_dir: Pathlike):
     # From: https://suite2p.readthedocs.io/en/latest/settings.html
 
     single_plane_fps, xy, z, c, n_flyback, _ = thor.load_thorimage_metadata(
@@ -69,7 +70,7 @@ def print_suite2p_params(thorimage_dir, print_movie_shape=False):
         _, (x, y), z, c, n_flyback, _, xml = thor.load_thorimage_metadata(thorimage_dir,
             return_xml=True
         )
-        n_volumes = thor.get_thorimage_n_frames_xml(xml, num_volumes=True)
+        n_volumes = thor.get_thorimage_n_frames(xml, num_volumes=True)
 
         shape_str = f't={n_volumes} {z=} {y=} {x=}'
         if c > 1:
@@ -226,16 +227,16 @@ def load_s2p_ops(ops_path):
     return load_s2p_pickle(ops_path).item()
 
 
-def get_suite2p_dir(analysis_dir):
-    return join(analysis_dir, 'suite2p')
+def get_suite2p_dir(analysis_dir: Pathlike) -> Path:
+    return Path(analysis_dir) / 'suite2p'
 
 
-def get_suite2p_combined_dir(analysis_dir):
-    return join(get_suite2p_dir(analysis_dir), 'combined')
+def get_suite2p_combined_dir(analysis_dir: Pathlike) -> Path:
+    return get_suite2p_dir(analysis_dir) / 'combined'
 
 
-def get_iscell_path(s2p_out_dir):
-    return join(s2p_out_dir, 'iscell.npy')
+def get_iscell_path(s2p_out_dir: Pathlike) -> Path:
+    return Path(s2p_out_dir) / 'iscell.npy'
 
 
 def load_iscell(s2p_out_dir):
@@ -364,8 +365,8 @@ class LabelsNotSelectiveError(ROIsNotLabeledError):
     pass
 
 
-def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
-    merge_outputs=False, subset_stat=True, err=False):
+def load_s2p_outputs(plane_or_combined_dir: Pathlike, good_only=True,
+    merge_inputs=False, merge_outputs=False, subset_stat=True, err=False):
     """Returns suite2p outputs, with traces as a DataFrame
 
     Loads outputs from `plane_or_combined_dir`, tossing data for ROIs marked "not a
@@ -397,8 +398,8 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
             This can be caused by setting the threshold to 0 and not modifying the ROIs
             further manually.
     """
-    traces_path = join(plane_or_combined_dir, 'F.npy')
-    if not exists(traces_path):
+    traces_path = Path(plane_or_combined_dir) / 'F.npy'
+    if not traces_path.exists():
         raise IOError(f'suite2p needs to be run on this data ({traces_path} '
             'did not exist)'
         )
@@ -421,10 +422,10 @@ def load_s2p_outputs(plane_or_combined_dir, good_only=True, merge_inputs=False,
     # - where are the weights for the ROI? (expecting something of same length as xpix
     #   and ypix)? it's not 'lam', is it? and if it's 'lam', should i normalized it
     #   before using? why isn't it already normalized?
-    stat_path = join(plane_or_combined_dir, 'stat.npy')
+    stat_path = plane_or_combined_dir / 'stat.npy'
     stat = load_s2p_pickle(stat_path)
 
-    ops = load_s2p_ops(join(plane_or_combined_dir, 'ops.npy'))
+    ops = load_s2p_ops(plane_or_combined_dir / 'ops.npy')
 
     good_rois = iscell[:, 0].astype(np.bool_)
 

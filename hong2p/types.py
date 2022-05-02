@@ -7,6 +7,10 @@ import pandas as pd
 import xarray as xr
 
 
+# In general, want to use *like types (e.g. Pathlike) at *input* to functions, and use
+# the corresponding type without the 'like' suffix for returned values, in accordance
+# with the "robustness principle"
+
 Date = pd.Timestamp
 # TODO a date-like type, for anything that would be suitable input for pd.Timestamp
 # (str, datetime.datetime, pd.Timestamp)?
@@ -22,6 +26,7 @@ FlyNum = NewType('FlyNum', int)
 
 DateAndFlyNum = Tuple[Date, FlyNum]
 PathlikePair = Tuple[Pathlike, Pathlike]
+PathPair = Tuple[Path, Path]
 
 # just until i have a proper class/dataclass for them...
 OdorDict = NewType('OdorDict', dict)
@@ -31,7 +36,7 @@ OdorDict = NewType('OdorDict', dict)
 SingleTrialOdors = Sequence[OdorDict]
 ExperimentOdors = Sequence[SingleTrialOdors]
 
-# TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray /
-# better check for both?)? maybe in another type?
+# TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray
+# / better check for both?)? maybe in another type?
 DataFrameOrDataArray = Union[Type[pd.DataFrame], Type[xr.DataArray]]
 
