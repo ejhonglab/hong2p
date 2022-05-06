@@ -7143,6 +7143,7 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None,
 
     if isinstance(data, pd.DataFrame):
         assert name not in data.columns
+        df = data
     else:
         if dim is None or dim not in data.dims:
             # TODO maybe don't raise this if there are valid cases where the
