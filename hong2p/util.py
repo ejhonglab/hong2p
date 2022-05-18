@@ -548,9 +548,9 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
         # of diff ThorImage versions is supported)
         if skip_redone:
             redo_suffix = '_redo'
-            prefixes_of_thorimage_redos = {
+            redone_thorimage_dirs = {
                 # TODO pathlib alternatives for these str ops?
-                str(ti)[:-len(redo_suffix)] for ti, td in paired_dirs
+                Path(str(ti)[:-len(redo_suffix)]) for ti, td in paired_dirs
                 if str(ti).endswith(redo_suffix)
             }
 
@@ -558,14 +558,14 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
             thor.get_thorimage_time(p[0])):
 
             if matching_substrs is not None and len(matching_substrs) > 0:
-                if not any([s in image_dir for s in matching_substrs]):
+                if not any([s in str(image_dir) for s in matching_substrs]):
                     if verbose and print_skips:
                         print(f'skipping {image_dir} because did not contain >=1 of '
                             f'matching_substrs="{matching_substrs}"'
                         )
                     continue
 
-            if skip_redone and image_dir in prefixes_of_thorimage_redos:
+            if skip_redone and image_dir in redone_thorimage_dirs:
                 if verbose and print_skips:
                     print(f'skipping {image_dir} because matching redo exists\n')
 
@@ -7151,6 +7151,13 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None,
             raise ValueError('must pass dim=<dimension from data.dims to add group ID '
                 'to> for xarray input'
             )
+
+        # TODO TODO TODO should i add handling for input where some coordinates in
+        # group_keys are not associated with a dimension (as long as there are no
+        # conflicts as to which dimension the coordinates in group_keys correspond
+        # to...)? (if so, returned DataArray should probably move unassigned variables
+        # to selected dimension)
+        # or just require input has all group_keys assigned to (same) dimension?
 
         assert name not in data.coords
         # Using data[n].values didn't make a difference in one test (same result).
