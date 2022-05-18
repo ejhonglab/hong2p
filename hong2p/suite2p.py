@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 import subprocess
 import warnings
+from typing import Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -219,12 +220,15 @@ def plot_roi(roi_stat, ops, ax=None):
     #ax.contour(closed > 0, [0.5])
 
 
-def load_s2p_pickle(npy_path):
+def load_s2p_pickle(npy_path: Pathlike):
     return np.load(npy_path, allow_pickle=True)
 
 
-def load_s2p_ops(ops_path):
-    return load_s2p_pickle(ops_path).item()
+# TODO check that it is always a dict and not sometimes an iterable of them
+def load_s2p_ops(ops_path: Pathlike) -> Dict[str, Any]:
+    ops = load_s2p_pickle(ops_path)
+    assert ops.shape == tuple()
+    return ops.item()
 
 
 def get_suite2p_dir(analysis_dir: Pathlike) -> Path:
