@@ -74,8 +74,8 @@ setup(
     author="Tom O'Connell",
     author_email='toconnel@caltech.edu',
     license='GPLv3',
-    keywords='caiman cnmf imaging neuroscience olfaction drosophila',
-    url='https://github.com/ejhonglab/python_2p_analysis',
+    keywords='imaging neuroscience olfaction drosophila',
+    url='https://github.com/ejhonglab/hong2p',
     description=('GUI and utils for olfaction calcium imaging, '
         'partially wrapping CaImAn'
     ),
