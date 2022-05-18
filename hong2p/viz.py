@@ -72,6 +72,13 @@ def format_index_row(row: pd.Series, delim: str = ' / '):
 # TODO rename to indicate xarray coersion (/ move that to a separate decorator called
 # first?)?
 # TODO specify plot_fn must take a df (maybe also numpy?) input (via type hinting)?
+# TODO TODO add kwarg to wrapped fns that allows specifying axes that are supposed to
+# include odor mixture metadata (or maybe more generally some minimum set of index
+# levels, defined by matching some filtering fn?), to enforce (and maybe automatically
+# convert for some types of input) that we have DataFrame / (especially) DataArray
+# indices set correctly before calling the wrapped fn
+# TODO also provide a means of specifying the dimension of input the fns expect (at
+# least squeezed dimension, maybe w/ a squeeze=True kwarg added by wrapper?)
 def callable_ticklabels(plot_fn):
     # TODO still true that fn must accept [x|y]ticklabels? change doc if not.
     """Allows [x/y]ticklabel functions evaluated on indices of `df` (`plot_fn(df, ...)`)
@@ -82,7 +89,10 @@ def callable_ticklabels(plot_fn):
 
     If the input to the decorated function is a `xarray.DataArray`, the decorated
     function will receive a `DataFrame` (created via `arr.to_pandas()`) as input
-    instead.
+    instead. Note that only 'dimension coordinates' (see xarray terminology page) are
+    preserved when converting from `DataArray` to `DataFrame`, so use
+    `<arr>.set_index(<dimension name>=...)` appropriately before passing the array to a
+    wrapped function.
     """
     def _check_bools(ticklabels):
         """Makes True equivalent to passing str, and False equivalent to None.
