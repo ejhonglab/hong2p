@@ -81,7 +81,9 @@ FAST_DATA_ROOT_ENV_VAR = 'HONG2P_FAST_DATA'
 
 STIMFILE_DIR_ENV_VAR = 'HONG2P_STIMFILE_DIR'
 
-_fast_data_root: Optional[Path] = Path(os.environ.get(FAST_DATA_ROOT_ENV_VAR))
+_fast_data_root: Optional[Path] = (Path(os.environ.get(FAST_DATA_ROOT_ENV_VAR))
+    if FAST_DATA_ROOT_ENV_VAR in os.environ else None
+)
 if _fast_data_root is not None and not _fast_data_root.is_dir():
     raise IOError(f'{FAST_DATA_ROOT_ENV_VAR} set but is not a directory')
 
@@ -7131,8 +7133,8 @@ def latest_trace_pickles():
 
 # TODO kwarg to have this replace the multiindex levels / columns values it is derived
 # from (and thread through add_fly_id/add_recording_id)
-def add_group_id(data: DataFrameOrDataArray, group_keys, name=None,
-    dim=None, start_at_one=True, sort=True):
+def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
+    start_at_one=True, sort=True, inplace=False):
     """Adds integer column to identify unique combinations of group_keys.
 
     Args:
@@ -7144,6 +7146,9 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None,
     if isinstance(data, pd.DataFrame):
         assert name not in data.columns
         df = data
+        # Just to make sure we don't get SetWithCopyWarnings when assigning below.
+        if not inplace:
+            df = df.copy()
     else:
         if dim is None or dim not in data.dims:
             # TODO maybe don't raise this if there are valid cases where the
@@ -7172,6 +7177,12 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None,
         df[name] = group_numbers
         return df
     else:
+        if inplace:
+            # Because assign_coords docs says it returns a new object
+            # (maybe it doesn't actually copy sometimes, or there are equivalent calls
+            # that wouldn't need to?)
+            raise NotImplementedError('inplace=True not supported for DataArray input')
+
         return data.assign_coords({name: (dim, group_numbers)})
 
 
