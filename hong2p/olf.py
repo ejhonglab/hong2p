@@ -8,15 +8,53 @@ somewhat heavy dependencies that the analysis side of things will generally not 
 
 from collections import Counter
 import warnings
-from typing import Union, Sequence, Optional
+from typing import Union, Sequence, Optional, Tuple, List, Dict
 
 import numpy as np
 import pandas as pd
 
 
 solvent_str = 'solvent'
+conc_delimiter = '@'
 
-def odordict_sort_key(odor_dict):
+# TODO share these + odor_index_sort_key using these w/ other place that is using
+# sorted(..., key=...) (in al_analysis?)
+def parse_log10_conc(odor_str: str) -> Optional[float]:
+    """Takes formatted odor string to float log10 vol/vol concentration.
+
+    >>> parse_log10_conc('ethyl acetate @ -2')
+    -2.0
+    """
+    # If conc_delimiter is in the string, we are assuming that it should be followed by
+    # parseable float concentration. Letting it err below if that is not the case.
+    if conc_delimiter not in odor_str:
+        return None
+
+    parts = odor_str.split(conc_delimiter)
+    assert len(parts) == 2
+    return float(parts[1].strip())
+
+
+def parse_odor_name(odor_str: str) -> str:
+    """Takes formatted odor string to just the name of the odor.
+
+    >>> parse_log10_conc('ethyl acetate @ -2')
+    'ethyl acetate'
+    """
+    assert conc_delimiter in odor_str
+    parts = odor_str.split(conc_delimiter)
+    assert len(parts) == 2
+    # TODO want to handle 'pfo'/'solvent' special?
+    return parts[0].strip()
+
+
+# TODO maybe take a name_order kwarg here and return index of name in list instead, if
+# passed? then maybe unify w/ other place that currently does something similar?
+# TODO TODO may want to sort by concentration THEN name, to be consistent w/
+# odor_index_sortkey (or maybe change that one?)
+def odordict_sort_key(odor_dict: dict) -> Tuple[str, float]:
+    """Returns a hashable key for sorting odors by name, then concentration.
+    """
     name = odor_dict['name']
 
     # If present, we expect this value to be a non-positive number.
@@ -45,66 +83,85 @@ def sort_odor_list(odor_list):
     return sorted(odor_list, key=odordict_sort_key)
 
 
-# TODO share (parts?) w/ similar key fn now in hong2p.olf?
-# TODO document i/o types
-def odor_index_sort_key(level, name_order=None):
+# TODO document i/o types (+shapes in docstring)
+def odor_index_sort_key(level, sort_names=True, names_first=True,
+    name_order: Optional[List[str]] = None):
+    """
+    Args:
+        sort_names: whether to use odor names as part of sort key. If False, only sorts
+            on concentrations.
+
+        names_first: if True, sorts on names primarily, otherwise sorts on
+            concentrations primarily. Ignored if sort_names is False.
+
+        name_order: list of odor names to use as a fixed order for the names.
+            Concentrations will be sorted within each name.
+    """
+    if name_order is not None:
+        assert sort_names == True
+
     # The assignment below failed for some int dtype levels, even though the boolean
     # mask dictating where assignment should happen must have been all False...
     if level.dtype != np.dtype('O'):
         return level
 
-    sort_key = level.values.copy()
+    # prob don't need the .values most/all places anymore, but would need to test
+    odor_strs = level.values
 
-    solvent_elements = sort_key == solvent_str
-    conc_delimiter = '@'
-    assert all([conc_delimiter in x for x in sort_key[~ solvent_elements]])
+    # Will be overwritten with floats (either log10 concentration, or another float to
+    # appropriately order solvent elements).
+    conc_keys = np.empty(len(odor_strs)) * np.nan
 
-    # TODO share this + fn wrapping this that returns sort key w/ other place that
-    # is using sorted(..., key=...)
-    def parse_log10_conc(odor_str):
-        assert conc_delimiter in odor_str
-        parts = odor_str.split(conc_delimiter)
-        assert len(parts) == 2
-        return float(parts[1].strip())
-
-    def parse_odor_name(odor_str):
-        assert conc_delimiter in odor_str
-        parts = odor_str.split(conc_delimiter)
-        assert len(parts) == 2
-        # TODO want to handle 'pfo'/'solvent' special?
-        return parts[0].strip()
+    solvent_elements = odor_strs == solvent_str
+    assert all([conc_delimiter in x for x in odor_strs[~ solvent_elements]])
 
     if not all(solvent_elements):
-        conc_keys = [parse_log10_conc(x) for x in sort_key[~ solvent_elements]]
-        sort_key[~ solvent_elements] = conc_keys
+        nonsolvent_conc_keys = [
+            parse_log10_conc(x) for x in odor_strs[~ solvent_elements]
+        ]
+        conc_keys[~ solvent_elements] = nonsolvent_conc_keys
 
         # Setting solvent to an unused log10 concentration just under lowest we have,
         # such that it gets sorted into overall order as I want (first, followed by
         # lowest concentration).
-        # TODO TODO maybe just use float('-inf') or numpy equivalent here?
+        # TODO maybe just use float('-inf') or numpy equivalent here?
         # should give me the sorting i want.
-        sort_key[solvent_elements] = min(conc_keys) - 1
+        conc_keys[solvent_elements] = min(nonsolvent_conc_keys) - 1
+        assert not pd.isnull(conc_keys).any()
 
-        if name_order is not None:
-            if solvent_elements.sum() > 0:
-                raise NotImplementedError("not currently supporting 'solvent' when "
-                    'using name_order keyword argument'
-                )
-
-            # TODO TODO TODO do i need to handle solvent_elements here? how?
-            # possible, or will i just need to do outside of this within-level-only
-            # function?
+        # TODO special case names like 'pfo' to always go first (like solvent
+        # elements would?) (if i do, i could then not require matching strs to be
+        # present in name_order)
+        if sort_names:
+            # TODO TODO do i need to handle solvent_elements here? how?  possible, or
+            # will i just need to do outside of this within-level-only function?
             names = [parse_odor_name(x) for x in level]
 
-            if not all(n in name_order for n in names):
-                # TODO only print the ones missing
-                raise ValueError(
-                    f'some of names={names} were not in name_order={name_order}'
-                )
+            if name_order is None:
+                name_keys = names
+            else:
+                # TODO delete? is there really a reason for this?
+                if solvent_elements.sum() > 0:
+                    raise NotImplementedError("not currently supporting 'solvent' when "
+                        'using name_order keyword argument'
+                    )
+                #
 
-            name_orders = [name_order.index(x) for x in names]
+                if not all(n in name_order for n in names):
+                    # TODO only print the ones missing
+                    raise ValueError(
+                        f'some of names={names} were not in name_order={name_order}'
+                    )
 
-            sort_key = list(zip(name_orders, sort_key))
+                name_keys = [name_order.index(x) for x in names]
+
+            # TODO TODO TODO do i actually need to reverse order of these? test!
+            if names_first:
+                sort_keys = (name_keys, conc_keys)
+            else:
+                sort_keys = (conc_keys, name_keys)
+
+            sort_key = list(zip(*sort_keys))
 
             # tupleize_cols=False prevents a MultiIndex from being created
             index = pd.Index(sort_key, tupleize_cols=False, name=level.name)
@@ -114,39 +171,163 @@ def odor_index_sort_key(level, name_order=None):
     # `DataFrame.sort_index` doesn't get broken. This key function is used to generate
     # an intermediate Index pandas uses to sort, and that intermediate needs to have the
     # same level names to be able to refer to them as if it was the input object.
-    return pd.Index(sort_key, name=level.name)
+    return pd.Index(conc_keys, name=level.name)
 
 
-# TODO TODO add some kind of lookup for odor panels (might just need to get the set of
-# all (odor name, odor concentrations) used in experiment and compare that.  -> force
+def is_odor_var(var_name: Optional[str]) -> bool:
+    """Returns True if column/level name or Series-key is named to store odor metadata
+
+    Variables behind matching names should store strings representing *one*, of
+    potentially multiple, component odors presented on a given trial. My convention for
+    representing multiple components presented together one one trial is to make
+    multiple variables (e.g. columns), named such as ['odor1', 'odor2', ...], with a
+    different sufffix number for each component.
+    """
+    # For index [level] names that are not defined.
+    if var_name is None:
+        return False
+
+    return var_name.startswith('odor')
+
+
+# TODO add some kind of lookup for odor panels (might just need to get the set of all
+# (odor name, odor concentrations) used in experiment and compare that.  -> force
 # consistent order for things like kiwi.yaml/control1.yaml experiments (anything not
 # pair that we actually wanna see plots for actually. probably just don't wanna sort
 # glomeruli diagnostics) (only really relevant if i actually start randomizing order in
 # those experiments... for now, could just not sort)
-# TODO TODO TODO allow passing in an odor order for the odor names, used in conjunction
-# with the sorting on the concentrations
-odor_cols = ['odor1', 'odor2', 'odor1_b', 'odor2_b']
-def sort_odor_indices(df: pd.DataFrame, name_order=None) -> pd.DataFrame:
+def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    # TODO add doctest examples clarifying how the two columns interact + what happens
+    # to 'solvent' (+ clarify in docstring)
+    # TODO doctest examples w/ and w/o name_order
+    """Sorts DataFrame by odor index/columns.
+
+    Args:
+        df: DataFrame with columns/index-level names matching `is_odor_var`
+        **kwargs: passed through to odor_index_sort_key
+
+    Notes:
+    Index will be checked first, and if it contains odor information, will sort on that.
+    Otherwise, will check and sort on matching columns.
+
+    Sorts by concentration, then name. 'solvent' is treated as less than all odors.
+
+    >>> df = pd.DataFrame({
+    ...     'odor1': ['B @ -2', 'A @ -2', 'A @ -3'],
+    ...     'odor2': ['solvent'] * 3,
+    ...     'delta_f': [1.1, 1.2, 0.9]
+    ... }).set_index(['odor1', 'odor2'])
+
+    >>> sort_odors(df)
+                    delta_f
+    odor1  odor2
+    A @ -3 solvent      0.9
+    B @ -2 solvent      1.1
+    A @ -2 solvent      1.2
+
+    >>> sort_odors(df, name_order=['B','A'])
+                    delta_f
+    odor1  odor2
+    B @ -2 solvent      1.1
+    A @ -3 solvent      0.9
+    A @ -2 solvent      1.2
+    """
 
     def levels_to_sort(index):
-        return [k for k in index.names if k in odor_cols]
+        return [k for k in index.names if is_odor_var(k)]
 
-    levels = levels_to_sort(df.index)
+    found_odor_multiindex = False
     for axis_name in ('index', 'columns'):
         levels = levels_to_sort(getattr(df, axis_name))
         if len(levels) > 0:
             # TODO check my level sort key fn works in both case of 1 level passed in as
             # well as 2
             df = df.sort_index(
-                key=lambda x: odor_index_sort_key(x, name_order=name_order),
-                axis=axis_name, level=levels,
-                sort_remaining=False
+                key=lambda x: odor_index_sort_key(x, **kwargs),
+                axis=axis_name,
+                level=levels,
+                sort_remaining=False,
+                # So that the sort is "stable", meaning if stuff compares equal, it
+                # preserves input order.
+                kind='mergesort',
             )
+            found_odor_multiindex = True
+
+    if not found_odor_multiindex:
+        odor_cols = [c for c in df.columns if is_odor_var(c)]
+
+        if len(odor_cols) == 0:
+            raise ValueError('df had no index levels or columns with hong2p.olf.'
+                'is_odor_var(name) == True'
+            )
+
+        if isinstance(df.index, pd.MultiIndex):
+            raise NotImplementedError('sorting odor columns not supported when '
+                'there is an existing MultiIndex. call df.set_index(...) to include the'
+                ' odor columns, then pass that as input.'
+            )
+
+        # TODO also try to keep order of columns same
+        # (current approach moves odor columns to the start)
+        temp_index_col = '_old_index'
+        assert temp_index_col not in df.columns
+        # Would have used reset_index(), but didn't see an argument to change the name
+        # of the column it creates.
+        df = df.copy()
+        df[temp_index_col] = df.index
+        old_index_name = df.index.name
+
+        df = sort_odors(df.set_index(odor_cols), **kwargs).reset_index()
+
+        df = df.set_index(temp_index_col)
+        df.index.name = old_index_name
+        return df
 
     return df
 
 
-def yaml_data2pin_lists(yaml_data):
+# TODO maybe move to viz.py, since this is mainly intended as as helper for
+# viz.with_panel_orders plotting function wrapper?
+def panel_odor_orders(df: pd.DataFrame,
+    panel2name_order: Optional[Dict[str, List[str]]] = None, **kwargs):
+    # TODO doctest example
+    """Returns dict of panel names to ordered unique odor strs.
+
+    Args:
+        df: DataFrame with columns 'panel' and >=1 matching `is_odor_var`
+
+        panel2name_order: dict mapping panels to lists of odor names, each in the
+            desired order
+
+        **kwargs: passed through to sort_odors
+    """
+    # TODO test w/ input that has odor info in multiindex (does groupby fuck it up?)
+    assert 'name_order' not in kwargs
+    name_order = None
+
+    odor_cols = sorted([c for c in df.columns if is_odor_var(c)])
+    if len(odor_cols) == 0:
+        raise ValueError('must have >=1 columns matching hong2p.olf.is_odor_var(name)')
+
+    panel2order = dict()
+    for panel, panel_df in df.groupby('panel'):
+        panel_df = panel_df.drop_duplicates(subset=odor_cols)
+
+        if panel2name_order is not None:
+            name_order = panel2name_order[panel]
+
+        panel_df = sort_odors(panel_df, name_order=name_order, **kwargs)
+
+        # TODO maybe factor out this (and preceding finding + sorting odor_cols)?
+        mix_strs = [
+            format_mix_from_strs(ser) for _, ser in panel_df[odor_cols].iterrows()
+        ]
+        panel2order[panel] = mix_strs
+
+    return panel2order
+
+
+def yaml_data2pin_lists(yaml_data: dict):
     """
     Pins used as balances can be part of these lists despite not having a corresponding
     odor in 'pins2odors'.
@@ -154,7 +335,8 @@ def yaml_data2pin_lists(yaml_data):
     return [x['pins'] for x in yaml_data['pin_sequence']['pin_groups']]
 
 
-def yaml_data2odor_lists(yaml_data, sort=True):
+def yaml_data2odor_lists(yaml_data: dict, sort=True):
+    # TODO doctest example showing within-trial sorting
     """Returns a list-of-lists of dictionary representation of odors.
 
     Each dictionary will have at least the key 'name' and generally also 'log10_conc'.
@@ -164,7 +346,9 @@ def yaml_data2odor_lists(yaml_data, sort=True):
 
     Args:
         yaml_data (dict): parsed contents of stimulus YAML file
-        sort (bool): (default=True) whether to, within each trial, sort odors
+
+        sort (bool): (default=True) whether to, within each trial, sort odors.
+            Irrelevant if there are is only ever a single odor presented on each trial.
     """
     pin_lists = yaml_data2pin_lists(yaml_data)
     # int pin -> dict representing odor (keys 'name', 'log10_conc', etc)
@@ -186,6 +370,9 @@ def yaml_data2odor_lists(yaml_data, sort=True):
     return odor_lists
 
 
+# TODO TODO use this for hong2p.viz.matshow's group_ticklabels=True path?
+# (does this solve the problem that one had, where stuff like [x,x,y,y,x,x] would fail?)
+# (move to util if so?)
 def remove_consecutive_repeats(odor_lists):
     """Returns a list-of-str without any consecutive repeats and int # of repeats.
 
@@ -198,6 +385,12 @@ def remove_consecutive_repeats(odor_lists):
     all repeats are consecutive. Actually now as long as any repeats are to full # and
     consecutive, it is ok for a particular odor (e.g. solvent control) to be repeated
     `n_repeats` times in each of several different positions.
+
+    >>> without_repeats, n = remove_consecutive_repeats(['a','a','a','b','b','b'])
+    >>> without_repeats
+    ['a','b']
+    >>> n
+    3
     """
     # In Python 3.7+, order should be guaranteed to be equal to order first encountered
     # in odor_lists.
@@ -222,12 +415,19 @@ def remove_consecutive_repeats(odor_lists):
     return without_consecutive_repeats, n_repeats
 
 
-def format_odor(odor_dict, conc=True, name_conc_delim=' @ ', conc_key='log10_conc'):
+def format_odor(odor_dict, conc=True, name_conc_delim=None, conc_key='log10_conc'):
     """Takes a dict representation of an odor to a pretty str.
 
     Expected to have at least 'name' key, but will also use 'log10_conc' (or `conc_key`)
     if available, unless `conc=False`.
+
+    >>> odor = {'name': 'ethyl acetate', 'log10_conc': -2}
+    >>> format_odor(odor)
+    'ethyl acetate @ -2'
     """
+    if name_conc_delim is None:
+        name_conc_delim = f' {conc_delimiter} '
+
     ostr = odor_dict['name']
 
     if conc_key in odor_dict:
@@ -250,7 +450,7 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
     delim: Optional[str] = None):
 
     if isinstance(odor_strs, pd.Series):
-        odor_keys = [x for x in odor_strs.keys() if x.startswith('odor')]
+        odor_keys = [x for x in odor_strs.keys() if is_odor_var(x)]
 
         if len(odor_keys) < len(odor_strs):
             nonodor_keys = [x for x in odor_strs.keys() if x not in odor_keys]
@@ -270,7 +470,7 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
         return solvent_str
 
 
-def format_odor_list(odor_list, delim=None, **kwargs):
+def format_odor_list(odor_list, delim: Optional[str] = None, **kwargs):
     """Takes list of dicts representing odors for one trial to pretty str.
     """
     odor_strs = [format_odor(x, **kwargs) for x in odor_list]

@@ -7,6 +7,7 @@ from os.path import join, exists
 import time
 import functools
 import warnings
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from hong2p import util, thor
+from hong2p import util, thor, olf
 from hong2p.types import DataFrameOrDataArray
 
 
@@ -190,6 +191,98 @@ def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws=None):
         ylabel_kws['rotation'] = ylabel_rotation
 
     return ylabel_kws
+
+
+_panel2order = None
+def set_panel2order(panel2order: Dict[str, List[str]]) -> None:
+    """Sets module-level dict mapping panels to order for plotting odors.
+    """
+    global _panel2order
+    _panel2order = panel2order
+
+
+_ax_id2order = dict()
+# TODO kwarg for specifying name of odor column?
+def with_panel_orders(plot_fn, panel2order=None, **fn_kwargs):
+
+    @functools.wraps(plot_fn)
+    def ordered_plot_fn(*args, **kwargs):
+
+        # If this fails, see code I adapted this from in
+        # kc_natural_mixes/kc_mix_analysis.py
+        assert len(args) == 0, 'expected .map/.map_dataframe to pass all via **kwargs'
+
+        nonlocal panel2order
+        if panel2order is None:
+            panel2order = _panel2order
+
+        if panel2order is None:
+            raise ValueError('must either pass panel2order keyword argument, or call '
+                'hong2p.viz.set_panel2order'
+            )
+
+        if 'data' not in kwargs:
+            raise NotImplementedError('use map_dataframe rather than map')
+        df = kwargs['data']
+
+        for fk, fv in fn_kwargs.items():
+            if fk not in kwargs:
+                kwargs[fk] = fv
+
+        # TODO add unit test for this
+        if 'order' in kwargs:
+            raise RuntimeError(f'when calling {plot_fn.__name__} wrapped with '
+                'with_panel_orders, pass panel2order to wrapper or use '
+                'hong2p.viz.set_panel2order. do NOT pass order keyword argument '
+                'to the wrapped function.'
+            )
+
+        panels = df['panel'].unique()
+        if len(panels) != 1:
+            raise ValueError('each call to wrapped plot function must present data '
+                'from a single panel'
+            )
+        panel = panels[0]
+        if panel not in panel2order:
+            raise ValueError(f'{panel=} was not in {panel2order=} keys')
+
+        odor_col = kwargs['x']
+        data_col = kwargs['y']
+
+        odors = df[odor_col]
+
+        order = panel2order[panel]
+
+        # It would be nice if I could just pass a panel2order dict in that worked if the
+        # values were just the names of odors (sorting naturally on concentration), but
+        # I don't see an easy way to do it, as `df` may contain different subsets of the
+        # data across calls to wrapped plot functions.
+        assert all([o in order for o in odors])
+
+        # TODO TODO TODO do i need to ensure that all the odors in the order are
+        # present? data association getting broken yet?
+
+        # TODO delete after some testing
+        # TODO TODO TODO TODO confirm it is not a problem that this was failing
+        # (i think there might be a containing axes object that is getting picked up?
+        # not sure there is a mechanism to get most specific underlying one though...)
+        '''
+        ax_id = id(plt.gca())
+        if ax_id in _ax_id2order:
+            prev_order = _ax_id2order[ax_id]
+            assert order == prev_order, \
+                f'previous order: {prev_order}\ncurrent order: {order}'
+        else:
+            _ax_id2order[ax_id] = order
+        '''
+        #
+
+        # TODO TODO TODO do i need to deal with hues? (to keep consistent across
+        # panels...) or does FacetGrid have me covered on that?
+
+        return plot_fn(*args, order=order, **kwargs)
+
+    return ordered_plot_fn
 
 
 @no_constrained_layout
@@ -500,7 +593,10 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
     trial_stat='mean', title_suffix='', **kwargs):
     """Takes a symmetric DataFrame with odor x odor correlations and plots it.
     """
-    # TODO TODO TODO test this fn w/ possible missing data case.
+    # TODO replace ordering stuff w/ new fns for that in olf.py (or maybe just delete
+    # all of plot_odor_corrs if not using...)
+
+    # TODO test this fn w/ possible missing data case.
     # bring guis support for that in here?
     if odors_in_order is not None:
         odor_order = True
