@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.olf module &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="hong2p.suite2p module" href="hong2p.suite2p.html" />
+    <link rel="prev" title="hong2p package" href="hong2p.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">hong2p</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="hong2p.html">hong2p package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="hong2p.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">hong2p.olf module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.suite2p.html">hong2p.suite2p module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.thor.html">hong2p.thor module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.types.html">hong2p.types module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.util.html">hong2p.util module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.viz.html">hong2p.viz module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.xarray.html">hong2p.xarray module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="hong2p.html#module-hong2p">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="modules.html">hong2p</a> &raquo;</li>
+          <li><a href="hong2p.html">hong2p package</a> &raquo;</li>
+      <li>hong2p.olf module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/apidoc/hong2p.olf.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-hong2p.olf">
+<span id="hong2p-olf-module"></span><h1>hong2p.olf module<a class="headerlink" href="#module-hong2p.olf" title="Permalink to this heading"></a></h1>
+<p>Functions for loading YAML metadata created by my tom-f-oconnell/olfactometer repo, and
+dealing with the resulting representations of odors delivered during an experiment.</p>
+<p>Keeping these functions here rather than in the olfactometer repo because it has other
+somewhat heavy dependencies that the analysis side of things will generally not need.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.format_mix_from_strs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">format_mix_from_strs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_strs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#format_mix_from_strs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.format_mix_from_strs" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.format_odor">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">format_odor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name_conc_delim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conc_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'log10_conc'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#format_odor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.format_odor" title="Permalink to this definition"></a></dt>
+<dd><p>Takes a dict representation of an odor to a pretty str.</p>
+<p>Expected to have at least ‘name’ key, but will also use ‘log10_conc’ (or <cite>conc_key</cite>)
+if available, unless <cite>conc=False</cite>.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">odor</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;ethyl acetate&#39;</span><span class="p">,</span> <span class="s1">&#39;log10_conc&#39;</span><span class="p">:</span> <span class="o">-</span><span class="mi">2</span><span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">format_odor</span><span class="p">(</span><span class="n">odor</span><span class="p">)</span>
+<span class="go">&#39;ethyl acetate @ -2&#39;</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.format_odor_list">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">format_odor_list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#format_odor_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.format_odor_list" title="Permalink to this definition"></a></dt>
+<dd><p>Takes list of dicts representing odors for one trial to pretty str.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.is_odor_var">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">is_odor_var</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">var_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#is_odor_var"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.is_odor_var" title="Permalink to this definition"></a></dt>
+<dd><p>Returns True if column/level name or Series-key is named to store odor metadata</p>
+<p>Variables behind matching names should store strings representing <em>one</em>, of
+potentially multiple, component odors presented on a given trial. My convention for
+representing multiple components presented together one one trial is to make
+multiple variables (e.g. columns), named such as [‘odor1’, ‘odor2’, …], with a
+different sufffix number for each component.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.odor_index_sort_key">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">odor_index_sort_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names_first</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name_order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#odor_index_sort_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.odor_index_sort_key" title="Permalink to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sort_names</strong> – whether to use odor names as part of sort key. If False, only sorts
+on concentrations.</p></li>
+<li><p><strong>names_first</strong> – if True, sorts on names primarily, otherwise sorts on
+concentrations primarily. Ignored if sort_names is False.</p></li>
+<li><p><strong>name_order</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – list of odor names to use as a fixed order for the names.
+Concentrations will be sorted within each name.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.odordict_sort_key">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">odordict_sort_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#odordict_sort_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.odordict_sort_key" title="Permalink to this definition"></a></dt>
+<dd><p>Returns a hashable key for sorting odors by name, then concentration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.panel_odor_orders">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">panel_odor_orders</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">panel2name_order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#panel_odor_orders"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.panel_odor_orders" title="Permalink to this definition"></a></dt>
+<dd><p>Returns dict of panel names to ordered unique odor strs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code>) – DataFrame with columns ‘panel’ and &gt;=1 matching <cite>is_odor_var</cite></p></li>
+<li><p><strong>panel2name_order</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]]) – dict mapping panels to lists of odor names, each in the
+desired order</p></li>
+<li><p><strong>**kwargs</strong> – passed through to sort_odors</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.parse_log10_conc">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">parse_log10_conc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#parse_log10_conc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.parse_log10_conc" title="Permalink to this definition"></a></dt>
+<dd><p>Takes formatted odor string to float log10 vol/vol concentration.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">parse_log10_conc</span><span class="p">(</span><span class="s1">&#39;ethyl acetate @ -2&#39;</span><span class="p">)</span>
+<span class="go">-2.0</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.parse_odor_name">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">parse_odor_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#parse_odor_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.parse_odor_name" title="Permalink to this definition"></a></dt>
+<dd><p>Takes formatted odor string to just the name of the odor.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">parse_log10_conc</span><span class="p">(</span><span class="s1">&#39;ethyl acetate @ -2&#39;</span><span class="p">)</span>
+<span class="go">&#39;ethyl acetate&#39;</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.remove_consecutive_repeats">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">remove_consecutive_repeats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_lists</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#remove_consecutive_repeats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.remove_consecutive_repeats" title="Permalink to this definition"></a></dt>
+<dd><p>Returns a list-of-str without any consecutive repeats and int # of repeats.</p>
+<p>Wanted to also take a list-of-lists-of-dicts, where each dict represents one odor
+and each internal list represents all of the odors on one trial, but the internal
+lists (nor the dicts they contain) would not be hashable, and thus cannot work with
+Counter as-is.</p>
+<p>Assumed that all elements of <cite>odor_lists</cite> are repeated the same number of times, and
+all repeats are consecutive. Actually now as long as any repeats are to full # and
+consecutive, it is ok for a particular odor (e.g. solvent control) to be repeated
+<cite>n_repeats</cite> times in each of several different positions.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">without_repeats</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">remove_consecutive_repeats</span><span class="p">([</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">without_repeats</span>
+<span class="go">[&#39;a&#39;,&#39;b&#39;]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span>
+<span class="go">3</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.sort_odor_list">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">sort_odor_list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_list</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#sort_odor_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.sort_odor_list" title="Permalink to this definition"></a></dt>
+<dd><p>Returns a sorted list of dicts representing odors for one trial</p>
+<p>Name takes priority over concentration, so with the same set of odor names in each
+trial’s odor_list, this should produce a consistent ordering (and same indexes can
+be used assuming equal length of all)</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.sort_odors">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">sort_odors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#sort_odors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.sort_odors" title="Permalink to this definition"></a></dt>
+<dd><p>Sorts DataFrame by odor index/columns.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code>) – DataFrame with columns/index-level names matching <cite>is_odor_var</cite></p></li>
+<li><p><strong>**kwargs</strong> – passed through to odor_index_sort_key</p></li>
+</ul>
+</dd>
+</dl>
+<p>Notes:
+Index will be checked first, and if it contains odor information, will sort on that.
+Otherwise, will check and sort on matching columns.</p>
+<p>Sorts by concentration, then name. ‘solvent’ is treated as less than all odors.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s1">&#39;odor1&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;B @ -2&#39;</span><span class="p">,</span> <span class="s1">&#39;A @ -2&#39;</span><span class="p">,</span> <span class="s1">&#39;A @ -3&#39;</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s1">&#39;odor2&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;solvent&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="s1">&#39;delta_f&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.1</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">})</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s1">&#39;odor1&#39;</span><span class="p">,</span> <span class="s1">&#39;odor2&#39;</span><span class="p">])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+<span class="go">                delta_f</span>
+<span class="go">odor1  odor2</span>
+<span class="go">A @ -3 solvent      0.9</span>
+<span class="go">B @ -2 solvent      1.1</span>
+<span class="go">A @ -2 solvent      1.2</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">name_order</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">,</span><span class="s1">&#39;A&#39;</span><span class="p">])</span>
+<span class="go">                delta_f</span>
+<span class="go">odor1  odor2</span>
+<span class="go">B @ -2 solvent      1.1</span>
+<span class="go">A @ -3 solvent      0.9</span>
+<span class="go">A @ -2 solvent      1.2</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.yaml_data2odor_lists">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">yaml_data2odor_lists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">yaml_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#yaml_data2odor_lists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.yaml_data2odor_lists" title="Permalink to this definition"></a></dt>
+<dd><p>Returns a list-of-lists of dictionary representation of odors.</p>
+<p>Each dictionary will have at least the key ‘name’ and generally also ‘log10_conc’.</p>
+<p>The i-th list contains all of the odors presented simultaneously on the i-th odor
+presentation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>yaml_data</strong> (<em>dict</em>) – parsed contents of stimulus YAML file</p></li>
+<li><p><strong>sort</strong> (<em>bool</em>) – (default=True) whether to, within each trial, sort odors.
+Irrelevant if there are is only ever a single odor presented on each trial.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.yaml_data2pin_lists">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">yaml_data2pin_lists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">yaml_data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#yaml_data2pin_lists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.yaml_data2pin_lists" title="Permalink to this definition"></a></dt>
+<dd><p>Pins used as balances can be part of these lists despite not having a corresponding
+odor in ‘pins2odors’.</p>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="hong2p.html" class="btn btn-neutral float-left" title="hong2p package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="hong2p.suite2p.html" class="btn btn-neutral float-right" title="hong2p.suite2p module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -20,7 +20,7 @@
 # -- Project information -----------------------------------------------------
 
 project = 'hong2p'
-copyright = "2021, Tom O'Connell"
+copyright = "2022, Tom O'Connell"
 author = "Tom O'Connell"
 
 # The full version, including alpha/beta/rc tags
@@ -65,7 +65,7 @@ apidoc_separate_modules = True
 apidoc_excluded_paths = [
     'db.py',
     'matlab.py',
-    'cli_entry_points.py'
+    'cli_entry_points.py',
 ]
 
 # Add any paths that contain templates here, relative to this directory.

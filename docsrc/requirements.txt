@@ -8,7 +8,6 @@ sphinx-rtd-theme
 
 sphinxcontrib-apidoc
 
-sphinx
 sphinx-prompt
 sphinx-autodoc-typehints
 

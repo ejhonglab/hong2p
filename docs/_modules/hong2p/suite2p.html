@@ -1,0 +1,790 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>hong2p.suite2p &mdash; hong2p 0.0.0 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+    
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> hong2p
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">hong2p</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>hong2p.suite2p</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for hong2p.suite2p</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Functions for working with suite2p as part of analysis.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+
+<span class="kn">from</span> <span class="nn">hong2p</span> <span class="kn">import</span> <span class="n">thor</span><span class="p">,</span> <span class="n">util</span>
+<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="kn">import</span> <span class="n">Pathlike</span>
+
+
+<div class="viewcode-block" id="suite2p_params"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.suite2p_params">[docs]</a><span class="k">def</span> <span class="nf">suite2p_params</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">):</span>
+    <span class="c1"># From: https://suite2p.readthedocs.io/en/latest/settings.html</span>
+
+    <span class="n">single_plane_fps</span><span class="p">,</span> <span class="n">xy</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n_flyback</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">thor</span><span class="o">.</span><span class="n">load_thorimage_metadata</span><span class="p">(</span>
+        <span class="n">thorimage_dir</span>
+    <span class="p">)</span>
+
+    <span class="c1"># &quot;(int, default: 1) each tiff has this many planes in sequence&quot;</span>
+    <span class="c1"># wait, is this =z, or =z*t or just =t?</span>
+    <span class="n">nplanes</span> <span class="o">=</span> <span class="n">z</span>
+
+    <span class="c1"># &quot;(int, default: 1) each tiff has this many channels per plane&quot;</span>
+    <span class="c1">#nchannels = </span>
+
+    <span class="c1"># &quot;(int, default: 1) this channel is used to extract functional ROIs (1-based, so 1</span>
+    <span class="c1"># means first channel, and 2 means second channel)&quot;</span>
+    <span class="c1">#functional_chan = </span>
+
+    <span class="c1"># &quot;(float, default: 1.0) The timescale of the sensor (in seconds), used for</span>
+    <span class="c1"># deconvolution kernel. The kernel is fixed to have this decay and is not fit to the</span>
+    <span class="c1"># data. We recommend: 0.7 for GCaMP6f, 1.0 for GCaMP6m, 1.25-1.5 for GCaMP6s&quot;</span>
+    <span class="c1">#tau = </span>
+
+    <span class="c1"># &quot;(float, default: 10.0) Sampling rate (per plane). For instance, if you have a 10</span>
+    <span class="c1"># plane recording acquired at 30Hz, then the sampling rate per plane is 3Hz,</span>
+    <span class="c1"># so set ops[‘fs’] = 3 &quot;</span>
+    <span class="n">fs</span> <span class="o">=</span> <span class="n">single_plane_fps</span> <span class="o">/</span> <span class="p">(</span><span class="n">z</span> <span class="o">+</span> <span class="n">n_flyback</span><span class="p">)</span>
+
+    <span class="c1"># TODO TODO how much of a problem is it to ignore the fact that there are flyback</span>
+    <span class="c1"># frames contributing to time before a plane is returned to? not sure i&#39;m</span>
+    <span class="c1"># understanding &#39;fs&#39; correctly to begin with...</span>
+
+    <span class="c1"># TODO TODO maybe use ops[&#39;ignore_flyback&#39;] (== indices of each flyback frame?</span>
+    <span class="c1"># or is there a more concise option?) to make fs more meaningful?</span>
+
+    <span class="c1"># TODO TODO can we pick a better spatial_scale than suite2p does automatically?</span>
+    <span class="c1"># does its optimal value even differ across the types of data we have in the lab?</span>
+
+    <span class="n">ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;fs&#39;</span><span class="p">:</span> <span class="n">fs</span><span class="p">,</span>
+        <span class="s1">&#39;nplanes&#39;</span><span class="p">:</span> <span class="n">nplanes</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">ops</span></div>
+
+
+<div class="viewcode-block" id="print_suite2p_params"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.print_suite2p_params">[docs]</a><span class="k">def</span> <span class="nf">print_suite2p_params</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">print_movie_shape</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">ops</span> <span class="o">=</span> <span class="n">suite2p_params</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;nplanes:&#39;</span><span class="p">,</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;nplanes&#39;</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;fs: </span><span class="si">{</span><span class="n">ops</span><span class="p">[</span><span class="s2">&quot;fs&quot;</span><span class="p">]</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;tau: 0.7 (recommended for GCaMP6f)&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">print_movie_shape</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n_flyback</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">xml</span> <span class="o">=</span> <span class="n">thor</span><span class="o">.</span><span class="n">load_thorimage_metadata</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span>
+            <span class="n">return_xml</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span>
+        <span class="n">n_volumes</span> <span class="o">=</span> <span class="n">thor</span><span class="o">.</span><span class="n">get_thorimage_n_frames</span><span class="p">(</span><span class="n">xml</span><span class="p">,</span> <span class="n">num_volumes</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="n">shape_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;t=</span><span class="si">{</span><span class="n">n_volumes</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">z</span><span class="si">=}</span><span class="s1"> </span><span class="si">{</span><span class="n">y</span><span class="si">=}</span><span class="s1"> </span><span class="si">{</span><span class="n">x</span><span class="si">=}</span><span class="s1">&#39;</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">shape_str</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; </span><span class="si">{</span><span class="n">c</span><span class="si">=}</span><span class="s1">&#39;</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">movie shape:&#39;</span><span class="p">,</span> <span class="n">shape_str</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;# of XY frames (z * t): </span><span class="si">{</span><span class="n">z</span> <span class="o">*</span> <span class="n">n_volumes</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="invert_combined_view_offset"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.invert_combined_view_offset">[docs]</a><span class="k">def</span> <span class="nf">invert_combined_view_offset</span><span class="p">(</span><span class="n">combined_ops</span><span class="p">,</span> <span class="n">roi</span><span class="p">):</span>
+
+    <span class="c1"># TODO probably assert that all pixels (after this) are within bounds of [0, Lx) and</span>
+    <span class="c1"># [0, Ly), UNLESS i modify this function to handle stuff merged across multiple</span>
+    <span class="c1"># panes of combined view</span>
+
+    <span class="k">def</span> <span class="nf">evendiv</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="n">div</span><span class="p">,</span> <span class="n">mod</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">mod</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="n">div</span>
+
+    <span class="n">orig_coords_roi</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span>
+
+    <span class="n">orig_frame_x_shape</span> <span class="o">=</span> <span class="n">combined_ops</span><span class="p">[</span><span class="s1">&#39;Lxc&#39;</span><span class="p">]</span>
+    <span class="n">orig_frame_y_shape</span> <span class="o">=</span> <span class="n">combined_ops</span><span class="p">[</span><span class="s1">&#39;Lyc&#39;</span><span class="p">]</span>
+
+    <span class="n">nx</span> <span class="o">=</span> <span class="n">evendiv</span><span class="p">(</span><span class="n">combined_ops</span><span class="p">[</span><span class="s1">&#39;Lx&#39;</span><span class="p">],</span> <span class="n">orig_frame_x_shape</span><span class="p">)</span>
+    <span class="n">ny</span> <span class="o">=</span> <span class="n">evendiv</span><span class="p">(</span><span class="n">combined_ops</span><span class="p">[</span><span class="s1">&#39;Ly&#39;</span><span class="p">],</span> <span class="n">orig_frame_y_shape</span><span class="p">)</span>
+
+    <span class="n">cy</span><span class="p">,</span> <span class="n">cx</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span><span class="n">roi</span><span class="p">[</span><span class="s1">&#39;iplane&#39;</span><span class="p">],</span> <span class="n">nx</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">cx</span> <span class="o">&lt;</span> <span class="n">nx</span>
+    <span class="k">assert</span> <span class="n">cy</span> <span class="o">&lt;</span> <span class="n">ny</span>
+
+    <span class="n">dx</span> <span class="o">=</span> <span class="n">cx</span> <span class="o">*</span> <span class="n">orig_frame_x_shape</span>
+    <span class="n">dy</span> <span class="o">=</span> <span class="n">cy</span> <span class="o">*</span> <span class="n">orig_frame_y_shape</span>
+
+    <span class="n">orig_coords_roi</span><span class="p">[</span><span class="s1">&#39;ypix&#39;</span><span class="p">]</span> <span class="o">-=</span> <span class="n">dy</span>
+    <span class="n">orig_coords_roi</span><span class="p">[</span><span class="s1">&#39;xpix&#39;</span><span class="p">]</span> <span class="o">-=</span> <span class="n">dx</span>
+
+    <span class="c1"># This coordinate order is consistent w/ suite2p code in suite2p/io/save.py:combined</span>
+    <span class="n">orig_coords_roi</span><span class="p">[</span><span class="s1">&#39;med&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">-=</span> <span class="n">dy</span>
+    <span class="n">orig_coords_roi</span><span class="p">[</span><span class="s1">&#39;med&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">-=</span> <span class="n">dx</span>
+
+    <span class="k">return</span> <span class="n">orig_coords_roi</span></div>
+
+
+<span class="c1"># TODO TODO handle stuff in suite2p that is merged cross planes in the combined view,</span>
+<span class="c1"># such that each part goes on the appropriate plane and isn&#39;t mangled by</span>
+<span class="c1"># `invert_combined_view_offset`</span>
+<div class="viewcode-block" id="suite2p_roi_stat2roi"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.suite2p_roi_stat2roi">[docs]</a><span class="k">def</span> <span class="nf">suite2p_roi_stat2roi</span><span class="p">(</span><span class="n">roi_stat</span><span class="p">,</span> <span class="n">ops</span><span class="p">,</span> <span class="n">xy_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">fillna_0</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">invert_combined</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Takes a single suite2p ROI to a dense numpy representation</span>
+
+<span class="sd">    roi_stat and ops are both assumed to come from the &#39;combined&#39; folder outputs</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO add args for additional conversion to xarray?</span>
+    <span class="c1"># TODO args for using sparse representations instead?</span>
+    <span class="k">if</span> <span class="n">invert_combined</span><span class="p">:</span>
+        <span class="n">ny</span> <span class="o">=</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Lyc&#39;</span><span class="p">]</span>
+        <span class="n">nx</span> <span class="o">=</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Lxc&#39;</span><span class="p">]</span>
+        <span class="n">roi_stat</span> <span class="o">=</span> <span class="n">invert_combined_view_offset</span><span class="p">(</span><span class="n">ops</span><span class="p">,</span> <span class="n">roi_stat</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ny</span> <span class="o">=</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Ly&#39;</span><span class="p">]</span>
+        <span class="n">nx</span> <span class="o">=</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Lx&#39;</span><span class="p">]</span>
+
+    <span class="n">xy_roi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ny</span><span class="p">,</span> <span class="n">nx</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">fillna_0</span><span class="p">:</span>
+        <span class="n">xy_roi</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+    <span class="n">xpix</span> <span class="o">=</span> <span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;xpix&#39;</span><span class="p">]</span>
+    <span class="n">ypix</span> <span class="o">=</span> <span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;ypix&#39;</span><span class="p">]</span>
+    <span class="c1"># TODO TODO split into appropriate grid coordinates (if more than one), subtract off</span>
+    <span class="c1"># the appropriate offsets, and put each into the approprite z-slice</span>
+    <span class="n">xy_roi</span><span class="p">[</span><span class="n">ypix</span><span class="p">,</span> <span class="n">xpix</span><span class="p">]</span> <span class="o">=</span> <span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">xy_only</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">xy_roi</span>
+
+    <span class="n">roi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ops</span><span class="p">[</span><span class="s1">&#39;nplanes&#39;</span><span class="p">],)</span> <span class="o">+</span> <span class="n">xy_roi</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">fillna_0</span><span class="p">:</span>
+        <span class="n">roi</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+    <span class="n">roi</span><span class="p">[</span><span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;iplane&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">xy_roi</span>
+    <span class="k">return</span> <span class="n">roi</span></div>
+
+
+<div class="viewcode-block" id="suite2p_stat2rois"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.suite2p_stat2rois">[docs]</a><span class="k">def</span> <span class="nf">suite2p_stat2rois</span><span class="p">(</span><span class="n">stat</span><span class="p">,</span> <span class="n">ops</span><span class="p">,</span> <span class="n">merges</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">as_xarray</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Takes suite2p &#39;stat&#39; array / dict (roi # -&gt; roi stat) to array / xarray ROIs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO TODO kwargs for adding extra roi metadata (like scalar-per-roi</span>
+    <span class="c1"># max-response-magnitude or something?) or just add in subsequent steps (perhaps via</span>
+    <span class="c1"># assign_coords. seems like a pain though... may need to first extract and modify</span>
+    <span class="c1"># the pandas multiindex)?</span>
+
+    <span class="c1"># TODO implement support for array input (output of unprocessed load of suite2p</span>
+    <span class="c1"># stat.npy)</span>
+
+    <span class="k">if</span> <span class="n">merges</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">as_xarray</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;merge labels can not be added unless as_xarray=True&#39;</span><span class="p">)</span>
+
+    <span class="n">roi_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">i</span><span class="p">:</span> <span class="n">suite2p_roi_stat2roi</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">ops</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">stat</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+    <span class="n">roi_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">roi_dict</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">as_xarray</span><span class="p">:</span>
+        <span class="n">roi_nums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">roi_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+
+        <span class="c1"># Could be checked against logical_or-ing ing  the ROIs to find the plane w/</span>
+        <span class="c1"># non-zero values, but shouldn&#39;t be worth it and could take some time.</span>
+        <span class="n">roi_z_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;iplane&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">stat</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+
+        <span class="k">if</span> <span class="n">merges</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">merged_roi_num</span><span class="p">,</span> <span class="n">merge_input_roi_nums</span> <span class="ow">in</span> <span class="n">merges</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+
+                <span class="k">for</span> <span class="n">mi</span> <span class="ow">in</span> <span class="n">merge_input_roi_nums</span><span class="p">:</span>
+                    <span class="n">mi_indices</span> <span class="o">=</span> <span class="n">roi_nums</span> <span class="o">==</span> <span class="n">mi</span>
+                    <span class="k">assert</span> <span class="n">mi_indices</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">mi_indices</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="si">=}</span><span class="s1">&#39;</span>
+                    <span class="n">roi_nums</span><span class="p">[</span><span class="n">mi_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_roi_num</span>
+
+        <span class="c1"># TODO maybe overwrite default sequential &#39;roi_num&#39;?</span>
+        <span class="k">return</span> <span class="n">util</span><span class="o">.</span><span class="n">numpy2xarray_rois</span><span class="p">(</span><span class="n">roi_array</span><span class="p">,</span> <span class="n">roi_indices</span><span class="o">=</span><span class="p">{</span>
+            <span class="s1">&#39;s2p_roi_num&#39;</span><span class="p">:</span> <span class="n">roi_nums</span><span class="p">,</span>
+            <span class="s1">&#39;roi_z&#39;</span><span class="p">:</span> <span class="n">roi_z_indices</span><span class="p">,</span>
+        <span class="p">})</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">roi_array</span></div>
+
+
+<span class="c1"># TODO TODO may need to adapt depending on how i handle rois merged across planes...</span>
+<div class="viewcode-block" id="plot_roi"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.plot_roi">[docs]</a><span class="k">def</span> <span class="nf">plot_roi</span><span class="p">(</span><span class="n">roi_stat</span><span class="p">,</span> <span class="n">ops</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span>
+
+    <span class="n">xy_roi</span> <span class="o">=</span> <span class="n">suite2p_roi_stat2roi</span><span class="p">(</span><span class="n">roi_stat</span><span class="p">,</span> <span class="n">ops</span><span class="p">,</span> <span class="n">xy_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># TODO in future, might be nice to convert xpix / ypix and only ever make roi_img of</span>
+    <span class="c1"># the shape of the cropped ROI (change crop_to_nonzero and fn it calls)</span>
+
+    <span class="n">cropped</span><span class="p">,</span> <span class="p">((</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">),</span> <span class="p">(</span><span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">))</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">crop_to_nonzero</span><span class="p">(</span><span class="n">xy_roi</span><span class="p">,</span> <span class="n">margin</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">cropped</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s1">&#39;off&#39;</span><span class="p">)</span></div>
+
+    <span class="c1">#from scipy.ndimage import binary_closing</span>
+    <span class="c1">#closed = binary_closing(roi_img_tmp &gt; 0)</span>
+    <span class="c1">#ax.contour(closed &gt; 0, [0.5])</span>
+
+
+<div class="viewcode-block" id="load_s2p_pickle"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.load_s2p_pickle">[docs]</a><span class="k">def</span> <span class="nf">load_s2p_pickle</span><span class="p">(</span><span class="n">npy_path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">npy_path</span><span class="p">,</span> <span class="n">allow_pickle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<span class="c1"># TODO check that it is always a dict and not sometimes an iterable of them</span>
+<div class="viewcode-block" id="load_s2p_ops"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.load_s2p_ops">[docs]</a><span class="k">def</span> <span class="nf">load_s2p_ops</span><span class="p">(</span><span class="n">ops_path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">ops</span> <span class="o">=</span> <span class="n">load_s2p_pickle</span><span class="p">(</span><span class="n">ops_path</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">ops</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="nb">tuple</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">ops</span><span class="o">.</span><span class="n">item</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="get_suite2p_dir"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.get_suite2p_dir">[docs]</a><span class="k">def</span> <span class="nf">get_suite2p_dir</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s1">&#39;suite2p&#39;</span></div>
+
+
+<div class="viewcode-block" id="get_suite2p_combined_dir"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.get_suite2p_combined_dir">[docs]</a><span class="k">def</span> <span class="nf">get_suite2p_combined_dir</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">get_suite2p_dir</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s1">&#39;combined&#39;</span></div>
+
+
+<div class="viewcode-block" id="get_iscell_path"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.get_iscell_path">[docs]</a><span class="k">def</span> <span class="nf">get_iscell_path</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s1">&#39;iscell.npy&#39;</span></div>
+
+
+<div class="viewcode-block" id="load_iscell"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.load_iscell">[docs]</a><span class="k">def</span> <span class="nf">load_iscell</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">get_iscell_path</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">))</span></div>
+
+
+<span class="c1"># TODO delete?</span>
+<div class="viewcode-block" id="set_suite2p_iscell_label"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.set_suite2p_iscell_label">[docs]</a><span class="k">def</span> <span class="nf">set_suite2p_iscell_label</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">,</span> <span class="n">roi_num</span><span class="p">,</span> <span class="n">is_good</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Args:</span>
+<span class="sd">        roi_num (int): index of ROI to change label of, according to suite2p</span>
+<span class="sd">        s2p_out_dir (str): must directly contain a single iscell.npy file</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="n">is_good</span> <span class="ow">in</span> <span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+
+    <span class="n">iscell_npy</span> <span class="o">=</span> <span class="n">get_iscell_path</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">)</span>
+    <span class="n">iscell</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">iscell_npy</span><span class="p">)</span>
+
+    <span class="kn">import</span> <span class="nn">ipdb</span><span class="p">;</span> <span class="n">ipdb</span><span class="o">.</span><span class="n">set_trace</span><span class="p">()</span>
+    <span class="n">dtype_before</span> <span class="o">=</span> <span class="n">iscell</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="c1"># TODO TODO need to index the correct column (1st of 2)</span>
+    <span class="n">iscell</span><span class="p">[</span><span class="n">roi_num</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">is_good</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">iscell</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">dtype_before</span>
+
+    <span class="c1"># TODO only write if diff</span>
+    <span class="c1"># TODO TODO see how suite2p actually writes this file, in case there is anything</span>
+    <span class="c1"># special</span>
+    <span class="kn">import</span> <span class="nn">ipdb</span><span class="p">;</span> <span class="n">ipdb</span><span class="o">.</span><span class="n">set_trace</span><span class="p">()</span>
+    <span class="c1"># NOTE: if redcell.npy is used, may also need to modify that? see suite2p/io:save.py</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">iscell_npy</span><span class="p">,</span> <span class="n">iscell</span><span class="p">)</span>
+    <span class="kn">import</span> <span class="nn">ipdb</span><span class="p">;</span> <span class="n">ipdb</span><span class="o">.</span><span class="n">set_trace</span><span class="p">()</span></div>
+
+
+<span class="c1"># TODO maybe wrap call that checks this (and opens suite2p if not) with something that</span>
+<span class="c1"># also saves an empty hidden file in the directory to mark good if no modifications</span>
+<span class="c1"># necessary? or unlikely enough? / just prompt before opening suite2p each time?</span>
+<span class="c1"># TODO maybe just use mtime?</span>
+<div class="viewcode-block" id="is_iscell_modified"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.is_iscell_modified">[docs]</a><span class="k">def</span> <span class="nf">is_iscell_modified</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">,</span> <span class="n">warn</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="n">iscell_path</span> <span class="o">=</span> <span class="n">get_iscell_path</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">)</span>
+    <span class="n">iscell</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">iscell_path</span><span class="p">)</span>
+
+    <span class="c1"># Defined in suite2p/suite2p/classification/classifier.py, in kwarg to `run`.</span>
+    <span class="c1"># `run` is called in classify.py in the same directory, which doesn&#39;t pass this</span>
+    <span class="c1"># kwarg (so it should always be this default value).</span>
+    <span class="n">p_threshold</span> <span class="o">=</span> <span class="mf">0.5</span>
+
+    <span class="n">iscell_bool</span> <span class="o">=</span> <span class="n">iscell</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">warn</span> <span class="ow">and</span> <span class="n">iscell_bool</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="c1"># Since this is probably the result of just setting the threshold to 0 in the</span>
+        <span class="c1"># GUI and not further marking the ROIs as cell/not-cell from there.</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;all suite2p ROIs in </span><span class="si">{</span><span class="n">s2p_out_dir</span><span class="si">}</span><span class="s1"> marked as good. check this &#39;</span>
+            <span class="s1">&#39;is intentional.&#39;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># The GUI (in suite2p/gui/merge.py:apply), also does not include equality.</span>
+    <span class="k">return</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">iscell_bool</span><span class="p">,</span> <span class="n">iscell</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">p_threshold</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="mark_all_suite2p_rois_good"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.mark_all_suite2p_rois_good">[docs]</a><span class="k">def</span> <span class="nf">mark_all_suite2p_rois_good</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Modify iscell.npy to set all labels (first column) 1.</span>
+
+<span class="sd">    This is to undo the automatic classification step that I do not want and can not</span>
+<span class="sd">    seem to disable. It should be equivalent to entering 0 for the probability threshold</span>
+<span class="sd">    in the GUI.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="n">is_iscell_modified</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">,</span> <span class="n">warn</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="n">iscell_path</span> <span class="o">=</span> <span class="n">get_iscell_path</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">)</span>
+    <span class="n">iscell</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">iscell_path</span><span class="p">)</span>
+
+    <span class="n">iscell</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">iscell_path</span><span class="p">,</span> <span class="n">iscell</span><span class="p">)</span>
+
+    <span class="k">assert</span> <span class="n">is_iscell_modified</span><span class="p">(</span><span class="n">s2p_out_dir</span><span class="p">,</span> <span class="n">warn</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
+
+
+<span class="c1"># TODO delete?</span>
+<div class="viewcode-block" id="modify_iscell_in_suite2p"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.modify_iscell_in_suite2p">[docs]</a><span class="k">def</span> <span class="nf">modify_iscell_in_suite2p</span><span class="p">(</span><span class="n">stat_path</span><span class="p">):</span>
+    <span class="c1"># TODO TODO maybe show a plot for the relevant df/f image(s) alongside this, to</span>
+    <span class="c1"># see if i&#39;m getting *those* glomeruli? would probably need to couple with main loop</span>
+    <span class="c1"># more though... (or modify my suite2p fork to have optional additional views)</span>
+
+    <span class="c1"># This would block until the process finishes, as opposed to Popen call below.</span>
+    <span class="c1">#subprocess.run(f&#39;suite2p --statfile {stat_path}&#39;.split(), check=True)</span>
+
+    <span class="c1"># TODO some way to have ctrl-c in main program also kill this opened suite2p window?</span>
+
+    <span class="c1"># This will wait for suite2p to be closed before it returns.</span>
+    <span class="c1"># NOTE: the --statfile argument is something I added in my fork of suite2p</span>
+    <span class="n">proc</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;suite2p --statfile </span><span class="si">{</span><span class="n">stat_path</span><span class="si">}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+
+    <span class="c1"># TODO maybe refactor so closing suite2p will automatically close any still-open</span>
+    <span class="c1"># matplotlib figures?</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+    <span class="n">proc</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;SUITE2P CLOSED&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+    <span class="c1"># TODO warn if not modified after closing?</span>
+
+
+<span class="c1"># TODO delete?</span>
+<div class="viewcode-block" id="suite2p_footprint2bool_mask"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.suite2p_footprint2bool_mask">[docs]</a><span class="k">def</span> <span class="nf">suite2p_footprint2bool_mask</span><span class="p">(</span><span class="n">roi_stat</span><span class="p">,</span> <span class="n">ops</span><span class="p">):</span>
+    <span class="kn">from</span> <span class="nn">scipy.ndimage</span> <span class="kn">import</span> <span class="n">binary_closing</span>
+
+    <span class="n">full_roi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Ly&#39;</span><span class="p">],</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Lx&#39;</span><span class="p">]))</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="n">xpix</span> <span class="o">=</span> <span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;xpix&#39;</span><span class="p">]</span>
+    <span class="n">ypix</span> <span class="o">=</span> <span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;ypix&#39;</span><span class="p">]</span>
+
+    <span class="n">full_roi</span><span class="p">[</span><span class="n">ypix</span><span class="p">,</span> <span class="n">xpix</span><span class="p">]</span> <span class="o">=</span> <span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
+
+    <span class="c1"># np.nan &gt; 0 is False (as is np.nan &lt; 0), so the nan background is fine</span>
+    <span class="n">closed</span> <span class="o">=</span> <span class="n">binary_closing</span><span class="p">(</span><span class="n">full_roi</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">closed</span></div>
+
+
+<div class="viewcode-block" id="ROIsNotLabeledError"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.ROIsNotLabeledError">[docs]</a><span class="k">class</span> <span class="nc">ROIsNotLabeledError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+<div class="viewcode-block" id="LabelsNotModifiedError"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.LabelsNotModifiedError">[docs]</a><span class="k">class</span> <span class="nc">LabelsNotModifiedError</span><span class="p">(</span><span class="n">ROIsNotLabeledError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+<div class="viewcode-block" id="LabelsNotSelectiveError"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.LabelsNotSelectiveError">[docs]</a><span class="k">class</span> <span class="nc">LabelsNotSelectiveError</span><span class="p">(</span><span class="n">ROIsNotLabeledError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="load_s2p_outputs"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.load_s2p_outputs">[docs]</a><span class="k">def</span> <span class="nf">load_s2p_outputs</span><span class="p">(</span><span class="n">plane_or_combined_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">good_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">merge_inputs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">merge_outputs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">subset_stat</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">err</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Returns suite2p outputs, with traces as a DataFrame</span>
+
+<span class="sd">    Loads outputs from `plane_or_combined_dir`, tossing data for ROIs marked &quot;not a</span>
+<span class="sd">    cell&quot; and ROIs merged to create others (by default).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        plane_or_combined_dir: directory containing suite2p outputs</span>
+<span class="sd">        good_only: whether to drop data for ROIs marked &quot;not a cell&quot; in suite2p GUI</span>
+<span class="sd">        merge_inputs: whether to drop data for ROIs merged to create other ROIs</span>
+<span class="sd">        merge_outputs: whether to drop data for ROIs created via merging in suite2p</span>
+<span class="sd">        subset_stat: whether to also drop data in `roi_stats` according to the above</span>
+<span class="sd">            criteria.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        traces: DataFrame w/ ROI numbers and extracted signals</span>
+<span class="sd">        stat_dict: dict of ROI num -&gt; suite2ps &quot;stat&quot; ROI data</span>
+<span class="sd">        ops: suite2p options</span>
+<span class="sd">        merges: dict of ROI nums of ROIs created via merging pointing to a list of the</span>
+<span class="sd">            ROI nums merged to create them. can be used for implementing your own</span>
+<span class="sd">            merging strategies.</span>
+<span class="sd">        err: whether to raise errors about ROI &quot;cell / not cell&quot; labels if `good_only`</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        IOError: if suite2p outputs did not exist</span>
+<span class="sd">        LabelsNotModifiedError: if `err and good_only` and the &quot;cell / not cell&quot; labels</span>
+<span class="sd">            have not been modified.</span>
+<span class="sd">        LabelsNotSelectiveError: if `err and good_only` and no ROIs were marked &quot;not a</span>
+<span class="sd">            cell&quot; in suite2p (assumes that some noise ROIs would have been pulled out).</span>
+<span class="sd">            This can be caused by setting the threshold to 0 and not modifying the ROIs</span>
+<span class="sd">            further manually.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">traces_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">plane_or_combined_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s1">&#39;F.npy&#39;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">traces_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;suite2p needs to be run on this data (</span><span class="si">{</span><span class="n">traces_path</span><span class="si">}</span><span class="s1"> &#39;</span>
+            <span class="s1">&#39;did not exist)&#39;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># TODO TODO are traces output by suite2p already delta F / F, or just F?</span>
+    <span class="c1"># (seems like just F, though not i&#39;m pretty sure there were some options for using</span>
+    <span class="c1"># some percentile as a baseline, so need to check again)</span>
+
+    <span class="k">if</span> <span class="n">err</span> <span class="ow">and</span> <span class="n">good_only</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_iscell_modified</span><span class="p">(</span><span class="n">plane_or_combined_dir</span><span class="p">):</span>
+        <span class="c1"># TODO maybe this should be a warning by default and my code that currently</span>
+        <span class="c1"># relies on this error should convert this warning to an error?</span>
+        <span class="k">raise</span> <span class="n">LabelsNotModifiedError</span><span class="p">(</span><span class="s1">&#39;suite2p ROI labels not modified&#39;</span><span class="p">)</span>
+
+    <span class="n">iscell</span> <span class="o">=</span> <span class="n">load_iscell</span><span class="p">(</span><span class="n">plane_or_combined_dir</span><span class="p">)</span>
+    <span class="n">traces</span> <span class="o">=</span> <span class="n">load_s2p_pickle</span><span class="p">(</span><span class="n">traces_path</span><span class="p">)</span>
+
+    <span class="c1"># TODO regarding single entries in this array (each a dict):</span>
+    <span class="c1"># - what is &#39;soma_crop&#39;? it&#39;s a boolean array but what&#39;s it mean?</span>
+    <span class="c1"># - what is &#39;med&#39;? (len 2 list, but is it a centroid or what?)</span>
+    <span class="c1"># - where are the weights for the ROI? (expecting something of same length as xpix</span>
+    <span class="c1">#   and ypix)? it&#39;s not &#39;lam&#39;, is it? and if it&#39;s &#39;lam&#39;, should i normalized it</span>
+    <span class="c1">#   before using? why isn&#39;t it already normalized?</span>
+    <span class="n">stat_path</span> <span class="o">=</span> <span class="n">plane_or_combined_dir</span> <span class="o">/</span> <span class="s1">&#39;stat.npy&#39;</span>
+    <span class="n">stat</span> <span class="o">=</span> <span class="n">load_s2p_pickle</span><span class="p">(</span><span class="n">stat_path</span><span class="p">)</span>
+
+    <span class="n">ops</span> <span class="o">=</span> <span class="n">load_s2p_ops</span><span class="p">(</span><span class="n">plane_or_combined_dir</span> <span class="o">/</span> <span class="s1">&#39;ops.npy&#39;</span><span class="p">)</span>
+
+    <span class="n">good_rois</span> <span class="o">=</span> <span class="n">iscell</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">err</span> <span class="ow">and</span> <span class="n">good_only</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">good_rois</span><span class="p">)</span> <span class="o">==</span> <span class="n">good_rois</span><span class="o">.</span><span class="n">sum</span><span class="p">():</span>
+        <span class="c1"># (and that probably means probability threshold was set to ~0 and no ROIs were</span>
+        <span class="c1"># marked bad since then, though it would almost certainly be necessary)</span>
+        <span class="k">raise</span> <span class="n">LabelsNotSelectiveError</span><span class="p">(</span><span class="s1">&#39;*all* ROIs marked good&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Transposing because original is of shape (# ROIs, # timepoints in movie),</span>
+    <span class="c1"># but compute_trial_stats expects first dimension to be of size # timepoints in</span>
+    <span class="c1"># movie (so it can be used directly on movie as well).</span>
+    <span class="n">traces</span> <span class="o">=</span> <span class="n">traces</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="n">traces</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">traces</span><span class="p">)</span>
+    <span class="n">traces</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;frame&#39;</span>
+    <span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;roi&#39;</span>
+
+    <span class="n">merges</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">i</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;imerge&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">stat</span><span class="p">)</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;imerge&#39;</span><span class="p">,</span> <span class="p">[]))</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">merge_inputs</span><span class="p">:</span>
+        <span class="n">merge_input_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">xs</span> <span class="ow">in</span> <span class="n">merges</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xs</span><span class="p">]</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">merge_input_indices</span><span class="p">))</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">merge_input_indices</span><span class="p">)</span>
+
+        <span class="c1"># TODO test in case where there are no merged rois</span>
+        <span class="n">traces</span> <span class="o">=</span> <span class="n">traces</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="o">~</span> <span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">merge_input_indices</span><span class="p">)]</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">merge_outputs</span><span class="p">:</span>
+        <span class="n">traces</span> <span class="o">=</span> <span class="n">traces</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">traces</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">merges</span><span class="p">]]</span>
+
+    <span class="k">if</span> <span class="n">good_only</span><span class="p">:</span>
+        <span class="n">good_roi_nums</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">good_rois</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+
+        <span class="c1"># TODO assuming they maintain their pre-merge iscell labels and thus some are</span>
+        <span class="c1"># marked &#39;good&#39;, test in case where some of merge inputs have already been</span>
+        <span class="c1"># dropped above</span>
+        <span class="n">traces</span> <span class="o">=</span> <span class="n">traces</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="n">good_roi_nums</span><span class="p">]</span>
+
+    <span class="c1"># TODO would modifying traces downstream produce a set with copy warning as i&#39;m</span>
+    <span class="c1"># currently creating it here? fix if so.</span>
+
+    <span class="c1"># Converting type so it can be sensibly indexed after subsetting</span>
+    <span class="k">if</span> <span class="n">subset_stat</span><span class="p">:</span>
+        <span class="n">stat_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">r</span><span class="p">:</span> <span class="n">stat</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># So the type is consistent w/ above</span>
+        <span class="n">stat_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">r</span><span class="p">:</span> <span class="n">stat</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">stat</span><span class="p">))}</span>
+
+    <span class="k">return</span> <span class="n">traces</span><span class="p">,</span> <span class="n">stat_dict</span><span class="p">,</span> <span class="n">ops</span><span class="p">,</span> <span class="n">merges</span></div>
+
+
+<div class="viewcode-block" id="load_s2p_combined_outputs"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.load_s2p_combined_outputs">[docs]</a><span class="k">def</span> <span class="nf">load_s2p_combined_outputs</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Raises IOError if corresponding suite2p output not found (i.e. suite2p needs to be</span>
+<span class="sd">    run), LabelsNotModifiedError, or LabelsNotSelectiveError.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">combined_dir</span> <span class="o">=</span> <span class="n">get_suite2p_combined_dir</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">load_s2p_outputs</span><span class="p">(</span><span class="n">combined_dir</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<span class="c1"># TODO TODO kwarg for trials stats, so if i compute df/f somewhere else, i can pass that</span>
+<span class="c1"># in as a means of picking the &#39;best&#39; plane, etc (otherwise just compute from max signal</span>
+<span class="c1"># or compute df/f in here? leaning towards former for simplicity / avoiding argument</span>
+<span class="c1"># bloat)</span>
+<span class="c1"># TODO unit test</span>
+<div class="viewcode-block" id="remerge_suite2p_merged"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.remerge_suite2p_merged">[docs]</a><span class="k">def</span> <span class="nf">remerge_suite2p_merged</span><span class="p">(</span><span class="n">traces</span><span class="p">,</span> <span class="n">stat_dict</span><span class="p">,</span> <span class="n">ops</span><span class="p">,</span> <span class="n">merges</span><span class="p">,</span> <span class="n">response_stats</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">how</span><span class="o">=</span><span class="s1">&#39;best_plane&#39;</span><span class="p">,</span> <span class="n">renumber</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Accepts input as the output of `load_s2p_outputs`</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        response_stats</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">how</span> <span class="o">!=</span> <span class="s1">&#39;best_plane&#39;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;only how=&#39;best_plane&#39; currently supported&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">renumber</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+    <span class="k">if</span> <span class="n">response_stats</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">response_stats</span> <span class="o">=</span> <span class="n">traces</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">-</span> <span class="n">traces</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+
+    <span class="c1"># TODO TODO implement another strategy where as long as the response_stats are</span>
+    <span class="c1"># within some tolerance of the best, they are averaged? or weighted according to</span>
+    <span class="c1"># response stat? weight according to variance of response stat (see examples of</span>
+    <span class="c1"># weighted averages using something derived from variance for weights online)</span>
+    <span class="c1"># TODO maybe also use 2/3rd highest lowest frame / percentile rather than actual min</span>
+    <span class="c1"># / max (for picking &#39;best&#39; plane), to gaurd against spiking noise</span>
+
+    <span class="n">rois</span> <span class="o">=</span> <span class="n">suite2p_stat2rois</span><span class="p">(</span><span class="n">stat_dict</span><span class="p">,</span> <span class="n">ops</span><span class="p">)</span>
+
+    <span class="n">merge_output_roi_nums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="p">))</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="c1"># TODO maybe build up set of seen merge input indices and check they are all seen in</span>
+    <span class="c1"># columns of traces by end (that set seen in traces columns is same as set from</span>
+    <span class="c1"># unioning all values in merges)</span>
+    <span class="k">for</span> <span class="n">merge_output_roi_num</span><span class="p">,</span> <span class="n">merge_input_roi_nums</span> <span class="ow">in</span> <span class="n">merges</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+
+        <span class="n">merge_output_roi_nums</span><span class="p">[</span><span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">merge_input_roi_nums</span><span class="p">)]</span> <span class="o">=</span> \
+            <span class="n">merge_output_roi_num</span>
+
+    <span class="n">response_stats</span> <span class="o">=</span> <span class="n">response_stats</span><span class="o">.</span><span class="n">to_frame</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;response_stat&#39;</span><span class="p">)</span>
+    <span class="n">mo_key</span> <span class="o">=</span> <span class="s1">&#39;merge_output_roi_num&#39;</span>
+    <span class="n">response_stats</span><span class="p">[</span><span class="n">mo_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">merge_output_roi_nums</span>
+    <span class="n">gb</span> <span class="o">=</span> <span class="n">response_stats</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">mo_key</span><span class="p">)</span>
+    <span class="n">best_per_merge_output</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">idxmax</span><span class="p">()</span>
+
+    <span class="c1"># Selecting the only column this DataFrame has (i.e. shape (n, 1))</span>
+    <span class="n">best_inputs</span> <span class="o">=</span> <span class="n">best_per_merge_output</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="c1"># The groupby -&gt; idxmax() otherwise would have left this column named</span>
+    <span class="c1"># &#39;response_stat&#39;, which is what we were picking an index to maximize, but the</span>
+    <span class="c1"># indices themselves are not response statistics.</span>
+    <span class="n">best_inputs</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;roi&#39;</span>
+
+    <span class="n">best</span> <span class="o">=</span> <span class="n">response_stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">best_inputs</span><span class="p">]</span>
+
+    <span class="c1"># TODO delete eventually</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span>
+       <span class="n">response_stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">best_inputs</span><span class="o">.</span><span class="n">values</span><span class="p">],</span>
+       <span class="n">response_stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">best_inputs</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="c1">#</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span>
+        <span class="n">best</span><span class="o">.</span><span class="n">response_stat</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+        <span class="n">gb</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">response_stat</span><span class="o">.</span><span class="n">values</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="n">by_response</span> <span class="o">=</span> <span class="n">response_stats</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;merge_output_roi_num&#39;</span><span class="p">,</span>
+            <span class="n">append</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">swaplevel</span><span class="p">()</span>
+
+    <span class="n">notbest_to_drop</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">best</span><span class="o">.</span><span class="n">itertuples</span><span class="p">():</span>
+        <span class="n">merge_output_roi_num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">merge_output_roi_num</span><span class="p">)</span>
+        <span class="n">curr_best</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">Index</span>
+        <span class="n">curr_notbest</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">merges</span><span class="p">[</span><span class="n">merge_output_roi_num</span><span class="p">]</span> <span class="k">if</span> <span class="n">x</span> <span class="o">!=</span> <span class="n">curr_best</span>
+        <span class="p">]</span>
+        <span class="n">notbest_to_drop</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">curr_notbest</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;suite2p merged ROI </span><span class="si">{</span><span class="n">merge_output_roi_num</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;selecting input ROI </span><span class="si">{</span><span class="n">curr_best</span><span class="si">}</span><span class="s1"> as best plane&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;dropping other input ROIs </span><span class="si">{</span><span class="n">curr_notbest</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">by_response</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">merge_output_roi_num</span><span class="p">])</span>
+            <span class="nb">print</span><span class="p">()</span>
+
+    <span class="n">traces</span> <span class="o">=</span> <span class="n">traces</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">notbest_to_drop</span><span class="p">)</span>
+
+    <span class="c1"># TODO maybe combine in to one step by just passing subsetted s2p_roi_num to</span>
+    <span class="c1"># assign_coords?</span>
+    <span class="n">rois</span> <span class="o">=</span> <span class="n">rois</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">roi</span><span class="o">=</span> <span class="o">~</span> <span class="n">rois</span><span class="o">.</span><span class="n">s2p_roi_num</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">notbest_to_drop</span><span class="p">))</span>
+    <span class="n">rois</span> <span class="o">=</span> <span class="n">rois</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">(</span><span class="n">roi</span><span class="o">=</span><span class="n">rois</span><span class="o">.</span><span class="n">s2p_roi_num</span><span class="p">)</span>
+
+    <span class="k">assert</span> <span class="nb">set</span><span class="p">(</span><span class="n">rois</span><span class="o">.</span><span class="n">roi</span><span class="o">.</span><span class="n">values</span><span class="p">)</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">traces</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;roi&#39;</span>
+
+    <span class="k">return</span> <span class="n">traces</span><span class="p">,</span> <span class="n">rois</span></div>
+
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021, Tom O&#39;Connell.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
