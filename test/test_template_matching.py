@@ -11,6 +11,10 @@ import ijroi
 from hong2p import util
 
 
+# Module level setup below is failing at the moment, so skipping via arguments added in
+# ../pytest.ini now instead.
+#pytestmark = pytest.mark.skip('test data loading broken + tested code unused')
+
 # Only for interactively working on tests. Should be false if running
 # automated tests.
 interactive = False
@@ -401,11 +405,13 @@ def test_multiscale_packing():
 # be symmetric about the middle (write template to tiff / ij loadable format
 # + roi over it. easier to see symmetry w/ small image)
 
-# TODO TODO TODO TODO check that best template match for my chosen metric is at
+# TODO TODO TODO check that best template match for my chosen metric is at
 # template scale == ground truth scale (look for this behavior across all
 # metrics if not)
 
 
+# TODO move this, or a test like it, to a test module just for roi/mask stuff
+# (do same in real code too...)
 def test_ijrois2masks():
     w = 256
     h = 256

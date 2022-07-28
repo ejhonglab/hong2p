@@ -8,7 +8,7 @@ somewhat heavy dependencies that the analysis side of things will generally not 
 
 from collections import Counter
 import warnings
-from typing import Union, Sequence, Optional, Tuple, List, Dict
+from typing import Union, Sequence, Optional, Tuple, List, Dict, Hashable
 
 import numpy as np
 import pandas as pd
@@ -17,8 +17,6 @@ import pandas as pd
 solvent_str = 'solvent'
 conc_delimiter = '@'
 
-# TODO share these + odor_index_sort_key using these w/ other place that is using
-# sorted(..., key=...) (in al_analysis?)
 def parse_log10_conc(odor_str: str) -> Optional[float]:
     """Takes formatted odor string to float log10 vol/vol concentration.
 
@@ -83,11 +81,13 @@ def sort_odor_list(odor_list):
     return sorted(odor_list, key=odordict_sort_key)
 
 
-# TODO document i/o types (+shapes in docstring)
-def odor_index_sort_key(level, sort_names=True, names_first=True,
-    name_order: Optional[List[str]] = None):
+def odor_index_sort_key(level: pd.Index, sort_names=True, names_first=True,
+    name_order: Optional[List[str]] = None) -> pd.Index:
     """
     Args:
+        level: a pd.Index containing one level of a MultiIndex with odor metadata.
+            elements should be odor strings.
+
         sort_names: whether to use odor names as part of sort key. If False, only sorts
             on concentrations.
 
@@ -98,7 +98,7 @@ def odor_index_sort_key(level, sort_names=True, names_first=True,
             Concentrations will be sorted within each name.
     """
     if name_order is not None:
-        assert sort_names == True
+        assert sort_names == True, 'sort_names should be True if name_order passed'
 
     # The assignment below failed for some int dtype levels, even though the boolean
     # mask dictating where assignment should happen must have been all False...
@@ -120,42 +120,33 @@ def odor_index_sort_key(level, sort_names=True, names_first=True,
             parse_log10_conc(x) for x in odor_strs[~ solvent_elements]
         ]
         conc_keys[~ solvent_elements] = nonsolvent_conc_keys
-
-        # Setting solvent to an unused log10 concentration just under lowest we have,
-        # such that it gets sorted into overall order as I want (first, followed by
-        # lowest concentration).
-        # TODO maybe just use float('-inf') or numpy equivalent here?
-        # should give me the sorting i want.
-        conc_keys[solvent_elements] = min(nonsolvent_conc_keys) - 1
+        conc_keys[solvent_elements] = float('-inf')
         assert not pd.isnull(conc_keys).any()
 
-        # TODO special case names like 'pfo' to always go first (like solvent
-        # elements would?) (if i do, i could then not require matching strs to be
-        # present in name_order)
         if sort_names:
-            # TODO TODO do i need to handle solvent_elements here? how?  possible, or
-            # will i just need to do outside of this within-level-only function?
-            names = [parse_odor_name(x) for x in level]
+            min_name_key = float('-inf')
+            name_keys = [
+                parse_odor_name(x) if x != solvent_str else min_name_key for x in level
+            ]
+            names = [n for n in name_keys if n != min_name_key]
 
             if name_order is None:
-                name_keys = names
+                # Making alphabetical. Need to still use the .index call to key name
+                # keys because the -inf is not comparable to str.
+                # NOTE: i didn't catch this error until a test w/ only 'odor' index, not
+                # the earlier tests w/ usual multiindex. not sure why... bug?
+                name_order = sorted(names)
             else:
-                # TODO delete? is there really a reason for this?
-                if solvent_elements.sum() > 0:
-                    raise NotImplementedError("not currently supporting 'solvent' when "
-                        'using name_order keyword argument'
-                    )
-                #
-
                 if not all(n in name_order for n in names):
                     # TODO only print the ones missing
                     raise ValueError(
                         f'some of names={names} were not in name_order={name_order}'
                     )
 
-                name_keys = [name_order.index(x) for x in names]
+            name_keys = [
+                name_order.index(x) if x != min_name_key else x for x in name_keys
+            ]
 
-            # TODO TODO TODO do i actually need to reverse order of these? test!
             if names_first:
                 sort_keys = (name_keys, conc_keys)
             else:
@@ -196,6 +187,11 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # pair that we actually wanna see plots for actually. probably just don't wanna sort
 # glomeruli diagnostics) (only really relevant if i actually start randomizing order in
 # those experiments... for now, could just not sort)
+# TODO TODO some way to make it easy to support is_pair (or other things we wanna sort
+# on before the odors?) (add kwarg for columns (+ key fns, via a dict mapping
+# cols->key fns) to sort before / after odors (as well as orders via another dict?)?)
+# (or just add columns to sort odors w/in groups of? but prob wouldn't wanna use
+# groupby, rather find existing consecutive groups and sort within...)
 def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to 'solvent' (+ clarify in docstring)
@@ -238,7 +234,12 @@ def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
 
     found_odor_multiindex = False
     for axis_name in ('index', 'columns'):
-        levels = levels_to_sort(getattr(df, axis_name))
+
+        # Sorting so that if something were to accidentally re-order e.g. 'odor1',
+        # 'odor2' levels, the sort order would be invariant to that, with 'odor1' always
+        # taking precedence in the sort.
+        levels = sorted(levels_to_sort(getattr(df, axis_name)))
+
         if len(levels) > 0:
             # TODO check my level sort key fn works in both case of 1 level passed in as
             # well as 2
@@ -370,27 +371,44 @@ def yaml_data2odor_lists(yaml_data: dict, sort=True):
     return odor_lists
 
 
-# TODO TODO use this for hong2p.viz.matshow's group_ticklabels=True path?
-# (does this solve the problem that one had, where stuff like [x,x,y,y,x,x] would fail?)
-# (move to util if so?)
-def remove_consecutive_repeats(odor_lists):
-    """Returns a list-of-str without any consecutive repeats and int # of repeats.
+# TODO may want to move to util
+# TODO make a union type that also accepts pd.Series and np.ndarray in addition to
+# Sequence? just trying to require that it can be sliced w/ arbitrary stride.
+# TODO how to indicate that the Hashable in the argument and return type should be of
+# the same type? does Hashable take any type of arguments? make my own ~mixin of
+# Hashable + Generic(?)
+def remove_consecutive_repeats(odor_lists: Sequence[Hashable]
+    ) -> Tuple[List[Hashable], int]:
+    """Returns a list without any consecutive repeats and int # of consecutive repeats.
+
+    Raises ValueError if there is a variable number of consecutive repeats.
 
     Wanted to also take a list-of-lists-of-dicts, where each dict represents one odor
     and each internal list represents all of the odors on one trial, but the internal
     lists (nor the dicts they contain) would not be hashable, and thus cannot work with
     Counter as-is.
 
-    Assumed that all elements of `odor_lists` are repeated the same number of times, and
-    all repeats are consecutive. Actually now as long as any repeats are to full # and
-    consecutive, it is ok for a particular odor (e.g. solvent control) to be repeated
-    `n_repeats` times in each of several different positions.
+    Assumed that all elements of `odor_lists` are repeated the same number of times,
+    for each consecutive group of repeats. As long as any repeats are to full
+    `n_repeats` and consecutive, it is ok for a particular odor (e.g. solvent control)
+    to be repeated `n_repeats` times in each of several different positions.
 
     >>> without_repeats, n = remove_consecutive_repeats(['a','a','a','b','b','b'])
     >>> without_repeats
     ['a','b']
     >>> n
     3
+
+    >>> without_repeats, n = remove_consecutive_repeats(['a','a','b','b','a','a'])
+    >>> without_repeats
+    ['a','b','a']
+    >>> n
+    2
+
+    >>> without_repeats, n = remove_consecutive_repeats(['a','a','a','b','b'])
+    Traceback (most recent call last):
+     ...
+    ValueError: variable number of consecutive repeats
     """
     # In Python 3.7+, order should be guaranteed to be equal to order first encountered
     # in odor_lists.
@@ -406,7 +424,8 @@ def remove_consecutive_repeats(odor_lists):
     # https://stackoverflow.com/questions/25674169
     nested = [[x] * n_repeats for x in without_consecutive_repeats]
     flat = [x for xs in nested for x in xs]
-    assert flat == odor_lists, 'variable number or non-consecutive repeats'
+    if flat != odor_lists:
+        raise ValueError('variable number of consecutive repeats')
 
     # TODO add something like (<n>) to subsequent n_repeats occurence of the same odor
     # (e.g. solvent control) (OK without as long as we are prefixing filenames with
@@ -446,6 +465,9 @@ def format_odor(odor_dict, conc=True, name_conc_delim=None, conc_key='log10_conc
 # these formatting functions (at least those that take a Series as one option)?
 # (so that hong2p.viz.callable_ticklabels can automatically convert / make good error
 # messages if they are missing)
+# TODO factor out this union type (+ probably add np.ndarray), and use in
+# remove_consecutive_repeats as well (or maybe in this particular fn, i actually want
+# Iterable[str] in the Union? not striding here..
 def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
     delim: Optional[str] = None):
 

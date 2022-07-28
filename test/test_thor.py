@@ -13,9 +13,15 @@ import pandas as pd
 # TODO at least add to some kind of test requirements if i'm not also going to use this
 # in some of the main code
 import yaml
+import pytest
 
 from hong2p import thor, util, viz
 
+
+pytestmark = pytest.mark.skip(
+    'Not yet in a format suitable for invocation via pytest. At last use, I was '
+    'invoking test_thor.py directly and standalone.'
+)
 
 open_with_showsync = False
 

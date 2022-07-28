@@ -7,6 +7,8 @@ from scipy.spatial.distance import pdist
 from hong2p import util
 
 
+pytestmark = pytest.mark.skip(reason="WIP + tested code unused")
+
 def _to_center_seq(centers, reverse=tuple(), randomize=tuple(),
         add_n=None, sub_n=None, verbose=False):
 
