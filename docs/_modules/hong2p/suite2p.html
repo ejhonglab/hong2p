@@ -1,68 +1,32 @@
-
-
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
   <meta charset="utf-8" />
-  
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
   <title>hong2p.suite2p &mdash; hong2p 0.0.0 documentation</title>
-  
-
-  
-  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-
-  
-  
-
-  
-  
-
-  
-
-  
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="../../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
         <script src="../../_static/jquery.js"></script>
         <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../../_static/doctools.js"></script>
-    
-    <script type="text/javascript" src="../../_static/js/theme.js"></script>
-
-    
+    <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
-
-   
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
-    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-          
-
-          
             <a href="../../index.html" class="icon icon-home"> hong2p
-          
-
-          
           </a>
-
-          
-            
-            
-          
-
-          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
@@ -70,103 +34,281 @@
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
-              <p class="caption"><span class="caption-text">Contents:</span></p>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
 </ul>
 
-            
-          
         </div>
-        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="../../index.html">hong2p</a>
-        
       </nav>
 
-
       <div class="wy-nav-content">
-        
         <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
+          <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-    
       <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
-        
           <li><a href="../index.html">Module code</a> &raquo;</li>
-        
       <li>hong2p.suite2p</li>
-    
-    
       <li class="wy-breadcrumbs-aside">
-        
       </li>
-    
   </ul>
-
-  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-            
+             
   <h1>Source code for hong2p.suite2p</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Functions for working with suite2p as part of analysis.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
-<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="k">import</span> <span class="n">deepcopy</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="k">import</span> <span class="n">Path</span>
 <span class="kn">import</span> <span class="nn">subprocess</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span> <span class="nn">pprint</span> <span class="k">import</span> <span class="n">pformat</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="k">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 
-<span class="kn">from</span> <span class="nn">hong2p</span> <span class="kn">import</span> <span class="n">thor</span><span class="p">,</span> <span class="n">util</span>
-<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="kn">import</span> <span class="n">Pathlike</span>
+<span class="kn">from</span> <span class="nn">hong2p</span> <span class="k">import</span> <span class="n">thor</span><span class="p">,</span> <span class="n">util</span>
+<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="k">import</span> <span class="n">Pathlike</span>
+
+
+<span class="c1"># TODO should this be in types.py?</span>
+<span class="n">Suite2pOps</span> <span class="o">=</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>
+
+<span class="c1"># TODO add fn to check these parameter names against installed suite2p (would probably</span>
+<span class="c1"># need to parse source / use introspection, since variables defining them are just local</span>
+<span class="c1"># variables inside a function)</span>
+
+<span class="c1"># Currently, most of these parameter name groups seem to just be defined in a variables</span>
+<span class="c1"># inside a suite2p function suite2p/gui/rungui.py:create_buttons</span>
+<span class="n">main_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="c1"># TODO may rather fail/warn if i detect a previous run used different values for</span>
+    <span class="c1"># these data specific parameters, for the same input data (in contrast to making a</span>
+    <span class="c1"># new run directory if one of the other parametes differs)</span>
+    <span class="s1">&#39;nplanes&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;nchannels&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;functional_chan&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;tau&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;fs&#39;</span><span class="p">,</span>
+
+    <span class="s1">&#39;do_bidiphase&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;bidiphase&#39;</span><span class="p">,</span>
+
+    <span class="c1"># TODO when comparing params, maybe ignore stuff like this one by default (assuming</span>
+    <span class="c1"># it has no real effect apart from speed, assuming no bugs...)</span>
+    <span class="s1">&#39;multiplane_parallel&#39;</span><span class="p">,</span>
+
+    <span class="s1">&#39;ignore_flyback&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="n">output_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">&#39;preclassify&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;save_mat&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;save_NWB&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;combined&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;reg_tif&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;reg_tif_chan2&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;aspect&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;delete_bin&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;move_bin&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="c1"># &quot;Registration&quot; (mostly rigid specific, some general to registration)</span>
+<span class="n">registration_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">&#39;do_registration&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;align_by_chan&#39;</span><span class="p">,</span>
+
+    <span class="c1"># Rigid</span>
+    <span class="s1">&#39;nimg_init&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;smooth_sigma&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;smooth_sigma_time&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;maxregshift&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;th_badframes&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;two_step_registration&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="n">nonrigid_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">&#39;nonrigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;block_size&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;snr_thresh&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;maxregshiftNR&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="c1"># &quot;1P&quot;</span>
+<span class="n">one_photon_reg_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="c1"># 1P (shouldn&#39;t be used in our cases, but here for the sake of completeness)</span>
+    <span class="s1">&#39;1Preg&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;spatial_hp_reg&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;pre_smooth&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;spatial_taper&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="n">roi_detection_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">&#39;roidetect&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;denoise&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;anatomical_only&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;diameter&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;spatial_scale&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;threshold_scaling&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;max_overlap&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;max_iterations&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;high_pass&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="c1"># Extraction/Neuropil</span>
+<span class="n">neuropil_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">&#39;neuropil_extract&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;allow_overlap&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;inner_neuropil_radius&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;min_neuropil_pixels&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="c1"># Classification/Deconvolution</span>
+<span class="n">deconv_params</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">&#39;soma_crop&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;spikedetect&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;win_baseline&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;sig_baseline&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;neucoeff&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="c1"># All params referenced in the right portion of the GUI parameter window,</span>
+<span class="c1"># grouped by heading.</span>
+<span class="n">gui_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;main&#39;</span><span class="p">:</span> <span class="n">main_params</span><span class="p">,</span>
+    <span class="s1">&#39;output&#39;</span><span class="p">:</span> <span class="n">output_params</span><span class="p">,</span>
+    <span class="s1">&#39;registration&#39;</span><span class="p">:</span> <span class="n">registration_params</span><span class="p">,</span>
+    <span class="s1">&#39;nonrigid&#39;</span><span class="p">:</span> <span class="n">nonrigid_params</span><span class="p">,</span>
+    <span class="s1">&#39;1p&#39;</span><span class="p">:</span> <span class="n">one_photon_reg_params</span><span class="p">,</span>
+    <span class="s1">&#39;roi_detection&#39;</span><span class="p">:</span> <span class="n">roi_detection_params</span><span class="p">,</span>
+    <span class="s1">&#39;neuropil&#39;</span><span class="p">:</span> <span class="n">neuropil_params</span><span class="p">,</span>
+    <span class="s1">&#39;deconv&#39;</span><span class="p">:</span> <span class="n">deconv_params</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="c1"># Entries in suite2p &quot;ops&quot; that specify input data used in a suite2p run.</span>
+<span class="c1"># TODO TODO modify to also work when input is specified as typical</span>
+<span class="c1"># (NOT via ops[&#39;tiff_list&#39;])</span>
+<span class="n">input_data_keys</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">&#39;tiff_list&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<span class="c1"># TODO move to util</span>
+<div class="viewcode-block" id="diff_dicts"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.diff_dicts">[docs]</a><span class="k">def</span> <span class="nf">diff_dicts</span><span class="p">(</span><span class="n">d1</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">d2</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">label1</span><span class="o">=</span><span class="s1">&#39;&lt;&#39;</span><span class="p">,</span> <span class="n">label2</span><span class="o">=</span><span class="s1">&#39;&gt;&#39;</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Prints differences between two dictionaries.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO maybe use colors green/red like in git diff?</span>
+    <span class="c1"># TODO maybe use +/- as default labels?</span>
+
+    <span class="c1"># TODO maybe just use Series.[eq/equals], instead of most below?</span>
+
+    <span class="k">if</span> <span class="n">header</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">header</span><span class="p">)</span>
+
+    <span class="n">d1_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">d1</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">d2_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">d2</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+
+    <span class="n">d1_only</span> <span class="o">=</span> <span class="n">d1_keys</span> <span class="o">-</span> <span class="n">d2_keys</span>
+    <span class="n">d2_only</span> <span class="o">=</span> <span class="n">d2_keys</span> <span class="o">-</span> <span class="n">d1_keys</span>
+
+    <span class="n">shared_keys</span> <span class="o">=</span> <span class="n">d1_keys</span> <span class="o">|</span> <span class="n">d2_keys</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">shared_keys</span><span class="p">):</span>
+        <span class="n">d1_val</span> <span class="o">=</span> <span class="n">d1</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="n">d2_val</span> <span class="o">=</span> <span class="n">d2</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">d1_val</span> <span class="o">!=</span> <span class="n">d2_val</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{k}</span><span class="s1">:&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{label1}</span><span class="s1"> {pformat(d1_val)}&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{label2}</span><span class="s1"> {pformat(d2_val)}&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">()</span></div>
+
+
+<span class="c1"># TODO type for stuff that implements &#39;in&#39;?</span>
+<span class="k">def</span> <span class="nf">_subdict</span><span class="p">(</span><span class="n">d</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">keys</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Assumes all elements of keys are in d.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">d</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">}</span>
+
+
+<span class="c1"># TODO fns like gui_params_equal/inputs_equal, but for actually printing differences?</span>
+
+<span class="c1"># TODO option to ignore / only-check certain parameter groups (e.g. assuming we only</span>
+<span class="c1"># care about the registration, w/o actually using ROI extraction stuff)</span>
+<span class="c1"># TODO option to ignore certain parameters by name (to ignore stuff that shouldn&#39;t</span>
+<span class="c1"># affect output, like hopefully &#39;batch_size&#39; / &#39;multiplane_parallel&#39;)</span>
+<div class="viewcode-block" id="gui_params_equal"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.gui_params_equal">[docs]</a><span class="k">def</span> <span class="nf">gui_params_equal</span><span class="p">(</span><span class="n">ops1</span><span class="p">:</span> <span class="n">Suite2pOps</span><span class="p">,</span> <span class="n">ops2</span><span class="p">:</span> <span class="n">Suite2pOps</span><span class="p">,</span> <span class="n">print_diff</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Returns whether GUI-settable parameters differ.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ops1: as returned by `load_s2p_ops`</span>
+<span class="sd">        ops2: to be compared to `ops1`</span>
+<span class="sd">        print_diff: whether to print any differences</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Form a flat list of all parameter names we want to check.</span>
+    <span class="n">params_to_check</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">xs</span> <span class="ow">in</span> <span class="n">gui_params</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xs</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">params_to_check</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">params_to_check</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">ops_to_compare</span><span class="p">(</span><span class="n">ops_dict</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">_subdict</span><span class="p">(</span><span class="n">ops_dict</span><span class="p">,</span> <span class="n">params_to_check</span><span class="p">)</span>
+
+        <span class="c1"># Since when loaded from default user ops, this seems to be a list</span>
+        <span class="c1"># (e.g. [48, 48]), whereas it&#39;s a tuple when loaded from suite2p/plane0/ops.npy</span>
+        <span class="c1"># (e.g. (48, 48)).</span>
+        <span class="n">d</span><span class="p">[</span><span class="s1">&#39;block_size&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="s1">&#39;block_size&#39;</span><span class="p">])</span>
+
+        <span class="c1"># TODO TODO TODO need to pre-process &#39;diameter&#39; too. at least in some cases, it</span>
+        <span class="c1"># seems, 0-&gt;[0,0]</span>
+
+        <span class="k">return</span> <span class="n">d</span>
+
+    <span class="n">d1</span> <span class="o">=</span> <span class="n">ops_to_compare</span><span class="p">(</span><span class="n">ops1</span><span class="p">)</span>
+    <span class="n">d2</span> <span class="o">=</span> <span class="n">ops_to_compare</span><span class="p">(</span><span class="n">ops2</span><span class="p">)</span>
+
+    <span class="c1"># TODO TODO if this equality check is doing what i want in some cases, refactor</span>
+    <span class="c1"># diff_dicts to something that returns a representation of the diff, w/ a separate</span>
+    <span class="c1"># fn to print the diffs</span>
+    <span class="c1"># TODO make sure we are handling any numpy arrays correctly (if any correspond to</span>
+    <span class="c1"># gui params...)</span>
+    <span class="k">if</span> <span class="n">d1</span> <span class="o">!=</span> <span class="n">d2</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">print_diff</span><span class="p">:</span>
+            <span class="n">diff_dicts</span><span class="p">(</span><span class="n">d1</span><span class="p">,</span> <span class="n">d2</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<span class="c1"># TODO maybe also check git hash / version for suite2p (which i feel like i saw it</span>
+<span class="c1"># inserted in the ops somewhere?)</span>
+<span class="c1"># TODO any other ops values i wanna check in here?</span>
+<div class="viewcode-block" id="inputs_equal"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.inputs_equal">[docs]</a><span class="k">def</span> <span class="nf">inputs_equal</span><span class="p">(</span><span class="n">ops1</span><span class="p">:</span> <span class="n">Suite2pOps</span><span class="p">,</span> <span class="n">ops2</span><span class="p">:</span> <span class="n">Suite2pOps</span><span class="p">,</span> <span class="n">print_diff</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Returns whether input data and GUI-settable parameters differ.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO TODO refactor to just add gui param list to input_data_keys, then call one</span>
+    <span class="c1"># fn that compares/prints-diff-of dicts (otherwise header will get printed twice, if</span>
+    <span class="c1"># there are differences in both...)</span>
+
+    <span class="n">ret</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">gui_params_equal</span><span class="p">(</span><span class="n">ops1</span><span class="p">,</span> <span class="n">ops2</span><span class="p">,</span> <span class="n">print_diff</span><span class="o">=</span><span class="n">print_diff</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="n">d1</span> <span class="o">=</span> <span class="n">_subdict</span><span class="p">(</span><span class="n">ops1</span><span class="p">,</span> <span class="n">input_data_keys</span><span class="p">)</span>
+    <span class="n">d2</span> <span class="o">=</span> <span class="n">_subdict</span><span class="p">(</span><span class="n">ops2</span><span class="p">,</span> <span class="n">input_data_keys</span><span class="p">)</span>
+
+    <span class="c1"># TODO doing what i want? any numpy arrays in values here?</span>
+    <span class="k">if</span> <span class="n">d1</span> <span class="o">!=</span> <span class="n">d2</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">print_diff</span><span class="p">:</span>
+            <span class="n">diff_dicts</span><span class="p">(</span><span class="n">d1</span><span class="p">,</span> <span class="n">d2</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">return</span> <span class="n">ret</span></div>
 
 
 <div class="viewcode-block" id="suite2p_params"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.suite2p_params">[docs]</a><span class="k">def</span> <span class="nf">suite2p_params</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">):</span>
@@ -217,7 +359,7 @@
 <div class="viewcode-block" id="print_suite2p_params"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.print_suite2p_params">[docs]</a><span class="k">def</span> <span class="nf">print_suite2p_params</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">print_movie_shape</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="n">ops</span> <span class="o">=</span> <span class="n">suite2p_params</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;nplanes:&#39;</span><span class="p">,</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;nplanes&#39;</span><span class="p">])</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;fs: </span><span class="si">{</span><span class="n">ops</span><span class="p">[</span><span class="s2">&quot;fs&quot;</span><span class="p">]</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;fs: </span><span class="si">{ops[&quot;fs&quot;]:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;tau: 0.7 (recommended for GCaMP6f)&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">print_movie_shape</span><span class="p">:</span>
@@ -226,12 +368,12 @@
         <span class="p">)</span>
         <span class="n">n_volumes</span> <span class="o">=</span> <span class="n">thor</span><span class="o">.</span><span class="n">get_thorimage_n_frames</span><span class="p">(</span><span class="n">xml</span><span class="p">,</span> <span class="n">num_volumes</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-        <span class="n">shape_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;t=</span><span class="si">{</span><span class="n">n_volumes</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">z</span><span class="si">=}</span><span class="s1"> </span><span class="si">{</span><span class="n">y</span><span class="si">=}</span><span class="s1"> </span><span class="si">{</span><span class="n">x</span><span class="si">=}</span><span class="s1">&#39;</span>
+        <span class="n">shape_str</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;t=</span><span class="si">{n_volumes}</span><span class="s1"> {z=} {y=} {x=}&#39;</span>
         <span class="k">if</span> <span class="n">c</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">shape_str</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; </span><span class="si">{</span><span class="n">c</span><span class="si">=}</span><span class="s1">&#39;</span>
+            <span class="n">shape_str</span> <span class="o">+=</span> <span class="n">f</span><span class="s1">&#39; {c=}&#39;</span>
 
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">movie shape:&#39;</span><span class="p">,</span> <span class="n">shape_str</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;# of XY frames (z * t): </span><span class="si">{</span><span class="n">z</span> <span class="o">*</span> <span class="n">n_volumes</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;# of XY frames (z * t): {z * n_volumes}&#39;</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="invert_combined_view_offset"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.invert_combined_view_offset">[docs]</a><span class="k">def</span> <span class="nf">invert_combined_view_offset</span><span class="p">(</span><span class="n">combined_ops</span><span class="p">,</span> <span class="n">roi</span><span class="p">):</span>
@@ -340,7 +482,7 @@
 
                 <span class="k">for</span> <span class="n">mi</span> <span class="ow">in</span> <span class="n">merge_input_roi_nums</span><span class="p">:</span>
                     <span class="n">mi_indices</span> <span class="o">=</span> <span class="n">roi_nums</span> <span class="o">==</span> <span class="n">mi</span>
-                    <span class="k">assert</span> <span class="n">mi_indices</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">mi_indices</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="si">=}</span><span class="s1">&#39;</span>
+                    <span class="k">assert</span> <span class="n">mi_indices</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="n">f</span><span class="s1">&#39;{mi_indices.sum()=}&#39;</span>
                     <span class="n">roi_nums</span><span class="p">[</span><span class="n">mi_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_roi_num</span>
 
         <span class="c1"># TODO maybe overwrite default sequential &#39;roi_num&#39;?</span>
@@ -378,7 +520,17 @@
 
 
 <span class="c1"># TODO check that it is always a dict and not sometimes an iterable of them</span>
-<div class="viewcode-block" id="load_s2p_ops"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.load_s2p_ops">[docs]</a><span class="k">def</span> <span class="nf">load_s2p_ops</span><span class="p">(</span><span class="n">ops_path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="c1"># TODO type alias / similar for Dict[str, Any] (and use in other places in suite2p.py</span>
+<span class="c1"># where I use this)</span>
+<div class="viewcode-block" id="load_s2p_ops"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.load_s2p_ops">[docs]</a><span class="k">def</span> <span class="nf">load_s2p_ops</span><span class="p">(</span><span class="n">ops_path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Suite2pOps</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Args:</span>
+<span class="sd">        ops_path: if path does not end with &#39;*.npy&#39;, assumed to be a directory</span>
+<span class="sd">            containing a file named &#39;ops.npy&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">ops_path</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.npy&#39;</span><span class="p">):</span>
+        <span class="n">ops_path</span> <span class="o">=</span> <span class="n">ops_path</span> <span class="o">/</span> <span class="s1">&#39;ops.npy&#39;</span>
+
     <span class="n">ops</span> <span class="o">=</span> <span class="n">load_s2p_pickle</span><span class="p">(</span><span class="n">ops_path</span><span class="p">)</span>
     <span class="k">assert</span> <span class="n">ops</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="nb">tuple</span><span class="p">()</span>
     <span class="k">return</span> <span class="n">ops</span><span class="o">.</span><span class="n">item</span><span class="p">()</span></div>
@@ -445,7 +597,7 @@
     <span class="k">if</span> <span class="n">warn</span> <span class="ow">and</span> <span class="n">iscell_bool</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
         <span class="c1"># Since this is probably the result of just setting the threshold to 0 in the</span>
         <span class="c1"># GUI and not further marking the ROIs as cell/not-cell from there.</span>
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;all suite2p ROIs in </span><span class="si">{</span><span class="n">s2p_out_dir</span><span class="si">}</span><span class="s1"> marked as good. check this &#39;</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;all suite2p ROIs in </span><span class="si">{s2p_out_dir}</span><span class="s1"> marked as good. check this &#39;</span>
             <span class="s1">&#39;is intentional.&#39;</span>
         <span class="p">)</span>
 
@@ -484,7 +636,7 @@
 
     <span class="c1"># This will wait for suite2p to be closed before it returns.</span>
     <span class="c1"># NOTE: the --statfile argument is something I added in my fork of suite2p</span>
-    <span class="n">proc</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;suite2p --statfile </span><span class="si">{</span><span class="n">stat_path</span><span class="si">}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+    <span class="n">proc</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;suite2p --statfile </span><span class="si">{stat_path}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
 
     <span class="c1"># TODO maybe refactor so closing suite2p will automatically close any still-open</span>
     <span class="c1"># matplotlib figures?</span>
@@ -498,7 +650,7 @@
 
 <span class="c1"># TODO delete?</span>
 <div class="viewcode-block" id="suite2p_footprint2bool_mask"><a class="viewcode-back" href="../../apidoc/hong2p.suite2p.html#hong2p.suite2p.suite2p_footprint2bool_mask">[docs]</a><span class="k">def</span> <span class="nf">suite2p_footprint2bool_mask</span><span class="p">(</span><span class="n">roi_stat</span><span class="p">,</span> <span class="n">ops</span><span class="p">):</span>
-    <span class="kn">from</span> <span class="nn">scipy.ndimage</span> <span class="kn">import</span> <span class="n">binary_closing</span>
+    <span class="kn">from</span> <span class="nn">scipy.ndimage</span> <span class="k">import</span> <span class="n">binary_closing</span>
 
     <span class="n">full_roi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Ly&#39;</span><span class="p">],</span> <span class="n">ops</span><span class="p">[</span><span class="s1">&#39;Lx&#39;</span><span class="p">]))</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
     <span class="n">xpix</span> <span class="o">=</span> <span class="n">roi_stat</span><span class="p">[</span><span class="s1">&#39;xpix&#39;</span><span class="p">]</span>
@@ -557,7 +709,7 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">traces_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">plane_or_combined_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s1">&#39;F.npy&#39;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">traces_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;suite2p needs to be run on this data (</span><span class="si">{</span><span class="n">traces_path</span><span class="si">}</span><span class="s1"> &#39;</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;suite2p needs to be run on this data (</span><span class="si">{traces_path}</span><span class="s1"> &#39;</span>
             <span class="s1">&#39;did not exist)&#39;</span>
         <span class="p">)</span>
 
@@ -582,7 +734,7 @@
     <span class="n">stat_path</span> <span class="o">=</span> <span class="n">plane_or_combined_dir</span> <span class="o">/</span> <span class="s1">&#39;stat.npy&#39;</span>
     <span class="n">stat</span> <span class="o">=</span> <span class="n">load_s2p_pickle</span><span class="p">(</span><span class="n">stat_path</span><span class="p">)</span>
 
-    <span class="n">ops</span> <span class="o">=</span> <span class="n">load_s2p_ops</span><span class="p">(</span><span class="n">plane_or_combined_dir</span> <span class="o">/</span> <span class="s1">&#39;ops.npy&#39;</span><span class="p">)</span>
+    <span class="n">ops</span> <span class="o">=</span> <span class="n">load_s2p_ops</span><span class="p">(</span><span class="n">plane_or_combined_dir</span><span class="p">)</span>
 
     <span class="n">good_rois</span> <span class="o">=</span> <span class="n">iscell</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">)</span>
 
@@ -724,9 +876,9 @@
         <span class="n">notbest_to_drop</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">curr_notbest</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;suite2p merged ROI </span><span class="si">{</span><span class="n">merge_output_roi_num</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;selecting input ROI </span><span class="si">{</span><span class="n">curr_best</span><span class="si">}</span><span class="s1"> as best plane&#39;</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;dropping other input ROIs </span><span class="si">{</span><span class="n">curr_notbest</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;suite2p merged ROI </span><span class="si">{merge_output_roi_num}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;selecting input ROI </span><span class="si">{curr_best}</span><span class="s1"> as best plane&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;dropping other input ROIs </span><span class="si">{curr_notbest}</span><span class="s1">&#39;</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="n">by_response</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">merge_output_roi_num</span><span class="p">])</span>
             <span class="nb">print</span><span class="p">()</span>
 
@@ -745,46 +897,30 @@
 </pre></div>
 
            </div>
-           
           </div>
           <footer>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>
-        &#169; Copyright 2021, Tom O&#39;Connell.
-
-    </p>
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
   </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
 
 </footer>
         </div>
       </div>
-
     </section>
-
   </div>
-  
-
-  <script type="text/javascript">
+  <script>
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-
-  
-  
-    
-   
+  </script> 
 
 </body>
 </html>

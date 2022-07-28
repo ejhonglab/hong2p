@@ -1,68 +1,32 @@
-
-
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
   <meta charset="utf-8" />
-  
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
   <title>hong2p.olf &mdash; hong2p 0.0.0 documentation</title>
-  
-
-  
-  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-
-  
-  
-
-  
-  
-
-  
-
-  
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="../../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
         <script src="../../_static/jquery.js"></script>
         <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../../_static/doctools.js"></script>
-    
-    <script type="text/javascript" src="../../_static/js/theme.js"></script>
-
-    
+    <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
-
-   
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
-    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-          
-
-          
             <a href="../../index.html" class="icon icon-home"> hong2p
-          
-
-          
           </a>
-
-          
-            
-            
-          
-
-          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
@@ -70,86 +34,36 @@
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
-              <p class="caption"><span class="caption-text">Contents:</span></p>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
 </ul>
 
-            
-          
         </div>
-        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="../../index.html">hong2p</a>
-        
       </nav>
 
-
       <div class="wy-nav-content">
-        
         <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
+          <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-    
       <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
-        
           <li><a href="../index.html">Module code</a> &raquo;</li>
-        
       <li>hong2p.olf</li>
-    
-    
       <li class="wy-breadcrumbs-aside">
-        
       </li>
-    
   </ul>
-
-  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-            
+             
   <h1>Source code for hong2p.olf</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Functions for loading YAML metadata created by my tom-f-oconnell/olfactometer repo, and</span>
@@ -159,9 +73,9 @@
 <span class="sd">somewhat heavy dependencies that the analysis side of things will generally not need.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">Counter</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">Counter</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="k">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Hashable</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
@@ -170,8 +84,6 @@
 <span class="n">solvent_str</span> <span class="o">=</span> <span class="s1">&#39;solvent&#39;</span>
 <span class="n">conc_delimiter</span> <span class="o">=</span> <span class="s1">&#39;@&#39;</span>
 
-<span class="c1"># TODO share these + odor_index_sort_key using these w/ other place that is using</span>
-<span class="c1"># sorted(..., key=...) (in al_analysis?)</span>
 <div class="viewcode-block" id="parse_log10_conc"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.parse_log10_conc">[docs]</a><span class="k">def</span> <span class="nf">parse_log10_conc</span><span class="p">(</span><span class="n">odor_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
     <span class="sd">&quot;&quot;&quot;Takes formatted odor string to float log10 vol/vol concentration.</span>
 
@@ -189,9 +101,13 @@
 
 
 <div class="viewcode-block" id="parse_odor_name"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.parse_odor_name">[docs]</a><span class="k">def</span> <span class="nf">parse_odor_name</span><span class="p">(</span><span class="n">odor_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="c1"># TODO some way to get the generated docs to refer to the value for the constant</span>
+    <span class="c1"># rather than having to hardcode it for reference? a plugin maybe?</span>
     <span class="sd">&quot;&quot;&quot;Takes formatted odor string to just the name of the odor.</span>
 
-<span class="sd">    &gt;&gt;&gt; parse_log10_conc(&#39;ethyl acetate @ -2&#39;)</span>
+<span class="sd">    Input must contain `olf.conc_delimiter` (&#39;@&#39;).</span>
+
+<span class="sd">    &gt;&gt;&gt; parse_odor_name(&#39;ethyl acetate @ -2&#39;)</span>
 <span class="sd">    &#39;ethyl acetate&#39;</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">assert</span> <span class="n">conc_delimiter</span> <span class="ow">in</span> <span class="n">odor_str</span>
@@ -221,7 +137,7 @@
     <span class="k">if</span> <span class="n">log10_conc</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">log10_conc</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;-inf&#39;</span><span class="p">)</span>
 
-    <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">log10_conc</span><span class="p">)</span> <span class="ow">in</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">),</span> <span class="sa">f</span><span class="s1">&#39;type(</span><span class="si">{</span><span class="n">log10_conc</span><span class="si">}</span><span class="s1">) == </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">log10_conc</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
+    <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">log10_conc</span><span class="p">)</span> <span class="ow">in</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">),</span> <span class="n">f</span><span class="s1">&#39;type(</span><span class="si">{log10_conc}</span><span class="s1">) == {type(log10_conc)}&#39;</span>
 
     <span class="k">return</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">log10_conc</span><span class="p">)</span></div>
 
@@ -236,11 +152,13 @@
     <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">odor_list</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">odordict_sort_key</span><span class="p">)</span></div>
 
 
-<span class="c1"># TODO document i/o types (+shapes in docstring)</span>
-<div class="viewcode-block" id="odor_index_sort_key"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.odor_index_sort_key">[docs]</a><span class="k">def</span> <span class="nf">odor_index_sort_key</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="n">sort_names</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">names_first</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-    <span class="n">name_order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<div class="viewcode-block" id="odor_index_sort_key"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.odor_index_sort_key">[docs]</a><span class="k">def</span> <span class="nf">odor_index_sort_key</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">,</span> <span class="n">sort_names</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">names_first</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">name_order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Args:</span>
+<span class="sd">        level: a pd.Index containing one level of a MultiIndex with odor metadata.</span>
+<span class="sd">            elements should be odor strings.</span>
+
 <span class="sd">        sort_names: whether to use odor names as part of sort key. If False, only sorts</span>
 <span class="sd">            on concentrations.</span>
 
@@ -251,7 +169,7 @@
 <span class="sd">            Concentrations will be sorted within each name.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">name_order</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">assert</span> <span class="n">sort_names</span> <span class="o">==</span> <span class="kc">True</span>
+        <span class="k">assert</span> <span class="n">sort_names</span> <span class="o">==</span> <span class="kc">True</span><span class="p">,</span> <span class="s1">&#39;sort_names should be True if name_order passed&#39;</span>
 
     <span class="c1"># The assignment below failed for some int dtype levels, even though the boolean</span>
     <span class="c1"># mask dictating where assignment should happen must have been all False...</span>
@@ -273,42 +191,33 @@
             <span class="n">parse_log10_conc</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">odor_strs</span><span class="p">[</span><span class="o">~</span> <span class="n">solvent_elements</span><span class="p">]</span>
         <span class="p">]</span>
         <span class="n">conc_keys</span><span class="p">[</span><span class="o">~</span> <span class="n">solvent_elements</span><span class="p">]</span> <span class="o">=</span> <span class="n">nonsolvent_conc_keys</span>
-
-        <span class="c1"># Setting solvent to an unused log10 concentration just under lowest we have,</span>
-        <span class="c1"># such that it gets sorted into overall order as I want (first, followed by</span>
-        <span class="c1"># lowest concentration).</span>
-        <span class="c1"># TODO maybe just use float(&#39;-inf&#39;) or numpy equivalent here?</span>
-        <span class="c1"># should give me the sorting i want.</span>
-        <span class="n">conc_keys</span><span class="p">[</span><span class="n">solvent_elements</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">nonsolvent_conc_keys</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">conc_keys</span><span class="p">[</span><span class="n">solvent_elements</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;-inf&#39;</span><span class="p">)</span>
         <span class="k">assert</span> <span class="ow">not</span> <span class="n">pd</span><span class="o">.</span><span class="n">isnull</span><span class="p">(</span><span class="n">conc_keys</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()</span>
 
-        <span class="c1"># TODO special case names like &#39;pfo&#39; to always go first (like solvent</span>
-        <span class="c1"># elements would?) (if i do, i could then not require matching strs to be</span>
-        <span class="c1"># present in name_order)</span>
         <span class="k">if</span> <span class="n">sort_names</span><span class="p">:</span>
-            <span class="c1"># TODO TODO do i need to handle solvent_elements here? how?  possible, or</span>
-            <span class="c1"># will i just need to do outside of this within-level-only function?</span>
-            <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="n">parse_odor_name</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">level</span><span class="p">]</span>
+            <span class="n">min_name_key</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;-inf&#39;</span><span class="p">)</span>
+            <span class="n">name_keys</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">parse_odor_name</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span> <span class="o">!=</span> <span class="n">solvent_str</span> <span class="k">else</span> <span class="n">min_name_key</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">level</span>
+            <span class="p">]</span>
+            <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">name_keys</span> <span class="k">if</span> <span class="n">n</span> <span class="o">!=</span> <span class="n">min_name_key</span><span class="p">]</span>
 
             <span class="k">if</span> <span class="n">name_order</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">name_keys</span> <span class="o">=</span> <span class="n">names</span>
+                <span class="c1"># Making alphabetical. Need to still use the .index call to key name</span>
+                <span class="c1"># keys because the -inf is not comparable to str.</span>
+                <span class="c1"># NOTE: i didn&#39;t catch this error until a test w/ only &#39;odor&#39; index, not</span>
+                <span class="c1"># the earlier tests w/ usual multiindex. not sure why... bug?</span>
+                <span class="n">name_order</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="c1"># TODO delete? is there really a reason for this?</span>
-                <span class="k">if</span> <span class="n">solvent_elements</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;not currently supporting &#39;solvent&#39; when &quot;</span>
-                        <span class="s1">&#39;using name_order keyword argument&#39;</span>
-                    <span class="p">)</span>
-                <span class="c1">#</span>
-
                 <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="n">n</span> <span class="ow">in</span> <span class="n">name_order</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">names</span><span class="p">):</span>
                     <span class="c1"># TODO only print the ones missing</span>
                     <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                        <span class="sa">f</span><span class="s1">&#39;some of names=</span><span class="si">{</span><span class="n">names</span><span class="si">}</span><span class="s1"> were not in name_order=</span><span class="si">{</span><span class="n">name_order</span><span class="si">}</span><span class="s1">&#39;</span>
+                        <span class="n">f</span><span class="s1">&#39;some of names=</span><span class="si">{names}</span><span class="s1"> were not in name_order=</span><span class="si">{name_order}</span><span class="s1">&#39;</span>
                     <span class="p">)</span>
 
-                <span class="n">name_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">name_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">names</span><span class="p">]</span>
+            <span class="n">name_keys</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">name_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span> <span class="o">!=</span> <span class="n">min_name_key</span> <span class="k">else</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">name_keys</span>
+            <span class="p">]</span>
 
-            <span class="c1"># TODO TODO TODO do i actually need to reverse order of these? test!</span>
             <span class="k">if</span> <span class="n">names_first</span><span class="p">:</span>
                 <span class="n">sort_keys</span> <span class="o">=</span> <span class="p">(</span><span class="n">name_keys</span><span class="p">,</span> <span class="n">conc_keys</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
@@ -349,6 +258,11 @@
 <span class="c1"># pair that we actually wanna see plots for actually. probably just don&#39;t wanna sort</span>
 <span class="c1"># glomeruli diagnostics) (only really relevant if i actually start randomizing order in</span>
 <span class="c1"># those experiments... for now, could just not sort)</span>
+<span class="c1"># TODO TODO some way to make it easy to support is_pair (or other things we wanna sort</span>
+<span class="c1"># on before the odors?) (add kwarg for columns (+ key fns, via a dict mapping</span>
+<span class="c1"># cols-&gt;key fns) to sort before / after odors (as well as orders via another dict?)?)</span>
+<span class="c1"># (or just add columns to sort odors w/in groups of? but prob wouldn&#39;t wanna use</span>
+<span class="c1"># groupby, rather find existing consecutive groups and sort within...)</span>
 <div class="viewcode-block" id="sort_odors"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.sort_odors">[docs]</a><span class="k">def</span> <span class="nf">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
     <span class="c1"># TODO add doctest examples clarifying how the two columns interact + what happens</span>
     <span class="c1"># to &#39;solvent&#39; (+ clarify in docstring)</span>
@@ -371,12 +285,15 @@
 <span class="sd">    ...     &#39;delta_f&#39;: [1.1, 1.2, 0.9]</span>
 <span class="sd">    ... }).set_index([&#39;odor1&#39;, &#39;odor2&#39;])</span>
 
+<span class="sd">    Names are sorted alphabetically by default, then within each name they are sorted by</span>
+<span class="sd">    concentration. Pass `names_only=False` to only sort on concentration, or</span>
+<span class="sd">    `names_first=False` to sort on concentrations first.</span>
 <span class="sd">    &gt;&gt;&gt; sort_odors(df)</span>
 <span class="sd">                    delta_f</span>
 <span class="sd">    odor1  odor2</span>
 <span class="sd">    A @ -3 solvent      0.9</span>
-<span class="sd">    B @ -2 solvent      1.1</span>
 <span class="sd">    A @ -2 solvent      1.2</span>
+<span class="sd">    B @ -2 solvent      1.1</span>
 
 <span class="sd">    &gt;&gt;&gt; sort_odors(df, name_order=[&#39;B&#39;,&#39;A&#39;])</span>
 <span class="sd">                    delta_f</span>
@@ -391,7 +308,12 @@
 
     <span class="n">found_odor_multiindex</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="k">for</span> <span class="n">axis_name</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;index&#39;</span><span class="p">,</span> <span class="s1">&#39;columns&#39;</span><span class="p">):</span>
-        <span class="n">levels</span> <span class="o">=</span> <span class="n">levels_to_sort</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">axis_name</span><span class="p">))</span>
+
+        <span class="c1"># Sorting so that if something were to accidentally re-order e.g. &#39;odor1&#39;,</span>
+        <span class="c1"># &#39;odor2&#39; levels, the sort order would be invariant to that, with &#39;odor1&#39; always</span>
+        <span class="c1"># taking precedence in the sort.</span>
+        <span class="n">levels</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">levels_to_sort</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">axis_name</span><span class="p">)))</span>
+
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">levels</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="c1"># TODO check my level sort key fn works in both case of 1 level passed in as</span>
             <span class="c1"># well as 2</span>
@@ -523,27 +445,43 @@
     <span class="k">return</span> <span class="n">odor_lists</span></div>
 
 
-<span class="c1"># TODO TODO use this for hong2p.viz.matshow&#39;s group_ticklabels=True path?</span>
-<span class="c1"># (does this solve the problem that one had, where stuff like [x,x,y,y,x,x] would fail?)</span>
-<span class="c1"># (move to util if so?)</span>
-<div class="viewcode-block" id="remove_consecutive_repeats"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.remove_consecutive_repeats">[docs]</a><span class="k">def</span> <span class="nf">remove_consecutive_repeats</span><span class="p">(</span><span class="n">odor_lists</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;Returns a list-of-str without any consecutive repeats and int # of repeats.</span>
+<span class="c1"># TODO may want to move to util</span>
+<span class="c1"># TODO make a union type that also accepts pd.Series and np.ndarray in addition to</span>
+<span class="c1"># Sequence? just trying to require that it can be sliced w/ arbitrary stride.</span>
+<span class="c1"># TODO how to indicate that the Hashable in the argument and return type should be of</span>
+<span class="c1"># the same type? does Hashable take any type of arguments? make my own ~mixin of</span>
+<span class="c1"># Hashable + Generic(?)</span>
+<div class="viewcode-block" id="remove_consecutive_repeats"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.remove_consecutive_repeats">[docs]</a><span class="k">def</span> <span class="nf">remove_consecutive_repeats</span><span class="p">(</span><span class="n">odor_lists</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Hashable</span><span class="p">]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Hashable</span><span class="p">],</span> <span class="nb">int</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;Returns a list without any consecutive repeats and int # of consecutive repeats.</span>
+
+<span class="sd">    Raises ValueError if there is a variable number of consecutive repeats.</span>
 
 <span class="sd">    Wanted to also take a list-of-lists-of-dicts, where each dict represents one odor</span>
 <span class="sd">    and each internal list represents all of the odors on one trial, but the internal</span>
 <span class="sd">    lists (nor the dicts they contain) would not be hashable, and thus cannot work with</span>
 <span class="sd">    Counter as-is.</span>
 
-<span class="sd">    Assumed that all elements of `odor_lists` are repeated the same number of times, and</span>
-<span class="sd">    all repeats are consecutive. Actually now as long as any repeats are to full # and</span>
-<span class="sd">    consecutive, it is ok for a particular odor (e.g. solvent control) to be repeated</span>
-<span class="sd">    `n_repeats` times in each of several different positions.</span>
+<span class="sd">    Assumed that all elements of `odor_lists` are repeated the same number of times,</span>
+<span class="sd">    for each consecutive group of repeats. As long as any repeats are to full</span>
+<span class="sd">    `n_repeats` and consecutive, it is ok for a particular odor (e.g. solvent control)</span>
+<span class="sd">    to be repeated `n_repeats` times in each of several different positions.</span>
 
 <span class="sd">    &gt;&gt;&gt; without_repeats, n = remove_consecutive_repeats([&#39;a&#39;,&#39;a&#39;,&#39;a&#39;,&#39;b&#39;,&#39;b&#39;,&#39;b&#39;])</span>
 <span class="sd">    &gt;&gt;&gt; without_repeats</span>
-<span class="sd">    [&#39;a&#39;,&#39;b&#39;]</span>
+<span class="sd">    [&#39;a&#39;, &#39;b&#39;]</span>
 <span class="sd">    &gt;&gt;&gt; n</span>
 <span class="sd">    3</span>
+
+<span class="sd">    &gt;&gt;&gt; without_repeats, n = remove_consecutive_repeats([&#39;a&#39;,&#39;a&#39;,&#39;b&#39;,&#39;b&#39;,&#39;a&#39;,&#39;a&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; without_repeats</span>
+<span class="sd">    [&#39;a&#39;, &#39;b&#39;, &#39;a&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; n</span>
+<span class="sd">    2</span>
+
+<span class="sd">    &gt;&gt;&gt; without_repeats, n = remove_consecutive_repeats([&#39;a&#39;,&#39;a&#39;,&#39;a&#39;,&#39;b&#39;,&#39;b&#39;])</span>
+<span class="sd">    Traceback (most recent call last):</span>
+<span class="sd">    ValueError: variable number of consecutive repeats</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># In Python 3.7+, order should be guaranteed to be equal to order first encountered</span>
     <span class="c1"># in odor_lists.</span>
@@ -559,7 +497,8 @@
     <span class="c1"># https://stackoverflow.com/questions/25674169</span>
     <span class="n">nested</span> <span class="o">=</span> <span class="p">[[</span><span class="n">x</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_repeats</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">without_consecutive_repeats</span><span class="p">]</span>
     <span class="n">flat</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">xs</span> <span class="ow">in</span> <span class="n">nested</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xs</span><span class="p">]</span>
-    <span class="k">assert</span> <span class="n">flat</span> <span class="o">==</span> <span class="n">odor_lists</span><span class="p">,</span> <span class="s1">&#39;variable number or non-consecutive repeats&#39;</span>
+    <span class="k">if</span> <span class="n">flat</span> <span class="o">!=</span> <span class="n">odor_lists</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;variable number of consecutive repeats&#39;</span><span class="p">)</span>
 
     <span class="c1"># TODO add something like (&lt;n&gt;) to subsequent n_repeats occurence of the same odor</span>
     <span class="c1"># (e.g. solvent control) (OK without as long as we are prefixing filenames with</span>
@@ -579,7 +518,7 @@
 <span class="sd">    &#39;ethyl acetate @ -2&#39;</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">name_conc_delim</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">name_conc_delim</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39; </span><span class="si">{</span><span class="n">conc_delimiter</span><span class="si">}</span><span class="s1"> &#39;</span>
+        <span class="n">name_conc_delim</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39; </span><span class="si">{conc_delimiter}</span><span class="s1"> &#39;</span>
 
     <span class="n">ostr</span> <span class="o">=</span> <span class="n">odor_dict</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span>
 
@@ -590,7 +529,7 @@
             <span class="k">return</span> <span class="n">solvent_str</span>
 
         <span class="k">if</span> <span class="n">conc</span><span class="p">:</span>
-            <span class="n">ostr</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name_conc_delim</span><span class="si">}{</span><span class="n">odor_dict</span><span class="p">[</span><span class="n">conc_key</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">ostr</span> <span class="o">+=</span> <span class="n">f</span><span class="s1">&#39;</span><span class="si">{name_conc_delim}{odor_dict[conc_key]}</span><span class="s1">&#39;</span>
 
     <span class="k">return</span> <span class="n">ostr</span></div>
 
@@ -599,6 +538,9 @@
 <span class="c1"># these formatting functions (at least those that take a Series as one option)?</span>
 <span class="c1"># (so that hong2p.viz.callable_ticklabels can automatically convert / make good error</span>
 <span class="c1"># messages if they are missing)</span>
+<span class="c1"># TODO factor out this union type (+ probably add np.ndarray), and use in</span>
+<span class="c1"># remove_consecutive_repeats as well (or maybe in this particular fn, i actually want</span>
+<span class="c1"># Iterable[str] in the Union? not striding here..</span>
 <div class="viewcode-block" id="format_mix_from_strs"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.format_mix_from_strs">[docs]</a><span class="k">def</span> <span class="nf">format_mix_from_strs</span><span class="p">(</span><span class="n">odor_strs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">],</span>
     <span class="n">delim</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 
@@ -608,7 +550,7 @@
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">odor_keys</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">odor_strs</span><span class="p">):</span>
             <span class="n">nonodor_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">odor_strs</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">odor_keys</span><span class="p">]</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;format_mix_from_strs: ignoring levels not starting with &#39;</span>
-                <span class="sa">f</span><span class="s2">&quot;&#39;odor&#39; (</span><span class="si">{</span><span class="n">nonodor_keys</span><span class="si">}</span><span class="s2">)&quot;</span>
+                <span class="n">f</span><span class="s2">&quot;&#39;odor&#39; (</span><span class="si">{nonodor_keys}</span><span class="s2">)&quot;</span>
             <span class="p">)</span>
 
         <span class="n">odor_strs</span> <span class="o">=</span> <span class="p">[</span><span class="n">odor_strs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">odor_keys</span><span class="p">]</span>
@@ -632,46 +574,30 @@
 </pre></div>
 
            </div>
-           
           </div>
           <footer>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>
-        &#169; Copyright 2021, Tom O&#39;Connell.
-
-    </p>
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
   </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
 
 </footer>
         </div>
       </div>
-
     </section>
-
   </div>
-  
-
-  <script type="text/javascript">
+  <script>
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-
-  
-  
-    
-   
+  </script> 
 
 </body>
 </html>

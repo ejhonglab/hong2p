@@ -1,68 +1,32 @@
-
-
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
   <meta charset="utf-8" />
-  
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
   <title>hong2p.viz &mdash; hong2p 0.0.0 documentation</title>
-  
-
-  
-  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-
-  
-  
-
-  
-  
-
-  
-
-  
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="../../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
         <script src="../../_static/jquery.js"></script>
         <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../../_static/doctools.js"></script>
-    
-    <script type="text/javascript" src="../../_static/js/theme.js"></script>
-
-    
+    <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
-
-   
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
-    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-          
-
-          
             <a href="../../index.html" class="icon icon-home"> hong2p
-          
-
-          
           </a>
-
-          
-            
-            
-          
-
-          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
@@ -70,109 +34,62 @@
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
-              <p class="caption"><span class="caption-text">Contents:</span></p>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
 </ul>
 
-            
-          
         </div>
-        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="../../index.html">hong2p</a>
-        
       </nav>
 
-
       <div class="wy-nav-content">
-        
         <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
+          <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-    
       <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
-        
           <li><a href="../index.html">Module code</a> &raquo;</li>
-        
       <li>hong2p.viz</li>
-    
-    
       <li class="wy-breadcrumbs-aside">
-        
       </li>
-    
   </ul>
-
-  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-            
+             
   <h1>Source code for hong2p.viz</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Functions for visualizing movies / cells / extracted traces, some intended to</span>
 <span class="sd">provide context specfically useful for certain types of olfaction experiments.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">exists</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="k">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">exists</span>
 <span class="kn">import</span> <span class="nn">time</span>
 <span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="k">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">pprint</span> <span class="k">import</span> <span class="n">pformat</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
 <span class="kn">import</span> <span class="nn">xarray</span> <span class="k">as</span> <span class="nn">xr</span>
-<span class="kn">from</span> <span class="nn">scipy.cluster.hierarchy</span> <span class="kn">import</span> <span class="n">linkage</span>
+<span class="kn">from</span> <span class="nn">scipy.cluster.hierarchy</span> <span class="k">import</span> <span class="n">linkage</span>
 <span class="kn">import</span> <span class="nn">matplotlib.patches</span> <span class="k">as</span> <span class="nn">patches</span>
 <span class="kn">import</span> <span class="nn">matplotlib</span> <span class="k">as</span> <span class="nn">mpl</span>
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 <span class="kn">import</span> <span class="nn">seaborn</span> <span class="k">as</span> <span class="nn">sns</span>
 
-<span class="kn">from</span> <span class="nn">hong2p</span> <span class="kn">import</span> <span class="n">util</span><span class="p">,</span> <span class="n">thor</span><span class="p">,</span> <span class="n">olf</span>
-<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="kn">import</span> <span class="n">DataFrameOrDataArray</span>
+<span class="kn">from</span> <span class="nn">hong2p</span> <span class="k">import</span> <span class="n">util</span><span class="p">,</span> <span class="n">thor</span>
+<span class="kn">from</span> <span class="nn">hong2p.olf</span> <span class="k">import</span> <span class="n">remove_consecutive_repeats</span>
+<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="k">import</span> <span class="n">DataFrameOrDataArray</span>
 
 
 <span class="c1"># TODO consider making a style sheet as in:</span>
@@ -321,6 +238,7 @@
     <span class="k">return</span> <span class="n">wrap_plot_fn</span>
 
 
+<span class="c1"># TODO how to give these docstrings?</span>
 <span class="n">constrained_layout</span> <span class="o">=</span> <span class="n">_mpl_constrained_layout</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">no_constrained_layout</span> <span class="o">=</span> <span class="n">_mpl_constrained_layout</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
 
@@ -384,7 +302,7 @@
 
         <span class="c1"># TODO add unit test for this</span>
         <span class="k">if</span> <span class="s1">&#39;order&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;when calling </span><span class="si">{</span><span class="n">plot_fn</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1"> wrapped with &#39;</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;when calling </span><span class="si">{plot_fn.__name__}</span><span class="s1"> wrapped with &#39;</span>
                 <span class="s1">&#39;with_panel_orders, pass panel2order to wrapper or use &#39;</span>
                 <span class="s1">&#39;hong2p.viz.set_panel2order. do NOT pass order keyword argument &#39;</span>
                 <span class="s1">&#39;to the wrapped function.&#39;</span>
@@ -397,7 +315,7 @@
             <span class="p">)</span>
         <span class="n">panel</span> <span class="o">=</span> <span class="n">panels</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">panel</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">panel2order</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">panel</span><span class="si">=}</span><span class="s1"> was not in </span><span class="si">{</span><span class="n">panel2order</span><span class="si">=}</span><span class="s1"> keys&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;{panel=} was not in {panel2order=} keys&#39;</span><span class="p">)</span>
 
         <span class="n">odor_col</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">]</span>
         <span class="n">data_col</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]</span>
@@ -462,20 +380,20 @@
         <span class="c1"># is safer.</span>
         <span class="n">expected_row_linkage_shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">row_linkage</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">expected_row_linkage_shape</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;row_linkage.shape must be </span><span class="si">{</span><span class="n">expected_row_linkage_shape</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;row_linkage.shape must be </span><span class="si">{expected_row_linkage_shape}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">col_linkage</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">expected_col_linkage_shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">col_linkage</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">expected_col_linkage_shape</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;col_linkage.shape must be </span><span class="si">{</span><span class="n">expected_col_linkage_shape</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;col_linkage.shape must be </span><span class="si">{expected_col_linkage_shape}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="n">valid_preproc_kw_values</span> <span class="o">=</span> <span class="p">{</span><span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">}</span>
 
     <span class="k">if</span> <span class="n">z_score</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid_preproc_kw_values</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;z_score must be in </span><span class="si">{</span><span class="n">valid_preproc_kw_values</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;z_score must be in </span><span class="si">{valid_preproc_kw_values}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">standard_scale</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid_preproc_kw_values</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;standard_scale must be in </span><span class="si">{</span><span class="n">valid_preproc_kw_values</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;standard_scale must be in </span><span class="si">{valid_preproc_kw_values}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">cbar_label</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">cbar_kws</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -628,24 +546,34 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">group_ticklabels</span> <span class="ow">or</span> <span class="n">labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">labels</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span>
 
-        <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
-        <span class="n">n_repeats</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="o">.</span><span class="n">unique</span><span class="p">()))</span>
-
-        <span class="c1"># TODO TODO assert same # things from each unique element.</span>
-        <span class="c1"># that&#39;s what this whole tickstep thing seems to assume.</span>
-
-        <span class="c1"># Assumes order is preserved if labels are grouped at input.</span>
-        <span class="c1"># May need to calculate some other way if not always true.</span>
-        <span class="n">labels</span> <span class="o">=</span> <span class="n">labels</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span>
+        <span class="n">without_consecutive_repeats</span><span class="p">,</span> <span class="n">n_repeats</span> <span class="o">=</span> <span class="n">remove_consecutive_repeats</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
         <span class="n">tick_step</span> <span class="o">=</span> <span class="n">n_repeats</span>
         <span class="n">offset</span> <span class="o">=</span> <span class="n">n_repeats</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">-</span> <span class="mf">0.5</span>
-        <span class="k">return</span> <span class="n">labels</span><span class="p">,</span> <span class="n">tick_step</span><span class="p">,</span> <span class="n">offset</span>
+        <span class="k">return</span> <span class="n">without_consecutive_repeats</span><span class="p">,</span> <span class="n">tick_step</span><span class="p">,</span> <span class="n">offset</span>
 
-    <span class="c1"># TODO automatically only group labels in case where all repeats are</span>
-    <span class="c1"># adjacent?</span>
     <span class="c1"># TODO make fontsize / weight more in group_ticklabels case?</span>
     <span class="n">xticklabels</span><span class="p">,</span> <span class="n">xstep</span><span class="p">,</span> <span class="n">xoffset</span> <span class="o">=</span> <span class="n">grouped_labels_info</span><span class="p">(</span><span class="n">xticklabels</span><span class="p">)</span>
     <span class="n">yticklabels</span><span class="p">,</span> <span class="n">ystep</span><span class="p">,</span> <span class="n">yoffset</span> <span class="o">=</span> <span class="n">grouped_labels_info</span><span class="p">(</span><span class="n">yticklabels</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">set_ticklabels</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">x_or_y</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">x_or_y</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">x_or_y</span> <span class="o">==</span> <span class="s1">&#39;x&#39;</span><span class="p">:</span>
+            <span class="n">set_fn</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">set_xticklabels</span>
+        <span class="k">elif</span> <span class="n">x_or_y</span> <span class="o">==</span> <span class="s1">&#39;y&#39;</span><span class="p">:</span>
+            <span class="n">set_fn</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">set_yticklabels</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">set_fn</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="c1"># Intended to catch stuff like:</span>
+        <span class="c1"># &quot;ValueError: The number of FixedLocator locations (19), usually from a call to</span>
+        <span class="c1"># set_ticks, does not match the number of ticklabels (16).&quot;</span>
+        <span class="c1"># ...so we can provide more additional debug info.</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Debug info for following matplotlib error:</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;</span><span class="si">{x_or_y}</span><span class="s1">ticklabels={pformat(labels)}</span><span class="se">\n</span><span class="s1">len={len(labels)}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span>
+                <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span>
+            <span class="p">)</span>
+            <span class="k">raise</span>
 
     <span class="k">if</span> <span class="n">xticklabels</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="c1"># TODO nan / None value aren&#39;t supported in ticklabels are they?</span>
@@ -657,17 +585,16 @@
                 <span class="n">xtickrotation</span> <span class="o">=</span> <span class="s1">&#39;vertical&#39;</span>
 
         <span class="n">ax</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">),</span> <span class="n">xstep</span><span class="p">)</span> <span class="o">+</span> <span class="n">xoffset</span><span class="p">)</span>
-        <span class="n">ax</span><span class="o">.</span><span class="n">set_xticklabels</span><span class="p">(</span>
-            <span class="n">xticklabels</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="n">fontsize</span><span class="p">,</span> <span class="n">fontweight</span><span class="o">=</span><span class="n">fontweight</span><span class="p">,</span>
-            <span class="n">rotation</span><span class="o">=</span><span class="n">xtickrotation</span>
+        <span class="n">set_ticklabels</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="n">xticklabels</span><span class="p">,</span>
+            <span class="n">fontsize</span><span class="o">=</span><span class="n">fontsize</span><span class="p">,</span> <span class="n">fontweight</span><span class="o">=</span><span class="n">fontweight</span><span class="p">,</span> <span class="n">rotation</span><span class="o">=</span><span class="n">xtickrotation</span>
         <span class="c1">#    rotation=&#39;horizontal&#39; if group_ticklabels else &#39;vertical&#39;</span>
         <span class="p">)</span>
 
     <span class="k">if</span> <span class="n">yticklabels</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">ax</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">),</span> <span class="n">ystep</span><span class="p">)</span> <span class="o">+</span> <span class="n">yoffset</span><span class="p">)</span>
-        <span class="n">ax</span><span class="o">.</span><span class="n">set_yticklabels</span><span class="p">(</span>
-            <span class="n">yticklabels</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="n">fontsize</span><span class="p">,</span> <span class="n">fontweight</span><span class="o">=</span><span class="n">fontweight</span><span class="p">,</span> <span class="n">rotation</span><span class="o">=</span><span class="s1">&#39;horizontal&#39;</span>
-        <span class="c1">#    rotation=&#39;vertical&#39; if group_ticklabels else &#39;horizontal&#39;</span>
+        <span class="n">set_ticklabels</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="n">yticklabels</span><span class="p">,</span>
+            <span class="n">fontsize</span><span class="o">=</span><span class="n">fontsize</span><span class="p">,</span> <span class="n">fontweight</span><span class="o">=</span><span class="n">fontweight</span><span class="p">,</span> <span class="n">rotation</span><span class="o">=</span><span class="s1">&#39;horizontal&#39;</span>
+            <span class="c1">#rotation=&#39;vertical&#39; if group_ticklabels else &#39;horizontal&#39;</span>
         <span class="p">)</span>
 
     <span class="c1"># TODO test this doesn&#39;t change rotation if we just set rotation above</span>
@@ -765,7 +692,7 @@
         <span class="p">]</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">odor_name_rows</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;expected the name of exactly one index level to &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;start with </span><span class="si">{</span><span class="n">name_prefix</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;start with </span><span class="si">{name_prefix}</span><span class="s1">&#39;</span>
             <span class="p">)</span>
         <span class="n">odor_name_row</span> <span class="o">=</span> <span class="n">odor_name_rows</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
@@ -774,7 +701,7 @@
         <span class="p">]</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">odor_name_cols</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;expected the name of exactly one column level to &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;start with </span><span class="si">{</span><span class="n">name_prefix</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;start with </span><span class="si">{name_prefix}</span><span class="s1">&#39;</span>
             <span class="p">)</span>
         <span class="n">odor_name_col</span> <span class="o">=</span> <span class="n">odor_name_cols</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="c1">#</span>
@@ -813,7 +740,7 @@
         <span class="c1"># TODO factor out latex for delta f / f stuff (+ maybe use in analysis that uses</span>
         <span class="c1"># this pkg: kc_natural_mixes, al_analysis)</span>
         <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;cbar_label&#39;</span><span class="p">]</span> <span class="o">=</span> \
-            <span class="n">trial_stat</span><span class="o">.</span><span class="n">title</span><span class="p">()</span> <span class="o">+</span> <span class="sa">f</span><span class="s1">&#39; response </span><span class="si">{</span><span class="n">dff_latex</span><span class="si">}</span><span class="s1"> correlation&#39;</span>
+            <span class="n">trial_stat</span><span class="o">.</span><span class="n">title</span><span class="p">()</span> <span class="o">+</span> <span class="n">f</span><span class="s1">&#39; response </span><span class="si">{dff_latex}</span><span class="s1"> correlation&#39;</span>
 
     <span class="k">return</span> <span class="n">matshow</span><span class="p">(</span><span class="n">corr_df</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
 
@@ -871,7 +798,7 @@
                 <span class="c1"># (after re-installing requirements.txt, when running</span>
                 <span class="c1"># kc_mix_analysis.py w/ no just -j arg)</span>
                 <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">facecolor</span><span class="p">,</span> <span class="n">past_facecolor</span><span class="p">),</span> \
-                    <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">facecolor</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="n">past_facecolor</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="n">f</span><span class="s1">&#39;</span><span class="si">{facecolor}</span><span class="s1"> != </span><span class="si">{past_facecolor}</span><span class="s1">&#39;</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">legend_data</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="n">h</span>
 
@@ -900,7 +827,7 @@
     <span class="kn">import</span> <span class="nn">tifffile</span>
     <span class="kn">import</span> <span class="nn">cv2</span>
     <span class="c1"># TODO maybe use cv2 and get rid of this dep?</span>
-    <span class="kn">from</span> <span class="nn">skimage</span> <span class="kn">import</span> <span class="n">color</span>
+    <span class="kn">from</span> <span class="nn">skimage</span> <span class="k">import</span> <span class="n">color</span>
 
     <span class="c1"># TODO make text size and the spacing of everything more invariant to figure</span>
     <span class="c1"># size. i think the default size of this figure ended up being bigger when i</span>
@@ -1497,7 +1424,7 @@
     <span class="n">df</span> <span class="o">=</span> <span class="n">thor</span><span class="o">.</span><span class="n">load_thorsync_hdf5</span><span class="p">(</span><span class="n">thorsync_dir</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
     <span class="n">took_s</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">before</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;done (</span><span class="si">{</span><span class="n">took_s</span><span class="si">:</span><span class="s1">.1f</span><span class="si">}</span><span class="s1">s)&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;done (</span><span class="si">{took_s:.1f}</span><span class="s1">s)&#39;</span><span class="p">)</span>
 
     <span class="c1"># TODO set title to last 3 parts of path if parent two directories can be parsed as</span>
     <span class="c1"># (date, fly_num) (or if just under raw_data_root maybe?)</span>
@@ -1686,46 +1613,30 @@
 </pre></div>
 
            </div>
-           
           </div>
           <footer>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>
-        &#169; Copyright 2021, Tom O&#39;Connell.
-
-    </p>
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
   </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
 
 </footer>
         </div>
       </div>
-
     </section>
-
   </div>
-  
-
-  <script type="text/javascript">
+  <script>
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-
-  
-  
-    
-   
+  </script> 
 
 </body>
 </html>

@@ -137,6 +137,8 @@ different sufffix number for each component.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
+<li><p><strong>level</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code>) – a pd.Index containing one level of a MultiIndex with odor metadata.
+elements should be odor strings.</p></li>
 <li><p><strong>sort_names</strong> – whether to use odor names as part of sort key. If False, only sorts
 on concentrations.</p></li>
 <li><p><strong>names_first</strong> – if True, sorts on names primarily, otherwise sorts on
@@ -144,6 +146,9 @@ concentrations primarily. Ignored if sort_names is False.</p></li>
 <li><p><strong>name_order</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – list of odor names to use as a fixed order for the names.
 Concentrations will be sorted within each name.</p></li>
 </ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code></p>
 </dd>
 </dl>
 </dd></dl>
@@ -194,7 +199,8 @@ desired order</p></li>
 <dt class="sig sig-object py" id="hong2p.olf.parse_odor_name">
 <span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">parse_odor_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#parse_odor_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.parse_odor_name" title="Permalink to this definition"></a></dt>
 <dd><p>Takes formatted odor string to just the name of the odor.</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">parse_log10_conc</span><span class="p">(</span><span class="s1">&#39;ethyl acetate @ -2&#39;</span><span class="p">)</span>
+<p>Input must contain <cite>olf.conc_delimiter</cite> (‘&#64;’).</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">parse_odor_name</span><span class="p">(</span><span class="s1">&#39;ethyl acetate @ -2&#39;</span><span class="p">)</span>
 <span class="go">&#39;ethyl acetate&#39;</span>
 </pre></div>
 </div>
@@ -208,22 +214,40 @@ desired order</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="hong2p.olf.remove_consecutive_repeats">
 <span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">remove_consecutive_repeats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_lists</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#remove_consecutive_repeats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.remove_consecutive_repeats" title="Permalink to this definition"></a></dt>
-<dd><p>Returns a list-of-str without any consecutive repeats and int # of repeats.</p>
+<dd><p>Returns a list without any consecutive repeats and int # of consecutive repeats.</p>
+<p>Raises ValueError if there is a variable number of consecutive repeats.</p>
 <p>Wanted to also take a list-of-lists-of-dicts, where each dict represents one odor
 and each internal list represents all of the odors on one trial, but the internal
 lists (nor the dicts they contain) would not be hashable, and thus cannot work with
 Counter as-is.</p>
-<p>Assumed that all elements of <cite>odor_lists</cite> are repeated the same number of times, and
-all repeats are consecutive. Actually now as long as any repeats are to full # and
-consecutive, it is ok for a particular odor (e.g. solvent control) to be repeated
-<cite>n_repeats</cite> times in each of several different positions.</p>
+<p>Assumed that all elements of <cite>odor_lists</cite> are repeated the same number of times,
+for each consecutive group of repeats. As long as any repeats are to full
+<cite>n_repeats</cite> and consecutive, it is ok for a particular odor (e.g. solvent control)
+to be repeated <cite>n_repeats</cite> times in each of several different positions.</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">without_repeats</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">remove_consecutive_repeats</span><span class="p">([</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">])</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">without_repeats</span>
-<span class="go">[&#39;a&#39;,&#39;b&#39;]</span>
+<span class="go">[&#39;a&#39;, &#39;b&#39;]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">n</span>
 <span class="go">3</span>
 </pre></div>
 </div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">without_repeats</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">remove_consecutive_repeats</span><span class="p">([</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">without_repeats</span>
+<span class="go">[&#39;a&#39;, &#39;b&#39;, &#39;a&#39;]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">n</span>
+<span class="go">2</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">without_repeats</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">remove_consecutive_repeats</span><span class="p">([</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;a&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">])</span>
+<span class="gt">Traceback (most recent call last):</span>
+<span class="gr">ValueError</span>: <span class="n">variable number of consecutive repeats</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Hashable</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -258,14 +282,17 @@ Otherwise, will check and sort on matching columns.</p>
 <span class="gp">... </span><span class="p">})</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s1">&#39;odor1&#39;</span><span class="p">,</span> <span class="s1">&#39;odor2&#39;</span><span class="p">])</span>
 </pre></div>
 </div>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
-<span class="go">                delta_f</span>
-<span class="go">odor1  odor2</span>
-<span class="go">A @ -3 solvent      0.9</span>
-<span class="go">B @ -2 solvent      1.1</span>
-<span class="go">A @ -2 solvent      1.2</span>
-</pre></div>
-</div>
+<p>Names are sorted alphabetically by default, then within each name they are sorted by
+concentration. Pass <cite>names_only=False</cite> to only sort on concentration, or
+<cite>names_first=False</cite> to sort on concentrations first.
+&gt;&gt;&gt; sort_odors(df)</p>
+<blockquote>
+<div><p>delta_f</p>
+</div></blockquote>
+<p>odor1  odor2
+A &#64; -3 solvent      0.9
+A &#64; -2 solvent      1.2
+B &#64; -2 solvent      1.1</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">name_order</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">,</span><span class="s1">&#39;A&#39;</span><span class="p">])</span>
 <span class="go">                delta_f</span>
 <span class="go">odor1  odor2</span>

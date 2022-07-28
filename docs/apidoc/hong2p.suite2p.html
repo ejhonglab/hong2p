@@ -107,6 +107,17 @@
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hong2p.suite2p.diff_dicts">
+<span class="sig-prename descclassname"><span class="pre">hong2p.suite2p.</span></span><span class="sig-name descname"><span class="pre">diff_dicts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">d1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label1</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'&lt;'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label2</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'&gt;'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/suite2p.html#diff_dicts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.suite2p.diff_dicts" title="Permalink to this definition"></a></dt>
+<dd><p>Prints differences between two dictionaries.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.suite2p.get_iscell_path">
 <span class="sig-prename descclassname"><span class="pre">hong2p.suite2p.</span></span><span class="sig-name descname"><span class="pre">get_iscell_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">s2p_out_dir</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/suite2p.html#get_iscell_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.suite2p.get_iscell_path" title="Permalink to this definition"></a></dt>
 <dd><dl class="field-list simple">
@@ -137,6 +148,35 @@
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hong2p.suite2p.gui_params_equal">
+<span class="sig-prename descclassname"><span class="pre">hong2p.suite2p.</span></span><span class="sig-name descname"><span class="pre">gui_params_equal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ops1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ops2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_diff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/suite2p.html#gui_params_equal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.suite2p.gui_params_equal" title="Permalink to this definition"></a></dt>
+<dd><p>Returns whether GUI-settable parameters differ.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ops1</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – as returned by <cite>load_s2p_ops</cite></p></li>
+<li><p><strong>ops2</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – to be compared to <cite>ops1</cite></p></li>
+<li><p><strong>print_diff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – whether to print any differences</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.suite2p.inputs_equal">
+<span class="sig-prename descclassname"><span class="pre">hong2p.suite2p.</span></span><span class="sig-name descname"><span class="pre">inputs_equal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ops1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ops2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_diff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/suite2p.html#inputs_equal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.suite2p.inputs_equal" title="Permalink to this definition"></a></dt>
+<dd><p>Returns whether input data and GUI-settable parameters differ.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.suite2p.invert_combined_view_offset">
 <span class="sig-prename descclassname"><span class="pre">hong2p.suite2p.</span></span><span class="sig-name descname"><span class="pre">invert_combined_view_offset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">combined_ops</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roi</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/suite2p.html#invert_combined_view_offset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.suite2p.invert_combined_view_offset" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
@@ -162,8 +202,12 @@ run), LabelsNotModifiedError, or LabelsNotSelectiveError.</p>
 <dt class="sig sig-object py" id="hong2p.suite2p.load_s2p_ops">
 <span class="sig-prename descclassname"><span class="pre">hong2p.suite2p.</span></span><span class="sig-name descname"><span class="pre">load_s2p_ops</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ops_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/suite2p.html#load_s2p_ops"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.suite2p.load_s2p_ops" title="Permalink to this definition"></a></dt>
 <dd><dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</p>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ops_path</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code>]) – if path does not end with ‘<a href="#id1"><span class="problematic" id="id2">*</span></a>.npy’, assumed to be a directory
+containing a file named ‘ops.npy’</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</p>
 </dd>
 </dl>
 </dd></dl>

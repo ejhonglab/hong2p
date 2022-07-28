@@ -1,68 +1,32 @@
-
-
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
   <meta charset="utf-8" />
-  
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
   <title>hong2p.util &mdash; hong2p 0.0.0 documentation</title>
-  
-
-  
-  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-
-  
-  
-
-  
-  
-
-  
-
-  
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="../../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
         <script src="../../_static/jquery.js"></script>
         <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../../_static/doctools.js"></script>
-    
-    <script type="text/javascript" src="../../_static/js/theme.js"></script>
-
-    
+    <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
-
-   
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
-    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-          
-
-          
             <a href="../../index.html" class="icon icon-home"> hong2p
-          
-
-          
           </a>
-
-          
-            
-            
-          
-
-          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
@@ -70,86 +34,36 @@
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
-              <p class="caption"><span class="caption-text">Contents:</span></p>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
 </ul>
 
-            
-          
         </div>
-        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="../../index.html">hong2p</a>
-        
       </nav>
 
-
       <div class="wy-nav-content">
-        
         <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
+          <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-    
       <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
-        
           <li><a href="../index.html">Module code</a> &raquo;</li>
-        
       <li>hong2p.util</li>
-    
-    
       <li class="wy-breadcrumbs-aside">
-        
       </li>
-    
   </ul>
-
-  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-            
+             
   <h1>Source code for hong2p.util</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Common functions for dealing with Thorlabs software output / stimulus metadata /</span>
@@ -157,33 +71,33 @@
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">split</span><span class="p">,</span> <span class="n">exists</span><span class="p">,</span> <span class="n">sep</span><span class="p">,</span> <span class="n">isdir</span><span class="p">,</span> <span class="n">isfile</span><span class="p">,</span> <span class="n">getmtime</span><span class="p">,</span> <span class="n">splitext</span>
-<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="k">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">split</span><span class="p">,</span> <span class="n">exists</span><span class="p">,</span> <span class="n">sep</span><span class="p">,</span> <span class="n">isdir</span><span class="p">,</span> <span class="n">isfile</span><span class="p">,</span> <span class="n">getmtime</span><span class="p">,</span> <span class="n">splitext</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="k">import</span> <span class="n">Path</span>
 <span class="kn">import</span> <span class="nn">pickle</span>
 <span class="kn">import</span> <span class="nn">platform</span>
 <span class="kn">import</span> <span class="nn">sys</span>
-<span class="kn">from</span> <span class="nn">types</span> <span class="kn">import</span> <span class="n">ModuleType</span>
-<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">types</span> <span class="k">import</span> <span class="n">ModuleType</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="k">import</span> <span class="n">datetime</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
-<span class="kn">from</span> <span class="nn">pprint</span> <span class="kn">import</span> <span class="n">pprint</span>
+<span class="kn">from</span> <span class="nn">pprint</span> <span class="k">import</span> <span class="n">pprint</span>
 <span class="kn">import</span> <span class="nn">glob</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">import</span> <span class="nn">hashlib</span>
 <span class="kn">import</span> <span class="nn">functools</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="k">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Union</span>
 <span class="kn">import</span> <span class="nn">xml.etree.ElementTree</span> <span class="k">as</span> <span class="nn">etree</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">from</span> <span class="nn">numpy.ma</span> <span class="kn">import</span> <span class="n">MaskedArray</span>
+<span class="kn">from</span> <span class="nn">numpy.ma</span> <span class="k">import</span> <span class="n">MaskedArray</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
 <span class="kn">import</span> <span class="nn">xarray</span> <span class="k">as</span> <span class="nn">xr</span>
 <span class="kn">import</span> <span class="nn">yaml</span>
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
-<span class="kn">from</span> <span class="nn">mpl_toolkits.axes_grid1</span> <span class="kn">import</span> <span class="n">make_axes_locatable</span>
+<span class="kn">from</span> <span class="nn">mpl_toolkits.axes_grid1</span> <span class="k">import</span> <span class="n">make_axes_locatable</span>
 <span class="kn">import</span> <span class="nn">tifffile</span>
 
-<span class="kn">from</span> <span class="nn">hong2p</span> <span class="kn">import</span> <span class="n">matlab</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">thor</span><span class="p">,</span> <span class="n">viz</span><span class="p">,</span> <span class="n">olf</span>
-<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="kn">import</span> <span class="p">(</span><span class="n">Pathlike</span><span class="p">,</span> <span class="n">PathPair</span><span class="p">,</span> <span class="n">Datelike</span><span class="p">,</span> <span class="n">FlyNum</span><span class="p">,</span> <span class="n">DateAndFlyNum</span><span class="p">,</span>
+<span class="kn">from</span> <span class="nn">hong2p</span> <span class="k">import</span> <span class="n">matlab</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">thor</span><span class="p">,</span> <span class="n">viz</span><span class="p">,</span> <span class="n">olf</span>
+<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="k">import</span> <span class="p">(</span><span class="n">Pathlike</span><span class="p">,</span> <span class="n">PathPair</span><span class="p">,</span> <span class="n">Datelike</span><span class="p">,</span> <span class="n">FlyNum</span><span class="p">,</span> <span class="n">DateAndFlyNum</span><span class="p">,</span>
     <span class="n">DataFrameOrDataArray</span>
 <span class="p">)</span>
 
@@ -204,14 +118,14 @@
         <span class="k">elif</span> <span class="n">val</span> <span class="o">==</span> <span class="s1">&#39;0&#39;</span><span class="p">:</span>
             <span class="n">_is_acquisition_host</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;invalid value </span><span class="si">{</span><span class="n">val</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">ACQUISITION_ENV_VAR</span><span class="si">}</span><span class="s1">. must be &#39;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;invalid value </span><span class="si">{val}</span><span class="s1"> for </span><span class="si">{ACQUISITION_ENV_VAR}</span><span class="s1">. must be &#39;</span>
                 <span class="s1">&#39;0 or 1.&#39;</span>
             <span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="c1"># Returns the system/OS name, such as &#39;Linux&#39;,&#39;Darwin&#39;,&#39;Windows&#39;</span>
         <span class="k">if</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;Windows&#39;</span><span class="p">:</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;assuming this is an acquisition computer because it is &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;windows. set </span><span class="si">{</span><span class="n">ACQUISITION_ENV_VAR</span><span class="si">}</span><span class="s1"> to 0/1 to silence this.&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;windows. set </span><span class="si">{ACQUISITION_ENV_VAR}</span><span class="s1"> to 0/1 to silence this.&#39;</span>
             <span class="p">)</span>
             <span class="n">_is_acquisition_host</span> <span class="o">=</span> <span class="kc">True</span>
 
@@ -238,7 +152,7 @@
     <span class="k">if</span> <span class="n">FAST_DATA_ROOT_ENV_VAR</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span> <span class="k">else</span> <span class="kc">None</span>
 <span class="p">)</span>
 <span class="k">if</span> <span class="n">_fast_data_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_fast_data_root</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
-    <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">FAST_DATA_ROOT_ENV_VAR</span><span class="si">}</span><span class="s1"> set but is not a directory&#39;</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{FAST_DATA_ROOT_ENV_VAR}</span><span class="s1"> set but is not a directory&#39;</span><span class="p">)</span>
 
 <span class="n">np</span><span class="o">.</span><span class="n">set_printoptions</span><span class="p">(</span><span class="n">precision</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 
@@ -276,7 +190,7 @@
     <span class="k">global</span> <span class="n">_data_root</span>
 
     <span class="k">if</span> <span class="ow">not</span> <span class="n">isdir</span><span class="p">(</span><span class="n">new_data_root</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">new_data_root</span><span class="si">}</span><span class="s1"> is not a directory!&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{new_data_root}</span><span class="s1"> is not a directory!&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">_data_root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;data_root was already defined. usually set_data_root &#39;</span>
@@ -300,27 +214,27 @@
             <span class="n">source</span> <span class="o">=</span> <span class="n">DATA_ROOT_ENV_VAR</span>
 
             <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;found </span><span class="si">{</span><span class="n">DATA_ROOT_ENV_VAR</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;found </span><span class="si">{DATA_ROOT_ENV_VAR}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="k">elif</span> <span class="n">NAS_PREFIX_ENV_VAR</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
             <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">NAS_PREFIX_ENV_VAR</span><span class="p">])</span> <span class="o">/</span> <span class="n">NAS_PATH_TO_HONG2P_DATA</span>
             <span class="n">source</span> <span class="o">=</span> <span class="n">NAS_PREFIX_ENV_VAR</span>
 
             <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;did not find </span><span class="si">{</span><span class="n">DATA_ROOT_ENV_VAR</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;found </span><span class="si">{</span><span class="n">NAS_PREFIX_ENV_VAR</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;did not find </span><span class="si">{DATA_ROOT_ENV_VAR}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;found </span><span class="si">{NAS_PREFIX_ENV_VAR}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s1">&#39;either set one of the environment variables &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="n">DATA_ROOT_ENV_VAR</span><span class="si">}</span><span class="s1"> or </span><span class="si">{</span><span class="n">NAS_PREFIX_ENV_VAR</span><span class="si">}</span><span class="s1">) or call &#39;</span>
+                <span class="n">f</span><span class="s1">&#39;(</span><span class="si">{DATA_ROOT_ENV_VAR}</span><span class="s1"> or </span><span class="si">{NAS_PREFIX_ENV_VAR}</span><span class="s1">) or call &#39;</span>
                 <span class="s1">&#39;hong2p.util.set_data_root(&lt;data root&gt;) before this data_root call&#39;</span>
             <span class="p">)</span>
 
         <span class="n">_data_root</span> <span class="o">=</span> <span class="n">root</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">_data_root</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
-            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;data root expected at </span><span class="si">{</span><span class="n">_data_root</span><span class="si">}</span><span class="s1">, but no directory exists&#39;</span>
-                <span class="sa">f</span><span class="s1">&#39; there!</span><span class="se">\n</span><span class="s1">Directory chosen from environment variable </span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;data root expected at </span><span class="si">{_data_root}</span><span class="s1">, but no directory exists&#39;</span>
+                <span class="n">f</span><span class="s1">&#39; there!</span><span class="se">\n</span><span class="s1">Directory chosen from environment variable </span><span class="si">{source}</span><span class="s1">&#39;</span>
             <span class="p">)</span>
 
     <span class="c1"># TODO err if nothing in data_root, saying which env var to set and how</span>
@@ -337,14 +251,14 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">isdir</span><span class="p">(</span><span class="n">directory</span><span class="p">):</span>
 
             <span class="k">if</span> <span class="n">create</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Creating directory </span><span class="si">{</span><span class="n">directory</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Creating directory </span><span class="si">{directory}</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="c1"># This will error if `directory` points to something that exists that</span>
                 <span class="c1"># is NOT a directory (as intended).</span>
                 <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
 
             <span class="k">elif</span> <span class="n">check</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;directory </span><span class="si">{</span><span class="n">directory</span><span class="si">}</span><span class="s1"> (returned by &#39;</span>
-                    <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">fn_returning_dir</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">) does not exist! check the relevant &#39;</span>
+                <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;directory </span><span class="si">{directory}</span><span class="s1"> (returned by &#39;</span>
+                    <span class="n">f</span><span class="s1">&#39;</span><span class="si">{fn_returning_dir.__name__}</span><span class="s1">) does not exist! check the relevant &#39;</span>
                     <span class="s1">&#39;environment variables are set correctly.&#39;</span>
                 <span class="p">)</span>
 
@@ -372,7 +286,7 @@
     <span class="c1"># TODO probably prefer using $HONG2P_DATA over os.getcwd() (assuming it&#39;s not on NAS</span>
     <span class="c1"># and it therefore acceptably fast if not instead using $HONG_NAS)</span>
     <span class="k">if</span> <span class="n">_fast_data_root</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;environment variable </span><span class="si">{</span><span class="n">FAST_DATA_ROOT_ENV_VAR</span><span class="si">}</span><span class="s1"> not set, so &#39;</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;environment variable </span><span class="si">{FAST_DATA_ROOT_ENV_VAR}</span><span class="s1"> not set, so &#39;</span>
             <span class="s1">&#39;storing analysis intermediates under current directory&#39;</span>
         <span class="p">)</span>
         <span class="n">intermediates_root_parent</span> <span class="o">=</span> <span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span>
@@ -455,8 +369,8 @@
             <span class="k">return</span> <span class="n">fast_raw_fly_dir</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">warn</span><span class="p">:</span>
-                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">FAST_DATA_ROOT_ENV_VAR</span><span class="si">}</span><span class="s1"> set (</span><span class="si">{</span><span class="n">_fast_data_root</span><span class="si">}</span><span class="s1">) but &#39;</span>
-                    <span class="sa">f</span><span class="s1">&#39;raw data directory for fly (</span><span class="si">{</span><span class="n">date</span><span class="si">}</span><span class="s1">, </span><span class="si">{</span><span class="n">fly</span><span class="si">}</span><span class="s1">) did not exist there&#39;</span><span class="p">,</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{FAST_DATA_ROOT_ENV_VAR}</span><span class="s1"> set (</span><span class="si">{_fast_data_root}</span><span class="s1">) but &#39;</span>
+                    <span class="n">f</span><span class="s1">&#39;raw data directory for fly (</span><span class="si">{date}</span><span class="s1">, </span><span class="si">{fly}</span><span class="s1">) did not exist there&#39;</span><span class="p">,</span>
                     <span class="n">IOPerformanceWarning</span>
                 <span class="p">)</span>
 
@@ -561,7 +475,7 @@
 <span class="sd">    ((date, fly_num), (thorimage_dir&lt;i&gt;, thorsync_dir&lt;i&gt;))</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">n_first</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;only returning first </span><span class="si">{</span><span class="n">n_first</span><span class="si">}</span><span class="s1"> paired Thor[Image/Sync] outputs&#39;</span><span class="p">)</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;only returning first </span><span class="si">{n_first}</span><span class="s1"> paired Thor[Image/Sync] outputs&#39;</span><span class="p">)</span>
 
     <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="k">for</span> <span class="n">date</span><span class="p">,</span> <span class="n">fly_num</span> <span class="ow">in</span> <span class="n">date_fly_list</span><span class="p">:</span>
@@ -594,7 +508,7 @@
     <span class="n">print_skips</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">print_fast</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">print_full_paths</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="o">**</span><span class="n">pair_kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Generator</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">DateAndFlyNum</span><span class="p">,</span> <span class="n">PathPair</span><span class="p">],</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]:</span>
     <span class="c1"># TODO add code example to doc</span>
-    <span class="sd">&quot;&quot;&quot;</span>
+    <span class="sd">&quot;&quot;&quot;Generates tuples of fly metadata and ThorImage output paths, in acquisition order</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        matching_substrs: If passed, only experiments whose ThorImage path contains at</span>
@@ -614,7 +528,7 @@
 <span class="sd">    ((date, fly_num), (thorimage_dir&lt;i&gt;, thorsync_dir&lt;i&gt;))</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">n_first</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;only returning first </span><span class="si">{</span><span class="n">n_first</span><span class="si">}</span><span class="s1"> paired Thor[Image/Sync] outputs&#39;</span><span class="p">)</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;only returning first </span><span class="si">{n_first}</span><span class="s1"> paired Thor[Image/Sync] outputs&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">start_date</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">start_date</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">(</span><span class="n">start_date</span><span class="p">)</span>
@@ -650,8 +564,8 @@
             <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">print_fast</span><span class="p">:</span>
                 <span class="c1"># TODO maybe just warn for any we aren&#39;t using fast for (assuming we are</span>
                 <span class="c1"># using fast for *any*), and generally don&#39;t print</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;not using </span><span class="si">{</span><span class="n">g</span><span class="si">}</span><span class="s1"> because had equivalent fast dir under &#39;</span>
-                    <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">_fast_data_root</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;not using </span><span class="si">{g}</span><span class="s1"> because had equivalent fast dir under &#39;</span>
+                    <span class="n">f</span><span class="s1">&#39;</span><span class="si">{_fast_data_root}</span><span class="s1">&#39;</span>
                 <span class="p">)</span>
 
             <span class="k">continue</span>
@@ -665,7 +579,7 @@
             <span class="n">fly_num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">fly_part</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">print_skips</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;skipping </span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s1"> because could not parse fly_num from </span><span class="si">{</span><span class="n">fly_part</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;skipping </span><span class="si">{d}</span><span class="s1"> because could not parse fly_num from </span><span class="si">{fly_part}</span><span class="s1">&#39;</span><span class="p">)</span>
 
             <span class="k">continue</span>
 
@@ -673,19 +587,19 @@
             <span class="n">date</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">strptime</span><span class="p">(</span><span class="n">date_part</span><span class="p">,</span> <span class="n">date_fmt_str</span><span class="p">))</span>
         <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">print_skips</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;skipping </span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s1"> because could not parse date from </span><span class="si">{</span><span class="n">date_part</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;skipping </span><span class="si">{d}</span><span class="s1"> because could not parse date from </span><span class="si">{date_part}</span><span class="s1">&#39;</span><span class="p">)</span>
 
             <span class="k">continue</span>
 
         <span class="k">if</span> <span class="n">start_date</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">date</span> <span class="o">&lt;</span> <span class="n">start_date</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">print_skips</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;skipping </span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s1"> because earlier than </span><span class="si">{</span><span class="n">format_date</span><span class="p">(</span><span class="n">start_date</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;skipping </span><span class="si">{d}</span><span class="s1"> because earlier than {format_date(start_date)}&#39;</span><span class="p">)</span>
 
             <span class="k">continue</span>
 
         <span class="k">if</span> <span class="n">end_date</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">end_date</span> <span class="o">&lt;</span> <span class="n">date</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">print_skips</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;skipping </span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s1"> because later than </span><span class="si">{</span><span class="n">format_date</span><span class="p">(</span><span class="n">end_date</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;skipping </span><span class="si">{d}</span><span class="s1"> because later than {format_date(end_date)}&#39;</span><span class="p">)</span>
 
             <span class="k">continue</span>
 
@@ -715,14 +629,14 @@
             <span class="k">if</span> <span class="n">matching_substrs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">matching_substrs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">([</span><span class="n">s</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">image_dir</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">matching_substrs</span><span class="p">]):</span>
                     <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">print_skips</span><span class="p">:</span>
-                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;skipping </span><span class="si">{</span><span class="n">image_dir</span><span class="si">}</span><span class="s1"> because did not contain &gt;=1 of &#39;</span>
-                            <span class="sa">f</span><span class="s1">&#39;matching_substrs=&quot;</span><span class="si">{</span><span class="n">matching_substrs</span><span class="si">}</span><span class="s1">&quot;&#39;</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;skipping </span><span class="si">{image_dir}</span><span class="s1"> because did not contain &gt;=1 of &#39;</span>
+                            <span class="n">f</span><span class="s1">&#39;matching_substrs=&quot;</span><span class="si">{matching_substrs}</span><span class="s1">&quot;&#39;</span>
                         <span class="p">)</span>
                     <span class="k">continue</span>
 
             <span class="k">if</span> <span class="n">skip_redone</span> <span class="ow">and</span> <span class="n">image_dir</span> <span class="ow">in</span> <span class="n">redone_thorimage_dirs</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">print_skips</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;skipping </span><span class="si">{</span><span class="n">image_dir</span><span class="si">}</span><span class="s1"> because matching redo exists</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;skipping </span><span class="si">{image_dir}</span><span class="s1"> because matching redo exists</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
 
                 <span class="k">continue</span>
 
@@ -800,7 +714,7 @@
     <span class="k">if</span> <span class="n">stimfile_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">stimfile_dir</span> <span class="o">=</span> <span class="n">stimfile_root</span><span class="p">()</span>
     <span class="k">elif</span> <span class="ow">not</span> <span class="n">isdir</span><span class="p">(</span><span class="n">stimfile_dir</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;passed stimfile_dir=</span><span class="si">{</span><span class="n">stimfile_dir</span><span class="si">}</span><span class="s1"> is not a directory!&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;passed stimfile_dir=</span><span class="si">{stimfile_dir}</span><span class="s1"> is not a directory!&#39;</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">stimfile_dir</span>
 
@@ -852,12 +766,12 @@
         <span class="n">p</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.yaml&#39;</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">yaml_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">: encountered multiple *.yaml substrings!&#39;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{name}</span><span class="s1">: encountered multiple *.yaml substrings!&#39;</span><span class="p">)</span>
 
             <span class="n">yaml_path</span> <span class="o">=</span> <span class="n">p</span>
 
     <span class="k">if</span> <span class="n">yaml_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">: no string ending in .yaml found in ThorImage note &#39;</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{name}</span><span class="s1">: no string ending in .yaml found in ThorImage note &#39;</span>
             <span class="s1">&#39;field&#39;</span>
         <span class="p">)</span>
 
@@ -869,8 +783,8 @@
         <span class="n">old_yaml_path</span> <span class="o">=</span> <span class="n">yaml_path</span>
         <span class="n">yaml_path</span> <span class="o">=</span> <span class="n">yaml_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&quot;&quot;&#39;</span><span class="p">,</span> <span class="n">date_str</span><span class="p">)</span>
 
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">: replacing of stimulus YAML path of </span><span class="si">{</span><span class="n">old_yaml_path</span><span class="si">}</span><span class="s1"> &#39;</span>
-            <span class="sa">f</span><span class="s1">&#39;with </span><span class="si">{</span><span class="n">yaml_path</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{name}</span><span class="s1">: replacing of stimulus YAML path of </span><span class="si">{old_yaml_path}</span><span class="s1"> &#39;</span>
+            <span class="n">f</span><span class="s1">&#39;with </span><span class="si">{yaml_path}</span><span class="s1">&#39;</span>
         <span class="p">)</span>
     <span class="c1">#</span>
 
@@ -888,8 +802,8 @@
     <span class="n">yaml_abspath</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">stimfile_dir</span><span class="p">,</span> <span class="n">yaml_path</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="ow">not</span> <span class="n">exists</span><span class="p">(</span><span class="n">yaml_abspath</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1"> references </span><span class="si">{</span><span class="n">yaml_path</span><span class="si">}</span><span class="s1">, but it did not &#39;</span>
-            <span class="sa">f</span><span class="s1">&#39;exist under stimfile_dir=</span><span class="si">{</span><span class="n">stimfile_dir</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{name}</span><span class="s1"> references </span><span class="si">{yaml_path}</span><span class="s1">, but it did not &#39;</span>
+            <span class="n">f</span><span class="s1">&#39;exist under stimfile_dir=</span><span class="si">{stimfile_dir}</span><span class="s1">&#39;</span>
         <span class="p">)</span>
 
     <span class="k">return</span> <span class="n">yaml_abspath</span></div>
@@ -931,6 +845,9 @@
 <span class="sd">    Testing on Ubuntu, this does not recurse into symlinks to directories, as I want for</span>
 <span class="sd">    at least current use case.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO maybe need to actively exclude mtime on symlinks (to directories at least?)</span>
+    <span class="c1"># because it will still have an mtime, but i forget whether it tracks the mtime of</span>
+    <span class="c1"># the referenced directory, or whether it is just when the link is created...</span>
     <span class="n">files</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s1">&#39;*&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">is_file</span><span class="p">()]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">files</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
@@ -1187,7 +1104,7 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">mix_names</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
             <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;No mixtures, so presumably this is a calibration experiment&#39;</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">n_blocks</span><span class="si">}</span><span class="s1"> randomized blocks&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{n_blocks}</span><span class="s1"> randomized blocks&#39;</span><span class="p">)</span>
 
     <span class="c1"># TODO maybe print this in tabular form?</span>
     <span class="n">trial</span> <span class="o">=</span> <span class="mi">0</span>
@@ -1256,12 +1173,12 @@
 
     <span class="k">if</span> <span class="n">gui_confirm</span> <span class="ow">or</span> <span class="n">gui_fallback</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">gui</span> <span class="o">==</span> <span class="s1">&#39;qt5&#39;</span><span class="p">:</span>
-            <span class="kn">from</span> <span class="nn">PyQt5.QtWidgets</span> <span class="kn">import</span> <span class="n">QMessageBox</span><span class="p">,</span> <span class="n">QFileDialog</span>
+            <span class="kn">from</span> <span class="nn">PyQt5.QtWidgets</span> <span class="k">import</span> <span class="n">QMessageBox</span><span class="p">,</span> <span class="n">QFileDialog</span>
 
         <span class="c1"># TODO maybe implement some version w/ a builtin python gui like</span>
         <span class="c1"># tkinter?</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;gui </span><span class="si">{</span><span class="n">gui</span><span class="si">}</span><span class="s1"> not supported. see function.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;gui </span><span class="si">{gui}</span><span class="s1"> not supported. see function.&#39;</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">confirm</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">confirm</span> <span class="o">=</span> <span class="kc">True</span>
@@ -1284,7 +1201,7 @@
         <span class="k">if</span> <span class="n">confirm</span><span class="p">:</span>
             <span class="c1"># TODO factor into a fn to always get a Yy/Nn answer?</span>
             <span class="n">prompt</span> <span class="o">=</span> <span class="p">(</span><span class="n">format_keys</span><span class="p">(</span><span class="o">*</span><span class="n">tiff_filename2keys</span><span class="p">(</span><span class="n">tiff</span><span class="p">)</span> <span class="o">+</span>
-                <span class="sa">f</span><span class="s1">&#39;: use ImageJ ROIs in </span><span class="si">{</span><span class="n">ijroiset_filename</span><span class="si">}</span><span class="s1">? [y/n] &#39;</span>
+                <span class="n">f</span><span class="s1">&#39;: use ImageJ ROIs in </span><span class="si">{ijroiset_filename}</span><span class="s1">? [y/n] &#39;</span>
             <span class="p">))</span>
             <span class="n">response</span> <span class="o">=</span> <span class="kc">None</span>
             <span class="k">while</span> <span class="n">response</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="s1">&#39;n&#39;</span><span class="p">):</span>
@@ -1297,7 +1214,7 @@
 
         <span class="k">elif</span> <span class="n">gui_confirm</span><span class="p">:</span>
             <span class="n">confirmation_choice</span> <span class="o">=</span> <span class="n">QMessageBox</span><span class="o">.</span><span class="n">question</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;Confirm ROI file&#39;</span><span class="p">,</span>
-                <span class="sa">f</span><span class="s1">&#39;Use ImageJ ROIs in </span><span class="si">{</span><span class="n">ijroiset_filename</span><span class="si">}</span><span class="s1">?&#39;</span><span class="p">,</span>
+                <span class="n">f</span><span class="s1">&#39;Use ImageJ ROIs in </span><span class="si">{ijroiset_filename}</span><span class="s1">?&#39;</span><span class="p">,</span>
                 <span class="n">QMessageBox</span><span class="o">.</span><span class="n">Yes</span> <span class="o">|</span> <span class="n">QMessageBox</span><span class="o">.</span><span class="n">No</span><span class="p">,</span> <span class="n">QMessageBox</span><span class="o">.</span><span class="n">No</span>
             <span class="p">)</span>
             <span class="k">if</span> <span class="n">confirmation_choice</span> <span class="o">!=</span> <span class="n">QMessageBox</span><span class="o">.</span><span class="n">Yes</span><span class="p">:</span>
@@ -1400,7 +1317,7 @@
     <span class="c1"># this corrupt or test data / not intended to be saved?</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">odors</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;empty odor lists in </span><span class="si">{</span><span class="n">stimfile_path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;empty odor lists in </span><span class="si">{stimfile_path}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
     <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;odor_lists&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="ow">is</span> <span class="nb">str</span>
@@ -1548,7 +1465,7 @@
                 <span class="k">break</span>
 
         <span class="k">if</span> <span class="n">link_filename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">file_with_edit_link</span><span class="si">}</span><span class="s1"> not found in any of </span><span class="si">{</span><span class="n">dirs_to_try</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{file_with_edit_link}</span><span class="s1"> not found in any of </span><span class="si">{dirs_to_try}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">link_filename</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">base_url</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;/edit&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
@@ -1675,7 +1592,7 @@
 
     <span class="n">gsheet_cache_file</span> <span class="o">=</span> <span class="s1">&#39;.gsheet_cache.p&#39;</span>
     <span class="k">if</span> <span class="n">use_cache</span> <span class="ow">and</span> <span class="n">exists</span><span class="p">(</span><span class="n">gsheet_cache_file</span><span class="p">):</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Loading MB team sheet data from cache at </span><span class="si">{</span><span class="n">gsheet_cache_file</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Loading MB team sheet data from cache at </span><span class="si">{gsheet_cache_file}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">gsheet_cache_file</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">sheets</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
@@ -1818,9 +1735,9 @@
             <span class="c1"># AssertionErrors do now...</span>
             <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="n">gn_str</span> <span class="o">=</span> <span class="n">format_keys</span><span class="p">(</span><span class="o">*</span><span class="n">gn</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;For </span><span class="si">{</span><span class="n">gn_str</span><span class="si">}</span><span class="s1">:&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;For </span><span class="si">{gn_str}</span><span class="s1">:&#39;</span><span class="p">)</span>
                 <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;could not pair thor dirs automatically!&#39;</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;(</span><span class="si">{e}</span><span class="s1">)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="k">continue</span>
 
             <span class="c1"># could maybe try to sort things into &quot;prep checking&quot; / real</span>
@@ -1833,7 +1750,7 @@
             <span class="c1"># print + continue)?</span>
             <span class="k">if</span> <span class="n">n_matched</span> <span class="o">&lt;</span> <span class="n">ng</span><span class="p">:</span>
                 <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;more rows for (date, fly) pair than matched outputs&#39;</span>
-                    <span class="sa">f</span><span class="s1">&#39; (</span><span class="si">{</span><span class="n">n_matched</span><span class="si">}</span><span class="s1"> &lt; </span><span class="si">{</span><span class="n">ng</span><span class="si">}</span><span class="s1">)&#39;</span>
+                    <span class="n">f</span><span class="s1">&#39; (</span><span class="si">{n_matched}</span><span class="s1"> &lt; </span><span class="si">{ng}</span><span class="s1">)&#39;</span>
                 <span class="p">)</span>
                 <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
                 <span class="c1">#print(msg)</span>
@@ -1846,7 +1763,7 @@
                 <span class="n">tid</span> <span class="o">=</span> <span class="n">split</span><span class="p">(</span><span class="n">tid</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
                 <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">isnull</span><span class="p">(</span><span class="n">thor</span><span class="o">.</span><span class="n">old_fmt_thorimage_num</span><span class="p">(</span><span class="n">tid</span><span class="p">)):</span>
                     <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">tid</span><span class="si">}</span><span class="s1"> not in old format&#39;</span><span class="p">)</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{tid}</span><span class="s1"> not in old format&#39;</span><span class="p">)</span>
                     <span class="n">all_group_in_old_dir_fmt</span> <span class="o">=</span> <span class="kc">False</span>
 
                 <span class="n">group_tids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tid</span><span class="p">)</span>
@@ -1972,7 +1889,7 @@
         <span class="c1"># Since some stuff may have been dropped (prep checking stuff, etc).</span>
         <span class="n">still_in_idx</span> <span class="o">=</span> <span class="n">gidx</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
         <span class="c1"># No group w/ files on NAS should have been dropped completely.</span>
-        <span class="k">assert</span> <span class="n">still_in_idx</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;group </span><span class="si">{</span><span class="n">gn</span><span class="si">}</span><span class="s1"> dropped completely&#39;</span>
+        <span class="k">assert</span> <span class="n">still_in_idx</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">f</span><span class="s1">&#39;group </span><span class="si">{gn}</span><span class="s1"> dropped completely&#39;</span>
 
         <span class="n">gidx</span> <span class="o">=</span> <span class="n">gidx</span><span class="p">[</span><span class="n">still_in_idx</span><span class="p">]</span>
         <span class="n">gtids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">gtids</span><span class="p">)[</span><span class="n">still_in_idx</span><span class="p">]</span>
@@ -2083,7 +2000,7 @@
         <span class="n">n_to_drop</span> <span class="o">=</span> <span class="n">any_dir_missing</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">n_to_drop</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s1">&#39;Dropping </span><span class="si">{</span><span class="n">n_to_drop</span><span class="si">}</span><span class="s1"> rows because directories did not exist.&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;Dropping </span><span class="si">{n_to_drop}</span><span class="s1"> rows because directories did not exist.&#39;</span>
             <span class="p">)</span>
         <span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">any_dir_missing</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
@@ -2376,6 +2293,8 @@
 
 <span class="c1"># TODO test that date, fly_num, thorimage_id args still work here after refactoring to</span>
 <span class="c1"># use wrapper</span>
+<span class="c1"># TODO option to keep this under analysis_dir type tree instead? or just fully switch to</span>
+<span class="c1"># that maybe?</span>
 <div class="viewcode-block" id="metadata_filename"><a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.metadata_filename">[docs]</a><span class="nd">@thorimage_dir_input</span>
 <span class="k">def</span> <span class="nf">metadata_filename</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns filename of YAML for extra metadata.</span>
@@ -2394,8 +2313,6 @@
 <div class="viewcode-block" id="load_metadata"><a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.load_metadata">[docs]</a><span class="k">def</span> <span class="nf">load_metadata</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns metadata from YAML, with defaults added.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">import</span> <span class="nn">yaml</span>
-
     <span class="n">metadata_file</span> <span class="o">=</span> <span class="n">metadata_filename</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
 
     <span class="c1"># TODO another var specifying number of frames that has *already* been</span>
@@ -2634,7 +2551,7 @@
         <span class="n">dims</span> <span class="o">=</span> <span class="n">dims</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">dims</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">imagej_dims</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;dimension </span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s1"> not among </span><span class="si">{</span><span class="n">imagej_dims</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;dimension </span><span class="si">{c}</span><span class="s1"> not among </span><span class="si">{imagej_dims}</span><span class="s1">&#39;</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">movie</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
             <span class="n">dims</span> <span class="o">=</span> <span class="s1">&#39;TYX&#39;</span>
@@ -2646,7 +2563,7 @@
             <span class="c1">#new_dim_indices = (2,)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;unexpected number of dimensions to movie. have &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">movie</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s1">. expected 3 (TYX) or 4 (TZYX).&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;{len(movie.shape)}. expected 3 (TYX) or 4 (TZYX).&#39;</span>
             <span class="p">)</span>
 
     <span class="n">n_dims_to_add</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">imagej_dims</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">movie</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
@@ -2692,14 +2609,14 @@
     <span class="n">x_max</span><span class="p">,</span> <span class="n">y_max</span> <span class="o">=</span> <span class="n">coords</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
     <span class="k">assert</span> <span class="n">x_min</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">y_min</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">,</span> \
-        <span class="sa">f</span><span class="s1">&#39;mins must be &gt;= 0 (x_min=</span><span class="si">{</span><span class="n">x_min</span><span class="si">}</span><span class="s1">, y_min=</span><span class="si">{</span><span class="n">y_min</span><span class="si">}</span><span class="s1">)&#39;</span>
+        <span class="n">f</span><span class="s1">&#39;mins must be &gt;= 0 (x_min=</span><span class="si">{x_min}</span><span class="s1">, y_min=</span><span class="si">{y_min}</span><span class="s1">)&#39;</span>
 
     <span class="c1"># NOTE: apparently i had to use &lt;= or else some cases in old use of this function</span>
     <span class="c1"># (e.g. using certain CNMF outputs) would violate this. best to just fix that code</span>
     <span class="c1"># if it ever comes up again though.</span>
     <span class="k">assert</span> <span class="n">x_max</span> <span class="o">&lt;</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">and</span> <span class="n">y_max</span> <span class="o">&lt;</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="p">(</span>
-        <span class="sa">f</span><span class="s1">&#39;maxes must be &lt; matrix shape = </span><span class="si">{</span><span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s1"> (x_max=</span><span class="si">{</span><span class="n">x_max</span><span class="si">}</span><span class="s1">&#39;</span> <span class="o">+</span>
-        <span class="sa">f</span><span class="s1">&#39;, y_max=</span><span class="si">{</span><span class="n">y_max</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="n">f</span><span class="s1">&#39;maxes must be &lt; matrix shape = </span><span class="si">{matrix.shape}</span><span class="s1"> (x_max=</span><span class="si">{x_max}</span><span class="s1">&#39;</span> <span class="o">+</span>
+        <span class="n">f</span><span class="s1">&#39;, y_max=</span><span class="si">{y_max}</span><span class="s1">&#39;</span>
     <span class="p">)</span>
 
     <span class="c1"># Keeping min at 0 to prevent slicing error in that case</span>
@@ -2734,7 +2651,7 @@
 <div class="viewcode-block" id="db_row2footprint"><a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.db_row2footprint">[docs]</a><span class="k">def</span> <span class="nf">db_row2footprint</span><span class="p">(</span><span class="n">db_row</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns dense array w/ footprint from row in cells table.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">from</span> <span class="nn">scipy.sparse</span> <span class="kn">import</span> <span class="n">coo_matrix</span>
+    <span class="kn">from</span> <span class="nn">scipy.sparse</span> <span class="k">import</span> <span class="n">coo_matrix</span>
     <span class="n">weights</span><span class="p">,</span> <span class="n">x_coords</span><span class="p">,</span> <span class="n">y_coords</span> <span class="o">=</span> <span class="n">db_row</span><span class="p">[[</span><span class="s1">&#39;weights&#39;</span><span class="p">,</span><span class="s1">&#39;x_coords&#39;</span><span class="p">,</span><span class="s1">&#39;y_coords&#39;</span><span class="p">]]</span>
     <span class="c1"># TODO maybe read shape from db / metadata on disk? / merging w/ other</span>
     <span class="c1"># tables (possible?)?</span>
@@ -2803,11 +2720,11 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># This mask creation was taken from Yusuke N.&#39;s answer here:</span>
     <span class="c1"># https://stackoverflow.com/questions/3654289</span>
-    <span class="kn">from</span> <span class="nn">matplotlib.path</span> <span class="kn">import</span> <span class="n">Path</span>
+    <span class="kn">from</span> <span class="nn">matplotlib.path</span> <span class="k">import</span> <span class="n">Path</span>
 
     <span class="k">if</span> <span class="n">z</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;len(shape) == </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s1">. must be 2 if z keyword &#39;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;len(shape) == {len(shape)}. must be 2 if z keyword &#39;</span>
                 <span class="s1">&#39;argument not passed&#39;</span>
             <span class="p">)</span>
 
@@ -2816,14 +2733,14 @@
 
     <span class="k">else</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;shape must be (z, x, y) if z is passed. shape == </span><span class="si">{</span><span class="n">shape</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;shape must be (z, x, y) if z is passed. shape == </span><span class="si">{shape}</span><span class="s1">&#39;</span>
                 <span class="s1">&#39;, which has the wrong length&#39;</span>
             <span class="p">)</span>
 
         <span class="c1"># TODO check transpose (of x and y) isn&#39;t necessary...</span>
         <span class="n">nz</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span> <span class="o">=</span> <span class="n">shape</span>
         <span class="k">if</span> <span class="n">z</span> <span class="o">&gt;=</span> <span class="n">nz</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;z (</span><span class="si">{</span><span class="n">z</span><span class="si">}</span><span class="s1">) out of bounds with z size (</span><span class="si">{</span><span class="n">nz</span><span class="si">}</span><span class="s1">) from shape[0]&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;z (</span><span class="si">{z}</span><span class="s1">) out of bounds with z size (</span><span class="si">{nz}</span><span class="s1">) from shape[0]&#39;</span><span class="p">)</span>
 
     <span class="c1"># TODO test + delete</span>
     <span class="c1">#assert nx == ny, &#39;need to check code shoulnt be tranposing these&#39;</span>
@@ -3164,9 +3081,9 @@
 
         <span class="c1"># only print if multiple inputs (i.e. actually &#39;merging&#39; in some sense)</span>
         <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">curr_notbest</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;merging ROI </span><span class="si">{</span><span class="n">merged_name</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;selecting input ROI </span><span class="si">{</span><span class="n">curr_best</span><span class="si">}</span><span class="s1"> as best plane&#39;</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;dropping other input ROIs </span><span class="si">{</span><span class="n">curr_notbest</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;merging ROI </span><span class="si">{merged_name}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;selecting input ROI </span><span class="si">{curr_best}</span><span class="s1"> as best plane&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;dropping other input ROIs </span><span class="si">{curr_notbest}</span><span class="s1">&#39;</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="n">by_response</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">merged_name</span><span class="p">])</span>
             <span class="nb">print</span><span class="p">()</span>
 
@@ -3196,7 +3113,7 @@
 
         <span class="k">if</span> <span class="n">must_exist</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">isfile</span><span class="p">(</span><span class="n">ijroiset_fname</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s1">&#39;directory passed for ijroiset_dir_or_fname, but &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">ijroiset_fname</span><span class="si">}</span><span class="s1"> did not exist&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;</span><span class="si">{ijroiset_fname}</span><span class="s1"> did not exist&#39;</span>
             <span class="p">)</span>
 
     <span class="k">else</span><span class="p">:</span>
@@ -3379,7 +3296,7 @@
 <span class="sd">        signal (1 dimensional np.ndarray): time series, beginning at decay onset</span>
 <span class="sd">        sampling_rate (float): sampling rate in Hz</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="kn">import</span> <span class="n">curve_fit</span>
+    <span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="k">import</span> <span class="n">curve_fit</span>
 
     <span class="k">if</span> <span class="n">sampling_rate</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">times</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;pass either sampling_rate or times as keyword arg&#39;</span><span class="p">)</span>
@@ -3887,11 +3804,11 @@
             <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">row</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
                 <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span> <span class="ow">and</span> <span class="n">v</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">):</span>
                     <span class="k">if</span> <span class="n">single_var</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;multiple vars w/ prefix </span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;multiple vars w/ prefix </span><span class="si">{prefix}</span><span class="s1">&#39;</span><span class="p">)</span>
                     <span class="n">single_var</span> <span class="o">=</span> <span class="n">v</span>
 
             <span class="k">if</span> <span class="n">single_var</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;no vars w/ prefix </span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;no vars w/ prefix </span><span class="si">{prefix}</span><span class="s1">&#39;</span><span class="p">)</span>
 
             <span class="k">return</span> <span class="n">single_var</span>
         <span class="c1">#</span>
@@ -4211,10 +4128,10 @@
         <span class="n">vs_scene_levels</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">vscaled_scene</span><span class="o">.</span><span class="n">flat</span><span class="p">))</span>
         <span class="n">template_levels</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">template</span><span class="o">.</span><span class="n">flat</span><span class="p">))</span>
         <span class="n">vs_template_levels</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">vscaled_template</span><span class="o">.</span><span class="n">flat</span><span class="p">))</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Number of scene levels BEFORE scaling: </span><span class="si">{</span><span class="n">scene_levels</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Number of scene levels AFTER scaling: </span><span class="si">{</span><span class="n">vs_scene_levels</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Number of template levels BEFORE scaling: </span><span class="si">{</span><span class="n">template_levels</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Number of template levels AFTER scaling: </span><span class="si">{</span><span class="n">vs_template_levels</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Number of scene levels BEFORE scaling: </span><span class="si">{scene_levels}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Number of scene levels AFTER scaling: </span><span class="si">{vs_scene_levels}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Number of template levels BEFORE scaling: </span><span class="si">{template_levels}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Number of template levels AFTER scaling: </span><span class="si">{vs_template_levels}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="c1"># So you can see that the relative dimensions and scales of each of</span>
         <span class="c1"># these seems reasonable.</span>
@@ -4226,7 +4143,7 @@
             <span class="n">tmin</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
             <span class="n">tmax</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
 
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="si">{</span><span class="n">suptitle</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="si">{suptitle}</span><span class="s1">&#39;</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;scene shape:&#39;</span><span class="p">,</span> <span class="n">scene</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;template shape:&#39;</span><span class="p">,</span> <span class="n">template</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;scene min:&#39;</span><span class="p">,</span> <span class="n">smin</span><span class="p">)</span>
@@ -4297,7 +4214,7 @@
             <span class="n">ax</span> <span class="o">=</span> <span class="n">axs</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
             <span class="n">thitvs</span><span class="p">,</span> <span class="n">tbins</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span><span class="n">template</span><span class="o">.</span><span class="n">flat</span><span class="p">,</span> <span class="n">bins</span><span class="o">=</span><span class="n">bins</span><span class="p">,</span> <span class="n">log</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;template&#39;</span><span class="p">)</span>
-            <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">suptitle</span><span class="si">}</span><span class="se">\n</span><span class="s1">pixel value distributions (</span><span class="si">{</span><span class="n">bins</span><span class="si">}</span><span class="s1"> bins)&#39;</span><span class="p">)</span>
+            <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{suptitle}</span><span class="se">\n</span><span class="s1">pixel value distributions (</span><span class="si">{bins}</span><span class="s1"> bins)&#39;</span><span class="p">)</span>
             <span class="n">fig</span><span class="o">.</span><span class="n">subplots_adjust</span><span class="p">(</span><span class="n">top</span><span class="o">=</span><span class="mf">0.85</span><span class="p">)</span>
 
         <span class="n">compare_template_and_scene</span><span class="p">(</span><span class="n">template</span><span class="p">,</span> <span class="n">scene</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">,</span>
@@ -4371,7 +4288,7 @@
     <span class="c1">#</span>
     <span class="c1"># Use of either this or KDTree seem to cause pytest ufunc size changed</span>
     <span class="c1"># warning (w/ pytest at least), though it should be harmless.</span>
-    <span class="kn">from</span> <span class="nn">scipy.spatial</span> <span class="kn">import</span> <span class="n">cKDTree</span>
+    <span class="kn">from</span> <span class="nn">scipy.spatial</span> <span class="k">import</span> <span class="n">cKDTree</span>
 
     <span class="k">if</span> <span class="n">subpixel</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span>
@@ -4489,7 +4406,7 @@
                     <span class="p">)</span>
 
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;multiscale_strategy </span><span class="si">{</span><span class="n">multiscale_strategy</span><span class="si">}</span><span class="s1"> not &#39;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;multiscale_strategy </span><span class="si">{multiscale_strategy}</span><span class="s1"> not &#39;</span>
                 <span class="s1">&#39;recognized&#39;</span>
             <span class="p">)</span>
 
@@ -4573,10 +4490,10 @@
                 <span class="n">cax</span> <span class="o">=</span> <span class="n">divider</span><span class="o">.</span><span class="n">append_axes</span><span class="p">(</span><span class="s1">&#39;right&#39;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="s1">&#39;5%&#39;</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
                 <span class="n">fig</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">cax</span><span class="o">=</span><span class="n">cax</span><span class="p">)</span>
 
-            <span class="n">title</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="n">td</span><span class="si">}</span><span class="s1">x</span><span class="si">{</span><span class="n">td</span><span class="si">}</span><span class="s1"> template)&#39;</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;(</span><span class="si">{td}</span><span class="s1">x</span><span class="si">{td}</span><span class="s1"> template)&#39;</span>
             <span class="k">if</span> <span class="n">match_value_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">w</span> <span class="o">=</span> <span class="n">match_value_weights</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                <span class="n">title</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; (weight=</span><span class="si">{</span><span class="n">w</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">)&#39;</span>
+                <span class="n">title</span> <span class="o">+=</span> <span class="n">f</span><span class="s1">&#39; (weight=</span><span class="si">{w:.2f}</span><span class="s1">)&#39;</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">same_scale</span><span class="p">:</span>
@@ -4623,7 +4540,7 @@
 
             <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
                 <span class="n">thr_frac</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">flat_idx_at_least_thresh</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">fv</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;scale </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1"> fraction of (scaled) match values above&#39;</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;scale </span><span class="si">{i}</span><span class="s1"> fraction of (scaled) match values above&#39;</span>
                     <span class="s1">&#39; threshold:&#39;</span><span class="p">,</span> <span class="n">thr_frac</span>
                 <span class="p">)</span>
 
@@ -5013,13 +4930,13 @@
     <span class="n">new_template_shape</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="n">new_template_d</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">template</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
 
     <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">scale_template:</span><span class="se">\n</span><span class="s1">d: </span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="se">\n</span><span class="s1">margin: </span><span class="si">{</span><span class="n">margin</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;um_per_pixel_xy: </span><span class="si">{</span><span class="n">um_per_pixel_xy</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;target_cell_diam_um: </span><span class="si">{</span><span class="n">target_cell_diam_um</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;target_cell_diam_px: </span><span class="si">{</span><span class="n">target_cell_diam_px</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;template_cell_diam_px: </span><span class="si">{</span><span class="n">template_cell_diam_px</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;template_scale: </span><span class="si">{</span><span class="n">template_scale</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;new_template_d: </span><span class="si">{</span><span class="n">new_template_d</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">scale_template:</span><span class="se">\n</span><span class="s1">d: </span><span class="si">{d}</span><span class="se">\n</span><span class="s1">margin: </span><span class="si">{margin}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;um_per_pixel_xy: </span><span class="si">{um_per_pixel_xy}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;target_cell_diam_um: </span><span class="si">{target_cell_diam_um}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;target_cell_diam_px: </span><span class="si">{target_cell_diam_px}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;template_cell_diam_px: </span><span class="si">{template_cell_diam_px}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;template_scale: </span><span class="si">{template_scale}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;new_template_d: </span><span class="si">{new_template_d}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">new_template_d</span> <span class="o">!=</span> <span class="n">d</span><span class="p">:</span>
@@ -5114,7 +5031,7 @@
     <span class="kn">import</span> <span class="nn">tifffile</span>
     <span class="kn">import</span> <span class="nn">cv2</span>
     <span class="kn">import</span> <span class="nn">ijroi</span>
-    <span class="kn">from</span> <span class="nn">scipy.cluster.vq</span> <span class="kn">import</span> <span class="n">vq</span>
+    <span class="kn">from</span> <span class="nn">scipy.cluster.vq</span> <span class="k">import</span> <span class="n">vq</span>
 
     <span class="k">if</span> <span class="n">debug</span> <span class="ow">and</span> <span class="n">show_fit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">show_fit</span> <span class="o">=</span> <span class="kc">True</span>
@@ -5189,8 +5106,8 @@
 
             <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
                 <span class="n">in_px</span> <span class="o">=</span> <span class="n">roi_diams_um</span> <span class="o">/</span> <span class="n">um_per_pixel_xy</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Using ROI diameters </span><span class="si">{</span><span class="n">roi_diams_um</span><span class="si">}</span><span class="s1"> um (</span><span class="si">{</span><span class="n">in_px</span><span class="si">}</span><span class="s1"> px) from&#39;</span>
-                    <span class="sa">f</span><span class="s1">&#39; K-means (k=</span><span class="si">{</span><span class="n">roi_diams_from_kmeans_k</span><span class="si">}</span><span class="s1">) on data used to &#39;</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Using ROI diameters </span><span class="si">{roi_diams_um}</span><span class="s1"> um (</span><span class="si">{in_px}</span><span class="s1"> px) from&#39;</span>
+                    <span class="n">f</span><span class="s1">&#39; K-means (k=</span><span class="si">{roi_diams_from_kmeans_k}</span><span class="s1">) on data used to &#39;</span>
                     <span class="s1">&#39;generate template.&#39;</span>
                 <span class="p">)</span>
                 <span class="k">del</span> <span class="n">in_px</span>
@@ -5327,9 +5244,9 @@
         <span class="k">if</span> <span class="n">debug</span> <span class="ow">and</span> <span class="n">_show_scaled_templates</span><span class="p">:</span>
             <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">scaled_template</span><span class="p">)</span>
-            <span class="n">title</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;scaled template (roi_diam_um=</span><span class="si">{</span><span class="n">roi_diam_um</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">)&#39;</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;scaled template (roi_diam_um=</span><span class="si">{roi_diam_um:.2f}</span><span class="s1">)&#39;</span>
             <span class="k">if</span> <span class="n">roi_diams_px</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">title</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">(roi_diam_px=</span><span class="si">{</span><span class="n">roi_diams_px</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">:</span><span class="s1">.1f</span><span class="si">}</span><span class="s1">)&#39;</span>
+                <span class="n">title</span> <span class="o">+=</span> <span class="n">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">(roi_diam_px=</span><span class="si">{roi_diams_px[i]:.1f}</span><span class="s1">)&#39;</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
 
         <span class="c1"># see note below about what i&#39;d need to do to continue using</span>
@@ -5345,10 +5262,10 @@
             <span class="n">method_str</span><span class="o">=</span><span class="n">method_str</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;scaled_template_cell_diam_px: &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">scaled_template_cell_diam_px</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;scaled_template_cell_diam_px: &#39;</span>
+                <span class="n">f</span><span class="s1">&#39;</span><span class="si">{scaled_template_cell_diam_px}</span><span class="s1">&#39;</span>
             <span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;scaled_radius_px: </span><span class="si">{</span><span class="n">scaled_radius_px</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;scaled_radius_px: </span><span class="si">{scaled_radius_px}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="n">template_d</span> <span class="o">=</span> <span class="n">scaled_template</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">match_value_weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span>
@@ -5367,8 +5284,8 @@
 
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">template_ds</span><span class="p">))</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">template_ds</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">allow_duplicate_px_scales</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;roi_diams_um: </span><span class="si">{</span><span class="n">roi_diams_um</span><span class="si">}</span><span class="s1"> led to duplicate &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;pixel template scales (</span><span class="si">{</span><span class="n">template_ds</span><span class="si">}</span><span class="s1">)&#39;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;roi_diams_um: </span><span class="si">{roi_diams_um}</span><span class="s1"> led to duplicate &#39;</span>
+                <span class="n">f</span><span class="s1">&#39;pixel template scales (</span><span class="si">{template_ds}</span><span class="s1">)&#39;</span>
             <span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># TODO would still probably have to de-duplicate before passing to</span>
@@ -5381,11 +5298,11 @@
     <span class="k">if</span> <span class="n">per_scale_max_n_rois</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">per_scale_min_n_rois</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">per_scale_max_n_rois</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">per_scale_max_n_rois</span><span class="p">)</span> <span class="o">==</span> <span class="n">n_scales</span><span class="p">,</span> \
-                <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">per_scale_max_n_rois</span><span class="p">)</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="n">n_scales</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;{len(per_scale_max_n_rois)} != </span><span class="si">{n_scales}</span><span class="s1">&#39;</span>
 
         <span class="k">if</span> <span class="n">per_scale_min_n_rois</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">per_scale_min_n_rois</span><span class="p">)</span> <span class="o">==</span> <span class="n">n_scales</span><span class="p">,</span> \
-                <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">per_scale_min_n_rois</span><span class="p">)</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="n">n_scales</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">f</span><span class="s1">&#39;{len(per_scale_min_n_rois)} != </span><span class="si">{n_scales}</span><span class="s1">&#39;</span>
 
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Per-scale bounds on number of ROIs overriding global bounds.&#39;</span><span class="p">)</span>
         <span class="n">min_n_rois</span> <span class="o">=</span> <span class="kc">None</span>
@@ -5428,16 +5345,16 @@
                 <span class="n">thr</span> <span class="o">=</span> <span class="n">thresholds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                 <span class="n">n_found</span> <span class="o">=</span> <span class="n">n_found_per_scale</span><span class="p">[</span><span class="n">r_px</span><span class="p">]</span>
 
-                <span class="n">sstr</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39; w/ radius=</span><span class="si">{</span><span class="n">r_px</span><span class="si">}</span><span class="s1">px @ thr=</span><span class="si">{</span><span class="n">thr</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">sstr</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39; w/ radius=</span><span class="si">{r_px}</span><span class="s1">px @ thr=</span><span class="si">{thr:.2f}</span><span class="s1">&#39;</span>
                 <span class="n">have_retries</span> <span class="o">=</span> <span class="n">threshold_tries_remaining</span> <span class="o">&gt;</span> <span class="mi">1</span>
                 <span class="k">if</span> <span class="n">have_retries</span><span class="p">:</span>
-                    <span class="n">sstr</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">thr:=</span><span class="se">{{</span><span class="s1">:.2f</span><span class="se">}}</span><span class="s1">&#39;</span>
+                    <span class="n">sstr</span> <span class="o">+=</span> <span class="n">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">thr:={{:.2f}}&#39;</span>
 
                 <span class="k">if</span> <span class="n">per_scale_max_n_rois</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">smax</span> <span class="o">=</span> <span class="n">per_scale_max_n_rois</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                     <span class="k">if</span> <span class="n">smax</span> <span class="o">&lt;</span> <span class="n">n_found</span><span class="p">:</span>
                         <span class="n">thresholds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/=</span> <span class="n">threshold_update_factor</span>
-                        <span class="nb">print</span><span class="p">((</span><span class="sa">f</span><span class="s1">&#39;too many ROIs (</span><span class="si">{</span><span class="n">n_found</span><span class="si">}</span><span class="s1"> &gt; </span><span class="si">{</span><span class="n">smax</span><span class="si">}</span><span class="s1">)</span><span class="si">{</span><span class="n">sstr</span><span class="si">}</span><span class="s1">&#39;</span>
+                        <span class="nb">print</span><span class="p">((</span><span class="n">f</span><span class="s1">&#39;too many ROIs (</span><span class="si">{n_found}</span><span class="s1"> &gt; </span><span class="si">{smax}</span><span class="s1">)</span><span class="si">{sstr}</span><span class="s1">&#39;</span>
                             <span class="p">)</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">thresholds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">have_retries</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">()</span>
                         <span class="p">))</span>
                         <span class="n">wrong_num</span> <span class="o">=</span> <span class="kc">True</span>
@@ -5446,7 +5363,7 @@
                     <span class="n">smin</span> <span class="o">=</span> <span class="n">per_scale_min_n_rois</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                     <span class="k">if</span> <span class="n">n_found</span> <span class="o">&lt;</span> <span class="n">smin</span><span class="p">:</span>
                         <span class="n">thresholds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*=</span> <span class="n">threshold_update_factor</span>
-                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;too few ROIs (</span><span class="si">{</span><span class="n">n_found</span><span class="si">}</span><span class="s1"> &lt; </span><span class="si">{</span><span class="n">smin</span><span class="si">}</span><span class="s1">)</span><span class="si">{</span><span class="n">sstr</span><span class="si">}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;too few ROIs (</span><span class="si">{n_found}</span><span class="s1"> &lt; </span><span class="si">{smin}</span><span class="s1">)</span><span class="si">{sstr}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
                             <span class="n">thresholds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">have_retries</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">()</span>
                         <span class="p">))</span>
                         <span class="n">wrong_num</span> <span class="o">=</span> <span class="kc">True</span>
@@ -5467,26 +5384,26 @@
             <span class="k">if</span> <span class="n">debug</span> <span class="ow">or</span> <span class="n">_packing_debug</span><span class="p">:</span>
                 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;too many/few (</span><span class="si">{</span><span class="n">n_rois_found</span><span class="si">}</span><span class="s1">) ROIs still &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;detected after </span><span class="si">{</span><span class="n">max_threshold_tries</span><span class="si">}</span><span class="s1"> attempts to modify &#39;</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;too many/few (</span><span class="si">{n_rois_found}</span><span class="s1">) ROIs still &#39;</span>
+                <span class="n">f</span><span class="s1">&#39;detected after </span><span class="si">{max_threshold_tries}</span><span class="s1"> attempts to modify &#39;</span>
                 <span class="s1">&#39;threshold. try changing threshold(s)?&#39;</span>
             <span class="p">)</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">per_scale_n_roi_bounds</span><span class="p">:</span>
             <span class="c1"># TODO maybe squeeze to threshold if just one</span>
-            <span class="n">fail_notice_suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;, with thresholds=</span><span class="si">{</span><span class="n">thresholds</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">fail_notice_suffix</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;, with thresholds=</span><span class="si">{thresholds}</span><span class="s1">&#39;</span>
             <span class="k">if</span> <span class="n">max_n_rois</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">n_rois_found</span> <span class="o">&gt;</span> <span class="n">max_n_rois</span><span class="p">:</span>
                 <span class="n">thresholds</span> <span class="o">/=</span> <span class="n">threshold_update_factor</span>
                 <span class="n">fail_notice</span> <span class="o">=</span> \
-                    <span class="sa">f</span><span class="s1">&#39;found too many ROIs (</span><span class="si">{</span><span class="n">n_rois_found</span><span class="si">}</span><span class="s1"> &gt; </span><span class="si">{</span><span class="n">max_n_rois</span><span class="si">}</span><span class="s1">)&#39;</span>
+                    <span class="n">f</span><span class="s1">&#39;found too many ROIs (</span><span class="si">{n_rois_found}</span><span class="s1"> &gt; </span><span class="si">{max_n_rois}</span><span class="s1">)&#39;</span>
 
             <span class="k">elif</span> <span class="n">min_n_rois</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">n_rois_found</span> <span class="o">&lt;</span> <span class="n">min_n_rois</span><span class="p">:</span>
                 <span class="n">thresholds</span> <span class="o">*=</span> <span class="n">threshold_update_factor</span>
                 <span class="n">fail_notice</span> <span class="o">=</span> \
-                    <span class="sa">f</span><span class="s1">&#39;found too few ROIs (</span><span class="si">{</span><span class="n">n_rois_found</span><span class="si">}</span><span class="s1"> &lt; </span><span class="si">{</span><span class="n">min_n_rois</span><span class="si">}</span><span class="s1">)&#39;</span>
+                    <span class="n">f</span><span class="s1">&#39;found too few ROIs (</span><span class="si">{n_rois_found}</span><span class="s1"> &lt; </span><span class="si">{min_n_rois}</span><span class="s1">)&#39;</span>
 
             <span class="n">fail_notice</span> <span class="o">+=</span> <span class="n">fail_notice_suffix</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">fail_notice</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">retrying with thresholds=</span><span class="si">{</span><span class="n">thresholds</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{fail_notice}</span><span class="se">\n\n</span><span class="s1">retrying with thresholds=</span><span class="si">{thresholds}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">update_factor_shrink_factor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">threshold_update_factor</span> <span class="o">=</span> \
@@ -5528,11 +5445,11 @@
 
         <span class="n">roi_plot_dir</span> <span class="o">=</span> <span class="s1">&#39;auto_rois&#39;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">exists</span><span class="p">(</span><span class="n">roi_plot_dir</span><span class="p">):</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;making directory </span><span class="si">{</span><span class="n">roi_plot_dir</span><span class="si">}</span><span class="s1"> for plots of ROI fits&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;making directory </span><span class="si">{roi_plot_dir}</span><span class="s1"> for plots of ROI fits&#39;</span><span class="p">)</span>
             <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">roi_plot_dir</span><span class="p">)</span>
 
         <span class="n">roi_plot_fname</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">roi_plot_dir</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="s1">&#39;_&#39;</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;.png&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Writing image showing fit ROIs to </span><span class="si">{</span><span class="n">roi_plot_fname</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Writing image showing fit ROIs to </span><span class="si">{roi_plot_fname}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">roi_plot_fname</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">write_ijrois</span><span class="p">:</span>
@@ -5575,7 +5492,7 @@
         <span class="k">return</span> <span class="n">data</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">err_if_missing</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;template data not found at </span><span class="si">{</span><span class="n">template_cache</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;template data not found at </span><span class="si">{template_cache}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">None</span></div>
 
 
@@ -5670,7 +5587,7 @@
 
 <span class="sd">    Total length along time dimension should be preserved from input TIFF.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">stats</span>
+    <span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
 
     <span class="k">if</span> <span class="n">movie</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="kn">import</span> <span class="nn">tifffile</span>
@@ -5714,8 +5631,8 @@
             <span class="n">stimfile_path</span> <span class="o">=</span> <span class="n">stimfile</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">stimfile_path</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">stimfile_root</span><span class="p">(),</span> <span class="n">stimfile</span><span class="p">)</span>
-            <span class="k">assert</span> <span class="n">exists</span><span class="p">(</span><span class="n">stimfile_path</span><span class="p">),</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;stimfile </span><span class="si">{</span><span class="n">stimfile</span><span class="si">}</span><span class="s1"> not found &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;alone or under </span><span class="si">{</span><span class="n">stimfile_root</span><span class="p">()</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="k">assert</span> <span class="n">exists</span><span class="p">(</span><span class="n">stimfile_path</span><span class="p">),</span> <span class="p">(</span><span class="n">f</span><span class="s1">&#39;stimfile </span><span class="si">{stimfile}</span><span class="s1"> not found &#39;</span>
+                <span class="n">f</span><span class="s1">&#39;alone or under {stimfile_root()}&#39;</span>
             <span class="p">)</span>
 
     <span class="c1"># TODO also err if not readable / valid</span>
@@ -5947,11 +5864,11 @@
 
     <span class="n">target_factor</span> <span class="o">=</span> <span class="n">current_fps</span> <span class="o">/</span> <span class="n">target_fps</span>
     <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;allow_overshoot: </span><span class="si">{</span><span class="n">allow_overshoot</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;allow_uneven_division: </span><span class="si">{</span><span class="n">allow_uneven_division</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;relative_fps_err: </span><span class="si">{</span><span class="n">relative_fps_err</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;target_fps: </span><span class="si">{</span><span class="n">target_fps</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;target_factor: </span><span class="si">{</span><span class="n">target_factor</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;allow_overshoot: </span><span class="si">{allow_overshoot}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;allow_uneven_division: </span><span class="si">{allow_uneven_division}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;relative_fps_err: </span><span class="si">{relative_fps_err}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;target_fps: </span><span class="si">{target_fps:.2f}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;target_factor: </span><span class="si">{target_factor:.2f}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="n">n_frames</span> <span class="o">=</span> <span class="n">movie</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
@@ -5970,7 +5887,7 @@
         <span class="c1"># this if that&#39;s all i&#39;ll support)</span>
         <span class="n">factor</span> <span class="o">=</span> <span class="n">n_frames</span> <span class="o">/</span> <span class="n">decimated_n_frames</span>
         <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;factor: </span><span class="si">{</span><span class="n">factor</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;factor: </span><span class="si">{factor:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">factor</span> <span class="o">&gt;</span> <span class="n">target_factor</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">allow_overshoot</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
@@ -5983,8 +5900,8 @@
             <span class="n">fps_error</span> <span class="o">=</span> <span class="n">fps_error</span> <span class="o">/</span> <span class="n">target_fps</span>
 
         <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;downsampled_fps: </span><span class="si">{</span><span class="n">downsampled_fps</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;fps_error: </span><span class="si">{</span><span class="n">fps_error</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;downsampled_fps: </span><span class="si">{downsampled_fps:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;fps_error: </span><span class="si">{fps_error:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">best_divisor</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">abs</span><span class="p">(</span><span class="n">fps_error</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">abs</span><span class="p">(</span><span class="n">best_fps_error</span><span class="p">):</span>
             <span class="n">best_divisor</span> <span class="o">=</span> <span class="n">i</span>
@@ -5993,7 +5910,7 @@
             <span class="n">best_factor</span> <span class="o">=</span> <span class="n">factor</span>
 
             <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;best_downsampled_fps: </span><span class="si">{</span><span class="n">best_downsampled_fps</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;best_downsampled_fps: </span><span class="si">{best_downsampled_fps:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;new best factor&#39;</span><span class="p">)</span>
 
         <span class="k">elif</span> <span class="p">(</span><span class="n">best_divisor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span>
@@ -6014,10 +5931,10 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;best downsampling with this flags at factor of 1&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;best_divisor: </span><span class="si">{</span><span class="n">best_divisor</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;best_factor: </span><span class="si">{</span><span class="n">best_factor</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;best_fps_error: </span><span class="si">{</span><span class="n">best_fps_error</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;best_downsampled_fps: </span><span class="si">{</span><span class="n">best_downsampled_fps</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;best_divisor: </span><span class="si">{best_divisor}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;best_factor: </span><span class="si">{best_factor:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;best_fps_error: </span><span class="si">{best_fps_error:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;best_downsampled_fps: </span><span class="si">{best_downsampled_fps:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="n">frame_shape</span> <span class="o">=</span> <span class="n">movie</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
     <span class="n">new_n_frames</span> <span class="o">=</span> <span class="n">n_frames</span> <span class="o">//</span> <span class="n">best_divisor</span>
@@ -6162,7 +6079,7 @@
     <span class="c1"># TODO doc support for ROI inputs / rewrite to expect them</span>
     <span class="c1"># (to use jaccard, etc)</span>
 
-    <span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="kn">import</span> <span class="n">linear_sum_assignment</span>
+    <span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="k">import</span> <span class="n">linear_sum_assignment</span>
     <span class="kn">import</span> <span class="nn">seaborn</span> <span class="k">as</span> <span class="nn">sns</span>
 
     <span class="c1"># TODO maybe unsupport two args case to be more concise</span>
@@ -6179,13 +6096,13 @@
     <span class="k">if</span> <span class="n">progress</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">progress</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sequence_of_centers</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">10</span>
     <span class="k">if</span> <span class="n">progress</span><span class="p">:</span>
-        <span class="kn">from</span> <span class="nn">tqdm</span> <span class="kn">import</span> <span class="n">tqdm</span>
+        <span class="kn">from</span> <span class="nn">tqdm</span> <span class="k">import</span> <span class="n">tqdm</span>
 
     <span class="k">if</span> <span class="n">max_cost</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;max_cost must not be None&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;max_cost: </span><span class="si">{</span><span class="n">max_cost</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;max_cost: </span><span class="si">{max_cost:.2f}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="n">default_two_colors</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="s1">&#39;blue&#39;</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sequence_of_centers</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
@@ -6346,11 +6263,11 @@
                     <span class="n">color</span><span class="o">=</span><span class="n">c2</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">scatter_alpha</span><span class="p">,</span>
                     <span class="n">marker</span><span class="o">=</span><span class="n">pmarker</span>
                 <span class="p">)</span>
-                <span class="n">psuffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s1"> vs. </span><span class="si">{</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">psuffix</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;</span><span class="si">{k}</span><span class="s1"> vs. {k+1}&#39;</span>
                 <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_prefix</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">psuffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name_prefix</span><span class="si">}</span><span class="s1"> &#39;</span> <span class="o">+</span> <span class="n">psuffix</span>
+                    <span class="n">psuffix</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;</span><span class="si">{name_prefix}</span><span class="s1"> &#39;</span> <span class="o">+</span> <span class="n">psuffix</span>
                 <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">ptitle</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s1">, &#39;</span> <span class="o">+</span> <span class="n">psuffix</span>
+                    <span class="n">ptitle</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;</span><span class="si">{title}</span><span class="s1">, &#39;</span> <span class="o">+</span> <span class="n">psuffix</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="n">ptitle</span> <span class="o">=</span> <span class="n">psuffix</span>
                 <span class="n">pax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">ptitle</span><span class="p">)</span>
@@ -6412,7 +6329,7 @@
                 <span class="c1"># of other figs currently go?</span>
                 <span class="k">if</span> <span class="n">pairwise_plots</span> <span class="ow">and</span> <span class="n">write_plots</span><span class="p">:</span>
                     <span class="n">fname</span> <span class="o">=</span> <span class="n">to_filename</span><span class="p">(</span><span class="n">ptitle</span><span class="p">)</span> <span class="o">+</span> <span class="n">plot_format</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;writing to </span><span class="si">{</span><span class="n">fname</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;writing to </span><span class="si">{fname}</span><span class="s1">&#39;</span><span class="p">)</span>
                     <span class="n">pfig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
 
         <span class="n">k_unmatched_left</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">left_centers</span><span class="p">)))</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">left_idx</span><span class="p">)</span>
@@ -6428,9 +6345,9 @@
             <span class="n">n_unmatched</span> <span class="o">=</span> <span class="n">to_unmatch</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
             <span class="k">if</span> <span class="n">n_not_drawn</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="k">assert</span> <span class="n">n_not_drawn</span> <span class="o">==</span> <span class="n">n_unmatched</span><span class="p">,</span> \
-                    <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">n_not_drawn</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="n">n_unmatched</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="n">f</span><span class="s1">&#39;</span><span class="si">{n_not_drawn}</span><span class="s1"> != </span><span class="si">{n_unmatched}</span><span class="s1">&#39;</span>
             <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;(iteration=</span><span class="si">{</span><span class="n">ci</span><span class="si">}</span><span class="s1">) unmatched </span><span class="si">{</span><span class="n">n_unmatched</span><span class="si">}</span><span class="s1"> for exceeding&#39;</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;(iteration=</span><span class="si">{ci}</span><span class="s1">) unmatched </span><span class="si">{n_unmatched}</span><span class="s1"> for exceeding&#39;</span>
                     <span class="s1">&#39; max_cost&#39;</span>
                 <span class="p">)</span>
 
@@ -6442,7 +6359,7 @@
                 <span class="c1"># swap_xy etc b/c of flip earlier</span>
                 <span class="n">xy0</span> <span class="o">=</span> <span class="n">pt_info</span><span class="p">[</span><span class="s1">&#39;xy0&#39;</span><span class="p">]</span>
                 <span class="n">xy1</span> <span class="o">=</span> <span class="n">pt_info</span><span class="p">[</span><span class="s1">&#39;xy1&#39;</span><span class="p">]</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;name: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">, xy0: </span><span class="si">{</span><span class="n">xy0</span><span class="si">}</span><span class="s1">, xy1: </span><span class="si">{</span><span class="n">xy1</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;name: </span><span class="si">{name}</span><span class="s1">, xy0: </span><span class="si">{xy0}</span><span class="s1">, xy1: </span><span class="si">{xy1}</span><span class="s1">&#39;</span><span class="p">)</span>
 
                 <span class="n">lidx</span> <span class="o">=</span> <span class="n">point_idx</span><span class="p">(</span><span class="n">left_centers</span><span class="p">,</span> <span class="n">xy0</span><span class="p">,</span> <span class="n">swap_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
                 <span class="k">assert</span> <span class="n">left_idx</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">left_centers</span><span class="p">)</span>
@@ -6460,8 +6377,8 @@
                     <span class="n">rpt_idx</span> <span class="o">=</span> <span class="n">right_idx</span><span class="p">[</span><span class="n">midx0</span><span class="p">]</span>
                     <span class="n">rpt</span> <span class="o">=</span> <span class="n">right_centers</span><span class="p">[</span><span class="n">rpt_idx</span><span class="p">]</span>
                     <span class="n">mcost0</span> <span class="o">=</span> <span class="n">match_costs</span><span class="p">[</span><span class="n">midx0</span><span class="p">]</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;xy0 matched (</span><span class="si">{</span><span class="n">lidx</span><span class="si">}</span><span class="s1">:</span><span class="si">{</span><span class="n">lpt</span><span class="si">}</span><span class="s1"> -&gt; </span><span class="si">{</span><span class="n">rpt_idx</span><span class="si">}</span><span class="s1">:</span><span class="si">{</span><span class="n">rpt</span><span class="si">}</span><span class="s1">) &#39;</span>
-                        <span class="sa">f</span><span class="s1">&#39;at cost </span><span class="si">{</span><span class="n">mcost0</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;xy0 matched (</span><span class="si">{lidx}</span><span class="s1">:</span><span class="si">{lpt}</span><span class="s1"> -&gt; </span><span class="si">{rpt_idx}</span><span class="s1">:</span><span class="si">{rpt}</span><span class="s1">) &#39;</span>
+                        <span class="n">f</span><span class="s1">&#39;at cost </span><span class="si">{mcost0:.3f}</span><span class="s1">&#39;</span>
                     <span class="p">)</span>
                     <span class="k">if</span> <span class="n">to_unmatch</span><span class="p">[</span><span class="n">midx0</span><span class="p">]:</span>
                         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;xy0 will be unmatched for cost &gt;= max_cost!&#39;</span><span class="p">)</span>
@@ -6473,7 +6390,7 @@
                         <span class="n">pt_info</span><span class="p">[</span><span class="s1">&#39;xy0_lpt&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">lpt</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
                         <span class="n">pt_info</span><span class="p">[</span><span class="s1">&#39;xy0_rpt&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rpt</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;xy0 not matched!&#39;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;xy0 not matched!&#39;</span><span class="p">)</span>
 
                 <span class="n">ridx</span> <span class="o">=</span> <span class="n">point_idx</span><span class="p">(</span><span class="n">right_centers</span><span class="p">,</span> <span class="n">xy1</span><span class="p">,</span> <span class="n">swap_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
                 <span class="k">assert</span> <span class="n">right_idx</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">right_centers</span><span class="p">)</span>
@@ -6489,8 +6406,8 @@
                     <span class="n">lpt_idx</span> <span class="o">=</span> <span class="n">left_idx</span><span class="p">[</span><span class="n">midx1</span><span class="p">]</span>
                     <span class="n">lpt</span> <span class="o">=</span> <span class="n">left_centers</span><span class="p">[</span><span class="n">lpt_idx</span><span class="p">]</span>
                     <span class="n">mcost1</span> <span class="o">=</span> <span class="n">match_costs</span><span class="p">[</span><span class="n">midx1</span><span class="p">]</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;xy1 matched (</span><span class="si">{</span><span class="n">ridx</span><span class="si">}</span><span class="s1">:</span><span class="si">{</span><span class="n">rpt</span><span class="si">}</span><span class="s1"> &lt;- </span><span class="si">{</span><span class="n">lpt_idx</span><span class="si">}</span><span class="s1">:</span><span class="si">{</span><span class="n">lpt</span><span class="si">}</span><span class="s1">) &#39;</span>
-                        <span class="sa">f</span><span class="s1">&#39;at cost </span><span class="si">{</span><span class="n">mcost1</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;xy1 matched (</span><span class="si">{ridx}</span><span class="s1">:</span><span class="si">{rpt}</span><span class="s1"> &lt;- </span><span class="si">{lpt_idx}</span><span class="s1">:</span><span class="si">{lpt}</span><span class="s1">) &#39;</span>
+                        <span class="n">f</span><span class="s1">&#39;at cost </span><span class="si">{mcost1:.3f}</span><span class="s1">&#39;</span>
                     <span class="p">)</span>
                     <span class="k">if</span> <span class="n">to_unmatch</span><span class="p">[</span><span class="n">midx1</span><span class="p">]:</span>
                         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;xy1 will be unmatched for cost &gt;= max_cost!&#39;</span><span class="p">)</span>
@@ -6502,7 +6419,7 @@
                         <span class="n">pt_info</span><span class="p">[</span><span class="s1">&#39;xy1_lpt&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">lpt</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
                         <span class="n">pt_info</span><span class="p">[</span><span class="s1">&#39;xy1_rpt&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rpt</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;xy1 not matched!&#39;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;xy1 not matched!&#39;</span><span class="p">)</span>
                 <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
 
         <span class="n">k_unmatched_left</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">left_idx</span><span class="p">[</span><span class="n">to_unmatch</span><span class="p">])</span>
@@ -6532,12 +6449,12 @@
                 <span class="n">midx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argwhere</span><span class="p">(</span><span class="n">lrm</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">li</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
                 <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">midx</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
                 <span class="n">midx</span> <span class="o">=</span> <span class="n">midx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;name: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">, xy0 match row </span><span class="si">{</span><span class="n">midx</span><span class="si">}</span><span class="s1">:&#39;</span><span class="p">,</span> <span class="n">lrm</span><span class="p">[</span><span class="n">midx</span><span class="p">,</span> <span class="p">:])</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;name: </span><span class="si">{name}</span><span class="s1">, xy0 match row </span><span class="si">{midx}</span><span class="s1">:&#39;</span><span class="p">,</span> <span class="n">lrm</span><span class="p">[</span><span class="n">midx</span><span class="p">,</span> <span class="p">:])</span>
             <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">ri</span> <span class="ow">in</span> <span class="n">r_idxs</span><span class="p">:</span>
                 <span class="n">midx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argwhere</span><span class="p">(</span><span class="n">lrm</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">ri</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
                 <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">midx</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
                 <span class="n">midx</span> <span class="o">=</span> <span class="n">midx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;name: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">, xy1 match row </span><span class="si">{</span><span class="n">midx</span><span class="si">}</span><span class="s1">:&#39;</span><span class="p">,</span> <span class="n">lrm</span><span class="p">[</span><span class="n">midx</span><span class="p">,</span> <span class="p">:])</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;name: </span><span class="si">{name}</span><span class="s1">, xy1 match row </span><span class="si">{midx}</span><span class="s1">:&#39;</span><span class="p">,</span> <span class="n">lrm</span><span class="p">[</span><span class="n">midx</span><span class="p">,</span> <span class="p">:])</span>
             <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">show</span><span class="p">:</span>
@@ -6552,7 +6469,7 @@
                 <span class="n">extra</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
             <span class="n">fname</span> <span class="o">=</span> <span class="n">to_filename</span><span class="p">(</span><span class="n">title</span> <span class="o">+</span> <span class="n">extra</span><span class="p">)</span> <span class="o">+</span> <span class="n">plot_format</span>
             <span class="c1">#</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;writing to </span><span class="si">{</span><span class="n">fname</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;writing to </span><span class="si">{fname}</span><span class="s1">&#39;</span><span class="p">)</span>
             <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
             <span class="c1">#</span>
 
@@ -6626,7 +6543,7 @@
 
         <span class="n">n_lost_at_i</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ids_lost_at_i</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="n">n_lost_at_i</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Lost </span><span class="si">{</span><span class="n">n_lost_at_i</span><span class="si">}</span><span class="s1"> ROI(s) between blocks </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1"> and </span><span class="si">{</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Lost </span><span class="si">{n_lost_at_i}</span><span class="s1"> ROI(s) between blocks </span><span class="si">{i}</span><span class="s1"> and {i + 1}&#39;</span><span class="p">)</span>
 
     <span class="c1"># TODO make a test case where the total number of *matched* rois is</span>
     <span class="c1"># conserved at each time step, but the matching makes the length of the</span>
@@ -7000,7 +6917,7 @@
             <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">matches2</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]))</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches2</span><span class="p">[:,</span><span class="mi">0</span><span class="p">])</span>
 
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">ids</span><span class="p">,</span> <span class="n">cs</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">ids_list</span><span class="p">,</span> <span class="n">centers_list</span><span class="p">)):</span>
-        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">cs</span><span class="p">),</span> <span class="sa">f</span><span class="s1">&#39;(i=</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">) </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">cs</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">cs</span><span class="p">),</span> <span class="n">f</span><span class="s1">&#39;(i=</span><span class="si">{i}</span><span class="s1">) {len(ids)} != {len(cs)}&#39;</span>
 
     <span class="n">centers_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">centers_list</span><span class="p">),</span> <span class="n">next_new_id</span><span class="p">,</span>
         <span class="n">centers_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
@@ -7146,8 +7063,8 @@
     <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">):</span>
         <span class="c1"># TODO maybe handle this differently...</span>
         <span class="k">if</span> <span class="n">p</span> <span class="ow">and</span> <span class="n">next_trajectory_idx</span> <span class="o">==</span> <span class="n">max_n</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;reached max_n (</span><span class="si">{</span><span class="n">max_n</span><span class="si">}</span><span class="s1">) on step </span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s1"> &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;(before </span><span class="si">{</span><span class="n">nt</span><span class="si">}</span><span class="s1"> requested steps&#39;</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;reached max_n (</span><span class="si">{max_n}</span><span class="s1">) on step </span><span class="si">{t}</span><span class="s1"> &#39;</span>
+                <span class="n">f</span><span class="s1">&#39;(before </span><span class="si">{nt}</span><span class="s1"> requested steps&#39;</span>
             <span class="p">)</span>
             <span class="c1">#break</span>
 
@@ -7167,7 +7084,7 @@
             <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;# non-nan:&#39;</span><span class="p">,</span> <span class="n">nonnan</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
             <span class="n">n_lost</span> <span class="o">=</span> <span class="p">(</span><span class="n">nonnan</span> <span class="o">&amp;</span> <span class="n">lose</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
             <span class="k">if</span> <span class="n">n_lost</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;t=</span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s1">, losing </span><span class="si">{</span><span class="n">n_lost</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;t=</span><span class="si">{t}</span><span class="s1">, losing </span><span class="si">{n_lost}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="n">centers</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">lose</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
 
         <span class="c1"># TODO TODO note: if not allowed to fill NaN that come from losing</span>
@@ -7188,7 +7105,7 @@
         <span class="n">n_to_gain</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="n">max_n</span> <span class="o">-</span> <span class="n">initial_n</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">n_to_gain</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;t=</span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s1">, gaining </span><span class="si">{</span><span class="n">n_to_gain</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;t=</span><span class="si">{t}</span><span class="s1">, gaining </span><span class="si">{n_to_gain}</span><span class="s1">&#39;</span><span class="p">)</span>
 
             <span class="n">first_ic_idx</span> <span class="o">=</span> <span class="n">next_trajectory_idx</span> <span class="o">-</span> <span class="n">initial_n</span>
             <span class="n">centers</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">next_trajectory_idx</span><span class="p">:</span><span class="n">next_trajectory_idx</span> <span class="o">+</span> <span class="n">n_to_gain</span><span class="p">]</span> <span class="o">=</span> \
@@ -7269,7 +7186,7 @@
     <span class="n">tp_root</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">analysis_output_root</span><span class="p">(),</span> <span class="s1">&#39;trace_pickles&#39;</span><span class="p">)</span>
     <span class="n">tp_data</span> <span class="o">=</span> <span class="p">[</span><span class="n">vars_from_filename</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">join</span><span class="p">(</span><span class="n">tp_root</span><span class="p">,</span> <span class="s1">&#39;*.p&#39;</span><span class="p">))]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tp_data</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;no trace pickles found under </span><span class="si">{</span><span class="n">tp_root</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;no trace pickles found under </span><span class="si">{tp_root}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">keys</span> <span class="o">+</span> <span class="p">[</span><span class="s1">&#39;run_at&#39;</span><span class="p">,</span> <span class="s1">&#39;trace_pickle_path&#39;</span><span class="p">],</span>
         <span class="n">data</span><span class="o">=</span><span class="n">tp_data</span>
@@ -7319,6 +7236,11 @@
 
         <span class="k">assert</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">coords</span>
         <span class="c1"># Using data[n].values didn&#39;t make a difference in one test (same result).</span>
+        <span class="c1"># (and didn&#39;t fix TypeError when some, but not all, group_keys are scalars, but</span>
+        <span class="c1"># led to a diff TypeError. may or may not have been important those vars were</span>
+        <span class="c1"># also not among coordinates)</span>
+        <span class="c1">#df = pd.DataFrame({n: data[n].values for n in group_keys})</span>
+        <span class="c1">#import ipdb; ipdb.set_trace()</span>
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="n">n</span><span class="p">:</span> <span class="n">data</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">group_keys</span><span class="p">})</span>
 
     <span class="n">group_numbers</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">group_keys</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="n">sort</span><span class="p">)</span><span class="o">.</span><span class="n">ngroup</span><span class="p">()</span>
@@ -7352,9 +7274,9 @@
 
 
 <div class="viewcode-block" id="thor2tiff"><a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.thor2tiff">[docs]</a><span class="nd">@thorimage_dir_input</span>
-<span class="k">def</span> <span class="nf">thor2tiff</span><span class="p">(</span><span class="n">image_dir</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">output_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_basename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-    <span class="n">if_exists</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;err&#39;</span><span class="p">,</span> <span class="n">flip_lr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">check_round_trip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-    <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">_debug</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="k">def</span> <span class="nf">thor2tiff</span><span class="p">(</span><span class="n">image_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">output_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output_basename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">if_exists</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;err&#39;</span><span class="p">,</span> <span class="n">flip_lr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">check_round_trip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">_debug</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
     <span class="sd">&quot;&quot;&quot;Converts ThorImage .raw file to .tif file in same directory</span>
 
 <span class="sd">    Args:</span>
@@ -7374,22 +7296,24 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">if_exists_options</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;load&#39;</span><span class="p">,</span> <span class="s1">&#39;ignore&#39;</span><span class="p">,</span> <span class="s1">&#39;err&#39;</span><span class="p">,</span> <span class="s1">&#39;overwrite&#39;</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">if_exists</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">if_exists_options</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;if_exists must be one of </span><span class="si">{</span><span class="n">if_exists_options</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;if_exists must be one of </span><span class="si">{if_exists_options}</span><span class="s1">&#39;</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="nb">all</span><span class="p">([</span><span class="n">x</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">(</span><span class="n">output_name</span><span class="p">,</span> <span class="n">output_basename</span><span class="p">)]):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;only pass at most one of output_name or output_basename&#39;</span><span class="p">)</span>
+
+    <span class="n">image_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">image_dir</span><span class="p">)</span>
 
     <span class="c1"># TODO .tif or .tiff?</span>
     <span class="n">tiff_ext</span> <span class="o">=</span> <span class="s1">&#39;.tif&#39;</span>
 
     <span class="k">if</span> <span class="n">flip_lr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">default_output_basename</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;raw</span><span class="si">{</span><span class="n">tiff_ext</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="n">default_output_basename</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;raw</span><span class="si">{tiff_ext}</span><span class="s1">&#39;</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="c1"># Naming it &#39;flipped&#39; in both the cases where we do/don&#39;t flip (as long as</span>
         <span class="c1"># flip_lr is specified True/False, so other analysis can know that we at least</span>
         <span class="c1"># made the decision as to whether to flip this data, whether or not we actually</span>
         <span class="c1"># flipped it)</span>
-        <span class="n">default_output_basename</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;flipped</span><span class="si">{</span><span class="n">tiff_ext</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="n">default_output_basename</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;flipped</span><span class="si">{tiff_ext}</span><span class="s1">&#39;</span>
 
     <span class="k">if</span> <span class="n">output_name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">output_basename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">output_basename</span> <span class="o">=</span> <span class="n">default_output_basename</span>
@@ -7398,19 +7322,20 @@
         <span class="k">if</span> <span class="n">output_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">output_dir</span> <span class="o">=</span> <span class="n">image_dir</span>
 
-        <span class="k">assert</span> <span class="n">isdir</span><span class="p">(</span><span class="n">output_dir</span><span class="p">),</span> <span class="sa">f</span><span class="s1">&#39;output_dir=</span><span class="si">{</span><span class="n">output_dir</span><span class="si">}</span><span class="s1"> was not a directory&#39;</span>
+        <span class="c1"># TODO maybe just make it?</span>
+        <span class="k">assert</span> <span class="n">isdir</span><span class="p">(</span><span class="n">output_dir</span><span class="p">),</span> <span class="n">f</span><span class="s1">&#39;output_dir=</span><span class="si">{output_dir}</span><span class="s1"> was not a directory&#39;</span>
         <span class="n">output_name</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="n">output_basename</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">exists</span><span class="p">(</span><span class="n">output_name</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">if_exists</span> <span class="o">==</span> <span class="s1">&#39;ignore&#39;</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;TIFF </span><span class="si">{</span><span class="n">output_name</span><span class="si">}</span><span class="s1"> already exists. Doing nothing.&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;TIFF </span><span class="si">{output_name}</span><span class="s1"> already exists. Doing nothing.&#39;</span><span class="p">)</span>
 
             <span class="k">return</span> <span class="kc">None</span>
 
         <span class="k">elif</span> <span class="n">if_exists</span> <span class="o">==</span> <span class="s1">&#39;load&#39;</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;TIFF </span><span class="si">{</span><span class="n">output_name</span><span class="si">}</span><span class="s1"> exists. Reading it (instead of raw)...&#39;</span><span class="p">,</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;TIFF </span><span class="si">{output_name}</span><span class="s1"> exists. Reading it (instead of raw)...&#39;</span><span class="p">,</span>
                     <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span>
                 <span class="p">)</span>
 
@@ -7425,13 +7350,13 @@
             <span class="k">return</span> <span class="n">movie</span>
 
         <span class="k">elif</span> <span class="n">if_exists</span> <span class="o">==</span> <span class="s1">&#39;err&#39;</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">output_name</span><span class="si">}</span><span class="s1"> exists (set if_exists to either &#39;</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;</span><span class="si">{output_name}</span><span class="s1"> exists (set if_exists to either &#39;</span>
                 <span class="s2">&quot;&#39;overwrite&#39; or &#39;ignore&#39; for other behavior&quot;</span>
             <span class="p">)</span>
 
         <span class="k">elif</span> <span class="n">if_exists</span> <span class="o">==</span> <span class="s1">&#39;overwrite&#39;</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;TIFF </span><span class="si">{</span><span class="n">output_name</span><span class="si">}</span><span class="s1"> existed. Overwriting.&#39;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;TIFF </span><span class="si">{output_name}</span><span class="s1"> existed. Overwriting.&#39;</span><span class="p">)</span>
 
     <span class="c1"># TODO maybe also load metadata like fps (especially stuff, as w/ fps, that isn&#39;t</span>
     <span class="c1"># already baked into the TIFF, assuming the TIFF is saved correctly. so not</span>
@@ -7462,7 +7387,7 @@
     <span class="c1"># currently reproduce this issue</span>
 
     <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Writing TIFF to </span><span class="si">{</span><span class="n">output_name</span><span class="si">}</span><span class="s1">...&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Writing TIFF to </span><span class="si">{output_name}</span><span class="s1">...&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
 
     <span class="n">write_tiff</span><span class="p">(</span><span class="n">output_name</span><span class="p">,</span> <span class="n">movie</span><span class="p">)</span>
 
@@ -7489,46 +7414,30 @@
 </pre></div>
 
            </div>
-           
           </div>
           <footer>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>
-        &#169; Copyright 2021, Tom O&#39;Connell.
-
-    </p>
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
   </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
 
 </footer>
         </div>
       </div>
-
     </section>
-
   </div>
-  
-
-  <script type="text/javascript">
+  <script>
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-
-  
-  
-    
-   
+  </script> 
 
 </body>
 </html>
