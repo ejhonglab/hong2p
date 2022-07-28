@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 import subprocess
 import warnings
+from pprint import pformat
 from typing import Dict, Any
 
 import numpy as np
@@ -14,6 +15,233 @@ import matplotlib.pyplot as plt
 
 from hong2p import thor, util
 from hong2p.types import Pathlike
+
+
+# TODO should this be in types.py?
+Suite2pOps = Dict[str, Any]
+
+# TODO add fn to check these parameter names against installed suite2p (would probably
+# need to parse source / use introspection, since variables defining them are just local
+# variables inside a function)
+
+# Currently, most of these parameter name groups seem to just be defined in a variables
+# inside a suite2p function suite2p/gui/rungui.py:create_buttons
+main_params = [
+    # TODO may rather fail/warn if i detect a previous run used different values for
+    # these data specific parameters, for the same input data (in contrast to making a
+    # new run directory if one of the other parametes differs)
+    'nplanes',
+    'nchannels',
+    'functional_chan',
+    'tau',
+    'fs',
+
+    'do_bidiphase',
+    'bidiphase',
+
+    # TODO when comparing params, maybe ignore stuff like this one by default (assuming
+    # it has no real effect apart from speed, assuming no bugs...)
+    'multiplane_parallel',
+
+    'ignore_flyback',
+]
+output_params = [
+    'preclassify',
+    'save_mat',
+    'save_NWB',
+    'combined',
+    'reg_tif',
+    'reg_tif_chan2',
+    'aspect',
+    'delete_bin',
+    'move_bin',
+]
+# "Registration" (mostly rigid specific, some general to registration)
+registration_params = [
+    'do_registration',
+    'align_by_chan',
+
+    # Rigid
+    'nimg_init',
+    'smooth_sigma',
+    'smooth_sigma_time',
+    'maxregshift',
+    'th_badframes',
+    'two_step_registration',
+]
+nonrigid_params = [
+    'nonrigid',
+    'block_size',
+    'snr_thresh',
+    'maxregshiftNR',
+]
+# "1P"
+one_photon_reg_params = [
+    # 1P (shouldn't be used in our cases, but here for the sake of completeness)
+    '1Preg',
+    'spatial_hp_reg',
+    'pre_smooth',
+    'spatial_taper',
+]
+roi_detection_params = [
+    'roidetect',
+    'denoise',
+    'anatomical_only',
+    'diameter',
+    'spatial_scale',
+    'threshold_scaling',
+    'max_overlap',
+    'max_iterations',
+    'high_pass',
+]
+# Extraction/Neuropil
+neuropil_params = [
+    'neuropil_extract',
+    'allow_overlap',
+    'inner_neuropil_radius',
+    'min_neuropil_pixels',
+]
+# Classification/Deconvolution
+deconv_params = [
+    'soma_crop',
+    'spikedetect',
+    'win_baseline',
+    'sig_baseline',
+    'neucoeff',
+]
+# All params referenced in the right portion of the GUI parameter window,
+# grouped by heading.
+gui_params = {
+    'main': main_params,
+    'output': output_params,
+    'registration': registration_params,
+    'nonrigid': nonrigid_params,
+    '1p': one_photon_reg_params,
+    'roi_detection': roi_detection_params,
+    'neuropil': neuropil_params,
+    'deconv': deconv_params,
+}
+
+# Entries in suite2p "ops" that specify input data used in a suite2p run.
+# TODO TODO modify to also work when input is specified as typical
+# (NOT via ops['tiff_list'])
+input_data_keys = [
+    'tiff_list',
+]
+
+
+# TODO move to util
+def diff_dicts(d1: dict, d2: dict, label1='<', label2='>', header=None) -> None:
+    """Prints differences between two dictionaries.
+    """
+    # TODO maybe use colors green/red like in git diff?
+    # TODO maybe use +/- as default labels?
+
+    # TODO maybe just use Series.[eq/equals], instead of most below?
+
+    if header is not None:
+        print(header)
+
+    d1_keys = set(d1.keys())
+    d2_keys = set(d2.keys())
+
+    d1_only = d1_keys - d2_keys
+    d2_only = d2_keys - d1_keys
+
+    shared_keys = d1_keys | d2_keys
+    for k in sorted(shared_keys):
+        d1_val = d1[k]
+        d2_val = d2[k]
+        if d1_val != d2_val:
+            print(f'{k}:')
+            print(f'{label1} {pformat(d1_val)}')
+            print(f'{label2} {pformat(d2_val)}')
+            print()
+
+
+# TODO type for stuff that implements 'in'?
+def _subdict(d: dict, keys) -> dict:
+    """
+    Assumes all elements of keys are in d.
+    """
+    return {k: d[k] for k in keys}
+
+
+# TODO fns like gui_params_equal/inputs_equal, but for actually printing differences?
+
+# TODO option to ignore / only-check certain parameter groups (e.g. assuming we only
+# care about the registration, w/o actually using ROI extraction stuff)
+# TODO option to ignore certain parameters by name (to ignore stuff that shouldn't
+# affect output, like hopefully 'batch_size' / 'multiplane_parallel')
+def gui_params_equal(ops1: Suite2pOps, ops2: Suite2pOps, print_diff: bool = True,
+    **kwargs) -> bool:
+    """Returns whether GUI-settable parameters differ.
+
+    Args:
+        ops1: as returned by `load_s2p_ops`
+        ops2: to be compared to `ops1`
+        print_diff: whether to print any differences
+    """
+    # Form a flat list of all parameter names we want to check.
+    params_to_check = [x for xs in gui_params.values() for x in xs]
+    assert len(params_to_check) == len(set(params_to_check))
+
+    def ops_to_compare(ops_dict):
+        d = _subdict(ops_dict, params_to_check)
+
+        # Since when loaded from default user ops, this seems to be a list
+        # (e.g. [48, 48]), whereas it's a tuple when loaded from suite2p/plane0/ops.npy
+        # (e.g. (48, 48)).
+        d['block_size'] = tuple(d['block_size'])
+
+        # TODO TODO TODO need to pre-process 'diameter' too. at least in some cases, it
+        # seems, 0->[0,0]
+
+        return d
+
+    d1 = ops_to_compare(ops1)
+    d2 = ops_to_compare(ops2)
+
+    # TODO TODO if this equality check is doing what i want in some cases, refactor
+    # diff_dicts to something that returns a representation of the diff, w/ a separate
+    # fn to print the diffs
+    # TODO make sure we are handling any numpy arrays correctly (if any correspond to
+    # gui params...)
+    if d1 != d2:
+        if print_diff:
+            diff_dicts(d1, d2, **kwargs)
+
+        return False
+
+    return True
+
+
+# TODO maybe also check git hash / version for suite2p (which i feel like i saw it
+# inserted in the ops somewhere?)
+# TODO any other ops values i wanna check in here?
+def inputs_equal(ops1: Suite2pOps, ops2: Suite2pOps, print_diff: bool = True,
+    **kwargs) -> bool:
+    """Returns whether input data and GUI-settable parameters differ.
+    """
+    # TODO TODO refactor to just add gui param list to input_data_keys, then call one
+    # fn that compares/prints-diff-of dicts (otherwise header will get printed twice, if
+    # there are differences in both...)
+
+    ret = True
+    if not gui_params_equal(ops1, ops2, print_diff=print_diff, **kwargs):
+        ret = False
+
+    d1 = _subdict(ops1, input_data_keys)
+    d2 = _subdict(ops2, input_data_keys)
+
+    # TODO doing what i want? any numpy arrays in values here?
+    if d1 != d2:
+        if print_diff:
+            diff_dicts(d1, d2, **kwargs)
+
+        return False
+
+    return ret
 
 
 def suite2p_params(thorimage_dir: Pathlike):
@@ -225,7 +453,17 @@ def load_s2p_pickle(npy_path: Pathlike):
 
 
 # TODO check that it is always a dict and not sometimes an iterable of them
-def load_s2p_ops(ops_path: Pathlike) -> Dict[str, Any]:
+# TODO type alias / similar for Dict[str, Any] (and use in other places in suite2p.py
+# where I use this)
+def load_s2p_ops(ops_path: Pathlike) -> Suite2pOps:
+    """
+    Args:
+        ops_path: if path does not end with '*.npy', assumed to be a directory
+            containing a file named 'ops.npy'
+    """
+    if not ops_path.name.endswith('.npy'):
+        ops_path = ops_path / 'ops.npy'
+
     ops = load_s2p_pickle(ops_path)
     assert ops.shape == tuple()
     return ops.item()
@@ -429,7 +667,7 @@ def load_s2p_outputs(plane_or_combined_dir: Pathlike, good_only=True,
     stat_path = plane_or_combined_dir / 'stat.npy'
     stat = load_s2p_pickle(stat_path)
 
-    ops = load_s2p_ops(plane_or_combined_dir / 'ops.npy')
+    ops = load_s2p_ops(plane_or_combined_dir)
 
     good_rois = iscell[:, 0].astype(np.bool_)
 
