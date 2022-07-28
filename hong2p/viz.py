@@ -6,8 +6,10 @@ provide context specfically useful for certain types of olfaction experiments.
 from os.path import join, exists
 import time
 import functools
-import warnings
+import sys
 from typing import Dict, List
+from pprint import pformat
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -18,7 +20,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from hong2p import util, thor, olf
+from hong2p import util, thor
+from hong2p.olf import remove_consecutive_repeats
 from hong2p.types import DataFrameOrDataArray
 
 
@@ -168,6 +171,7 @@ def _mpl_constrained_layout(enable):
     return wrap_plot_fn
 
 
+# TODO how to give these docstrings?
 constrained_layout = _mpl_constrained_layout(True)
 no_constrained_layout = _mpl_constrained_layout(False)
 
@@ -475,24 +479,34 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
         if not group_ticklabels or labels is None:
             return labels, 1, 0
 
-        labels = pd.Series(labels)
-        n_repeats = int(len(labels) / len(labels.unique()))
-
-        # TODO TODO assert same # things from each unique element.
-        # that's what this whole tickstep thing seems to assume.
-
-        # Assumes order is preserved if labels are grouped at input.
-        # May need to calculate some other way if not always true.
-        labels = labels.unique()
+        without_consecutive_repeats, n_repeats = remove_consecutive_repeats(labels)
         tick_step = n_repeats
         offset = n_repeats / 2 - 0.5
-        return labels, tick_step, offset
+        return without_consecutive_repeats, tick_step, offset
 
-    # TODO automatically only group labels in case where all repeats are
-    # adjacent?
     # TODO make fontsize / weight more in group_ticklabels case?
     xticklabels, xstep, xoffset = grouped_labels_info(xticklabels)
     yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
+
+    def set_ticklabels(ax, x_or_y, labels, *args, **kwargs):
+        assert x_or_y in ('x', 'y')
+        if x_or_y == 'x':
+            set_fn = ax.set_xticklabels
+        elif x_or_y == 'y':
+            set_fn = ax.set_yticklabels
+
+        try:
+            set_fn(labels, *args, **kwargs)
+        # Intended to catch stuff like:
+        # "ValueError: The number of FixedLocator locations (19), usually from a call to
+        # set_ticks, does not match the number of ticklabels (16)."
+        # ...so we can provide more additional debug info.
+        except ValueError as err:
+            print('\nDebug info for following matplotlib error:\n'
+                f'{x_or_y}ticklabels={pformat(labels)}\nlen={len(labels)}\n',
+                file=sys.stderr
+            )
+            raise
 
     if xticklabels is not None:
         # TODO nan / None value aren't supported in ticklabels are they?
@@ -504,17 +518,16 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
                 xtickrotation = 'vertical'
 
         ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
-        ax.set_xticklabels(
-            xticklabels, fontsize=fontsize, fontweight=fontweight,
-            rotation=xtickrotation
+        set_ticklabels(ax, 'x', xticklabels,
+            fontsize=fontsize, fontweight=fontweight, rotation=xtickrotation
         #    rotation='horizontal' if group_ticklabels else 'vertical'
         )
 
     if yticklabels is not None:
         ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
-        ax.set_yticklabels(
-            yticklabels, fontsize=fontsize, fontweight=fontweight, rotation='horizontal'
-        #    rotation='vertical' if group_ticklabels else 'horizontal'
+        set_ticklabels(ax, 'y', yticklabels,
+            fontsize=fontsize, fontweight=fontweight, rotation='horizontal'
+            #rotation='vertical' if group_ticklabels else 'horizontal'
         )
 
     # TODO test this doesn't change rotation if we just set rotation above
