@@ -85,12 +85,14 @@ def sort_odor_list(odor_list):
     return sorted(odor_list, key=odordict_sort_key)
 
 
+# TODO how to get generated docs to show `pd.Index` instead of Index from this typehint?
 def odor_index_sort_key(level: pd.Index, sort_names=True, names_first=True,
     name_order: Optional[List[str]] = None) -> pd.Index:
     """
     Args:
-        level: a pd.Index containing one level of a MultiIndex with odor metadata.
-            elements should be odor strings.
+        level: one level from a `pd.MultiIndex` with odor metadata.
+            elements should be odor strings (as :func:`parse_odor_name` and
+            :func:`parse_log10_conc`).
 
         sort_names: whether to use odor names as part of sort key. If False, only sorts
             on concentrations.
@@ -199,12 +201,13 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to 'solvent' (+ clarify in docstring)
-    # TODO doctest examples w/ and w/o name_order
     """Sorts DataFrame by odor index/columns.
 
     Args:
-        df: DataFrame with columns/index-level names matching `is_odor_var`
-        **kwargs: passed through to odor_index_sort_key
+        df: should have columns/index-level names where `olf.is_odor_var(<col name>)`
+            returns `True`
+
+        **kwargs: passed through to :func:`odor_index_sort_key`.
 
     Notes:
     Index will be checked first, and if it contains odor information, will sort on that.

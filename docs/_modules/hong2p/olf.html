@@ -152,12 +152,14 @@
     <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">odor_list</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">odordict_sort_key</span><span class="p">)</span></div>
 
 
+<span class="c1"># TODO how to get generated docs to show `pd.Index` instead of Index from this typehint?</span>
 <div class="viewcode-block" id="odor_index_sort_key"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.odor_index_sort_key">[docs]</a><span class="k">def</span> <span class="nf">odor_index_sort_key</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">,</span> <span class="n">sort_names</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">names_first</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="n">name_order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Args:</span>
-<span class="sd">        level: a pd.Index containing one level of a MultiIndex with odor metadata.</span>
-<span class="sd">            elements should be odor strings.</span>
+<span class="sd">        level: one level from a `pd.MultiIndex` with odor metadata.</span>
+<span class="sd">            elements should be odor strings (as :func:`parse_odor_name` and</span>
+<span class="sd">            :func:`parse_log10_conc`).</span>
 
 <span class="sd">        sort_names: whether to use odor names as part of sort key. If False, only sorts</span>
 <span class="sd">            on concentrations.</span>
@@ -266,12 +268,13 @@
 <div class="viewcode-block" id="sort_odors"><a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.sort_odors">[docs]</a><span class="k">def</span> <span class="nf">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
     <span class="c1"># TODO add doctest examples clarifying how the two columns interact + what happens</span>
     <span class="c1"># to &#39;solvent&#39; (+ clarify in docstring)</span>
-    <span class="c1"># TODO doctest examples w/ and w/o name_order</span>
     <span class="sd">&quot;&quot;&quot;Sorts DataFrame by odor index/columns.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        df: DataFrame with columns/index-level names matching `is_odor_var`</span>
-<span class="sd">        **kwargs: passed through to odor_index_sort_key</span>
+<span class="sd">        df: should have columns/index-level names where `olf.is_odor_var(&lt;col name&gt;)`</span>
+<span class="sd">            returns `True`</span>
+
+<span class="sd">        **kwargs: passed through to :func:`odor_index_sort_key`.</span>
 
 <span class="sd">    Notes:</span>
 <span class="sd">    Index will be checked first, and if it contains odor information, will sort on that.</span>

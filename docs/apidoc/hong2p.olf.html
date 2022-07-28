@@ -137,8 +137,9 @@ different sufffix number for each component.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>level</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code>) – a pd.Index containing one level of a MultiIndex with odor metadata.
-elements should be odor strings.</p></li>
+<li><p><strong>level</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code>) – one level from a <cite>pd.MultiIndex</cite> with odor metadata.
+elements should be odor strings (as <a class="reference internal" href="#hong2p.olf.parse_odor_name" title="hong2p.olf.parse_odor_name"><code class="xref py py-func docutils literal notranslate"><span class="pre">parse_odor_name()</span></code></a> and
+<a class="reference internal" href="#hong2p.olf.parse_log10_conc" title="hong2p.olf.parse_log10_conc"><code class="xref py py-func docutils literal notranslate"><span class="pre">parse_log10_conc()</span></code></a>).</p></li>
 <li><p><strong>sort_names</strong> – whether to use odor names as part of sort key. If False, only sorts
 on concentrations.</p></li>
 <li><p><strong>names_first</strong> – if True, sorts on names primarily, otherwise sorts on
@@ -266,8 +267,9 @@ be used assuming equal length of all)</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>df</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code>) – DataFrame with columns/index-level names matching <cite>is_odor_var</cite></p></li>
-<li><p><strong>**kwargs</strong> – passed through to odor_index_sort_key</p></li>
+<li><p><strong>df</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code>) – should have columns/index-level names where <cite>olf.is_odor_var(&lt;col name&gt;)</cite>
+returns <cite>True</cite></p></li>
+<li><p><strong>**kwargs</strong> – passed through to <a class="reference internal" href="#hong2p.olf.odor_index_sort_key" title="hong2p.olf.odor_index_sort_key"><code class="xref py py-func docutils literal notranslate"><span class="pre">odor_index_sort_key()</span></code></a>.</p></li>
 </ul>
 </dd>
 </dl>

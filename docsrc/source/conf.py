@@ -40,6 +40,11 @@ extensions = [
     # TODO actually use
     'sphinx.ext.viewcode',
 
+    # Now that our `make github` command is also deleting+remaking the ../docs dir (to
+    # try to ensure we don't have leftover stuff), we need to have the empty .nojekyll
+    # file generate too (I just manually made and added it to ../docs before).
+    'sphinx.ext.githubpages',
+
     # TODO actually use
     'sphinx-prompt',
 

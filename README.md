@@ -1,4 +1,10 @@
 
+### Documentation
+
+Documentation [is available
+here](https://ejhonglab.github.io/hong2p/apidoc/hong2p.html).
+
+
 ### Installation
 
 Activate a virtual environment if you'd like, then:
@@ -6,6 +12,7 @@ Activate a virtual environment if you'd like, then:
 ```
 pip install git+https://github.com/ejhonglab/hong2p
 ```
+
 
 ### Usage in R
 
@@ -103,16 +110,49 @@ pip install --upgrade pip
 pip install -e .[test]
 ```
 
+#### Updating the documentation
+
+The documentation is generated via Sphinx, and hosted on Github Pages. To re-generate
+the documentation:
+```
+cd docsrc
+# (activate venv where you installed docsrc/requirements.txt)
+
+# This should overwrite the files currently in the ../docs directory.
+make github
+
+# Now we manually commit the generated ../docs directory
+git add ../docs
+git commit -m "Re-generate docs"
+git push
+```
+
+There may be a slight delay between pushing and Github running the action to update the
+Github Pages site.
+
+To just generate the docs to `docsrc/build/html`, and not overwrite the `docs`
+directory, use `make html` and open the `docsrc/build/html/index.html` file.
+
+
 #### Testing
 
+Install the test dependencies specified in `setup.py` using the `[test]` suffix to the
+package name / path in your existing install command. For example, if you installed
+editable as:
 ```
-# If for some reason `pytest --version` prints a path seemingly not managed by your
-# virtual environment (where it says "...imported from <path>"), you may benefit from
-# using `python -m pytest` instead.
-pytest
+pip install -e .
+```
+...now do:
+```
+pip install -e .[test]
 ```
 
 To just run tests not marked as "slow":
 ```
 pytest -m "not slow"
+```
+
+To run all tests:
+```
+pytest
 ```

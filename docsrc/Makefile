@@ -14,6 +14,11 @@ help:
 
 github:
 	@make html
+	# To make sure old build artifacts are not included (if we decide to not generate
+	# the documentation for one module, for instance)
+	# TODO test (and test w/o just the copy as well)
+	@rm -rf ../docs/
+	@mkdir ../docs
 	@cp -a "$(BUILDDIR)/html/." ../docs
 
 .PHONY: help Makefile
