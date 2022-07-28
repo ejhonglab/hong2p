@@ -34,9 +34,13 @@ def parse_log10_conc(odor_str: str) -> Optional[float]:
 
 
 def parse_odor_name(odor_str: str) -> str:
+    # TODO some way to get the generated docs to refer to the value for the constant
+    # rather than having to hardcode it for reference? a plugin maybe?
     """Takes formatted odor string to just the name of the odor.
 
-    >>> parse_log10_conc('ethyl acetate @ -2')
+    Input must contain `olf.conc_delimiter` ('@').
+
+    >>> parse_odor_name('ethyl acetate @ -2')
     'ethyl acetate'
     """
     assert conc_delimiter in odor_str
@@ -214,12 +218,15 @@ def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     ...     'delta_f': [1.1, 1.2, 0.9]
     ... }).set_index(['odor1', 'odor2'])
 
+    Names are sorted alphabetically by default, then within each name they are sorted by
+    concentration. Pass `names_only=False` to only sort on concentration, or
+    `names_first=False` to sort on concentrations first.
     >>> sort_odors(df)
                     delta_f
     odor1  odor2
     A @ -3 solvent      0.9
-    B @ -2 solvent      1.1
     A @ -2 solvent      1.2
+    B @ -2 solvent      1.1
 
     >>> sort_odors(df, name_order=['B','A'])
                     delta_f
@@ -395,19 +402,18 @@ def remove_consecutive_repeats(odor_lists: Sequence[Hashable]
 
     >>> without_repeats, n = remove_consecutive_repeats(['a','a','a','b','b','b'])
     >>> without_repeats
-    ['a','b']
+    ['a', 'b']
     >>> n
     3
 
     >>> without_repeats, n = remove_consecutive_repeats(['a','a','b','b','a','a'])
     >>> without_repeats
-    ['a','b','a']
+    ['a', 'b', 'a']
     >>> n
     2
 
     >>> without_repeats, n = remove_consecutive_repeats(['a','a','a','b','b'])
     Traceback (most recent call last):
-     ...
     ValueError: variable number of consecutive repeats
     """
     # In Python 3.7+, order should be guaranteed to be equal to order first encountered
