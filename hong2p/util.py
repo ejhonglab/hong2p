@@ -441,7 +441,7 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
     print_skips: bool = True, print_fast: bool = True, print_full_paths: bool = True,
     **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathPair], None, None]:
     # TODO add code example to doc
-    """
+    """Generates tuples of fly metadata and ThorImage output paths, in acquisition order
 
     Args:
         matching_substrs: If passed, only experiments whose ThorImage path contains at
@@ -778,6 +778,9 @@ def most_recent_contained_file_mtime(path) -> Optional[float]:
     Testing on Ubuntu, this does not recurse into symlinks to directories, as I want for
     at least current use case.
     """
+    # TODO maybe need to actively exclude mtime on symlinks (to directories at least?)
+    # because it will still have an mtime, but i forget whether it tracks the mtime of
+    # the referenced directory, or whether it is just when the link is created...
     files = [x for x in Path(path).rglob('*') if x.is_file()]
     if len(files) == 0:
         return None
@@ -2223,6 +2226,8 @@ def tiff_thorimage_id(tiff_filename):
 
 # TODO test that date, fly_num, thorimage_id args still work here after refactoring to
 # use wrapper
+# TODO option to keep this under analysis_dir type tree instead? or just fully switch to
+# that maybe?
 @thorimage_dir_input
 def metadata_filename(thorimage_dir):
     """Returns filename of YAML for extra metadata.
@@ -2241,8 +2246,6 @@ def metadata_filename(thorimage_dir):
 def load_metadata(*args):
     """Returns metadata from YAML, with defaults added.
     """
-    import yaml
-
     metadata_file = metadata_filename(*args)
 
     # TODO another var specifying number of frames that has *already* been
@@ -7166,6 +7169,11 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
 
         assert name not in data.coords
         # Using data[n].values didn't make a difference in one test (same result).
+        # (and didn't fix TypeError when some, but not all, group_keys are scalars, but
+        # led to a diff TypeError. may or may not have been important those vars were
+        # also not among coordinates)
+        #df = pd.DataFrame({n: data[n].values for n in group_keys})
+        #import ipdb; ipdb.set_trace()
         df = pd.DataFrame({n: data[n] for n in group_keys})
 
     group_numbers = df.groupby(group_keys, sort=sort).ngroup()
@@ -7199,9 +7207,9 @@ def add_recording_id(df, **kwargs):
 
 
 @thorimage_dir_input
-def thor2tiff(image_dir, *, output_name=None, output_basename=None, output_dir=None,
-    if_exists: str = 'err', flip_lr: Optional[bool] = None, check_round_trip=False,
-    verbose=True, _debug=False) -> Optional[np.ndarray]:
+def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
+    output_dir=None, if_exists: str = 'err', flip_lr: Optional[bool] = None,
+    check_round_trip=False, verbose=True, _debug=False) -> Optional[np.ndarray]:
     """Converts ThorImage .raw file to .tif file in same directory
 
     Args:
@@ -7226,6 +7234,8 @@ def thor2tiff(image_dir, *, output_name=None, output_basename=None, output_dir=N
     if all([x is not None for x in (output_name, output_basename)]):
         raise ValueError('only pass at most one of output_name or output_basename')
 
+    image_dir = Path(image_dir)
+
     # TODO .tif or .tiff?
     tiff_ext = '.tif'
 
@@ -7245,6 +7255,7 @@ def thor2tiff(image_dir, *, output_name=None, output_basename=None, output_dir=N
         if output_dir is None:
             output_dir = image_dir
 
+        # TODO maybe just make it?
         assert isdir(output_dir), f'output_dir={output_dir} was not a directory'
         output_name = join(output_dir, output_basename)
 
