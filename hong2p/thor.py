@@ -12,12 +12,13 @@ from pprint import pprint, pformat
 import glob
 from itertools import zip_longest
 import functools
+from pathlib import Path
 from typing import Union, List, Tuple
 
 import numpy as np
 import pandas as pd
 
-from hong2p.types import Pathlike, Path, PathPair
+from hong2p.types import Pathlike, PathPair
 
 
 _acquisition_trigger_names = ('scope_pin',)
@@ -1609,7 +1610,7 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
         odor_timing_names = _odor_timing_names
 
     # This also actually works w/ stuff of type np.str_, which old comparison did not.
-    if not isinstance(thorsync_input, str):
+    if not isinstance(thorsync_input, (str, Path)):
         # Just assuming it's an appropriate DataFrame input in this case.
         df = thorsync_input
         df_was_passed_in = True
@@ -1635,9 +1636,7 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
 
 
     # (when the valve(s) are given the signal to open)
-    odor_onsets = get_col_onset_indices(df,
-        odor_timing_names, threshold=2.5
-    )
+    odor_onsets = get_col_onset_indices(df, odor_timing_names, threshold=2.5)
 
     odor_onset_times = df[time_col].values[odor_onsets]
 
