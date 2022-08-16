@@ -198,14 +198,23 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # cols->key fns) to sort before / after odors (as well as orders via another dict?)?)
 # (or just add columns to sort odors w/in groups of? but prob wouldn't wanna use
 # groupby, rather find existing consecutive groups and sort within...)
-def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
+    panel2name_order: Optional[Dict[str, List[str]]] = None, **kwargs
+    ) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to 'solvent' (+ clarify in docstring)
+    # TODO doctest examples using panel_order+panel2name_order
     """Sorts DataFrame by odor index/columns.
 
     Args:
         df: should have columns/index-level names where `olf.is_odor_var(<col name>)`
             returns `True`
+
+        panel_order: list of str panel names. If passed, must also provide
+            panel2name_order. Will sort panels first, then odors within each panel.
+
+        panel2name_order: maps str panel names to lists of odor name orders, for each.
+            If passed, must also pass panel_order.
 
         **kwargs: passed through to :func:`odor_index_sort_key`.
 
@@ -238,21 +247,72 @@ def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     A @ -3 solvent      0.9
     A @ -2 solvent      1.2
     """
+    # TODO also raise in reverse case, unless i want to support default panel_order
+    # (e.g. alphabetical)
+    # TODO and do i want to support sorting just on concs w/in panels (while sorting on
+    # panels first, via panel_order)?
+    if panel2name_order is None and panel_order is not None:
+        raise ValueError('must pass panel2name_order if supplying panel_order')
+
+    # TODO want to support panel2name_order=None when panel_order is passed?
+    # could just check panel2name_order not-None if not...
+    panel_presort = panel_order is not None or panel2name_order is not None
+    if panel_presort:
+        if 'name_order' in kwargs:
+            raise ValueError('when specifying panel_order, use panel2name_order '
+                'instead of name_order'
+            )
 
     def levels_to_sort(index):
-        return [k for k in index.names if is_odor_var(k)]
+        # Sorting so that if something were to accidentally re-order e.g. 'odor1',
+        # 'odor2' levels, the sort order would be invariant to that, with 'odor1' always
+        # taking precedence in the sort.
+        return sorted([k for k in index.names if is_odor_var(k)])
 
     found_odor_multiindex = False
     for axis_name in ('index', 'columns'):
 
-        # Sorting so that if something were to accidentally re-order e.g. 'odor1',
-        # 'odor2' levels, the sort order would be invariant to that, with 'odor1' always
-        # taking precedence in the sort.
-        levels = sorted(levels_to_sort(getattr(df, axis_name)))
+        index = getattr(df, axis_name)
+        levels = levels_to_sort(index)
+
+        # TODO maybe check that if len(levels) == 0 and panel_presort, we don't have
+        # 'panel' in other indices?
 
         if len(levels) > 0:
-            # TODO check my level sort key fn works in both case of 1 level passed in as
-            # well as 2
+            found_odor_multiindex = True
+
+            if panel_presort:
+                if 'panel' not in index.names:
+                    raise ValueError('panel sorting requested, but axis had odor levels'
+                        "without a 'panel' level"
+                    )
+
+                # TODO for a case where no elements of panel2name_order value
+                # iterables have overlapping names, test that this method of
+                # splitting->sorting->recombining is equivalent to giving a simple key
+                # for the panel + sorting w/ one name_order constructed from all of the
+                # panel2name_order values
+
+                sorted_panel_dfs = []
+                # TODO do i need to do level='panel' rather than implicit by='panel'
+                # TODO maybe just set sort=True if panel_order not specified
+                # (and if i want to allow that...)
+                panels = []
+                for panel, pdf in df.groupby('panel', axis=axis_name, sort=False,
+                    dropna=False):
+
+                    name_order = panel2name_order[panel]
+
+                    sorted_pdf = sort_odors(pdf, name_order=name_order, **kwargs)
+                    sorted_panel_dfs.append(sorted_pdf)
+                    panels.append(panel)
+
+                sorted_panel_dfs = [x for _, x in sorted(zip(panels, sorted_panel_dfs),
+                    key=lambda y: panel_order.index(y[0])
+                )]
+                df = pd.concat(sorted_panel_dfs, axis=axis_name)
+                continue
+
             df = df.sort_index(
                 key=lambda x: odor_index_sort_key(x, **kwargs),
                 axis=axis_name,
@@ -262,47 +322,59 @@ def sort_odors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
                 # preserves input order.
                 kind='mergesort',
             )
-            found_odor_multiindex = True
 
-    if not found_odor_multiindex:
-        odor_cols = [c for c in df.columns if is_odor_var(c)]
-
-        if len(odor_cols) == 0:
-            raise ValueError('df had no index levels or columns with hong2p.olf.'
-                'is_odor_var(name) == True'
-            )
-
-        if isinstance(df.index, pd.MultiIndex):
-            raise NotImplementedError('sorting odor columns not supported when '
-                'there is an existing MultiIndex. call df.set_index(...) to include the'
-                ' odor columns, then pass that as input.'
-            )
-
-        # TODO also try to keep order of columns same
-        # (current approach moves odor columns to the start)
-        temp_index_col = '_old_index'
-        assert temp_index_col not in df.columns
-        # Would have used reset_index(), but didn't see an argument to change the name
-        # of the column it creates.
-        df = df.copy()
-        df[temp_index_col] = df.index
-        old_index_name = df.index.name
-
-        df = sort_odors(df.set_index(odor_cols), **kwargs).reset_index()
-
-        df = df.set_index(temp_index_col)
-        df.index.name = old_index_name
+    # Not just returning in loop, because we may need to sort *both* the rows and the
+    # columns (e.g. if the input is a correlation matrix).
+    if found_odor_multiindex:
         return df
 
+    odor_cols = [c for c in df.columns if is_odor_var(c)]
+
+    if len(odor_cols) == 0:
+        raise ValueError('df had no index levels or columns with hong2p.olf.'
+            'is_odor_var(name) == True'
+        )
+
+    if isinstance(df.index, pd.MultiIndex):
+        raise NotImplementedError('sorting odor columns not supported when '
+            'there is an existing MultiIndex. call df.set_index(...) to include the'
+            ' odor columns, then pass that as input.'
+        )
+
+    if panel_presort:
+        if 'panel' not in df.columns:
+            raise ValueError("'panel' not in df.columns, though odors are and panel"
+                ' sorting requested'
+            )
+        odor_cols = ['panel'] + odor_cols
+
+    # TODO also try to keep order of columns same
+    # (current approach moves odor columns to the start)
+    temp_index_col = '_old_index'
+    assert temp_index_col not in df.columns
+    # Would have used reset_index(), but didn't see an argument to change the name
+    # of the column it creates.
+    df = df.copy()
+    df[temp_index_col] = df.index
+    old_index_name = df.index.name
+
+    df = sort_odors(df.set_index(odor_cols), **kwargs).reset_index()
+
+    df = df.set_index(temp_index_col)
+    df.index.name = old_index_name
     return df
 
 
 # TODO maybe move to viz.py, since this is mainly intended as as helper for
 # viz.with_panel_orders plotting function wrapper?
+# TODO alias for the panel2name_order type (+ use in new kwarg to sort_odors too)
 def panel_odor_orders(df: pd.DataFrame,
     panel2name_order: Optional[Dict[str, List[str]]] = None, **kwargs):
     # TODO doctest example
-    """Returns dict of panel names to ordered unique odor strs.
+    # TODO test+clarify in doc whether odor names in df can be a subset of those from a
+    # particular panel's name_order (and whether or not solvent/pfo is a special case
+    # here)
+    """Returns dict of panel names to ordered unique odor strs (with concentration).
 
     Args:
         df: DataFrame with columns 'panel' and >=1 matching `is_odor_var`

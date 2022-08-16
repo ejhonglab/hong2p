@@ -33,6 +33,12 @@ def test_sort_odors(rng):
     # TODO should these all just be separate tests? or grouped into a few?
     # use pytest parameterize?
     #
+    # TODO add test w/ name_order containing names not in data (shouldn't affect
+    # anything)
+    #
+    # TODO test case w/ both rows and columns needing sorting (w/ and w/o panel
+    # presorting)
+    #
     # Tuples of (odor1 input, kwargs to sort_odors, expected output odor1)
     input_kwarg_output_tuples = [
         # These first two were just copied from my doctest examples here.
@@ -155,4 +161,5 @@ def test_sort_odors(rng):
 
     # TODO TODO (if i implement / want to implement) sort_odors kwarg(s) to sort on
     # other keys before / after sorting on odors, test that here too
-    # (could probably just do sequential sorts w/ a stable sort)
+    # (could probably just do sequential sorts w/ a stable sort. actually, not if i want
+    # to sort on something with higher lexsort priority than sorting on odors...)
