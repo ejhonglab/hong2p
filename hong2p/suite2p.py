@@ -194,6 +194,13 @@ def gui_params_equal(ops1: Suite2pOps, ops2: Suite2pOps, print_diff: bool = True
         # (e.g. (48, 48)).
         d['block_size'] = tuple(d['block_size'])
 
+        # Seen cases where this is a scalar, as well as when it's a length-2 list
+        # (w/ the scalar repeated)
+        diam = d['diameter']
+        if not isinstance(diam, list):
+            diam = [diam, diam]
+        d['diameter'] = diam
+
         # TODO TODO TODO need to pre-process 'diameter' too. at least in some cases, it
         # seems, 0->[0,0]
 
