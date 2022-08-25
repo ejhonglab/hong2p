@@ -171,3 +171,21 @@ def test_diff_dataframes_arr_naneq():
     df2.loc[0, 'arr1'][1] = np.nan
     assert util.diff_dataframes(df1, df2) is None
 
+
+def test_const_ranges():
+    # TODO what should happen in case where [] is input? raise an error in const_ranges?
+    # return empty list?
+    rs = util.const_ranges([])
+    assert rs == []
+
+    rs = util.const_ranges([0])
+    assert rs == [(0, 0)]
+
+    rs = util.const_ranges([0, 1])
+    assert rs == [(0, 0), (1, 1)]
+
+    rs = util.const_ranges([0, 1, 1])
+    assert rs == [(0, 0), (1, 2)]
+
+    rs = util.const_ranges([0, 0, 1])
+    assert rs == [(0, 1), (2, 2)]

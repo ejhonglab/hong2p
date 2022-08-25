@@ -853,6 +853,30 @@ def md5(fname):
     return hash_md5.hexdigest()
 
 
+def const_ranges(xs):
+    """Returns tuples of indices for largest contiguous constant-value ranges in input.
+    """
+    ranges = []
+    x_prev = None
+    curr_start = 0
+    for i, x in enumerate(xs):
+        assert x is not None, 'need a new sentinel'
+        if x != x_prev:
+            if i > 0:
+                ranges.append((curr_start, i - 1))
+
+            curr_start = i
+
+        x_prev = x
+
+    if len(xs) > 0:
+        # Since elements are only added above at level *changes*, we will always need to
+        # add one at the end of the list.
+        ranges.append((curr_start, len(xs) - 1))
+
+    return ranges
+
+
 # TODO move to project specific repo
 def odorset_name(df_or_odornames):
     """Returns name for set of odors in DataFrame.

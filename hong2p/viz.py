@@ -293,6 +293,9 @@ def with_panel_orders(plot_fn, panel2order=None, **fn_kwargs):
 @callable_ticklabels
 # TODO TODO do [x|y]ticklabels now need to be extracted from kwargs? if seaborn doesn't
 # handle that, then the @callable_ticklabels decorator is doing nothing here.
+# TODO modify to call matshow internally, rather than relying on seaborn much/at all?
+# (to get the convenience features i added to matshow...) (or at least make another
+# decorator like callable_ticklabels to deal w/ [h|v]line_level_fn matshow kwargs)
 def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=None,
     ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
     row_cluster=True, col_cluster=True, row_linkage=None, col_linkage=None,
@@ -395,13 +398,17 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 # but then again i'm currently using xlabel for a "title" here...
 # TODO do any uses of this actually use the returned `im` (output of plt.matshow)?
 # if not, maybe delete?
+# TODO modify group_ticklabels / add option to support contiguous, but varying-length,
+# groups (bar along edge of plot indicating extent of group label + group label placed
+# by center of that bar)
 @constrained_layout
 @callable_ticklabels
-def matshow(df, title=None, ticklabels=None, xticklabels=None,
-    yticklabels=None, xtickrotation=None, ylabel=None, ylabel_rotation=None,
-    ylabel_kws=None, cbar_label=None, group_ticklabels=False, ax=None, fontsize=None,
-    fontweight=None, figsize=None, dpi=None, transpose_sort_key=None, colorbar=True,
-    cbar_shrink=1.0, cbar_kws=None, **kwargs):
+def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
+    xtickrotation=None, ylabel=None, ylabel_rotation=None, ylabel_kws=None,
+    cbar_label=None, group_ticklabels=False, vline_level_fn=None,
+    hline_level_fn=None, linewidth=0.5, ax=None, fontsize=None, fontweight=None,
+    figsize=None, dpi=None, transpose_sort_key=None, colorbar=True, cbar_shrink=1.0,
+    cbar_kws=None, **kwargs):
     """
     Args:
         transpose_sort_key (None | function): takes df.index/df.columns and compares
@@ -426,6 +433,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
     # use that as input to sort_key_val in appropriate instead
     if transpose_sort_key is not None:
         if any([x is not None for x in [ticklabels, xticklabels, yticklabels]]):
+            # TODO maybe update just to only allowing `ticklabels` (since then x,y
+            # should be the same, which i think is the only case where we do want
+            # transpose_sort_key anyway)
             raise NotImplementedError('transpose_sort_key not supported if any '
                 'ticklabels are explicitly passed'
             )
@@ -550,6 +560,24 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None,
             ylabel_rotation=ylabel_rotation, ylabel_kws=ylabel_kws
         )
         ax.set_ylabel(ylabel, fontsize=(fontsize + 1.5), **ylabel_kws)
+
+    # TODO light refactoring to share x/y (v/x) code?
+    # TODO TODO for both of these, make linewidth a constant fration of cell
+    # width/height (whichever is appropriate) (at least by default)
+    # TODO what is default linewidth here anyway? unclear. 1?
+    if hline_level_fn is not None:
+        ranges = util.const_ranges([hline_level_fn(x) for x in yticklabels])
+        line_positions = [x[1] + 0.5 for x in ranges[:-1]]
+        for v in line_positions:
+            # 'w' = white. https://matplotlib.org/stable/tutorials/colors/colors.html
+            ax.axhline(v, linewidth=linewidth, color='w')
+
+    if vline_level_fn is not None:
+        ranges = util.const_ranges([vline_level_fn(x) for x in xticklabels])
+        line_positions = [x[1] + 0.5 for x in ranges[:-1]]
+        for v in line_positions:
+            # 'w' = white. https://matplotlib.org/stable/tutorials/colors/colors.html
+            ax.axvline(v, linewidth=linewidth, color='w')
 
     return fig, im
 
