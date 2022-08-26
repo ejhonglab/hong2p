@@ -856,12 +856,15 @@ def md5(fname):
 def const_ranges(xs):
     """Returns tuples of indices for largest contiguous constant-value ranges in input.
     """
+    # Since I want to allow xs to contain None, the sentinel I would have otherwise used
+    # https://python-patterns.guide/python/sentinel-object/
+    sentinel = object()
+
+    x_prev = sentinel
     ranges = []
-    x_prev = None
     curr_start = 0
     for i, x in enumerate(xs):
-        assert x is not None, 'need a new sentinel'
-        if x != x_prev:
+        if x_prev is not sentinel and x != x_prev:
             if i > 0:
                 ranges.append((curr_start, i - 1))
 

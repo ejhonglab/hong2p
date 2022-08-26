@@ -17,8 +17,15 @@ import pandas as pd
 solvent_str = 'solvent'
 conc_delimiter = '@'
 
-def parse_log10_conc(odor_str: str) -> Optional[float]:
+def parse_log10_conc(odor_str: str, *, require=False) -> Optional[float]:
     """Takes formatted odor string to float log10 vol/vol concentration.
+
+    Returns `None` if input does not contain `olf.conc_delimiter`.
+
+    Args:
+        odor_str: contains odor name, and generally also concentration
+
+        require: if `True`, raises `ValueError` if `olf.conc_delimiter` is not in input
 
     >>> parse_log10_conc('ethyl acetate @ -2')
     -2.0
@@ -26,6 +33,9 @@ def parse_log10_conc(odor_str: str) -> Optional[float]:
     # If conc_delimiter is in the string, we are assuming that it should be followed by
     # parseable float concentration. Letting it err below if that is not the case.
     if conc_delimiter not in odor_str:
+        if require:
+            raise ValueError(f'{odor_str=} did not contain {conc_delimiter=}')
+
         return None
 
     parts = odor_str.split(conc_delimiter)
@@ -38,7 +48,10 @@ def parse_odor_name(odor_str: str) -> str:
     # rather than having to hardcode it for reference? a plugin maybe?
     """Takes formatted odor string to just the name of the odor.
 
-    Input must contain `olf.conc_delimiter` ('@').
+    Args:
+        odor_str: contains odor name and concentration.
+            name and concentration must be separated by `olf.conc_delimiter` ('@'), with
+            whitespace on either side of it.
 
     >>> parse_odor_name('ethyl acetate @ -2')
     'ethyl acetate'
