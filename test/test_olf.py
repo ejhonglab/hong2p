@@ -29,6 +29,7 @@ def _odor2(df):
     return _odor_level(df, 2)
 
 
+# TODO test panel2name_order + panel_order kwargs
 def test_sort_odors(rng):
     # TODO should these all just be separate tests? or grouped into a few?
     # use pytest parameterize?

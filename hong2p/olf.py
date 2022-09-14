@@ -7,6 +7,7 @@ somewhat heavy dependencies that the analysis side of things will generally not 
 """
 
 from collections import Counter
+from pprint import pprint
 import warnings
 from typing import Union, Sequence, Optional, Tuple, List, Dict, Hashable
 
@@ -100,7 +101,7 @@ def sort_odor_list(odor_list):
 
 # TODO how to get generated docs to show `pd.Index` instead of Index from this typehint?
 def odor_index_sort_key(level: pd.Index, sort_names=True, names_first=True,
-    name_order: Optional[List[str]] = None) -> pd.Index:
+    name_order: Optional[List[str]] = None, _debug: bool = False) -> pd.Index:
     """
     Args:
         level: one level from a `pd.MultiIndex` with odor metadata.
@@ -212,8 +213,8 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # (or just add columns to sort odors w/in groups of? but prob wouldn't wanna use
 # groupby, rather find existing consecutive groups and sort within...)
 def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
-    panel2name_order: Optional[Dict[str, List[str]]] = None, **kwargs
-    ) -> pd.DataFrame:
+    panel2name_order: Optional[Dict[str, List[str]]] = None, _debug: bool = False,
+    **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to 'solvent' (+ clarify in docstring)
     # TODO doctest examples using panel_order+panel2name_order
@@ -276,6 +277,8 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
                 'instead of name_order'
             )
 
+    kwargs['_debug'] = _debug
+
     def levels_to_sort(index):
         # Sorting so that if something were to accidentally re-order e.g. 'odor1',
         # 'odor2' levels, the sort order would be invariant to that, with 'odor1' always
@@ -292,6 +295,10 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
         # 'panel' in other indices?
 
         if len(levels) > 0:
+            if _debug:
+                print(f'found odor MultiIndex on axis={axis_name}')
+                print(f'odor levels to sort: {levels}')
+
             found_odor_multiindex = True
 
             if panel_presort:
@@ -315,6 +322,10 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
                     dropna=False):
 
                     name_order = panel2name_order[panel]
+
+                    if _debug:
+                        print(f'{panel=}, name_order:')
+                        pprint(name_order)
 
                     sorted_pdf = sort_odors(pdf, name_order=name_order, **kwargs)
                     sorted_panel_dfs.append(sorted_pdf)
@@ -371,7 +382,9 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
     df[temp_index_col] = df.index
     old_index_name = df.index.name
 
-    df = sort_odors(df.set_index(odor_cols), **kwargs).reset_index()
+    df = sort_odors(df.set_index(odor_cols),
+        panel_order=panel_order, panel2name_order=panel2name_order, **kwargs
+    ).reset_index()
 
     df = df.set_index(temp_index_col)
     df.index.name = old_index_name
