@@ -790,8 +790,9 @@ def most_recent_contained_file_mtime(path) -> Optional[float]:
 
 # TODO maybe accept dict of names / values? which pd fn to copy the interfact of
 # names/values from (DataFrame creation probably)?
+# TODO test
 def addlevel(df, names, values, *, axis='index'):
-    """Add level to pandas MultiIndex
+    """Add level(s) to pandas MultiIndex
 
     Intended to be an inverse to pandas.DataFrame.droplevel. pandas.DataFrame.set_index
     with `append=True` would work *except* that there is no `axis` kwarg to that
@@ -7371,3 +7372,138 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     # though...)?
     return movie
 
+
+# TODO rename from melt (if that's not the closest-functionality pandas fn)?
+# TODO still want all these kwargs?
+# TODO get to work w/ xarray input too
+# TODO TODO and also support case where input DataArray has one dimension along
+# which a series of symmetric matrices have been concatenated, and handle that too
+# (e.g. shape (5, 27, 27) series of 5 correlation matrices, one for each of 5 flies)
+# TODO test that it also works w/o MultiIndex indices
+def melt_symmetric(symmetric_df, drop_constant_levels=True,
+    suffixes=('_a', '_b'), name=None, keep_duplicate_values=False):
+    """Takes a symmetric DataFrame to a tidy Series with unique values.
+
+    Symmetric means the row and columns indices are equal, and values should
+    be a symmetric matrix.
+    """
+    # This is actually not dependent on the level names / .name (if we wanted to check
+    # those + the types as well, we'd use .identical(...)), so it's ok if the
+    # columns/index are already e.g. called 'odor' & 'odor_b', respectively.
+    assert symmetric_df.columns.equals(symmetric_df.index)
+
+    # TODO put behind a flag at the minimum?
+    symmetric_df = symmetric_df.copy()
+    symmetric_df.dropna(how='all', axis=0, inplace=True)
+    symmetric_df.dropna(how='all', axis=1, inplace=True)
+    assert symmetric_df.notnull().all(axis=None), 'not tested w/ non-all NaN'
+
+    multiindices = False
+    # Assuming index/columns are the same type (either MultiIndex or not)
+    if isinstance(symmetric_df.index, pd.MultiIndex):
+        multiindices = True
+
+    # If identical(...) fails, that should mean the .names/.name attributes differed
+    # (formally the dtypes could have differed too), as the .equals(...) assertion above
+    # passed.
+    if not symmetric_df.columns.identical(symmetric_df.index):
+        # TODO factor out?
+        def get_index_names(index):
+            return index.names if multiindices else [index.name]
+
+        col_names =  get_index_names(symmetric_df.columns)
+        index_names = get_index_names(symmetric_df.index)
+
+        # TODO use ValueError rather than assertions
+        assert all(
+            x.endswith(suffixes[1]) for x in col_names
+        )
+        assert all(
+            x.endswith(suffixes[0]) for x in index_names
+        )
+    else:
+        # TODO make all of this index name/level names renaming conditional on kwarg?
+        if multiindices:
+            # TODO adapt to work in non-multiindex case too! (rename there?)
+            symmetric_df.index.rename([n + suffixes[0] for n in
+                symmetric_df.index.names], inplace=True
+            )
+            symmetric_df.columns.rename([n + suffixes[1] for n in
+                symmetric_df.columns.names], inplace=True
+            )
+        else:
+            # TODO TODO maybe i still want to do this in the multiindex case tho?
+            # would it break my old code that used this in kc_natural_mixes?
+            old_name = symmetric_df.index.name
+            assert old_name == symmetric_df.columns.name
+            symmetric_df.index.name = f'{old_name}{suffixes[0]}'
+            symmetric_df.columns.name = f'{old_name}{suffixes[1]}'
+
+    # TODO maybe always test that triu equals tril tho (or w/ a _checks=True set)
+
+    # To de-clutter what would otherwise become a highly-nested index.
+    if multiindices and drop_constant_levels:
+        # TODO may need to call index.remove_unused_levels() first, if using
+        # levels here... (see docs of that remove fn)
+        constant_levels = [i for i, levels in enumerate(symmetric_df.index.levels)
+            if len(levels) == 1
+        ]
+        symmetric_df = symmetric_df.droplevel(constant_levels, axis='index')
+        symmetric_df = symmetric_df.droplevel(constant_levels, axis='columns')
+
+    # TODO maybe an option to interleave the new index names
+    # (so it's like name1_a, name1_b, ... rather than *_a, *_b)
+    # or would that not ever really be useful?
+
+    if keep_duplicate_values:
+        tidy = symmetric_df.stack(level=symmetric_df.columns.names)
+        assert tidy.shape == (np.prod(symmetric_df.shape),)
+    else:
+        # From: https://stackoverflow.com/questions/34417685
+        keep = np.triu(np.ones(symmetric_df.shape)).astype('bool')
+        masked = symmetric_df.where(keep)
+        n_nonnull = masked.notnull().sum().sum()
+        # We already know both elements of shape are the same from equality
+        # check on indices above.
+        n = symmetric_df.shape[0]
+        # The right expression is the number of elements expected for the
+        # triangular of a square matrix w/ side length n, if the diagonal
+        # is INCLUDED.
+        assert n_nonnull == (n * (n + 1) / 2)
+
+        # TODO make sure this also still works in non-multiindex case!
+        tidy = masked.stack(level=masked.columns.names)
+        assert tidy.shape == (n_nonnull,)
+
+    tidy.name = name
+    return tidy
+
+
+# TODO rename if it could make it more accurate
+def invert_melt_symmetric(ser, suffixes=('_a', '_b')):
+    """
+    """
+    assert len(ser.shape) == 1, 'not a series'
+    assert len(ser.index.names) == len(set(ser.index.names)), \
+        'index names should be unique'
+
+    assert len(suffixes) == 2 and len(set(suffixes)) == 2
+    s0, s1 = suffixes
+
+    levels_to_drop = set(ser.index.names)
+    col_prefixes = []
+    for c in ser.index.names:
+        if type(c) is not str:
+            continue
+
+        if c.endswith(s0):
+            prefix = c[:-len(s0)]
+            if (prefix + s1) in ser.index.names:
+                col_prefixes.append(prefix)
+                levels_to_drop.remove(prefix + s0)
+                levels_to_drop.remove(prefix + s1)
+
+    levels_to_drop = list(levels_to_drop)
+    # This does also work in the case where `levels_to_drop` is empty.
+    ser = ser.droplevel(levels_to_drop)
+    return ser.unstack([p + s0 for p in col_prefixes])
