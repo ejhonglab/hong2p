@@ -1079,7 +1079,7 @@ class Segmentation(QWidget):
         # (to threshold float CNMF components)
         self.footprint_df.sort_index(inplace=True)
         ijrois = []
-        # Just since, as-is, closed_mpl_contours will use current MPL ax,
+        # Just since, as-is, plot_closed_contours will use current MPL ax,
         # and pyqt5 will apparently make a new figure and show it when this call
         # is done.
         # TODO don't have plt... cant do this. can i get plt? how to
@@ -1103,7 +1103,7 @@ class Segmentation(QWidget):
             # boundary, to get them to overlap w/ cnmf util plots...
             # (adding 0.5 to contour before casting seemed to produce a similar
             # problem in opposite direction)
-            ij_contour = (util.closed_mpl_contours(footprint,
+            ij_contour = (viz.plot_closed_contours(footprint,
                 if_multiple='take_largest')).astype(np.int16)
 
             # TODO need to subtract one point or something? need to order?
@@ -4123,10 +4123,11 @@ class ROIAnnotation(QWidget):
                 for c, f in near_footprints.items():
                     # TODO maybe indicate somehow visually if contour is cutoff
                     # (not?)hatched? don't draw as closed? diff color?
-                    near_footprint_contours[c] = \
-                        util.closed_mpl_contours(f, ax, colors='blue')
+                    near_footprint_contours[c] = viz.plot_closed_contours(f, ax,
+                        colors='blue'
+                    )
 
-                contour = util.closed_mpl_contours(cropped_footprint, ax,
+                contour = viz.plot_closed_contours(cropped_footprint, ax,
                     colors='red'
                 )
             else:

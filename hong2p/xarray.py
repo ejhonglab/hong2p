@@ -9,6 +9,9 @@ import pandas as pd
 import xarray as xr
 
 
+# TODO fn for getting all coordinates (in index or not?) associated w/ particular
+# dimension
+
 def is_scalar_coord(arr: xr.DataArray) -> bool:
     """Whether item from <DataArray>.coords.values() corresponds to a scalar coordinate.
     """

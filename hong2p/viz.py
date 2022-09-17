@@ -7,7 +7,7 @@ from os.path import join, exists
 import time
 import functools
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 from pprint import pformat
 import warnings
 
@@ -17,6 +17,7 @@ import xarray as xr
 from scipy.cluster.hierarchy import linkage
 import matplotlib.patches as patches
 import matplotlib as mpl
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -610,20 +611,283 @@ def add_colorbar(fig, im, label=None, shrink=1.0, **kwargs):
     return cbar
 
 
-def image_grid(image_list, **imshow_kwargs):
+def contour_center_of_mass(contour):
+    # TODO doc shape / type of contour
+    # Taken from ImportanceOfBeingErnests's answer here:
+    # https://stackoverflow.com/questions/48168880
+    # calculate center of mass of a closed polygon
+    x = contour[:, 0]
+    y = contour[:, 1]
+    g = (x[:-1] * y[1:] - x[1:] * y[:-1])
+    A = 0.5 * g.sum()
+    cx = ((x[:-1] + x[1:]) * g).sum()
+    cy = ((y[:-1] + y[1:]) * g).sum()
+    return 1. / (6 * A) * np.array([cx, cy])
+
+
+def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None,
+    label: Optional[str] = None, text_kws: Optional[dict] = None, colors='red',
+    linewidths=1.2, linestyles='dotted', **kwargs):
+    # TODO doc / delete
+    """Plots line around the contiguous positive region(s) in footprint.
+
+    Args:
+        ax: Axes to plot onto. will use current Axes otherwise.
+
+        if_multiple: 'take_largest'|'join'|'err'. what to do if there are multiple
+            closed contours within footprint.
+
+        **kwargs: passed through to matplotlib `ax.contour` call
+    """
+    # NOTE: linewidths=0.8 seems good for linestyles='solid', but I prefer thicker for
+    # dotted.
+
+    if ax is None:
+        ax = plt.gca()
+
+    # TODO TODO fix what seems to be a (1, 1) pixel offset of contour wrt footprint
+    # passed in (when plotted on same axes).
+    # TODO TODO does extent= kwarg to contour call just change the plotted range, or
+    # would it prevent my padding code from fixing footprint-touching-border cases, if
+    # i were to find values for extent= that would invert plotting offset?
+    if _pad:
+        # I needed to pad so that footprints touching the edge of the image would still
+        # get contours correctly (I believe). Not sure how to fix the 1 pixel offset in
+        # plotting without changing contour that is returned.
+        dims = footprint.shape
+        padded_footprint = np.zeros(tuple(d + 2 for d in dims))
+        padded_footprint[tuple(slice(1,-1) for _ in dims)] = footprint
+
+        mpl_contour = ax.contour(padded_footprint > 0, [0.5], colors=colors,
+            linewidths=linewidths, linestyles=linestyles,
+            #extent=(0, dims[0] - 1, 0, dims[1] - 1),
+            **kwargs
+        )
+        #mpl_contour_nopad = ax.contour(footprint > 0, [0.5], colors=colors,
+        #    linewidths=linewidths, linestyles=linestyles, **kwargs
+        #)
+    else:
+        # Checking for what I believe was the reason we needed padding, though it might
+        # not affect plotting if that's all we want in _pad=False case anyway
+        positive = footprint > 0
+        assert not any([
+            np.array(positive[0, :]).any(),
+            np.array(positive[-1, :]).any(),
+            np.array(positive[:, 0]).any(),
+            np.array(positive[:, -1]).any(),
+        ])
+        mpl_contour = ax.contour(positive, [0.5], colors=colors,
+            linewidths=linewidths, linestyles=linestyles, **kwargs
+        )
+
+    # TODO which of these is actually > 1 in multiple comps case?
+    # handle that one approp w/ err_on_multiple_comps!
+    assert len(mpl_contour.collections) == 1
+
+    paths = mpl_contour.collections[0].get_paths()
+
+    if len(paths) != 1:
+        if if_multiple == 'err':
+            raise RuntimeError('multiple disconnected paths in one footprint')
+
+        elif if_multiple == 'take_largest':
+            raise NotImplementedError
+
+            largest_sum = 0
+            largest_idx = 0
+            total_sum = 0
+            for p in range(len(paths)):
+                path = paths[p]
+
+                # TODO maybe replace mpl stuff w/ cv2 drawContours? (or related...) (fn
+                # now in here as contour2mask)
+                # TODO shouldn't these (if i want to keep this branch anyway...)
+                # be using padded_footprint instead of footprint?
+                mask = np.ones_like(footprint, dtype=bool)
+                for x, y in np.ndindex(footprint.shape):
+                    # TODO TODO not sure why this seems to be transposed, but it
+                    # does (make sure i'm not doing something wrong?)
+                    if path.contains_point((x, y)):
+                        mask[x, y] = False
+                # Places where the mask is False are included in the sum.
+                path_sum = MaskedArray(footprint, mask=mask).sum()
+                # TODO maybe check that sum of all path_sums == footprint.sum()?
+                # seemed there were some paths w/ 0 sum... cnmf err?
+                '''
+                print('mask_sum:', (~ mask).sum())
+                print('path_sum:', path_sum)
+                print('regularly masked sum:', footprint[(~ mask)].sum())
+                plt.figure()
+                plt.imshow(mask)
+                plt.figure()
+                plt.imshow(footprint)
+                plt.show()
+                import ipdb; ipdb.set_trace()
+                '''
+                if path_sum > largest_sum:
+                    largest_sum = path_sum
+                    largest_idx = p
+
+                total_sum += path_sum
+
+            footprint_sum = footprint.sum()
+            # TODO float formatting / some explanation as to what this is
+            print('footprint_sum:', footprint_sum)
+            print('total_sum:', total_sum)
+            print('largest_sum:', largest_sum)
+            # TODO is this only failing when stuff is overlapping?
+            # just merge in that case? (wouldn't even need to dilate or
+            # anything...) (though i guess then the inequality would go the
+            # other way... is it border pixels? just ~dilate by one?)
+            # TODO fix + uncomment
+            #assert np.isclose(total_sum, footprint_sum)
+            path = paths[largest_idx]
+
+        elif if_multiple == 'join':
+            raise NotImplementedError
+    else:
+        path = paths[0]
+
+    if label is not None:
+        if if_multiple != 'err':
+            raise NotImplementedError('label currently only supported for '
+                "if_multiple='err'"
+            )
+
+        assert len(mpl_contour.allsegs) == 1
+        assert len(mpl_contour.allsegs[-1]) == 1
+        # Also partially taken from https://stackoverflow.com/questions/48168880
+        cx, cy = contour_center_of_mass(mpl_contour.allsegs[-1][0])
+
+        if text_kws is None:
+            text_kws = dict()
+
+        default_text_kws = {
+            'color': colors,
+            'horizontalalignment': 'center',
+            'fontweight': 'bold',
+            # Default should be 10.
+            'fontsize': 8,
+        }
+        for k, v in default_text_kws.items():
+            if k not in text_kws:
+                text_kws[k] = v
+
+        ax.text(cx, cy, label, **text_kws)
+
+    # TODO TODO need to test that anything that used return value here is still correct,
+    # now that i deleted old padding code, after it seemed to be just causing an offset
+    # in plot_rois
+
+    contour = path.vertices
+    # Correct index change caused by padding.
+    return contour - 1
+
+
+def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
+    cmap='gray', **imshow_kwargs):
+
+    def ceil(x):
+        return int(np.ceil(x))
+
+    def n_other_axis(n_first_axis):
+        return ceil(len(image_list) / n_first_axis)
+
+    if nrows is None and ncols is None:
+        n = ceil(np.sqrt(len(image_list)))
+        nrows = n
+        ncols = n
+
+    elif nrows is None and ncols is not None:
+        nrows = n_other_axis(ncols)
+
+    elif ncols is None and nrows is not None:
+        ncols = n_other_axis(nrows)
+
+    if figsize is None:
+        # Assuming all images in image_list are the same shape
+        image_shape = image_list[0].shape
+        assert len(image_shape) == 2
+        # TODO actually test w/ images where w != h. i might have them flipped.
+        w = image_shape[1]
+        h = image_shape[0]
+
+        aspect = (ncols * w) / (nrows * h)
+
+        height_inches = 10
+        figsize = (aspect * height_inches, height_inches)
+
+    # TODO (if not passed) set figsize according to aspect ratio you'd get multiplying
+    # nrows/ncols by single image dimensions (to try to fill space as much as possible)
+
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi)
+
     # TODO see: https://stackoverflow.com/questions/42850225 or related to find a
     # good solution for reliably eliminating all unwanted whitespace between subplots
     # (honestly i think it will ultimately come down to figsize, potentially more so
     # when using constrained layout, as i'd now generally like to)
-    n = int(np.ceil(np.sqrt(len(image_list))))
-    fig, axs = plt.subplots(n,n)
-    for ax, img in zip(axs.flat, image_list):
-        ax.imshow(img, cmap='gray', **imshow_kwargs)
 
-    for ax in axs.flat:
+    for ax, img in zip(axs.flat, image_list):
+        ax.imshow(img, cmap=cmap, **imshow_kwargs)
         ax.axis('off')
 
-    plt.subplots_adjust(wspace=0, hspace=0.05)
+    for ax in axs.flat[len(image_list):]:
+        fig.delaxes(ax)
+
+    # TODO detect if contstrained layout is enabled, and if not, call this?
+    # or maybe just put the @constrained_layout decorator on this fn to guarantee it?
+    #fig.subplots_adjust(wspace=0, hspace=0.05)
+
+    return fig, axs
+
+
+def plot_rois(rois: xr.DataArray, background, show_names=True, ncols=2, _pad=False
+    ) -> Figure:
+    # TODO TODO option to color ROIs randomly (perhaps also specifically so no
+    # neighboring ROIs share a color, if possible) (sharing colors across planes if the
+    # e.g. ROI name doesn't change, at least in the show_names=True case)
+    # TODO support background being None
+    # TODO option to "equalize" background image (see old code in plot_traces
+    # show_footprints path)?
+
+    # TODO check rois and background have compatible shape
+
+    z_size = rois.sizes['z']
+
+    fig, axs = image_grid(background, ncols=ncols)
+
+    # Moving 'roi' from end to start.
+    rois = rois.transpose('roi', 'z', 'y', 'x')
+
+    # TODO save this ROI images in a place where we can do it once for each fly,
+    # and have the background be computed across all the input movies?
+
+    # TODO maybe randomly color each roi differently (sharing colors across planes)
+
+    for z, ax in enumerate(axs.flat):
+        for roi in rois.sel(roi_z=z):
+            roi = roi[z]
+
+            label = None
+            if show_names:
+                # TODO what if not all coordinates associated w/ this dimension are on
+                # the index? if i make a solution to also handle that, put in
+                # hong2p.xarray
+                index_names = rois.get_index('roi').names
+
+                # Since the .sel operation above removes this coordinate.
+                index_names = [x for x in index_names if x != 'roi_z']
+
+                index_vals = roi.roi.item()
+                assert len(index_vals) == len(index_names)
+                index = dict(zip(index_names, index_vals))
+                name = index['roi_name']
+
+            plot_closed_contours(roi, label=name, ax=ax, _pad=_pad)
+
+        if z == (z_size - 1):
+            break
+
     return fig
 
 
@@ -1053,8 +1317,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
 
             cell2rect[cell_id] = (x_min, x_max, y_min, y_max)
 
-            cropped_avg = \
-                better_constrast[x_min:x_max + 1, y_min:y_max + 1]
+            cropped_avg = better_constrast[x_min:x_max + 1, y_min:y_max + 1]
 
             if show_footprint_with_mask:
                 # TODO figure out how to suppress clipping warning in the case
@@ -1063,18 +1326,15 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 # epsilon]?
                 # TODO TODO or just set one channel to be this
                 # footprint?  scale first?
-                cropped_footprint_rgb = \
-                    color.gray2rgb(cropped_footprint)
+                cropped_footprint_rgb = color.gray2rgb(cropped_footprint)
 
                 for c in (1,2):
                     cropped_footprint_rgb[:,:,c] = 0
                 # TODO plot w/ value == 1 to test?
 
-                cropped_footprint_hsv = \
-                    color.rgb2hsv(cropped_footprint_rgb)
+                cropped_footprint_hsv = color.rgb2hsv(cropped_footprint_rgb)
 
-                cropped_avg_hsv = \
-                    color.rgb2hsv(color.gray2rgb(cropped_avg))
+                cropped_avg_hsv = color.rgb2hsv(color.gray2rgb(cropped_avg))
 
                 # TODO hue already seems to be constant at 0.0 (red?)
                 # so maybe just directly set to red to avoid confusion?
@@ -1093,9 +1353,8 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 # version...
                 # TODO TODO TODO still normalize w/in crop in contour
                 # case?
-                composite = cv2.normalize(composite, None, alpha=0.0,
-                    beta=1.0, norm_type=cv2.NORM_MINMAX,
-                    dtype=cv2.CV_32F
+                composite = cv2.normalize(composite, None, alpha=0.0, beta=1.0,
+                    norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F
                 )
 
             else:
@@ -1106,8 +1365,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 if not np.any(cropped_footprint_nonzero):
                     continue
 
-                level = \
-                    cropped_footprint[cropped_footprint_nonzero].min()
+                level = cropped_footprint[cropped_footprint_nonzero].min()
 
             if show_footprints_alone:
                 ax = axs[i,-2]
@@ -1123,16 +1381,18 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
                 ax.imshow(cropped_avg, cmap='gray')
                 # TODO TODO also show any other contours in this rectangular ROI
                 # in a diff color! (copy how gui does this)
-                cell2contour[cell_id] = \
-                    util.closed_mpl_contours(cropped_footprint, ax, colors='red')
+                cell2contour[cell_id] = plot_closed_contours(cropped_footprint, ax,
+                    colors='red'
+                )
 
             ax.axis('off')
 
             text = str(cell_id + 1)
             h = y_max - y_min
             w = x_max - x_min
-            rect = patches.Rectangle((y_min, x_min), h, w,
-                linewidth=1.5, edgecolor='b', facecolor='none')
+            rect = patches.Rectangle((y_min, x_min), h, w, linewidth=1.5, edgecolor='b',
+                facecolor='none'
+            )
             cell2text_and_rect[cell_id] = (text, rect)
 
         if scale_within == 'cell':

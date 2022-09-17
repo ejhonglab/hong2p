@@ -44,7 +44,7 @@ def make_template(image_list, avg_all_flips_and_rotations=True):
         to_avg = []
         for n_rotations in range(4):
             to_avg.extend([np.rot90(im, k=n_rotations) for im in resized])
-        
+
         # No need to also add up-down filps, because fliplr on all the rotations
         # is redundant with that.
         flips = []
@@ -295,7 +295,7 @@ def main():
                 movie_xy_shape_counts[xy_shape] = 1
 
             # Necessary to at least assume all aspect ratios are the same, if
-            # we want to nicely rescale everything to one scale (while 
+            # we want to nicely rescale everything to one scale (while
             # preserving aspect ratio) (right?).
             # For now, for simplicity, just checking everything is square.
             xs, ys = xy_shape
@@ -303,7 +303,7 @@ def main():
                 raise NotImplementedError('assuming all images are square')
 
         if args.rescale_to == 'largest':
-            max_n_pixels = 0 
+            max_n_pixels = 0
             maximizing_shape = None
             for shape in movie_xy_shape_counts.keys():
                 n_pixels = np.prod(shape)
@@ -451,7 +451,7 @@ def main():
 
                 viz.imshow(movie.mean(axis=0), f'{title} avg')
 
-                fig = viz.image_grid(avg_cells)
+                fig, _ = viz.image_grid(avg_cells)
                 fig.suptitle(title)
 
                 template = make_template(avg_cells)
@@ -463,7 +463,7 @@ def main():
         mean_cell_diam_um = np.mean(all_cell_diams_um)
 
         if show_cell_images:
-            fig = viz.image_grid(all_avg_cells)
+            fig, _ = viz.image_grid(all_avg_cells)
             title = 'All cells, across input recordings'
             fig.suptitle(title)
 
@@ -495,7 +495,7 @@ def main():
             print(f'centroids: {centroids}')
             print(f'distortion: {distortion:.3f}')
         print('')
-        
+
         # End section related to multi-scale matching.
 
         if not args.dry_run:
