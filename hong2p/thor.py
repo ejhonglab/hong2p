@@ -62,6 +62,7 @@ PathOrXML = Union[str, etree.Element]
 # TODO TODO now that this behaves as identity if given xml object, actually use that to
 # collapse some of the functions w/ and w/o _xml suffix and allow those of only one type
 # to work with both types of input
+# TODO should i relax typehing to something like PathlikeOrXML or nah?
 def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> etree.Element:
     """Takes ThorImage output dir to object w/ XML data.
 
@@ -340,11 +341,12 @@ def get_thorimage_name(xml):
     return xml.find('Name').attrib['name']
 
 
-def load_thorimage_metadata(thorimage_dir, return_xml=False):
+def load_thorimage_metadata(thorimage_dir: Pathlike, return_xml=False):
     """Returns (fps, xy, z, c, n_flyback, raw_output_path) for ThorImage dir.
 
     Returns xml as an additional final return value if `return_xml` is True.
     """
+    thorimage_dir = Path(thorimage_dir)
     xml = get_thorimage_xmlroot(thorimage_dir)
 
     # TODO TODO in volumetric streaming case (at least w/ input from thorimage
@@ -363,7 +365,7 @@ def load_thorimage_metadata(thorimage_dir, return_xml=False):
     # - Image_0001_0001.raw
     # - Image_001_001.raw
     # ...but not sure if there any meaning behind the differences.
-    imaging_files = glob.glob(join(thorimage_dir, 'Image_*.raw'))
+    imaging_files = list(thorimage_dir.glob('Image_*.raw'))
 
     if len(imaging_files) == 0:
         raise IOError(f'no .raw files in ThorImage directory {thorimage_dir}')
@@ -375,6 +377,8 @@ def load_thorimage_metadata(thorimage_dir, return_xml=False):
 
     imaging_file = imaging_files[0]
 
+    # TODO probably return as some kind of dict / dataclass, and always return xml while
+    # we are at it
     if not return_xml:
         return fps, xy, z, c, n_flyback_frames, imaging_file
     else:
@@ -460,7 +464,7 @@ def get_thorsync_samplerate_hz(thorsync_dir):
     return samplerate_hz
 
 
-def get_thorsync_h5(thorsync_dir):
+def get_thorsync_h5(thorsync_dir: Pathlike):
     """Returns path to ThorSync .h5 output given a directory created by ThorSync
     """
     # NOTE: if in the future this filename varies, could instead iterate over
@@ -475,12 +479,14 @@ def get_thorsync_h5(thorsync_dir):
 # '[load/read]_movie' call either this or appropriate tifffile calls to load any
 # TIFF outputs thorimage might have saved (check that dimension orders are the
 # same!)?
-def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
-    checks=True, _debug=False):
+def read_movie(thorimage_dir: Pathlike, discard_flyback: bool = True,
+    discard_channel_b: bool = False, checks: bool = True, _debug: bool = False):
     """Returns (t,[z,]y,x) indexed timeseries as a numpy array.
     """
-    fps, xy, z, c, n_flyback, imaging_file, xml = \
-        load_thorimage_metadata(thorimage_dir, return_xml=True)
+    thorimage_dir = Path(thorimage_dir)
+    fps, xy, z, c, n_flyback, imaging_file, xml = load_thorimage_metadata(thorimage_dir,
+        return_xml=True
+    )
 
     x, y = xy
 
@@ -535,8 +541,8 @@ def read_movie(thorimage_dir, discard_flyback=True, discard_channel_b=False,
         # just so i can hardcode some fixes based on part of path (assuming
         # certain structure under mb_team, at least for the inputs i need to
         # fix)
-        thorimage_dir = abspath(thorimage_dir)
-        date_part = thorimage_dir.split(sep)[-3]
+        thorimage_dir = thorimage_dir.resolve()
+        date_part = str(thorimage_dir).split(sep)[-3]
         try_to_fix_flyback = False
 
         # TODO do more testing to determine 1) if this really was a flyback issue and
@@ -696,10 +702,11 @@ hdf5_dataset_rename_dict = {
 }
 # TODO maybe refactor this a bit and add a function to list datasets, just so
 # people can figure out their own data post hoc w/o needing other tools
+# TODO account for return_dataset_names_only=True path in return typehint
 def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
     drop_gctr=True, return_dataset_names_only=False, skip_dict_rename=False,
     skip_normalization=False, rename_dict=None, use_tqdm=False, verbose=False,
-    _debug=False):
+    _debug=False) -> pd.DataFrame:
     """Loads ThorSync .h5 output within `thorsync_dir` into a `pd.DataFrame`
 
     A column 'time_s' will be added, which is derived from 'GCtr', and
@@ -897,6 +904,7 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         f.visititems(load_datasets)
 
     if return_dataset_names_only:
+        # TODO account for this in return typehint
         return full_dataset_names
 
     # TODO maybe compare performance w/ w/o conversion to Dataframe?
@@ -1119,14 +1127,15 @@ def find_last_true(x):
 # loaded in the background can be shared across these calls?
 # TODO delete frame out name handling after forcing it to be a constant name in
 # load_thorsync_hdf5
-def get_frame_times(df, thorimage_dir, time_ref='mid', min_block_duration_s=3.0,
-    acquisition_trigger_names=None, warn=True, _debug=False, _wont_use_df_after=False):
+def get_frame_times(df: pd.DataFrame, thorimage_dir, time_ref='mid',
+    min_block_duration_s=3.0, acquisition_trigger_names=None, warn=True, _debug=False,
+    _wont_use_df_after=False):
     """Returns seconds from start of ThorSync recording for each frame.
 
     Arguments:
-        df (`DataFrame`): as returned by `load_thorsync_hdf5`
+        df: as returned by `load_thorsync_hdf5`
 
-        thorimage_dir (str): path to ThorImage directory to load metadata from
+        thorimage_dir: path to ThorImage directory to load metadata from
 
         time_ref ('mid' | 'end')
 
@@ -1541,11 +1550,11 @@ def assign_frames_to_blocks(df, thorimage_dir, **kwargs):
     """Takes ThorSync+Image data to (start, stop) indices for each block.
 
     Args:
-    df (DataFrame): as output by `load_thorsync_hdf5`
+    df: as output by `load_thorsync_hdf5`
 
-    thorimage_dir (str): path to a directory created by ThorImage
+    thorimage_dir: path to a directory created by ThorImage
 
-    kwargs (dict): passed through to `get_frame_times`
+    **kwargs: passed through to `get_frame_times`
 
     See documentation of `assign_frame_times_to_blocks` for more details on the
     definition of blocks and the properties of the output.

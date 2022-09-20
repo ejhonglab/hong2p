@@ -17,7 +17,7 @@ import glob
 import re
 import hashlib
 import functools
-from typing import Optional, Tuple, List, Generator, Sequence, Union
+from typing import Optional, Tuple, List, Dict, Generator, Sequence, Union
 import xml.etree.ElementTree as etree
 
 import numpy as np
@@ -31,7 +31,7 @@ import tifffile
 
 from hong2p import matlab, db, thor, viz, olf
 from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
-    DataFrameOrDataArray
+    DataFrameOrDataArray, NumpyOrXArray
 )
 
 # Note: many imports were pushed down into the beginnings of the functions that
@@ -583,9 +583,8 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
             n += 1
 
 
-def _raw_data_root_grandchildren():
-    # TODO replace join w/ pathlib alternative
-    return glob.glob(join(raw_data_root(), '*/*/'))
+def _raw_data_root_grandchildren() -> Generator[Path, None, None]:
+    return raw_data_root().glob('*/*/')
 
 
 def _all_thorimage_dirs():
@@ -2631,7 +2630,9 @@ def db_footprints2array(df, shape):
 # TODO maybe refactor so there is a function does this for single arrays, then concat
 # using xarray functions in here? or if i still want both functions, how to dedupe code?
 # allow this to accept single rois too (without that component of shape)?
-def numpy2xarray_rois(rois, roi_indices=None):
+# TODO type hint for roi_indices
+def numpy2xarray_rois(rois: np.ndarray, roi_indices: Optional[dict] = None
+    ) -> xr.DataArray:
     """Takes numpy array of shape ([z,]y,x,roi) to labelled xarray.
 
     Args:
@@ -2729,7 +2730,7 @@ def ijroi2mask(roi, shape, z=None):
 
 # TODO TODO add option to translate ijroi labels to pandas index values?
 # (and check trace extraction downstream preserves those!)
-# TODO TODO TODO document type / structure expecations of `ijrois` arg!
+# TODO TODO TODO document type / structure expecations of inputs/outputs
 # TODO TODO accept either the input or output of ijroi.read_roi[_zip] for ijrois?
 # read_roi takes file object and read_roi_zip takes filename
 # TODO can ijroi lib be modified to read path to tif things were drawn over (is that
@@ -2742,7 +2743,9 @@ def ijroi2mask(roi, shape, z=None):
 # output don't break / change them
 # TODO TODO TODO fn to convert suite2p representation of masks to the same [xarray]
 # representation of masks this spits out
-def ijrois2masks(ijrois, shape, as_xarray=False):
+def ijrois2masks(ijrois, shape, as_xarray: bool = False
+    # TODO type hint alias for ndarray|DataArray?
+    ) -> Union[np.ndarray, xr.DataArray]:
     # TODO be clear on where shape is coming from (just shape of the data in the TIFF
     # the ROIs were draw in, right?)
     """
@@ -2765,7 +2768,6 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
         suffixes = []
 
     for name, roi in ijrois:
-
         z_index = None
 
         if len(shape) == 3:
@@ -2824,7 +2826,6 @@ def ijrois2masks(ijrois, shape, as_xarray=False):
 
     # This concatenates along the last element of the new shape
     masks = np.stack(masks, axis=-1)
-
     if not as_xarray:
         return masks
 
@@ -3065,36 +3066,41 @@ def rois2best_planes_only(rois, roi_quality):
 
 ijroiset_default_basename = 'RoiSet.zip'
 
-def ijroi_filename(ijroiset_dir_or_fname, must_exist=True):
-    if isdir(ijroiset_dir_or_fname):
+def ijroi_filename(ijroiset_dir_or_fname: Pathlike, must_exist: bool = True) -> Path:
 
+    ijroiset_dir_or_fname = Path(ijroiset_dir_or_fname)
+    if ijroiset_dir_or_fname.is_dir():
         # TODO if i standardize path to analysis intermediates, update this to look for
         # RoiSet.zip there?
-        ijroiset_fname = join(ijroiset_dir_or_fname, ijroiset_default_basename)
+        ijroiset_fname = ijroiset_dir_or_fname / ijroiset_default_basename
 
-        if must_exist and not isfile(ijroiset_fname):
+        if must_exist and not ijroiset_fname.is_file():
             raise IOError('directory passed for ijroiset_dir_or_fname, but '
                 f'{ijroiset_fname} did not exist'
             )
 
     else:
+        # TODO check it's actually loadable?
         ijroiset_fname = ijroiset_dir_or_fname
 
     return ijroiset_fname
 
 
-def has_ijrois(ijroiset_dir_or_fname):
+def has_ijrois(ijroiset_dir_or_fname: Pathlike) -> bool:
     # NOTE: not actually checking it contains any
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname, must_exist=False)
-    return exists(ijroiset_fname)
+    return ijroiset_fname.is_file()
 
 
-def ijroi_mtime(ijroiset_dir_or_fname):
+def ijroi_mtime(ijroiset_dir_or_fname: Pathlike) -> float:
+    """RoiSet.zip (/directory with one) path to Unix timestamp modification time
+    """
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
     return getmtime(ijroiset_fname)
 
 
-def ijroi_masks(ijroiset_dir_or_fname, thorimage_dir, as_xarray=True, **kwargs):
+def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
+    as_xarray: bool = True, **kwargs) -> NumpyOrXArray:
 
     # This must be my fork at https://github.com/tom-f-oconnell/ijroi
     import ijroi

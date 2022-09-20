@@ -1,8 +1,9 @@
 
-from typing import Tuple, NewType, Union, Sequence, Type
+from typing import Tuple, NewType, Union, Sequence
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -38,5 +39,6 @@ ExperimentOdors = Sequence[SingleTrialOdors]
 
 # TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray
 # / better check for both?)? maybe in another type?
-DataFrameOrDataArray = Union[Type[pd.DataFrame], Type[xr.DataArray]]
-
+# TODO i once was wrapper the args to Union with Type[...]. did that serve a purpose?
+DataFrameOrDataArray = Union[pd.DataFrame, xr.DataArray]
+NumpyOrXArray = Union[np.ndarray, xr.DataArray]
