@@ -843,9 +843,11 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
 
 def plot_rois(rois: xr.DataArray, background, show_names=True, ncols=2, _pad=False
     ) -> Figure:
-    # TODO TODO option to color ROIs randomly (perhaps also specifically so no
-    # neighboring ROIs share a color, if possible) (sharing colors across planes if the
-    # e.g. ROI name doesn't change, at least in the show_names=True case)
+    # TODO TODO option to [locally?] histogram equalize the image (or something else to
+    # increase contrast + prevent hot pixels from screwing up range in a plane)
+    # TODO option to color ROIs randomly (perhaps also specifically so no neighboring
+    # ROIs share a color, if possible) (sharing colors across planes if the e.g. ROI
+    # name doesn't change, at least in the show_names=True case)
     # TODO support background being None
     # TODO option to "equalize" background image (see old code in plot_traces
     # show_footprints path)?
@@ -859,13 +861,13 @@ def plot_rois(rois: xr.DataArray, background, show_names=True, ncols=2, _pad=Fal
     # Moving 'roi' from end to start.
     rois = rois.transpose('roi', 'z', 'y', 'x')
 
-    # TODO save this ROI images in a place where we can do it once for each fly,
-    # and have the background be computed across all the input movies?
-
-    # TODO maybe randomly color each roi differently (sharing colors across planes)
-
     for z, ax in enumerate(axs.flat):
-        for roi in rois.sel(roi_z=z):
+        try:
+            rois_in_curr_z = rois.sel(roi_z=z)
+        except KeyError:
+            continue
+
+        for roi in rois_in_curr_z:
             roi = roi[z]
 
             label = None
