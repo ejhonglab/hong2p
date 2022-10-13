@@ -762,17 +762,16 @@ def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
     yaml_path = stimulus_yaml_from_thorimage(thorimage_dir_or_xml,
         stimfile_dir=stimfile_dir
     )
-
-    with open(yaml_path, 'r') as f:
-        yaml_data = yaml.safe_load(f)
-
-    odor_lists = olf.yaml_data2odor_lists(yaml_data)
+    yaml_data, odor_lists = olf.load_stimulus_yaml(yaml_path)
 
     return yaml_path, yaml_data, odor_lists
 
 
-def most_recent_contained_file_mtime(path) -> Optional[float]:
+def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True
+    ) -> Optional[float]:
     """Recursively find the `os.path.getmtime` of the most recently modified file
+
+    Returns None if there are no files in the directory.
 
     Testing on Ubuntu, this does not recurse into symlinks to directories, as I want for
     at least current use case.
@@ -780,7 +779,11 @@ def most_recent_contained_file_mtime(path) -> Optional[float]:
     # TODO maybe need to actively exclude mtime on symlinks (to directories at least?)
     # because it will still have an mtime, but i forget whether it tracks the mtime of
     # the referenced directory, or whether it is just when the link is created...
-    files = [x for x in Path(path).rglob('*') if x.is_file()]
+    if recurse:
+        files = [x for x in Path(path).rglob('*') if x.is_file()]
+    else:
+        files = [x for x in Path(path).glob('*') if x.is_file()]
+
     if len(files) == 0:
         return None
 
@@ -789,6 +792,7 @@ def most_recent_contained_file_mtime(path) -> Optional[float]:
 
 # TODO maybe accept dict of names / values? which pd fn to copy the interfact of
 # names/values from (DataFrame creation probably)?
+# TODO TODO support xarray dataarrays?
 # TODO test
 def addlevel(df, names, values, *, axis='index'):
     """Add level(s) to pandas MultiIndex
@@ -3211,8 +3215,8 @@ def footprints_to_flat_cnmf_dims(footprints):
     return np.reshape(footprints, (frame_pixels, n_footprints), order='F')
 
 
-def extract_traces_bool_masks(movie, footprints,
-    footprint_framenums=None, verbose=True):
+def extract_traces_bool_masks(movie, footprints, verbose=False):
+    # TODO doc shape/type expectations on movie / footprints
     """
     Averages the movie within each boolean mask in footprints
     to make a matrix of traces (n_frames x n_footprints).
@@ -3916,8 +3920,9 @@ def pair_ordering(comparison_df):
     return ordering
 
 
-# TODO TODO call this in gui / factor into viz.plot_odor_corrs (though it would
+# TODO call this in gui / factor into viz.plot_odor_corrs (though it would
 # require accesss to df...) and call that there
+# TODO delete?
 def add_missing_odor_cols(df, missing_df):
     """
     """
