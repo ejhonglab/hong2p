@@ -974,8 +974,8 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
 
 # TODO get x / y from whether they were declared share<x/y> in facetgrid
 # creation?
-def fix_facetgrid_axis_labels(facet_grid, shared_in_center=False,
-    x=True, y=True) -> None:
+def fix_facetgrid_axis_labels(facet_grid, shared_in_center: bool = False,
+    x: bool = True, y: bool = True) -> None:
     """Modifies a FacetGrid to not duplicate X and Y axis text labels.
     """
     # regarding the choice of shared_in_center: WWMDD?
@@ -986,7 +986,12 @@ def fix_facetgrid_axis_labels(facet_grid, shared_in_center=False,
         raise NotImplementedError
     else:
         for ax in facet_grid.axes.flat:
-            if not (ax.is_first_col() and ax.is_last_row()):
+            # why did i get a deprecation warning for this ax.is_first_col() in 3.4.3
+            # (in my local recreation of remy_suite2p) but not in 3.5.1 (suite2p) which
+            # i was testing with earlier?
+            spec = ax.get_subplotspec()
+
+            if not (spec.is_first_col() and spec.is_last_row()):
                 if x:
                     ax.set_xlabel('')
                 if y:
@@ -1651,7 +1656,7 @@ def showsync(thorsync_dir, verbose=False, **kwargs):
 
     # TODO set title to last 3 parts of path if parent two directories can be parsed as
     # (date, fly_num) (or if just under raw_data_root maybe?)
-    title = thorsync_dir
+    title = str(thorsync_dir)
 
     # plot_widget if of type pyqtgraph.widgets.PlotWidget.PlotWidget
     # not really sure how 'all' and 'pairs' differ... ('pairs' skip some?)
