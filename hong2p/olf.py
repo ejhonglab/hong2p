@@ -6,19 +6,77 @@ Keeping these functions here rather than in the olfactometer repo because it has
 somewhat heavy dependencies that the analysis side of things will generally not need.
 """
 
-from collections import Counter
-from pprint import pprint
+from collections import Counter, defaultdict
+from pprint import pprint, pformat
 import warnings
 from typing import Union, Sequence, Optional, Tuple, List, Dict, Hashable
 
 import numpy as np
 import pandas as pd
+import yaml
+
+from hong2p.types import Pathlike, ExperimentOdors
 
 
 solvent_str = 'solvent'
 conc_delimiter = '@'
 
-def parse_log10_conc(odor_str: str, *, require=False) -> Optional[float]:
+# TODO fns for adding to this / overriding
+# TODO load/supplement from (union of?) abbrevs included in configs, if possible
+odor2abbrev = {
+    'methyl salicylate': 'MS',
+    'hexyl hexanoate': 'HH',
+    'furfural': 'FUR',
+
+    # Changed to using Remy's abbreviation.
+    #'1-hexanol': 'HEX',
+    '1-hexanol': '1-6ol',
+
+    '1-octen-3-ol': 'OCT',
+    '2-heptanone': '2H',
+    'acetone': 'ACE',
+    'butanal': 'BUT',
+    'ethyl acetate': 'EA',
+    'ethyl butyrate': 'EB',
+    'ethyl hexanoate': 'EH',
+    'hexyl acetate': 'HA',
+    'ethanol': 'EtOH',
+    'isoamyl alcohol': 'IAol',
+    'isoamyl acetate': 'IAA',
+    'valeric acid': 'VA',
+    # TODO change back when i'm reading to convert / recompute all old analysis
+    # intermediates using old ('~kiwi', 'control mix') names
+    'kiwi approx.': '~kiwi',
+    'control mix': 'control mix',
+    #'kiwi approx.': 'kmix',
+    #'control mix': 'cmix',
+
+    'ethyl lactate': 'elac',
+    'methyl acetate': 'MA',
+    '2,3-butanedione': '2,3-b',
+    '2-butanone': '2but',
+    'ethyl 3-hydroxybutyrate': 'e3hb',
+    'trans-2-hexenal': 't2h',
+    'ethyl crotonate': 'ecrot',
+    'methyl octanoate': 'moct',
+    # good one for acetoin (should be only current diag w/o one)?
+
+    # Another name for 'valeric acid', but the one Remy had used.
+    'pentanoic acid': 'VA',
+
+    'linalool': 'Lin',
+    'B-citronellol': 'B-cit',
+    'hexanal': '6al',
+    'benzaldehyde': 'benz',
+    '1-pentanol': '1-5ol',
+    '1-octanol': '1-8ol',
+    'pentyl acetate': 'pa',
+    'ethyl propionate': 'ep',
+    'acetic acid': 'aa',
+}
+
+
+def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]:
     """Takes formatted odor string to float log10 vol/vol concentration.
 
     Returns `None` if input does not contain `olf.conc_delimiter`.
@@ -44,10 +102,15 @@ def parse_log10_conc(odor_str: str, *, require=False) -> Optional[float]:
     return float(parts[1].strip())
 
 
-def parse_odor_name(odor_str: str) -> str:
+def parse_odor_name(odor_str: str) -> Optional[str]:
     # TODO some way to get the generated docs to refer to the value for the constant
     # rather than having to hardcode it for reference? a plugin maybe?
+    # TODO does the parse_odor_name(solvent_str) doctest run/work as a test, or need to
+    # change settings / refer to solvent_str differently?
     """Takes formatted odor string to just the name of the odor.
+
+    Returns `None` if input matches `olf.solvent_str`, but otherwise raises ValueError
+    if `odor_str` does not contain `olf.conc_delimiter`.
 
     Args:
         odor_str: contains odor name and concentration.
@@ -56,12 +119,28 @@ def parse_odor_name(odor_str: str) -> str:
 
     >>> parse_odor_name('ethyl acetate @ -2')
     'ethyl acetate'
+
+    >>> parse_odor_name(solvent_str)
+    None
     """
-    assert conc_delimiter in odor_str
+    if odor_str == solvent_str:
+        return None
+
+    if conc_delimiter not in odor_str:
+        raise ValueError(f'{conc_delimiter=} not in {odor_str}')
+
     parts = odor_str.split(conc_delimiter)
-    assert len(parts) == 2
-    # TODO want to handle 'pfo'/'solvent' special?
+    if len(parts) != 2:
+        raise ValueError(f'unexpected number of {conc_delimiter=} in {odor_str}')
+
     return parts[0].strip()
+
+
+def parse_odor(odor_str: str, *, require_conc: bool = False) -> dict:
+    return {
+        'name': parse_odor_name(odor_str),
+        'log10_conc': parse_log10_conc(odor_str, require=require_conc),
+    }
 
 
 # TODO maybe take a name_order kwarg here and return index of name in list instead, if
@@ -100,8 +179,9 @@ def sort_odor_list(odor_list):
 
 
 # TODO how to get generated docs to show `pd.Index` instead of Index from this typehint?
-def odor_index_sort_key(level: pd.Index, sort_names=True, names_first=True,
-    name_order: Optional[List[str]] = None, _debug: bool = False) -> pd.Index:
+def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
+    names_first: bool = True, name_order: Optional[List[str]] = None,
+    _debug: bool = False) -> pd.Index:
     """
     Args:
         level: one level from a `pd.MultiIndex` with odor metadata.
@@ -157,10 +237,10 @@ def odor_index_sort_key(level: pd.Index, sort_names=True, names_first=True,
                 # the earlier tests w/ usual multiindex. not sure why... bug?
                 name_order = sorted(names)
             else:
-                if not all(n in name_order for n in names):
-                    # TODO only print the ones missing
-                    raise ValueError(
-                        f'some of names={names} were not in name_order={name_order}'
+                not_in_name_order = {n for n in names if n not in name_order}
+                if len(not_in_name_order) > 0:
+                    raise ValueError(f'{pformat(not_in_name_order)} were not in '
+                        f'name_order={pformat(name_order)}'
                     )
 
             name_keys = [
@@ -270,8 +350,8 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
 
     # TODO want to support panel2name_order=None when panel_order is passed?
     # could just check panel2name_order not-None if not...
-    panel_presort = panel_order is not None or panel2name_order is not None
-    if panel_presort:
+    panel_sort = panel_order is not None or panel2name_order is not None
+    if panel_sort:
         if 'name_order' in kwargs:
             raise ValueError('when specifying panel_order, use panel2name_order '
                 'instead of name_order'
@@ -291,52 +371,19 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
         index = getattr(df, axis_name)
         levels = levels_to_sort(index)
 
-        # TODO maybe check that if len(levels) == 0 and panel_presort, we don't have
+        # TODO maybe check that if len(levels) == 0 and panel_sort, we don't have
         # 'panel' in other indices?
 
-        if len(levels) > 0:
-            if _debug:
-                print(f'found odor MultiIndex on axis={axis_name}')
-                print(f'odor levels to sort: {levels}')
+        if len(levels) == 0:
+            continue
 
-            found_odor_multiindex = True
+        if _debug:
+            print(f'found odor MultiIndex on axis={axis_name}')
+            print(f'odor levels to sort: {levels}')
 
-            if panel_presort:
-                if 'panel' not in index.names:
-                    raise ValueError('panel sorting requested, but axis had odor levels'
-                        "without a 'panel' level"
-                    )
+        found_odor_multiindex = True
 
-                # TODO for a case where no elements of panel2name_order value
-                # iterables have overlapping names, test that this method of
-                # splitting->sorting->recombining is equivalent to giving a simple key
-                # for the panel + sorting w/ one name_order constructed from all of the
-                # panel2name_order values
-
-                sorted_panel_dfs = []
-                # TODO do i need to do level='panel' rather than implicit by='panel'
-                # TODO maybe just set sort=True if panel_order not specified
-                # (and if i want to allow that...)
-                panels = []
-                for panel, pdf in df.groupby('panel', axis=axis_name, sort=False,
-                    dropna=False):
-
-                    name_order = panel2name_order[panel]
-
-                    if _debug:
-                        print(f'{panel=}, name_order:')
-                        pprint(name_order)
-
-                    sorted_pdf = sort_odors(pdf, name_order=name_order, **kwargs)
-                    sorted_panel_dfs.append(sorted_pdf)
-                    panels.append(panel)
-
-                sorted_panel_dfs = [x for _, x in sorted(zip(panels, sorted_panel_dfs),
-                    key=lambda y: panel_order.index(y[0])
-                )]
-                df = pd.concat(sorted_panel_dfs, axis=axis_name)
-                continue
-
+        if not panel_sort:
             df = df.sort_index(
                 key=lambda x: odor_index_sort_key(x, **kwargs),
                 axis=axis_name,
@@ -346,6 +393,48 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
                 # preserves input order.
                 kind='mergesort',
             )
+
+        else:
+            if 'panel' not in index.names:
+                raise ValueError('panel sorting requested, but axis had odor levels'
+                    "without a 'panel' level"
+                )
+
+            # TODO for a case where no elements of panel2name_order value
+            # iterables have overlapping names, test that this method of
+            # splitting->sorting->recombining is equivalent to giving a simple key
+            # for the panel + sorting w/ one name_order constructed from all of the
+            # panel2name_order values
+
+            # TODO TODO figure out what should happen if odors are shared between
+            # two panels (e.g. MS|VA @ -3 in control + megamat0 panels) -> test
+
+            sorted_panel_dfs = []
+            # TODO do i need to do level='panel' rather than implicit by='panel'
+            # TODO maybe just set sort=True if panel_order not specified
+            # (and if i want to allow that...)
+            panels = []
+            for panel, pdf in df.groupby('panel', axis=axis_name, sort=False,
+                dropna=False):
+
+                name_order = panel2name_order[panel]
+
+                if _debug:
+                    print(f'{panel=}, name_order:')
+                    pprint(name_order)
+
+                # TODO TODO TODO does it make sense to sort_index a second time
+                # after the loop? the name panel_sort seems to indicate something
+                # other than what seems to be happening here...
+                sorted_pdf = sort_odors(pdf, name_order=name_order, **kwargs)
+                sorted_panel_dfs.append(sorted_pdf)
+                panels.append(panel)
+
+            sorted_panel_dfs = [x for _, x in sorted(zip(panels, sorted_panel_dfs),
+                key=lambda y: panel_order.index(y[0])
+            )]
+            df = pd.concat(sorted_panel_dfs, axis=axis_name)
+            continue
 
     # Not just returning in loop, because we may need to sort *both* the rows and the
     # columns (e.g. if the input is a correlation matrix).
@@ -365,7 +454,7 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
             ' odor columns, then pass that as input.'
         )
 
-    if panel_presort:
+    if panel_sort:
         if 'panel' not in df.columns:
             raise ValueError("'panel' not in df.columns, though odors are and panel"
                 ' sorting requested'
@@ -477,6 +566,17 @@ def yaml_data2odor_lists(yaml_data: dict, sort=True):
         odor_lists.append(odor_list)
 
     return odor_lists
+
+
+# TODO doc
+def load_stimulus_yaml(yaml_path: Pathlike):
+
+    with open(yaml_path, 'r') as f:
+        yaml_data = yaml.safe_load(f)
+
+    odor_lists = yaml_data2odor_lists(yaml_data)
+
+    return yaml_data, odor_lists
 
 
 # TODO may want to move to util
@@ -604,4 +704,70 @@ def format_odor_list(odor_list, delim: Optional[str] = None, **kwargs):
     """
     odor_strs = [format_odor(x, **kwargs) for x in odor_list]
     return format_mix_from_strs(odor_strs, delim=delim)
+
+
+# TODO indicate subclass of pd.Index (Type[pd.Index]?) as return type
+def odor_lists_to_multiindex(odor_lists: ExperimentOdors, **format_odor_kwargs):
+
+    unique_lens = {len(x) for x in odor_lists}
+    if len(unique_lens) != 1:
+        raise NotImplementedError
+
+    # This one would be more straight forward to relax than the above one
+    if unique_lens == {2}:
+        pairs = True
+
+    elif unique_lens == {1}:
+        pairs = False
+    else:
+        raise NotImplementedError
+
+    odor1_str_list = []
+    odor2_str_list = []
+
+    odor_mix_counts = defaultdict(int)
+    odor_mix_repeats = []
+
+    for odor_list in odor_lists:
+
+        if pairs:
+            odor1, odor2 = odor_list
+        else:
+            odor1 = odor_list[0]
+            assert len(odor_list) == 1
+            # format_odor -> format_mix_from_strs should treat this as:
+            # 'solvent' (hong2p.olf.solvent_str) -> not being shown as part of mix
+            # TODO is this actually reached? i'm not seeing it in some of the
+            # ij_trial_dfs at end of main
+            odor2 = {'name': 'no_second_odor', 'log10_conc': None}
+
+        # TODO refactor
+        if odor1['name'] in odor2abbrev:
+            odor1['name'] = odor2abbrev[odor1['name']]
+
+        if odor2['name'] in odor2abbrev:
+            odor2['name'] = odor2abbrev[odor2['name']]
+
+        odor1_str = format_odor(odor1, **format_odor_kwargs)
+        odor1_str_list.append(odor1_str)
+
+        odor2_str = format_odor(odor2, **format_odor_kwargs)
+        odor2_str_list.append(odor2_str)
+        #
+
+        odor_mix = (odor1_str, odor2_str)
+        odor_mix_repeats.append(odor_mix_counts[odor_mix])
+        odor_mix_counts[odor_mix] += 1
+
+    # NOTE: relying on sorting odor_list(s) at load time seems to produce consistent
+    # ordering, though that alphabetical ordering (based on full odor names) is
+    # different from what would be produced sorting on abbreviated odor names (at least
+    # in some cases)
+
+    index = pd.MultiIndex.from_arrays([odor1_str_list, odor2_str_list,
+        odor_mix_repeats
+    ])
+    index.names = ['odor1', 'odor2', 'repeat']
+
+    return index
 
