@@ -21,9 +21,18 @@ import pandas as pd
 from hong2p.types import Pathlike, PathPair
 
 
+# Note: these other names may get converted to these via hdf5_dataset_rename_dict/etc
 _acquisition_trigger_names = ('scope_pin',)
 _odor_timing_names = ('olf_disp_pin',)
 
+DIGITAL_THRESHOLD = 0.5
+
+# Since some electrical bug (?) on downstairs scope has led to ~4v pulses before and
+# after recording. Used to use 2.5 before that.
+#
+# This change didn't fix handling of the 2022-10-07/1/megamat0_part2 data I was
+# expecting it to fix though...
+ANALOG_0_TO_5V_THRESHOLD = 4.5
 
 def xmlroot(xml_path: str) -> etree.Element:
     """Loads contents of xml_path into xml.etree.ElementTree and returns root.
@@ -963,11 +972,9 @@ def threshold_crossings(signal, threshold=None, onsets=True, offsets=True):
 
     Cases where it at one index equals the threshold are ignored. Shouldn't
     happen and may indicate electrical problems for our application.
-
-    Uses a threshold of 2.5 by default. Use 0.5 for digital signals in {0, 1}.
     """
     if threshold is None:
-        threshold = 2.5
+        threshold = ANALOG_0_TO_5V_THRESHOLD
 
     # TODO could redefine in terms of np.diff
     # might be off by one?
@@ -1069,7 +1076,7 @@ def get_col_onset_offset_indices(df, possible_col_names, threshold=None):
 
     # TODO TODO refactor to delete this hack (fixes change to scope_pin)
     if col.dtype == np.dtype('bool'):
-        threshold = 0.5
+        threshold = DIGITAL_THRESHOLD
     #
 
     # TODO have this (inside) probably warn if there are no threshold crossings
@@ -1183,7 +1190,7 @@ def get_frame_times(df: pd.DataFrame, thorimage_dir, time_ref='mid',
 
     # ~28% of time (kernprof on one test input)
     acq_onsets, acq_offsets = get_col_onset_offset_indices(df,
-        acquisition_trigger_names, threshold=2.5
+        acquisition_trigger_names, threshold=ANALOG_0_TO_5V_THRESHOLD
     )
 
     if len(acq_onsets) == 0:
@@ -1252,7 +1259,7 @@ def get_frame_times(df: pd.DataFrame, thorimage_dir, time_ref='mid',
     # (user renameable) ones
     # ~24% of time (kernprof on one test input)
     frame_out_onsets, frame_out_offsets = get_col_onset_offset_indices(df,
-        'frame_out', threshold=0.5
+        'frame_out', threshold=DIGITAL_THRESHOLD
     )
 
     if _debug:
@@ -1645,8 +1652,9 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
 
 
     # (when the valve(s) are given the signal to open)
-    odor_onsets = get_col_onset_indices(df, odor_timing_names, threshold=2.5)
-
+    odor_onsets = get_col_onset_indices(df, odor_timing_names,
+        threshold=ANALOG_0_TO_5V_THRESHOLD
+    )
     odor_onset_times = df[time_col].values[odor_onsets]
 
     # unsafe if caller has a reference to `df`, but can save a small amount of time if
@@ -1741,14 +1749,31 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
     end_frames = np.concatenate(end_frames)
 
     if check_all_frames_assigned:
+        # TODO better name
         indices = []
         for s, e in zip(start_frames, end_frames):
             indices.append(np.arange(s, e + 1))
 
         indices = np.concatenate(indices)
 
+        # TODO TODO TODO which of the 2022-10-07 data was triggering this again?
+        # 1/megamat0_part2? what is correct handling there?
         assert len(frame_times[indices]) == len(frame_times), \
-            'not all frames were assigned'
+            f'{thorimage_dir}: not all frames were assigned'
+
+        # TODO delete try/except
+        '''
+        try:
+            assert len(frame_times[indices]) == len(frame_times), \
+                f'{thorimage_dir}: not all frames were assigned'
+
+        except AssertionError:
+            print(f'{thorimage_dir=}')
+            print(f'{len(frame_times[indices])=}')
+            print(f'{len(frame_times)=}')
+            import ipdb; ipdb.set_trace()
+        '''
+        #
 
         assert len(np.unique(indices)) == len(indices), \
             'nonunique (probably overlapping ranges of) indices'
