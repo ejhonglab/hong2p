@@ -30,6 +30,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import tifffile
 
 from hong2p import matlab, db, thor, viz, olf
+from hong2p.err import NoStimulusFile, TooManyStimulusFiles
 from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
     DataFrameOrDataArray, NumpyOrXArray
 )
@@ -143,19 +144,26 @@ def data_root(verbose: bool = False) -> Path:
         prefix = None
 
         if DATA_ROOT_ENV_VAR in os.environ:
-            root = Path(os.environ[DATA_ROOT_ENV_VAR])
+            data_root_val = os.environ[DATA_ROOT_ENV_VAR]
+            root = Path(data_root_val)
             source = DATA_ROOT_ENV_VAR
 
             if verbose:
-                print(f'found {DATA_ROOT_ENV_VAR}')
+                print(f'found {DATA_ROOT_ENV_VAR}={data_root_val}')
 
         elif NAS_PREFIX_ENV_VAR in os.environ:
-            root = Path(os.environ[NAS_PREFIX_ENV_VAR]) / NAS_PATH_TO_HONG2P_DATA
+            nas_prefix = os.environ[NAS_PREFIX_ENV_VAR]
+            root = Path(nas_prefix) / NAS_PATH_TO_HONG2P_DATA
             source = NAS_PREFIX_ENV_VAR
+
+            # TODO set flag if we are using NAS and only raise IOPerformanceWarning if
+            # we actually try to load anything other than stimfiles from it
+            # (assuming that if set via any other variables, it's at least fast enough
+            # to not need warning, whether from the *_FAST_* variable or not)
 
             if verbose:
                 print(f'did not find {DATA_ROOT_ENV_VAR}')
-                print(f'found {NAS_PREFIX_ENV_VAR}')
+                print(f'found {NAS_PREFIX_ENV_VAR}={nas_prefix}')
 
         else:
             raise IOError('either set one of the environment variables '
@@ -207,6 +215,8 @@ def check_dir_exists(fn_returning_dir):
 @check_dir_exists
 def raw_data_root(root: Optional[Pathlike] = None, **kwargs) -> Path:
 
+    # TODO TODO also default to _fast_data_root?
+
     if root is None:
         root = data_root(**kwargs)
 
@@ -240,8 +250,8 @@ def stimfile_root(**kwargs) -> Path:
 # TODO replace this w/ above (need to change kc_natural_mixes / natural_odors, or at
 # least pin an older version of hong2p for them)
 @check_dir_exists
-def analysis_output_root() -> Path:
-    return data_root() / 'analysis_output'
+def analysis_output_root(**kwargs) -> Path:
+    return data_root(**kwargs) / 'analysis_output'
 
 
 class IOPerformanceWarning(Warning):
@@ -295,9 +305,9 @@ def raw_fly_dir(date: Datelike, fly: FlyNum, *, warn: bool = True, short: bool =
     # TODO TODO maybe refactor for more granularity (might need to change a lot of usage
     # of data_root() and stuff that uses it though... perhaps also functions that
     # operate on directories like the fn to pair thor dirs)
+    # TODO TODO move this logic into raw_data_root?
     if _fast_data_root is not None:
         fast_raw_fly_dir = raw_data_root(root=_fast_data_root) / raw_fly_basedir
-        # TODO warn if not using this despite env var being set
         if fast_raw_fly_dir.is_dir():
             return fast_raw_fly_dir
         else:
@@ -352,7 +362,7 @@ def analysis_fly_dir(date, fly) -> Path:
 
 # TODO maybe this should stay returning a str? i'm assuming a lot of what i do with this
 # is print it / format it? or change to Path to be consistent w/ other path fns now?
-def shorten_path(full_path: Pathlike, n_parts=3):
+def shorten_path(full_path: Pathlike, n_parts=3) -> str:
     """Returns a string containing just the last n_parts (default=3) of input path.
 
     For making IDs / easier-to-read paths, when the full path isn't required.
@@ -642,16 +652,18 @@ def _all_paired_thor_dirs(skip_errors=True, **kwargs) -> List[PathPair]:
     return all_pairs
 
 
-def _stimfile_dir(stimfile_dir=None):
+def _stimfile_dir(stimfile_dir: Optional[Pathlike] = None) -> Path:
     if stimfile_dir is None:
         stimfile_dir = stimfile_root()
-    elif not isdir(stimfile_dir):
-        raise IOError(f'passed stimfile_dir={stimfile_dir} is not a directory!')
+    else:
+        stimfile_dir = Path(stimfile_dir)
+        if not stimfile_dir.is_dir(stimfile_dir):
+            raise IOError(f'passed stimfile_dir={stimfile_dir} is not a directory!')
 
     return stimfile_dir
 
 
-def shorten_stimfile_path(stimfile_path, stimfile_dir=None):
+def shorten_stimfile_path(stimfile_path, stimfile_dir: Optional[Pathlike] = None):
     """Shortens absolute stimulus YAML path to one relative to stimfile_dir.
     """
     stimfile_dir = _stimfile_dir(stimfile_dir)
@@ -676,7 +688,8 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
 
     Raises:
         IOError if stimulus file directory does not exist
-        ValueError if multiple or no substrings of note field end with .yaml
+        TooManyStimulusFiles if multiple substrings of note field end with .yaml
+        NoStimulusFile if no substrings of note field end with .yaml
 
     XML should contain a manually-entered path relative to where the olfactometer code
     that generated it was run, but assuming it was copied to the appropriate location
@@ -698,13 +711,15 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
         p = p.strip()
         if p.endswith('.yaml'):
             if yaml_path is not None:
-                raise ValueError(f'{name}: encountered multiple *.yaml substrings!')
+                raise TooManyStimulusFiles(
+                    f'{name}: encountered multiple *.yaml substrings!'
+                )
 
             yaml_path = p
 
     if yaml_path is None:
-        raise ValueError(f'{name}: no string ending in .yaml found in ThorImage note '
-            'field'
+        raise NoStimulusFile(f'{name}: no string ending in .yaml found in ThorImage '
+            'note field'
         )
 
     assert yaml_path is not None
