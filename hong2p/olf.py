@@ -181,7 +181,8 @@ def sort_odor_list(odor_list):
 # TODO how to get generated docs to show `pd.Index` instead of Index from this typehint?
 def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
     names_first: bool = True, name_order: Optional[List[str]] = None,
-    _debug: bool = False) -> pd.Index:
+    require_in_name_order: bool = False, warn: bool = True, _debug: bool = False
+    ) -> pd.Index:
     """
     Args:
         level: one level from a `pd.MultiIndex` with odor metadata.
@@ -196,6 +197,13 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
 
         name_order: list of odor names to use as a fixed order for the names.
             Concentrations will be sorted within each name.
+
+        require_in_name_order: if True, raises ValueError if odors with not in
+            name_order are present. Otherwise sorts such odors alphabetically after
+            those in name_order.
+
+        warn: if True and `require_in_name_order=False`, warns about which odors were
+            not in name_order
     """
     if name_order is not None:
         assert sort_names == True, 'sort_names should be True if name_order passed'
@@ -237,11 +245,23 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
                 # the earlier tests w/ usual multiindex. not sure why... bug?
                 name_order = sorted(names)
             else:
+                # I might have liked to have an option to drop any odors like these, but
+                # pd.sort_index expects the key kwarg to return Index of the same shape.
+
+                # TODO unit test both of the paths in here
                 not_in_name_order = {n for n in names if n not in name_order}
                 if len(not_in_name_order) > 0:
-                    raise ValueError(f'{pformat(not_in_name_order)} were not in '
-                        f'name_order={pformat(name_order)}'
+                    err_msg = (f'{pformat(not_in_name_order)} were not in name_order='
+                        f'{pformat(name_order)}'
                     )
+                    if require_in_name_order:
+                        raise ValueError(err_msg)
+
+                    if warn:
+                        warnings.warn(f'{err_msg}. appending to end of name_order in '
+                            'alphabetical order.'
+                        )
+                    name_order = name_order + sorted(not_in_name_order)
 
             name_keys = [
                 name_order.index(x) if x != min_name_key else x for x in name_keys
