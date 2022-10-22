@@ -13,7 +13,7 @@ import glob
 from itertools import zip_longest
 import functools
 from pathlib import Path
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -1063,14 +1063,24 @@ def get_col_onset_indices(df, possible_col_names, threshold=None):
     return onsets
 
 
-def get_col_onset_offset_indices(df, possible_col_names, threshold=None):
+class OnsetOffsetNumMismatch(Exception):
+    pass
+
+
+# TODO how to type hint arbitrary length tuple (/iterable) of str (in a union)?
+def get_col_onset_offset_indices(df: pd.DataFrame, possible_col_names,
+    checks: bool = True, threshold: Optional[float] = None):
     """Returns arrays onsets, offsets with appropriate indices in `df`.
 
-    possible_col_names (str or tuple): can be either exact column name in
-        `df` or an iterable of column names, where the first matching a column
-        in `df` will be used.
+    Args:
+        possible_col_names (str or tuple): can be either exact column name in
+            `df` or an iterable of column names, where the first matching a column
+            in `df` will be used.
 
-    threshold (float): passed to `threshold_crossings` under the same name.
+        threshold (float): passed to `threshold_crossings` under the same name.
+
+    Raises OnsetOffsetNumMismatch if `checks=True` and the number of onsets and offsets
+    differ.
     """
     col = _get_column(df, possible_col_names)
 
@@ -1085,15 +1095,18 @@ def get_col_onset_offset_indices(df, possible_col_names, threshold=None):
     # must...)
     onsets, offsets = threshold_crossings(col, threshold=threshold)
 
-    # TODO maybe just have threshold_crossings make these checks by default, w/ a
-    # kwarg to override (which gets threaded through here)?
-    assert len(onsets) == len(offsets), f'{len(onsets)} != {len(offsets)}'
-    assert np.all(onsets < offsets), 'at least one offset before onset'
+    if checks:
+        # TODO maybe just have threshold_crossings make these checks by default, w/ a
+        # kwarg to override (which gets threaded through here)?
+        if len(onsets) != len(offsets):
+            raise OnsetOffsetNumMismatch(f'{len(onsets)} != {len(offsets)}')
+
+        assert np.all(onsets < offsets), 'at least one offset before onset'
 
     return onsets, offsets
 
 
-def get_col_onset_offset_times(df, possible_col_names, **kwargs):
+def get_col_onset_offset_times(df: pd.DataFrame, possible_col_names, **kwargs):
     """Returns arrays onsets, offsets with appropriate values from `df.time_s`.
 
     Args:
@@ -1502,6 +1515,8 @@ def get_frame_times(df: pd.DataFrame, thorimage_dir, time_ref='mid',
         # This will raise `IndexError` if any exceed size of frame_times
         # (though it shouldn't unless I made a mistake)
         frame_times = np.delete(frame_times, flyback_indices)
+
+        # TODO change these two AssertionErrors into a custom error
 
         # (we basically already know, but just for the sake of it...)
         n_volumes, remainder = divmod(len(frame_times), z)
@@ -2009,27 +2024,27 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
 
     Args:
-    check_against_naming_conv (bool): (default=False) If True, check ordering
-        from pairing is consistent with ordering derived from our naming
-        conventions for Thor software output.
+        check_against_naming_conv (bool): (default=False) If True, check ordering
+            from pairing is consistent with ordering derived from our naming
+            conventions for Thor software output.
 
-    check_unique_thorimage_nums (bool): If True, check numbers parsed from
-        ThorImage directory names, as-per convention, are unique.
-        Requires check_against_naming_conv to be True. Defaults to True if
-        check_against_naming_conv is True, else defaults to False.
+        check_unique_thorimage_nums (bool): If True, check numbers parsed from
+            ThorImage directory names, as-per convention, are unique.
+            Requires check_against_naming_conv to be True. Defaults to True if
+            check_against_naming_conv is True, else defaults to False.
 
-    ignore_prepairing (None | iterable of str): An optional iterable of substrings. If
-        any are present in the name of a Thor directory, that directory will be excluded
-        from consideration in pairing. This is mainly to keep the (fragile)
-        implementation that requires equal numbers of ThorImage and ThorSync directories
-        for pairing working if some particular experiments named a certain way only have
-        data from one. Will also be try appending these to `ignore` if uneven numbers of
-        directories and `use_ranking=True`.
+        ignore_prepairing (None | iterable of str): An optional iterable of substrings.
+            If any are present in the name of a Thor directory, that directory will be
+            excluded from consideration in pairing. This is mainly to keep the (fragile)
+            implementation that requires equal numbers of ThorImage and ThorSync
+            directories for pairing working if some particular experiments named a
+            certain way only have data from one. Will also be try appending these to
+            `ignore` if uneven numbers of directories and `use_ranking=True`.
 
-    ignore (None | iterable of str): As `ignore_prepairing`, but ignore will happen
-        after pairing. Both the ThorImage and ThorSync directories of a pair will be
-        checked for these substrings and if any match the pair is not returned. This is
-        mainly intended to ignore known-bad data.
+        ignore (None | iterable of str): As `ignore_prepairing`, but ignore will happen
+            after pairing. Both the ThorImage and ThorSync directories of a pair will be
+            checked for these substrings and if any match the pair is not returned. This
+            is mainly intended to ignore known-bad data.
 
     Raises ValueError if two dirs of one type match to the same one of the
     other, but just returns shorter list of pairs if some matches can not be
