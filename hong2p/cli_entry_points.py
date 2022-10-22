@@ -150,3 +150,24 @@ def print_paired_thor_subdirs():
     ])
     print(df.to_string(index=False))
 
+
+def print_thorimage_subdir_notes():
+    """Prints the note field of ThorImage subdirectories.
+
+    Printed in order of ThorImage experiment times.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dir', nargs='?', default=os.getcwd(),
+        help='path containing .raw and metadata created by ThorImage'
+    )
+    args = parser.parse_args()
+    parent = args.dir
+
+    thorimage_subdirs = thor.thorimage_subdirs(parent)
+    for thorimage_dir in sorted(thorimage_subdirs, key=lambda d:
+        thor.get_thorimage_time(d)):
+
+        print(util.shorten_path(thorimage_dir))
+        print(thor.get_thorimage_notes(thorimage_dir))
+        print('')
+

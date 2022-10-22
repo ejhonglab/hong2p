@@ -73,6 +73,7 @@ setup(
             'hong2p-analysis=hong2p:print_analysis_intermediates_root',
 
             'thor-pairs=hong2p:print_paired_thor_subdirs',
+            'thor-notes=hong2p:print_thorimage_subdir_notes',
         ],
     },
     author="Tom O'Connell",
