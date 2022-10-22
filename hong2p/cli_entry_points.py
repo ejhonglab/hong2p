@@ -3,7 +3,9 @@ import argparse
 import os
 from os.path import isdir, exists, join
 
-from hong2p import util
+import pandas as pd
+
+from hong2p import util, thor
 from hong2p.viz import showsync
 from hong2p.suite2p import print_suite2p_params
 
@@ -104,6 +106,9 @@ def print_dir_fn_cli_wrapper(fn):
     return cli_wrapper
 
 
+# TODO factor my ~/.bash_aliases commands using these (e.g. 2p, 2pr, 2pa, print_2pa)
+# into a script in hong2p + call that script to install them in my ~/.bash_aliases
+# (+ provide script / instructions for other people to install them)
 @print_dir_fn_cli_wrapper
 def print_data_root(verbose=False):
     print(util.data_root(verbose=verbose))
@@ -117,4 +122,31 @@ def print_raw_data_root(verbose=False):
 def print_analysis_intermediates_root():
     # This one doesn't take have a `verbose` kwarg like the others
     print(util.analysis_intermediates_root())
+
+
+def print_paired_thor_subdirs():
+    # TODO clarify in doc what "experiment time" is. is it when thorimage started?
+    # ended?
+    """Prints pairs of (ThorImage, ThorSync) dirs that are direct descendents of input.
+
+    Printed in order of ThorImage experiment times.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dir', nargs='?', default=os.getcwd(),
+        help='path containing .raw and metadata created by ThorImage'
+    )
+    args = parser.parse_args()
+    parent = args.dir
+
+    # TODO TODO expose some kwargs to CLI? may need to if we have e.g. 'anat' w/o
+    # corresponding ThorSync dir
+    paired_dirs = thor.pair_thor_subdirs(parent)
+
+    # TODO opt to include get_thorimage_time in nice format?
+
+    df = pd.DataFrame.from_records(columns=['ThorImage', 'ThorSync'], data=[
+        (i.name, s.name) for (i, s) in sorted(paired_dirs, key=lambda p:
+        thor.get_thorimage_time(p[0]))
+    ])
+    print(df.to_string(index=False))
 
