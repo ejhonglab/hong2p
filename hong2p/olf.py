@@ -21,29 +21,26 @@ from hong2p.types import Pathlike, ExperimentOdors
 solvent_str = 'solvent'
 conc_delimiter = '@'
 
+# TODO TODO add something for mapping from the standard-hong-odor-names to the hallem
+# names
+
 # TODO fns for adding to this / overriding
 # TODO load/supplement from (union of?) abbrevs included in configs, if possible
 odor2abbrev = {
-    'methyl salicylate': 'MS',
     'hexyl hexanoate': 'HH',
     'furfural': 'FUR',
 
-    # Changed to using Remy's abbreviation.
-    #'1-hexanol': 'HEX',
-    '1-hexanol': '1-6ol',
-
     '1-octen-3-ol': 'OCT',
-    '2-heptanone': '2H',
+
     'acetone': 'ACE',
     'butanal': 'BUT',
     'ethyl acetate': 'EA',
-    'ethyl butyrate': 'EB',
+
     'ethyl hexanoate': 'EH',
     'hexyl acetate': 'HA',
     'ethanol': 'EtOH',
     'isoamyl alcohol': 'IAol',
-    'isoamyl acetate': 'IAA',
-    'valeric acid': 'VA',
+
     # TODO change back when i'm reading to convert / recompute all old analysis
     # intermediates using old ('~kiwi', 'control mix') names
     'kiwi approx.': '~kiwi',
@@ -54,15 +51,12 @@ odor2abbrev = {
     'ethyl lactate': 'elac',
     'methyl acetate': 'MA',
     '2,3-butanedione': '2,3-b',
-    '2-butanone': '2but',
+
     'ethyl 3-hydroxybutyrate': 'e3hb',
     'trans-2-hexenal': 't2h',
     'ethyl crotonate': 'ecrot',
     'methyl octanoate': 'moct',
     # good one for acetoin (should be only current diag w/o one)?
-
-    # Another name for 'valeric acid', but the one Remy had used.
-    'pentanoic acid': 'VA',
 
     'linalool': 'Lin',
     'B-citronellol': 'B-cit',
@@ -73,6 +67,17 @@ odor2abbrev = {
     'pentyl acetate': 'pa',
     'ethyl propionate': 'ep',
     'acetic acid': 'aa',
+
+    # To match Remy's abbreviations exactly
+    'methyl salicylate': 'ms',
+    '2-heptanone': '2h',
+    'ethyl butyrate': 'eb',
+    '1-hexanol': '1-6ol',
+    'isoamyl acetate': 'IaA',
+    '2-butanone': '2-but',
+    'valeric acid': 'va',
+    # Another name for 'valeric acid', but the one Remy had used.
+    'pentanoic acid': 'va',
 }
 
 
