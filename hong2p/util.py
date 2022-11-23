@@ -809,7 +809,10 @@ def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True
 # names/values from (DataFrame creation probably)?
 # TODO TODO support xarray dataarrays?
 # TODO test
-def addlevel(df, names, values, *, axis='index'):
+# TODO TODO TODO add support for sequence of values (for a given name (/names entry)).
+# at the moment, seems only scalar values supported. or at least rename to indicate it
+# only supports scalars in values.
+def addlevel(df: pd.DataFrame, names, values, *, axis='index'):
     """Add level(s) to pandas MultiIndex
 
     Intended to be an inverse to pandas.DataFrame.droplevel. pandas.DataFrame.set_index
@@ -2321,6 +2324,17 @@ def load_movie(thorimage_dir, **kwargs):
 
     # TODO TODO TODO finish implementing
     #metadata = load_metadata(
+
+
+def dir2keys(path: Pathlike) -> Tuple[pd.Timestamp, int, str]:
+    """Returns (date, fly_num, thorimage_id) for dir with these as last three parts.
+    """
+    path = Path(path)
+    date_str, fly_num_str, thorimage_dirname = path.parts[-3:]
+
+    date = pd.Timestamp(date_str)
+    fly_num = int(fly_num_str)
+    return date, fly_num, thorimage_dirname
 
 
 def tiff_filename2keys(tiff_filename):
@@ -5897,7 +5911,7 @@ def tiff_title(tif):
 
 # TODO didn't i have some other fn for this? delete one if so
 # (or was it just in natural_odors?)
-def to_filename(x, period=True):
+def to_filename(x: str, period: bool = True) -> str:
     """Take a str and normalizes it a bit to make it a better filename prefix.
 
     E.g. taking a plot title and using it to derive a filename for saving the
@@ -7439,3 +7453,32 @@ def invert_melt_symmetric(ser, suffixes=('_a', '_b')):
     # This does also work in the case where `levels_to_drop` is empty.
     ser = ser.droplevel(levels_to_drop)
     return ser.unstack([p + s0 for p in col_prefixes])
+
+
+# TODO move this (+ other appropriate stuff), to a pandas.py module like my xarray.py
+def check_index_vals_unique(df: pd.DataFrame) -> None:
+    """Raises AssertionError if any duplicates in column/index indices.
+    """
+    assert not (df.index.duplicated().any() or df.columns.duplicated().any())
+
+
+# TODO also factor to a pandas module
+# TODO already have something like this?
+# TODO typehint subclass of Index? already good on that?
+def get_axis_index(df: pd.DataFrame, axis: Union[int, str]) -> pd.Index:
+    if axis == 0 or axis == 'index':
+        return df.index
+    elif axis == 1 or axis == 'columns':
+        return df.columns
+    else:
+        raise ValueError(f'invalid axis: {axis}')
+
+
+# TODO also factor to a pandas module
+def suffix_index_names(df: pd.DataFrame, suffix: str = '_b', axis='columns') -> None:
+    # TODO TODO also support non-multiindex w/ .name
+    # TODO factor out helper to get df
+    index = get_axis_index(df, axis)
+    index.names = [f'{x}{suffix}' for x in index.names]
+    # TODO make not inplace?
+
