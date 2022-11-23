@@ -9,9 +9,16 @@ import pandas as pd
 import xarray as xr
 
 
+# NOTE: lots of my current MultiIndex related woes should be tractable once development
+# on xarray's own "Explicit indexes" completes here:
+# https://github.com/pydata/xarray/projects/1
+#
+# See also: https://github.com/pydata/xarray/issues/6293 (if project number changes)
+
 # TODO fn for getting all coordinates (in index or not?) associated w/ particular
 # dimension
-
+# TODO how do i even add new scalar coords? should i make a helper to add a bunch of
+# them?
 def is_scalar_coord(arr: xr.DataArray) -> bool:
     """Whether item from <DataArray>.coords.values() corresponds to a scalar coordinate.
     """
@@ -51,6 +58,22 @@ def drop_scalar_coords(arr: xr.DataArray) -> xr.DataArray:
     return arr.drop_vars(to_drop)
 
 
+def assign_scalar_coords_to_dim(arr: xr.DataArray, dim: str) -> xr.DataArray:
+    """Returns DataArray with all scalar coordinates moved to dimension `dim`.
+
+    Assumes scalar coordinates are non-dimension coordinates.
+
+    May also depend on dim being of size >1 (at least for some intended uses)
+    """
+    if dim not in arr.sizes:
+        raise ValueError(f'{dim} not in {arr.dims=}')
+
+    coord_dict = scalar_coords(arr)
+    return arr.assign_coords({
+        k: (dim, arr.sizes[dim] * [v]) for k, v in coord_dict.items()
+    })
+
+
 # TODO TODO should this, and/or scalar_coords above, be converting datetime64[ns]
 # (xarray represetation) to pd.Timestamp (constructor of latter takes former directly)?
 # TODO Any or hashable?
@@ -87,6 +110,8 @@ def unique_coord_value(arr: xr.DataArray, coord: Optional[str] = None) -> Any:
 
 # TODO option to just do for a subset of dimensions?
 # TODO rename index->indices?
+# TODO allow passing in str list of order for them to be in (could also be the subset of
+# names to use as new index, assuming there would be any value add over set_index)
 def move_all_coords_to_index(arr: xr.DataArray) -> xr.DataArray:
     """Returns array with all coord variables associated with a dim to index on that dim
     """
