@@ -34,6 +34,14 @@ DIGITAL_THRESHOLD = 0.5
 # expecting it to fix though...
 ANALOG_0_TO_5V_THRESHOLD = 4.5
 
+
+class OnsetOffsetNumMismatch(Exception):
+    pass
+
+class NotAllFramesAssigned(Exception):
+    pass
+
+
 def xmlroot(xml_path: str) -> etree.Element:
     """Loads contents of xml_path into xml.etree.ElementTree and returns root.
 
@@ -112,19 +120,12 @@ def get_thorimage_time_xml(xml) -> datetime:
     return from_utime
 
 
-# TODO consider deleting use_mtime. only potentially useful if a time ~end of experiment
-# is more useful for matching things up, assuming mtime of XML file meets that criteria
-# (and assuming it never gets changed accidentally / by needing to edit the file...)
-def get_thorimage_time(thorimage_dir, use_mtime=False) -> datetime:
+def get_thorimage_time(thorimage_dir) -> datetime:
     """Takes ThorImage directory to recording start time (from XML).
     """
     xml_path = get_thorimage_xml_path(thorimage_dir)
-
-    if not use_mtime:
-        xml = xmlroot(xml_path)
-        return get_thorimage_time_xml(xml)
-    else:
-        return datetime.fromtimestamp(getmtime(xml_path))
+    xml = xmlroot(xml_path)
+    return get_thorimage_time_xml(xml)
 
 
 @thorimage_xml
@@ -409,6 +410,7 @@ def get_thorsync_time(thorsync_dir):
     Not perfect, but it doesn't seem any ThorSync outputs have timestamps.
     """
     syncxml = get_thorsync_xml_path(thorsync_dir)
+    # TODO is there not a timestamp embedded?
     return datetime.fromtimestamp(getmtime(syncxml))
 
 
@@ -1063,10 +1065,6 @@ def get_col_onset_indices(df, possible_col_names, threshold=None):
     return onsets
 
 
-class OnsetOffsetNumMismatch(Exception):
-    pass
-
-
 # TODO how to type hint arbitrary length tuple (/iterable) of str (in a union)?
 def get_col_onset_offset_indices(df: pd.DataFrame, possible_col_names,
     checks: bool = True, threshold: Optional[float] = None):
@@ -1536,7 +1534,7 @@ def assign_frame_times_to_blocks(frame_times, rtol=1.5):
             should have a `shape` of `(movie.shape[0],)`.
 
         rtol (float): (optional, default=1.5) time differences between frames must
-            be at least this multiplied by the median time difference in order for 
+            be at least this multiplied by the median time difference in order for
             a block to be called there.
 
     Notes:
@@ -1773,8 +1771,12 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
 
         # TODO TODO TODO which of the 2022-10-07 data was triggering this again?
         # 1/megamat0_part2? what is correct handling there?
-        assert len(frame_times[indices]) == len(frame_times), \
-            f'{thorimage_dir}: not all frames were assigned'
+        # TODO TODO TODO replace assertion w/ raising NotAllFramesAssigned
+        # (+ adapt any calling code that currently catches AssertionError)
+        assert len(frame_times[indices]) == len(frame_times), (f'{thorimage_dir}: not '
+            f'all frames were assigned ({len(frame_times[indices])=} != '
+            f'{len(frame_times)=})'
+        )
 
         # TODO delete try/except
         '''
@@ -2098,9 +2100,8 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     if check_unique_thorimage_nums is None and check_against_naming_conv:
         check_unique_thorimage_nums = True
 
-    thorimage_times = {d: get_thorimage_time(d, use_mtime=use_mtime)
-        for d in thorimage_dirs
-    }
+    thorimage_times = {d: get_thorimage_time(d) for d in thorimage_dirs}
+
     # TODO should get_thorsync_time not implement/take the same use_mtime kwarg?
     thorsync_times = {d: get_thorsync_time(d) for d in thorsync_dirs}
 
