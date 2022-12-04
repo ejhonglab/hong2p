@@ -782,9 +782,16 @@ def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
     return yaml_path, yaml_data, odor_lists
 
 
-def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True
-    ) -> Optional[float]:
+def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True,
+    verbose: bool = False) -> Optional[float]:
     """Recursively find the `os.path.getmtime` of the most recently modified file
+
+    Args:
+        path: directory within which to check mtime of files
+
+        recurse: whether to check files under descendant directories of input
+
+        verbose: prints which file had the most recent mtime (mostly for debugging)
 
     Returns None if there are no files in the directory.
 
@@ -801,6 +808,16 @@ def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True
 
     if len(files) == 0:
         return None
+
+    if verbose:
+        mtimes = [getmtime(f) for f in files]
+        max_mtime = max(mtimes)
+        most_recent_file = files[mtimes.index(max_mtime)]
+        # TODO also print modification time, appropriately formatted?
+        print(f'most recent modified file in {path} ({recurse=}): '
+            f'{most_recent_file.relative_to(path)}'
+        )
+        return max_mtime
 
     return max(getmtime(f) for f in files)
 
