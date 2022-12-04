@@ -4,7 +4,9 @@ import pytest
 import numpy as np
 from scipy.spatial.distance import pdist
 
-from hong2p import util
+from hong2p.roi import (check_no_roi_jumps, correspond_and_renumber_rois,
+    make_test_centers
+)
 
 
 pytestmark = pytest.mark.skip(reason="WIP + tested code unused")
@@ -107,10 +109,10 @@ def help_test_correspond_and_renumber(nt, verbose=False, **kwargs):
     # TODO maybe also check we cant sub_n to having no ROIs before end
 
     for _ in range(n_max_attempts):
-        centers = util.make_test_centers(initial_n=initial_n, nt=nt, p=None,
+        centers = make_test_centers(initial_n=initial_n, nt=nt, p=None,
             add_diameters=False, verbose=True
         )
-        util.check_no_roi_jumps(centers, max_cost)
+        check_no_roi_jumps(centers, max_cost)
         if all([pdist(ct).min() > max_cost for ct in centers]):
             break
         centers = None
@@ -130,7 +132,7 @@ def help_test_correspond_and_renumber(nt, verbose=False, **kwargs):
 
     print(kwarg_str, end=' ... ')
     try:
-        new_centers = util.correspond_and_renumber_rois(
+        new_centers = correspond_and_renumber_rois(
             center_seq_no_nan, max_cost=max_cost
         )
     except:

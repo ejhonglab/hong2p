@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from hong2p import util, thor
+from hong2p import roi as hong_roi
 from hong2p.olf import remove_consecutive_repeats
 from hong2p.types import DataFrameOrDataArray
 
@@ -155,6 +156,9 @@ def _mpl_constrained_layout(enable):
     To make decorators for fns that create Figure(s) and need contrained layout on/off.
 
     Use `@constrained_layout` or `@no_constrained_layout` rather than this directly.
+
+    NOTE: savefig call will often also have to happen inside the same kind of context
+    manager, at least for calls like `seaborn.ClusterGrid.savefig`.
     """
     def wrap_plot_fn(plot_fn):
         """
@@ -165,6 +169,10 @@ def _mpl_constrained_layout(enable):
         @functools.wraps(plot_fn)
         def wrapped_plot_fn(*args, **kwargs):
             with mpl.rc_context({'figure.constrained_layout.use': enable}):
+                # TODO maybe monkeypatch any .savefig methods on returned object to warn
+                # about need to add context manager around that call too? or just
+                # monkeypatch to have constrained layout forced to be consistent in any
+                # savefig methods?
                 return plot_fn(*args, **kwargs)
 
         return wrapped_plot_fn
@@ -350,6 +358,7 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
     # (currently just disabling optimal ordering in these cases)
     if optimal_ordering:
         def _linkage(df):
+            # TODO way to get this to work w/ some NaNs? worth it?
             return linkage(df.values, optimal_ordering=True, method=method,
                 metric=metric
             )
@@ -688,6 +697,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
 
     if len(paths) != 1:
         if if_multiple == 'err':
+            import ipdb; ipdb.set_trace()
             raise RuntimeError('multiple disconnected paths in one footprint')
 
         elif if_multiple == 'take_largest':
@@ -700,9 +710,10 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
                 path = paths[p]
 
                 # TODO maybe replace mpl stuff w/ cv2 drawContours? (or related...) (fn
-                # now in here as contour2mask)
+                # now in here as roi.contour2mask)
                 # TODO shouldn't these (if i want to keep this branch anyway...)
                 # be using padded_footprint instead of footprint?
+                # TODO TODO factor to something like a "mplpath2mask" fn
                 mask = np.ones_like(footprint, dtype=bool)
                 for x, y in np.ndindex(footprint.shape):
                     # TODO TODO not sure why this seems to be transposed, but it
@@ -841,8 +852,25 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
     return fig, axs
 
 
-def plot_rois(rois: xr.DataArray, background, show_names=True, ncols=2, _pad=False
-    ) -> Figure:
+# TODO unit test (that at least it produces a figure without failing for
+# correctly-formatted DataArray input)
+# TODO support similarly-indexed DataArray for background (+ maybe remove ndarray code)
+def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = True,
+    ncols: int = 2, _pad: bool = False) -> Figure:
+    # TODO doc
+    """
+    Args:
+        rois: with dims ('roi', 'z', 'y', 'x'). coords must have at least
+            ('roi_z', 'roi_name') on the 'roi' dimension.
+
+        background: must have shape equal to the (<z>, <y>, <x>) lengths of the
+            corresponding entries in `rois.sizes`
+
+        show_names: whether to plot ROI names in the center of each ROI
+
+        ncols: how many columns for grid showing the background of each plane
+            (one panel per plane)
+    """
     # TODO TODO option to [locally?] histogram equalize the image (or something else to
     # increase contrast + prevent hot pixels from screwing up range in a plane)
     # TODO option to color ROIs randomly (perhaps also specifically so no neighboring
@@ -885,7 +913,11 @@ def plot_rois(rois: xr.DataArray, background, show_names=True, ncols=2, _pad=Fal
                 index = dict(zip(index_names, index_vals))
                 name = index['roi_name']
 
-            plot_closed_contours(roi, label=name, ax=ax, _pad=_pad)
+            try:
+                plot_closed_contours(roi, label=name, ax=ax, _pad=_pad)
+
+            except RuntimeError as err:
+                import ipdb; ipdb.set_trace()
 
         if z == (z_size - 1):
             break
@@ -1315,12 +1347,12 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             # downstream (would prefer not to transpose footprint though)
             # (as i had to switch x_coords and y_coords in db as they were
             # initially entered swapped)
-            footprint = db_row2footprint(footprint_row, shape=avg.shape)
+            footprint = hong_roi.db_row2footprint(footprint_row, shape=avg.shape)
 
             # TODO maybe some percentile / fixed size about maximum
             # density?
             cropped_footprint, ((x_min, x_max), (y_min, y_max)) = \
-                crop_to_nonzero(footprint, margin=6)
+                hong_roi.crop_to_nonzero(footprint, margin=6)
 
             cell2rect[cell_id] = (x_min, x_max, y_min, y_max)
 

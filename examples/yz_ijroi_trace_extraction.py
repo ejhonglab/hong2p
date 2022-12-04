@@ -15,6 +15,7 @@ import ijroi
 import numpy as np
 import matplotlib.pyplot as plt
 from hong2p import thor, util
+from hong2p.roi import ijroi2mask, extract_traces_bool_masks
 
 
 def main():
@@ -41,7 +42,7 @@ def main():
     with open(ijroi_path, 'rb') as f:
         roi = ijroi.read_roi(f)
 
-    mask = util.ijroi2mask(roi, movie.shape[-2:])
+    mask = ijroi2mask(roi, movie.shape[-2:])
 
     mean = movie.mean(axis=0)
     plt.figure()
@@ -53,7 +54,7 @@ def main():
     # since my extract function expects the number of footprints as the last dimension
     masks = np.expand_dims(mask, -1)
 
-    traces = util.extract_traces_bool_masks(movie, masks)
+    traces = extract_traces_bool_masks(movie, masks)
     trace = traces[:, 0]
 
     plt.figure()

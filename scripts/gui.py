@@ -56,6 +56,10 @@ import ijroi
 import chemutils as cu
 
 from hong2p import util, matlab, db, thor, viz
+from hong2p.roi import (crop_to_nonzero, py2imagej_coords, db_row2footprint,
+    db_footprints2array, ijrois2masks, footprints_to_flat_cnmf_dims,
+    extract_traces_bool_masks
+)
 
 
 conn = db.get_db_conn()
@@ -1089,10 +1093,10 @@ class Segmentation(QWidget):
         for cell_row in self.footprint_df.iterrows():
             cell = cell_row[0]
             # TODO this indicate some other problem?
-            footprint = util.db_row2footprint(cell_row[1], shape=frame_shape)
+            footprint = db_row2footprint(cell_row[1], shape=frame_shape)
             # Looking at ijroi source code, it seems Y coordinate is first in
             # input / output arrays.
-            footprint = util.py2imagej_coords(footprint)
+            footprint = py2imagej_coords(footprint)
 
             # TODO TODO maybe change this to using cv2 findContours or something
             # TODO make this always verbose when it's applying whatever
@@ -1120,7 +1124,7 @@ class Segmentation(QWidget):
         #import ipdb; ipdb.set_trace()
 
         # TODO delete.
-        #self.before_ijroi_cycle = util.ijrois2masks(ijrois, frame_shape)
+        #self.before_ijroi_cycle = ijrois2masks(ijrois, frame_shape)
         #
 
         tiff_dir = split(tiff)[0]
@@ -1215,7 +1219,7 @@ class Segmentation(QWidget):
                         ).format(util.format_timestamp(ijroi_cnmf_run))
                     )
                 else:
-                    self.orig_cnmf_footprints = util.db_footprints2array(
+                    self.orig_cnmf_footprints = db_footprints2array(
                         orig_cnmf_footprints, frame_shape
                     )
             else:
@@ -1251,7 +1255,7 @@ class Segmentation(QWidget):
         # (mpl code) / use diff code to generate them. no point always storing
         # this extra stuff if cv2 doesn't need it...
 
-        self.footprints = util.ijrois2masks(ijrois, frame_shape)
+        self.footprints = ijrois2masks(ijrois, frame_shape)
         if self.orig_cnmf_footprints is not None:
             assert self.footprints.shape == self.orig_cnmf_footprints.shape
 
@@ -1270,9 +1274,7 @@ class Segmentation(QWidget):
         # TODO superimpose on avg or something before calculating everything
         # (separate user action to confirm)?
 
-        self.raw_f = util.extract_traces_bool_masks(self.movie,
-            self.footprints
-        )
+        self.raw_f = extract_traces_bool_masks(self.movie, self.footprints)
         n_footprints = self.raw_f.shape[1]
 
         # TODO factor df/f calc into util fn
@@ -2107,8 +2109,8 @@ class Segmentation(QWidget):
 
             if self.ijroi_file_path is not None:
                 assert self.parameter_json is None
-                A = util.footprints_to_flat_cnmf_dims(self.footprints)
-                
+                A = footprints_to_flat_cnmf_dims(self.footprints)
+
                 # TODO delete
                 '''
                 try:
@@ -4074,8 +4076,9 @@ class ROIAnnotation(QWidget):
         footprint = self.full_footprints[cell_id]
 
         # TODO TODO take the margin as a parameter in the GUI
-        cropped_footprint, ((x_min, x_max), (y_min, y_max)) = \
-            util.crop_to_nonzero(footprint, margin=6)
+        cropped_footprint, ((x_min, x_max), (y_min, y_max)) = crop_to_nonzero(
+            footprint, margin=6
+        )
 
         near_footprints = dict()
         for c, f in self.full_footprints.items():

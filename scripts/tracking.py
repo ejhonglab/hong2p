@@ -18,6 +18,9 @@ from scipy.spatial.distance import pdist
 import multiprocessing as mp
 
 from hong2p import util, thor
+from hong2p.roi import (fit_circle_rois, correspond_rois, correspond_and_renumber_rois,
+    stable_rois, roi_jumps, make_test_centers
+)
 
 
 def split_to_xydm(roi_data_xyd, unmasked=False):
@@ -261,7 +264,7 @@ def show_movie(movie, rois=None, show_surrounding_frame_rois=True,
 def fit_frame(args):
     frame_num, frame, tif = args
 
-    centers, radii, _, _ = util.fit_circle_rois(tif, avg=frame)
+    centers, radii, _, _ = fit_circle_rois(tif, avg=frame)
     rois_xyd = np.concatenate((centers,
         np.expand_dims(radii * 2, -1)), axis=-1
     )
@@ -275,7 +278,7 @@ def main():
     #nt = 2
     #test_movie = np.zeros((nt, 256, 256))
     test_movie = np.random.uniform(size=(nt, 256, 256))
-    centers = util.make_test_centers(initial_n=3, nt=nt, p=None, verbose=True)
+    centers = make_test_centers(initial_n=3, nt=nt, p=None, verbose=True)
     print(centers[0])
     show_movie(test_movie, centers, show_surrounding_frame_rois=False,
         debug_rois=True
@@ -352,7 +355,7 @@ def main():
         ]
     }
     '''
-    # generated w/ util.roi_jumps
+    # generated w/ roi_jumps
     debug_points = {
         1: [{'name': '265', 'xy0': (153, 116), 'xy1': (76, 122)},
              {'name': '266', 'xy0': (76, 122), 'xy1': (162, 148)},
@@ -391,8 +394,8 @@ def main():
 
     # TODO time this to see whether it's worth parallelizing
     before = time.time()
-    roi_xyd = util.correspond_and_renumber_rois(
-        withinblock_center_sequence, debug=True, debug_points=debug_points,
+    roi_xyd = correspond_and_renumber_rois(withinblock_center_sequence,
+        debug=True, debug_points=debug_points,
         progress=False, # if len(downsampled) < 10 else True
         #checks=False
         checks=True
@@ -402,7 +405,7 @@ def main():
     ))
 
     max_cost = 5
-    jump_debug_points = util.roi_jumps(roi_xyd, max_cost)
+    jump_debug_points = roi_jumps(roi_xyd, max_cost)
     '''
     if len(jump_debug_points) > 0:
         print('debug_points = ', end='')
@@ -465,18 +468,17 @@ def main():
     center_sequence = []
     for i in range(len(blocks)):
         frame = blocks[i].mean(axis=0)
-        centers, radius, _, _ = util.fit_circle_rois(tif, avg=frame)
+        centers, radius, _, _ = fit_circle_rois(tif, avg=frame)
         center_sequence.append(centers)
 
     roi_numbers = False
 
     avg = movie.mean(axis=0)
-    lr_matches, unmatched_left, unmatched_right, cost_totals, fig = \
-        util.correspond_rois(center_sequence, max_cost=radius + 1,
-        draw_on=avg, title=tiff_title,
+    lr_matches, unmatched_left, unmatched_right, cost_totals, fig = correspond_rois(
+        center_sequence, max_cost=radius + 1, draw_on=avg, title=tiff_title,
         pairwise_plots=True, roi_numbers=roi_numbers, show=True
     )
-    stable_cells, new_lost = util.stable_rois(lr_matches)
+    stable_cells, new_lost = stable_rois(lr_matches)
 
     print(f'Number of cells detected in each block:',
         [len(cs) for cs in center_sequence])

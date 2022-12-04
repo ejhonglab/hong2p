@@ -21,6 +21,10 @@ from scipy.cluster.vq import kmeans
 
 import ijroi
 from hong2p import util, thor, db, viz
+from hong2p.roi import (crop_to_coord_bbox, contour2mask, autoroi_metadata_filename,
+    get_circle_ijroi_input, fit_circle_rois, template_data_file, load_template_data,
+    correspond_rois
+)
 
 
 def print_bad_keys(mask):
@@ -195,11 +199,11 @@ def main():
 
     np.set_printoptions(precision=3)
 
-    template_cache = util.template_data_file()
+    template_cache = template_data_file()
     if args.remake:
         template_data = None
     else:
-        template_data = util.load_template_data()
+        template_data = load_template_data()
 
     if template_data is not None:
         print(f'Loaded template data from {template_cache}')
@@ -384,7 +388,7 @@ def main():
                     # after scaling). check w/ docs or some test case!
                     roi = np.round(roi * scale_factor).astype(roi.dtype)
 
-                cropped, (x_bounds, y_bounds) = util.crop_to_coord_bbox(avg,
+                cropped, (x_bounds, y_bounds) = crop_to_coord_bbox(avg,
                     roi, margin=margin
                 )
                 if debug_plots:
@@ -395,7 +399,7 @@ def main():
                     # a mask as large as the whole frame.
                     roi[:,0] = roi[:,0] - x_bounds[0]
                     roi[:,1] = roi[:,1] - y_bounds[0]
-                    mask = util.contour2mask(roi, cropped.shape)
+                    mask = contour2mask(roi, cropped.shape)
 
                     if debug_plots:
                         plt.figure()
@@ -533,7 +537,7 @@ def main():
         template_cell_diam_px = template.shape[0] - 2 * margin
         template_cell_radius_px = template_cell_diam_px / 2
         radius = int(round(template_cell_radius_px))
-        ijroi_repr = util.get_circle_ijroi_input(center, radius)
+        ijroi_repr = get_circle_ijroi_input(center, radius)
 
         template_roi_path = 'template.roi'
         with open(template_roi_path, 'wb') as f:
@@ -584,7 +588,7 @@ def main():
             row = df[tif_rows].iloc[0]
 
             ijroi_file = row.ijroi_file_path
-            auto_md_fname = util.autoroi_metadata_filename(ijroi_file)
+            auto_md_fname = autoroi_metadata_filename(ijroi_file)
             if exists(auto_md_fname):
                 if exclude_even_initially_auto_rois:
                     print('skipping', tif, 'because ROIs (at least initially) '
@@ -610,9 +614,7 @@ def main():
             movie = tifffile.imread(tif)
             avg = movie.mean(axis=0)
 
-            centers, radii_px, _, _ = util.fit_circle_rois(tif, template_data,
-                avg=avg
-            )
+            centers, radii_px, _, _ = fit_circle_rois(tif, template_data, avg=avg)
             # TODO delete
             #plt.show()
             #import ipdb; ipdb.set_trace()
@@ -633,7 +635,7 @@ def main():
             true_centers = np.stack([c for c, _ in center_diams])
 
             lr_matches, unmatched_left, unmatched_right, total_cost, _ = \
-                util.correspond_rois(centers, true_centers, max_cost=max_cost,
+                correspond_rois(centers, true_centers, max_cost=max_cost,
                 left_name='Automatic', right_name='Manual', draw_on=draw_on,
                 title=title, show=True
             )

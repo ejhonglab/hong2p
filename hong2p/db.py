@@ -11,6 +11,7 @@ from datetime import datetime
 import time
 
 from hong2p import util, thor
+from hong2p.roi import ijrois2masks
 
 # TODO test/check that all necessary imports were brought over in refactoring
 # (+ all refs to util.py fns below are prefixed w/ 'util.')

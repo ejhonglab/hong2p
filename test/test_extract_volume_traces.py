@@ -7,6 +7,7 @@ import ijroi
 import matplotlib.pyplot as plt
 
 from hong2p import util
+from hong2p.roi import ijrois2masks, extract_traces_bool_masks
 from hong2p.thor import read_movie
 
 
@@ -26,10 +27,10 @@ def test_extract_volume_traces():
 
     #test_nested_calls(ijrois[0][1], frame_shape)
 
-    footprints = util.ijrois2masks(ijrois, frame_shape)
+    footprints = ijrois2masks(ijrois, frame_shape)
 
     # TODO TODO what is appropriate test this is actually working?
-    raw_f = util.extract_traces_bool_masks(movie, footprints)
+    raw_f = extract_traces_bool_masks(movie, footprints)
     import ipdb; ipdb.set_trace()
 
 

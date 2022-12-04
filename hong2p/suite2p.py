@@ -14,6 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from hong2p import thor, util
+from hong2p.roi import crop_to_nonzero, numpy2xarray_rois
 from hong2p.types import Pathlike
 
 
@@ -426,7 +427,7 @@ def suite2p_stat2rois(stat, ops, merges=None, as_xarray=True, **kwargs):
                     roi_nums[mi_indices] = merged_roi_num
 
         # TODO maybe overwrite default sequential 'roi_num'?
-        return util.numpy2xarray_rois(roi_array, roi_indices={
+        return numpy2xarray_rois(roi_array, roi_indices={
             's2p_roi_num': roi_nums,
             'roi_z': roi_z_indices,
         })
@@ -445,7 +446,7 @@ def plot_roi(roi_stat, ops, ax=None):
     # TODO in future, might be nice to convert xpix / ypix and only ever make roi_img of
     # the shape of the cropped ROI (change crop_to_nonzero and fn it calls)
 
-    cropped, ((x_min, x_max), (y_min, y_max)) = util.crop_to_nonzero(xy_roi, margin=0)
+    cropped, ((x_min, x_max), (y_min, y_max)) = crop_to_nonzero(xy_roi, margin=0)
 
     ax.imshow(cropped)
     ax.axis('off')

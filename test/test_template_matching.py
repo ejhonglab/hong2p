@@ -9,6 +9,9 @@ import tifffile
 import ijroi
 
 from hong2p import util
+from hong2p.roi import (ijrois2masks, extract_traces_bool_masks, get_circle_ijroi_input,
+    fit_circle_rois, load_template_data, _get_template_roi_radius_px
+)
 
 
 # Module level setup below is failing at the moment, so skipping via arguments added in
@@ -21,7 +24,7 @@ interactive = False
 
 # TODO test fixture this or something else to make it easier to get this (or at least
 # some representative) test data on fresh installs
-template_data = util.load_template_data()
+template_data = load_template_data()
 assert template_data is not None, 'could not load template data'
 template = template_data['template']
 margin = template_data['margin']
@@ -233,8 +236,8 @@ def test_single_template_knownoffset():
         for center_point in wellseparated_centers[:2]:
             img_with_roi, _ = make_img_with_rois(frame_shape, [center_point])
 
-            ij_centers, radii_px, _, _ = util.fit_circle_rois(tiff_fname,
-                template_data, _um_per_pixel_xy=um_per_pixel_xy,
+            ij_centers, radii_px, _, _ = fit_circle_rois(tiff_fname, template_data,
+                _um_per_pixel_xy=um_per_pixel_xy,
                 avg=img_with_roi, min_neighbors=0,
                 min_n_rois=1, max_n_rois=1,
                 max_threshold_tries=1,
@@ -278,8 +281,8 @@ def test_ordering_wellseparated_centers():
             img_with_rois, _ = make_img_with_rois(frame_shape, centers,
                 intensity_scales=intensity_scales
             )
-            ij_centers, radii_px, _, _ = util.fit_circle_rois(tiff_fname,
-                template_data, _um_per_pixel_xy=um_per_pixel_xy,
+            ij_centers, radii_px, _, _ = fit_circle_rois(tiff_fname, template_data,
+                _um_per_pixel_xy=um_per_pixel_xy,
                 avg=img_with_rois, min_neighbors=0,
                 min_n_rois=2, max_n_rois=2,
                 max_threshold_tries=1,
@@ -326,8 +329,7 @@ def test_multiscale_packing():
             centers, template_dimension_changes=templ_d_deltas
         )
 
-        ij_centers, radii_px, thresholds, ns_found = util.fit_circle_rois(
-            tiff_fname,
+        ij_centers, radii_px, thresholds, ns_found = fit_circle_rois(tiff_fname,
             template_data,
             _um_per_pixel_xy=um_per_pixel_xy,
             avg=img_with_rois,
@@ -449,7 +451,7 @@ def test_ijrois2masks():
         ijrois = ijroi.read_roi_zip(roiset_fname)
         assert len(ijrois) == n_rois
         assert np.array_equal(ijrois[0][1], ijrois[1][1])
-        masks = util.ijrois2masks(ijrois, frame_shape)
+        masks = ijrois2masks(ijrois, frame_shape)
         # So last dim indexes mask #. I might want first index to do that...
         assert masks.shape[:2] == frame_shape
         assert masks.shape[-1] == n_rois
@@ -463,16 +465,12 @@ def test_ijrois2masks():
         plt.show()
         '''
 
-        traces = util.extract_traces_bool_masks(movie, masks,
-            verbose=False
-        )
+        traces = extract_traces_bool_masks(movie, masks, verbose=False)
         assert traces.shape[0] == n_frames
         assert traces.shape[1] == n_rois
         assert np.all(traces > 0)
 
-        empty_traces = util.extract_traces_bool_masks(movie_t, masks,
-            verbose=False
-        )
+        empty_traces = extract_traces_bool_masks(movie_t, masks, verbose=False)
         assert empty_traces.shape[0] == n_frames
         assert empty_traces.shape[1] == n_rois
         assert np.all(empty_traces == 0)
@@ -481,9 +479,7 @@ def test_ijrois2masks():
         for i in range(masks.shape[-1]):
             masks_t.append(masks[:,:,i].T)
         masks_t = np.stack(masks_t, axis=-1)
-        empty_traces2 = util.extract_traces_bool_masks(movie, masks_t,
-            verbose=False
-        )
+        empty_traces2 = extract_traces_bool_masks(movie, masks_t, verbose=False)
         assert empty_traces2.shape[0] == n_frames
         assert empty_traces2.shape[1] == n_rois
         assert np.all(empty_traces2 == 0)
@@ -502,7 +498,7 @@ def check_ijroi_circle_center_coords():
 
     roi_file = 'check_corner.roi'
     radius = 8
-    roi_repr = util.get_circle_ijroi_input(center, radius)
+    roi_repr = get_circle_ijroi_input(center, radius)
     print(f'Writing debuging ROI file to {roi_file}')
     with open(roi_file, 'wb') as f:
         ijroi.write_roi(roi_repr, f, name='0', roi_type=ijroi.RoiType.OVAL)
