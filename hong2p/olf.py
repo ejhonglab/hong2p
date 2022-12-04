@@ -27,17 +27,17 @@ conc_delimiter = '@'
 # TODO fns for adding to this / overriding
 # TODO load/supplement from (union of?) abbrevs included in configs, if possible
 odor2abbrev = {
-    'hexyl hexanoate': 'HH',
-    'furfural': 'FUR',
+    'hexyl hexanoate': 'hh',
+    'furfural': 'fur',
 
-    '1-octen-3-ol': 'OCT',
+    '1-octen-3-ol': 'oct',
 
-    'acetone': 'ACE',
-    'butanal': 'BUT',
-    'ethyl acetate': 'EA',
+    'acetone': 'ace',
+    'butanal': 'but',
+    'ethyl acetate': 'ea',
 
-    'ethyl hexanoate': 'EH',
-    'hexyl acetate': 'HA',
+    'ethyl hexanoate': 'eh',
+    'hexyl acetate': 'ha',
     'ethanol': 'EtOH',
     'isoamyl alcohol': 'IAol',
 
@@ -49,7 +49,7 @@ odor2abbrev = {
     #'control mix': 'cmix',
 
     'ethyl lactate': 'elac',
-    'methyl acetate': 'MA',
+    'methyl acetate': 'ma',
     '2,3-butanedione': '2,3-b',
 
     'ethyl 3-hydroxybutyrate': 'e3hb',
@@ -432,7 +432,7 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
             # panel2name_order values
 
             # TODO TODO figure out what should happen if odors are shared between
-            # two panels (e.g. MS|VA @ -3 in control + megamat0 panels) -> test
+            # two panels (e.g. MS|VA @ -3 in control + megamat panels) -> test
 
             sorted_panel_dfs = []
             # TODO do i need to do level='panel' rather than implicit by='panel'
