@@ -416,9 +416,9 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     xtickrotation=None, ylabel=None, ylabel_rotation=None, ylabel_kws=None,
     cbar_label=None, group_ticklabels=False, vline_level_fn=None,
-    hline_level_fn=None, linewidth=0.5, ax=None, fontsize=None, fontweight=None,
-    figsize=None, dpi=None, transpose_sort_key=None, colorbar=True, cbar_shrink=1.0,
-    cbar_kws=None, **kwargs):
+    hline_level_fn=None, linewidth=0.5, linecolor='w', ax=None, fontsize=None,
+    fontweight=None, figsize=None, dpi=None, transpose_sort_key=None, colorbar=True,
+    cbar_shrink=1.0, cbar_kws=None, **kwargs):
     """
     Args:
         transpose_sort_key (None | function): takes df.index/df.columns and compares
@@ -493,6 +493,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
             cbar_kws = dict()
 
         # rotation=270?
+        #cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink, **cbar_kws)
         cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink, **cbar_kws)
 
     def grouped_labels_info(labels):
@@ -580,14 +581,14 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         line_positions = [x[1] + 0.5 for x in ranges[:-1]]
         for v in line_positions:
             # 'w' = white. https://matplotlib.org/stable/tutorials/colors/colors.html
-            ax.axhline(v, linewidth=linewidth, color='w')
+            ax.axhline(v, linewidth=linewidth, color=linecolor)
 
     if vline_level_fn is not None:
         ranges = util.const_ranges([vline_level_fn(x) for x in xticklabels])
         line_positions = [x[1] + 0.5 for x in ranges[:-1]]
         for v in line_positions:
             # 'w' = white. https://matplotlib.org/stable/tutorials/colors/colors.html
-            ax.axvline(v, linewidth=linewidth, color='w')
+            ax.axvline(v, linewidth=linewidth, color=linecolor)
 
     return fig, im
 
@@ -697,7 +698,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
 
     if len(paths) != 1:
         if if_multiple == 'err':
-            import ipdb; ipdb.set_trace()
+            #import ipdb; ipdb.set_trace()
             raise RuntimeError('multiple disconnected paths in one footprint')
 
         elif if_multiple == 'take_largest':
@@ -913,11 +914,14 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
                 index = dict(zip(index_names, index_vals))
                 name = index['roi_name']
 
+            plot_closed_contours(roi, label=name, ax=ax, _pad=_pad)
+            '''
             try:
                 plot_closed_contours(roi, label=name, ax=ax, _pad=_pad)
 
             except RuntimeError as err:
                 import ipdb; ipdb.set_trace()
+            '''
 
         if z == (z_size - 1):
             break
@@ -1006,6 +1010,9 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
 
 # TODO get x / y from whether they were declared share<x/y> in facetgrid
 # creation?
+# TODO TODO rename to something like "hide_all_but_first_axes_label" -> accept fig input
+# TODO also support hiding all but first xticklabels/similar? or make similar fns for
+# that?
 def fix_facetgrid_axis_labels(facet_grid, shared_in_center: bool = False,
     x: bool = True, y: bool = True) -> None:
     """Modifies a FacetGrid to not duplicate X and Y axis text labels.
