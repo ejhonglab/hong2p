@@ -19,6 +19,7 @@ import hashlib
 import functools
 from typing import Optional, Tuple, List, Generator, Sequence, Union
 import xml.etree.ElementTree as etree
+from urllib.error import URLError
 
 import numpy as np
 import pandas as pd
@@ -1450,8 +1451,12 @@ def df_to_odor_order(df, observed=True, return_name1=False):
     return order
 
 
-# TODO maybe also allow using GID from file?
-def gsheet_csv_export_link(file_with_edit_link, gid=0, no_append_gid=False):
+# TODO TODO delete no_append_gid code? still used (at least in mb_team_gsheet below)?
+# (also seems like natural_odors/literature_data expects this, tho kwarg not passed.
+# maybe default changed?)
+# TODO get rid of gid kwarg and just require it to be in url?
+def gsheet_csv_export_link(file_with_edit_link: Union[str, Pathlike],
+    gid: Optional[int] = None, no_append_gid: bool = False) -> str:
     """
     Takes a gsheet link copied from browser while editing it, and returns a
     URL suitable for reading it as a CSV into a DataFrame.
@@ -1459,9 +1464,13 @@ def gsheet_csv_export_link(file_with_edit_link, gid=0, no_append_gid=False):
     GID seems to default to 0 for the first sheet, but seems unpredictable for further
     sheets in the same document, though you can extract it from the URL in those cases.
     """
-    # TODO make expectations on URL consistent whether from file or not
-    if file_with_edit_link.startswith('http'):
-        base_url = file_with_edit_link
+    # TODO convert to pathlib
+
+    if str(file_with_edit_link).startswith('http'):
+        url = str(file_with_edit_link)
+
+    # If the input wasn't a link itself, then it should be a path to a file containing
+    # the link.
     else:
         pkg_data_dir = split(split(__file__)[0])[0]
 
@@ -1478,7 +1487,31 @@ def gsheet_csv_export_link(file_with_edit_link, gid=0, no_append_gid=False):
             raise IOError(f'{file_with_edit_link} not found in any of {dirs_to_try}')
 
         with open(link_filename, 'r') as f:
-            base_url = f.readline().split('/edit')[0]
+            url = f.readline()
+
+    base_url, http_params = url.split('/edit')
+
+    # TODO test in places called w/ str input (where presumably '/edit' (and following)
+    # isn't in URL (tho it probably should be now)
+    # TODO use this code in other path too
+    http_param_parts = http_params.strip('#').strip().split('&')
+    gid_param_prefix = 'gid='
+    for p in http_param_parts:
+        if p.startswith(gid_param_prefix):
+            if gid is not None:
+                raise ValueError('gid specified in both file_with_edit_link and gid '
+                    'args'
+                )
+
+            gid = int(p[len(gid_param_prefix):])
+            # Assuming gid=<x> not specified more than once in URL
+            break
+
+    # TODO get proper error in gsheet_to_frame if we default to gid=0 and that gid
+    # somehow doesn't exist on sheet (possible? maybe if first sheet deleted?)
+    if gid is None:
+        # Seems to be default for first sheet
+        gid = 0
 
     gsheet_link = base_url + '/export?format=csv&gid='
 
@@ -1488,39 +1521,68 @@ def gsheet_csv_export_link(file_with_edit_link, gid=0, no_append_gid=False):
     return gsheet_link
 
 
-def gsheet_to_frame(file_with_edit_link, *, gid=0, bool_fillna_false=True,
-    convert_date_col=True, drop_trailing_bools=True, restore_ints=True,
-    normalize_col_names=False):
+def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
+    bool_fillna_false: bool = True, convert_date_col: bool = True,
+    drop_trailing_bools: bool = True, restore_ints: bool = True,
+    normalize_col_names: bool = False, use_cache: bool = False) -> pd.DataFrame:
+    # TODO doc file_with_edit_link / gid (w/ expected format + how to get them)
+    # TODO want to allow str url for file_with_edit_link too (allowed in called fn)?
     """
     Args:
-        bool_fillna_false (bool): whether to replace missing values in columns that
-            otherwise only contain True/False with False. will convert column dtype to
-            'bool' as well.
+        file_with_edit_link: 
 
-        convert_date_col (bool): whether to convert the contents of any columns named
-            'date' (case insensitive) to `pd.Timestamp`
+        gid: 
 
-        drop_trailing_bools (bool): whether to drop blocks of False in bool columns
-            beyond the last row where all non-bool columns have any non-NaN values.
+        bool_fillna_false: whether to replace missing values in columns that otherwise
+            only contain True/False with False. will convert column dtype to 'bool' as
+            well.
+
+        convert_date_col: whether to convert the contents of any columns named 'date'
+            (case insensitive) to `pd.Timestamp`
+
+        drop_trailing_bools: whether to drop blocks of False in bool columns beyond the
+            last row where all non-bool columns have any non-NaN values.
 
             If a column has data validation for a boolean, the frame will have values
             (False as I've seen it so far) through to the end of the validation range,
             despite the fact that no data has been entered.
 
-        restore_ints (bool): whether to convert columns parsed as floats (because
-            missing data in rows where only default values for bool cols are present)
-            to an integer type. Requires that drop_trailing_bools actually gets rid of
-            all the NaN values in the columns to be converted to ints (float columns
-            with only whole number / NaN values).
+        restore_ints: whether to convert columns parsed as floats (because missing data
+            in rows where only default values for bool cols are present) to an integer
+            type. Requires that drop_trailing_bools actually gets rid of all the NaN
+            values in the columns to be converted to ints (float columns with only whole
+            number / NaN values).
 
-        normalize_col_names (bool): (default=False) whether to rename columns using the
+        normalize_col_names: whether to rename columns using the
             `hong2p.util.to_filename` (with `period=False` to that function) as well as
             lowercasing.
+
+        use_cache: whether to try loading cached Google sheet data, if there is a
+            connection error when trying to load the sheet data from online. Each call
+            will unconditionally write to this cache, saved as a hidden file in the same
+            directory as `file_with_edit_link`.
     """
+    file_with_edit_link = Path(file_with_edit_link)
 
     gsheet_link = gsheet_csv_export_link(file_with_edit_link, gid=gid)
 
-    df = pd.read_csv(gsheet_link)
+    try:
+        df = pd.read_csv(gsheet_link)
+
+    # This might not always be the error, depending on the pandas version.
+    # Tested with 1.3.1
+    except URLError:
+        use_cache = True
+
+    # TODO support file_with_edit_link being url str too (+ change type hint), or maybe
+    # unsupport that in other gsheet fn
+    cache_path = file_with_edit_link.parent / f'.{file_with_edit_link.stem}_cache.p'
+
+    if use_cache and cache_path.exists():
+        warnings.warn(f'using Google sheet cache at {cache_path}. may be out-of-date!')
+
+        # TODO factor this + writing below into [load|write]_pickle(Path, ...) fns?
+        return pickle.loads(cache_path.read_bytes())
 
     bool_col_unique_vals = {True, False, np.nan}
     # TODO may want to change issubset call to exclude cols where there is somehow only
@@ -1584,6 +1646,8 @@ def gsheet_to_frame(file_with_edit_link, *, gid=0, bool_fillna_false=True,
     if normalize_col_names:
         df.rename(columns=lambda x: to_filename(x, period=False).lower(), inplace=True)
 
+    cache_path.write_bytes(pickle.dumps(df))
+
     return df
 
 
@@ -1626,6 +1690,7 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
 
         sheets = dict()
         for df_name, gid in sheet_gids.items():
+            # TODO replace w/ gsheet_to_frame?
             df = pd.read_csv(gsheet_link + gid)
 
             # TODO convert any other dtypes?
