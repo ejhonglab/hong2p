@@ -1,0 +1,168 @@
+
+\documentclass{article}
+\usepackage{verbatim}
+
+% https://tex.stackexchange.com/questions/6073
+% https://tex.stackexchange.com/questions/195521
+% I'm just using this package to add the "max width" optional key to
+% includegraphics. Otherwise, it just wraps graphicx as far as I'm
+% concerned.
+\usepackage[export]{adjustbox}
+
+\usepackage{fancyhdr}
+
+\usepackage{figureSeries}
+
+\usepackage{geometry}
+% Comment after finding appropriate frame boundaries.
+%\usepackage{showframe}
+% From: https://tex.stackexchange.com/questions/39383/determine-text-width
+% Required for printing \textwidth, etc, w/ particular units below.
+%\usepackage{layouts}
+
+% TODO what was this for?
+\newgeometry{vmargin={15mm}, hmargin={12mm,17mm}}
+
+% not sure this is working as intended... section seems displayed twice, once again
+% before first figure in section
+%
+% If you don't want the "Figure: " prefix
+\captionsetup[figure]{labelformat=empty}
+
+% TODO what was this for?
+\captionsetup[sub]{labelformat=empty}
+
+% Some stack overflow comment said that although the \verb functionality is in LaTeX by
+% default, the implementations in this package are "better", and override the defaults.
+\usepackage{verbatimbox}
+
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+}
+\urlstyle{same}
+
+% TODO was it actually important they were PDFs (as opposed to e.g. pngs)?
+% TODO can plots be in any subdirectory? what if i have multiple directories i wanna
+% pull from?
+\graphicspath{{\VAR{fig_dir}/}}
+
+% For headers
+\pagestyle{fancy}
+
+% Clear existing header/footer entries
+\fancyhf{}
+
+
+\begin{document}
+
+\BLOCK{ if header }
+\begin{verbbox}\VAR{header}\end{verbbox}
+\fancyhead[C]{\theverbbox}
+\BLOCK{ endif }
+
+% TODO try to replace section[0/1] w/ named variables, if jinja syntax supports
+\BLOCK{ for section in sections }
+% TODO what is stored in section[0] and section[1]? (section name and list of plots i
+% think)
+% TODO replace w/ just \section (and remove section above?)
+%%\subsection{\VAR{section[0]}}
+%\section{\VAR{section[0]}}
+
+\figureSeriesHere{}
+% TODO maybe just make the section names take up less space (/ add to a variable part of
+% header maybe?). make display conditional on some flag in python fn compiling this?
+%\figureSeriesHere{\VAR{section[0]}}
+
+\BLOCK{ for fig_path in section[1] }
+\BLOCK{ if filename_captions }
+\begin{verbbox}\VAR{fig_path}\end{verbbox}
+\BLOCK{ endif }
+\figureSeriesRow{
+\figureSeriesElement{\BLOCK{ if filename_captions }\theverbbox\BLOCK{ endif }}{\includegraphics[max width=\textwidth,keepaspectratio]{\VAR{fig_path}}}
+}
+
+%# TODO is this a valid test in this context?
+%\BLOCK{ if fig_path in pagebreak_after }
+%\pagebreak
+%\BLOCK{ endif }
+
+\BLOCK{ endfor }
+\pagebreak
+
+\BLOCK{ endfor }
+
+%\section{Within-fly analyses}
+%
+%% TODO some way to reduce vspace between rows a bit? couldn't tell from
+%% figureSeries docs...
+%% w/ default vspace, 0.25\textheight seems about most I can do to fit 3 rows
+%% (0.3 was too much)
+%
+%% More than ~0.49 times \textwidth seems to breakup the rows.
+%% Goal is to get 2 figures included per row, to have control and kiwi
+%% experiments (within each fly) side-by-side.
+%
+%\BLOCK{ for section in paired_sections }
+%\subsection{\VAR{section[0]}}
+%
+%\figureSeriesHere{\VAR{section[0]}}
+%
+%% TODO pass in batch num + figure out textwidth factor from that
+%% 0.49 worked w/o creating new lines for batch(2).
+%
+%% Note: in final latex, any blank lines between figureSeriesElements
+%% seems to make things take their own rows (for some unclear reason),
+%% so it's important that there are no blank lines below, around the
+%% BLOCK directives. (Previously I had empty lines here to visually
+%% separate the two if statements, and that seemed sufficient to cause
+%% failure of grouping figures into rows.)
+%\BLOCK{ for row_fig_paths in section[1]|batch(3) }
+%
+%\BLOCK{ if filename_captions }
+%\BLOCK{ for fig_path in row_fig_paths }
+%\BLOCK{ if fig_path }
+%%# Converting from int loop counter to letter because \v1 and \v2 led to
+%%# seemingly incorrect PDF output in a test case, but \va and \vb worked.
+%%# I also tried this, but chr is undefined within the templater context.
+%%# \VAR{ chr(97 + loop.index0) }
+%%# TODO possible to factor stuff to get char into a fn somehow, so
+%%# i don't need to redefine it three times?
+%\begin{myverbbox}[\tiny]{\v\VAR{'abcdefghijklmnopqrstuvwxyz'[loop.index0]}}\VAR{fig_path}\end{myverbbox}
+%\BLOCK{ endif }
+%
+%\BLOCK{ if not fig_path }
+%\begin{myverbbox}{\v\VAR{'abcdefghijklmnopqrstuvwxyz'[loop.index0]}}\end{myverbbox}
+%\BLOCK{ endif }
+%\BLOCK{ endfor }
+%
+%\BLOCK{ endif }
+%\figureSeriesRow{
+%\BLOCK{ for fig_path in row_fig_paths }
+%\BLOCK{ if fig_path }
+%\figureSeriesElement{\BLOCK{ if filename_captions }\v\VAR{'abcdefghijklmnopqrstuvwxyz'[loop.index0]}\BLOCK{ endif }}{\includegraphics[width=0.32\textwidth,height=0.25\textheight,keepaspectratio]{\VAR{fig_path}}}
+%\BLOCK{ endif }
+%\BLOCK{ if not fig_path }
+%\figureSeriesElement{}{\includegraphics[width=0.32\textwidth]{empty_placeholder.pdf}}
+%\BLOCK{ endif }
+%\BLOCK{ endfor }
+%}
+%
+%%# TODO uncomment and get working after getting similar section above working
+%%# TODO is fig_path still defined here (from loop above)
+%%# if not, how to accomplish this?
+%%#\BLOCK{ if fig_path in pagebreak_after }
+%%#\pagebreak
+%%#\BLOCK{ endif }
+%
+%\BLOCK{ endfor }
+%
+%\pagebreak
+%
+%\BLOCK{ endfor }
+%
+
+\end{document}

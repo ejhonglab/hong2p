@@ -1,0 +1,112 @@
+
+\documentclass{article}
+\usepackage{verbatim}
+
+% https://tex.stackexchange.com/questions/6073
+% https://tex.stackexchange.com/questions/195521
+% I'm just using this package to add the "max width" optional key to
+% includegraphics. Otherwise, it just wraps graphicx as far as I'm
+% concerned.
+\usepackage[export]{adjustbox}
+
+\usepackage{fancyhdr}
+
+\usepackage{figureSeries}
+
+\usepackage{geometry}
+% Comment after finding appropriate frame boundaries.
+%\usepackage{showframe}
+% From: https://tex.stackexchange.com/questions/39383/determine-text-width
+% Required for printing \textwidth, etc, w/ particular units below.
+%\usepackage{layouts}
+
+% TODO what was this for?
+\newgeometry{vmargin={15mm}, hmargin={12mm,17mm}}
+
+% not sure this is working as intended... section seems displayed twice, once again
+% before first figure in section
+%
+% If you don't want the "Figure: " prefix
+\captionsetup[figure]{labelformat=empty}
+
+% TODO what was this for?
+\captionsetup[sub]{labelformat=empty}
+
+% Some stack overflow comment said that although the \verb functionality is in LaTeX by
+% default, the implementations in this package are "better", and override the defaults.
+\usepackage{verbatimbox}
+
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+}
+\urlstyle{same}
+
+% TODO can plots be in any subdirectory? what if i have multiple directories i wanna
+% pull from (tested to work as long as paths are relative to fig_dir)?
+\graphicspath{{\VAR{fig_dir}/}}
+
+
+\BLOCK{ if header }
+
+% For headers
+\pagestyle{fancy}
+% Clear existing header/footer entries
+\fancyhf{}
+
+\BLOCK{ endif }
+
+
+\begin{document}
+
+\BLOCK{ if header }
+\begin{verbbox}\VAR{header}\end{verbbox}
+\fancyhead[C]{\theverbbox}
+\BLOCK{ endif }
+
+% TODO try to replace section[0/1] w/ named variables, if jinja syntax supports
+\BLOCK{ for section in sections }
+% TODO what is stored in section[0] and section[1]? (section name and list of plots i
+% think)
+% TODO replace w/ just \section (and remove section above?)
+%%\subsection{\VAR{section[0]}}
+%\section{\VAR{section[0]}}
+
+% figureSeriesFloat seems to produces slightly more consistent spacing (from the top of
+% the page to the first figure, for a figureSeries spanning multiple pages), than
+% figureSeriesHere does, but still unsure how to get it totally consistent.
+\figureSeriesFloat{}
+%\figureSeriesHere{}
+% TODO maybe just make the section names take up less space (/ add to a variable part of
+% header maybe?). make display conditional on some flag in python fn compiling this?
+%\figureSeriesHere{\VAR{section[0]}}
+
+\BLOCK{ for fig_path in section[1] }
+
+\BLOCK{ if filename_captions }
+\begin{verbbox}\VAR{fig_path}\end{verbbox}
+\BLOCK{ endif }
+
+% Full `max height=\textheight` didn't prevent a blank page if first figure was too
+% large, but not sure the maximum fraction of \textheight that would also acheive this.
+%
+% Lowested tested fraction that also resulted in a blank page before first figure: 0.91
+\figureSeriesRow{
+\figureSeriesElement{\BLOCK{ if filename_captions }\theverbbox\BLOCK{ endif
+}}{\includegraphics[max width=\textwidth,max height=0.9\textheight,keepaspectratio]{\VAR{fig_path}}}
+}
+
+%# TODO is this a valid test in this context?
+%\BLOCK{ if fig_path in pagebreak_after }
+%\pagebreak
+%\BLOCK{ endif }
+
+\BLOCK{ endfor }
+\pagebreak
+
+\BLOCK{ endfor }
+
+\end{document}

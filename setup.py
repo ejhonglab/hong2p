@@ -35,6 +35,9 @@ setup(
 
         'PyYAML',
 
+        'jinja2',
+        'latex',
+
         # https://stackoverflow.com/questions/32688688
         # TODO move all imports of this to top-level, since i don't think it's heavy
         # enough to warrant conditional imports
