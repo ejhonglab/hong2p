@@ -36,6 +36,8 @@ setup(
         'PyYAML',
 
         'jinja2',
+        # How does what PyLaTeX offers compare? As of 2023, PyLaTeX last updated 2021,
+        # while [mbr/]latex was last updated 2019.
         'latex',
 
         # https://stackoverflow.com/questions/32688688

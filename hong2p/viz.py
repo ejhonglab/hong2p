@@ -30,6 +30,8 @@ from hong2p.types import DataFrameOrDataArray
 # TODO consider making a style sheet as in:
 # https://matplotlib.org/stable/tutorials/introductory/customizing.html?highlight=style%20sheets
 
+DEFAULT_ANATOMICAL_CMAP = 'gray'
+
 # TODO use this other places that redefine, now that it's module-level
 dff_latex = r'$\Delta F/F$'
 
@@ -593,7 +595,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     return fig, im
 
 
-def imshow(img, title=None, cmap='gray'):
+def imshow(img, title=None, cmap=DEFAULT_ANATOMICAL_CMAP):
     fig, ax = plt.subplots()
     ax.imshow(img, cmap=cmap)
 
@@ -797,7 +799,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
 
 
 def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
-    cmap='gray', **imshow_kwargs):
+    cmap=DEFAULT_ANATOMICAL_CMAP, **imshow_kwargs):
 
     def ceil(x):
         return int(np.ceil(x))
@@ -857,7 +859,7 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
 # correctly-formatted DataArray input)
 # TODO support similarly-indexed DataArray for background (+ maybe remove ndarray code)
 def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = True,
-    ncols: int = 2, _pad: bool = False) -> Figure:
+    ncols: int = 2, _pad: bool = False, cmap=DEFAULT_ANATOMICAL_CMAP) -> Figure:
     # TODO doc
     """
     Args:
@@ -885,7 +887,7 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
 
     z_size = rois.sizes['z']
 
-    fig, axs = image_grid(background, ncols=ncols)
+    fig, axs = image_grid(background, ncols=ncols, cmap=cmap)
 
     # Moving 'roi' from end to start.
     rois = rois.transpose('roi', 'z', 'y', 'x')
@@ -1416,7 +1418,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             if show_footprints_alone:
                 ax = axs[i,-2]
                 f_ax = axs[i,-1]
-                f_ax.imshow(cropped_footprint, cmap='gray')
+                f_ax.imshow(cropped_footprint, cmap=DEFAULT_ANATOMICAL_CMAP)
                 f_ax.axis('off')
             else:
                 ax = axs[i,-1]
@@ -1424,7 +1426,7 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             if show_footprint_with_mask:
                 ax.imshow(composite)
             else:
-                ax.imshow(cropped_avg, cmap='gray')
+                ax.imshow(cropped_avg, cmap=DEFAULT_ANATOMICAL_CMAP)
                 # TODO TODO also show any other contours in this rectangular ROI
                 # in a diff color! (copy how gui does this)
                 cell2contour[cell_id] = plot_closed_contours(cropped_footprint, ax,

@@ -226,6 +226,9 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
     conc_keys = np.empty(len(odor_strs)) * np.nan
 
     solvent_elements = odor_strs == solvent_str
+    # TODO relax, so i can support '5% cleaning ammonia in water' type stuff? at least
+    # a flag to relax? warn only option? (for now, decided to just change all the
+    # relevant stimulus files, and try to avoid doing this in the future)
     assert all([conc_delimiter in x for x in odor_strs[~ solvent_elements]])
 
     if not all(solvent_elements):
