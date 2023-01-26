@@ -864,6 +864,27 @@ def addlevel(df: pd.DataFrame, names, values, *, axis='index'):
     return df
 
 
+# TODO test w/ ndarray/DataFrame[/DataArray?] input + typehint
+# TODO type hint so that output type is same as input type (TypeVar?)
+# TODO already have something like this in diff_dataframes? (didn't seem like it, but
+# could maybe use this here)
+def nan_eq(arr1, arr2):
+    """Elementwise equality of arrays, but True if both are NaN at a location.
+
+    Normally, NaN != NaN, but this is not the behavior I want when trying to check which
+    parts of an array/DataFrame were changed by an operation.
+    """
+    # https://stackoverflow.com/questions/19322506
+    # Psuedocode: (x == y) or (isnan(x) and isnan(y))
+    return (arr1 == arr2) | ( (arr1 != arr2) & (arr2 != arr2) )
+
+    # This is ugly, but should let this work on very large arrays without causing any
+    # memory issues (not sure I need that...).
+    # https://stackoverflow.com/questions/10819715
+    # TODO does numexpr work w/ DataFrame inputs? returns same type?
+    #return numexpr.evaluate('(arr1 == arr2) | ( (arr1 != arr1) & (arr2 != arr2) )')
+
+
 def is_array_sorted(array: np.ndarray) -> bool:
     """Returns whether 1-dimensional np.ndarray is sorted."""
     # could implement an `axis` kwarg if i wanted to support multidimensional
@@ -1489,26 +1510,31 @@ def gsheet_csv_export_link(file_with_edit_link: Union[str, Pathlike],
         with open(link_filename, 'r') as f:
             url = f.readline()
 
-    base_url, http_params = url.split('/edit')
+    base_url_and_param_seperator = '/edit'
+    if base_url_and_param_seperator in url:
+        base_url, http_params = url.split(base_url_and_param_seperator)
 
-    # TODO test in places called w/ str input (where presumably '/edit' (and following)
-    # isn't in URL (tho it probably should be now)
-    # TODO use this code in other path too
-    http_param_parts = http_params.strip('#').strip().split('&')
-    gid_param_prefix = 'gid='
-    for p in http_param_parts:
-        if p.startswith(gid_param_prefix):
-            if gid is not None:
-                raise ValueError('gid specified in both file_with_edit_link and gid '
-                    'args'
-                )
+        # TODO test in places called w/ str input (where presumably '/edit' (and
+        # following) isn't in URL (tho it probably should be now)
+        # TODO use this code in other path too
+        http_param_parts = http_params.strip('#').strip().split('&')
+        gid_param_prefix = 'gid='
+        for p in http_param_parts:
+            if p.startswith(gid_param_prefix):
+                if gid is not None:
+                    raise ValueError('gid specified in both file_with_edit_link and gid'
+                        ' args'
+                    )
 
-            gid = int(p[len(gid_param_prefix):])
-            # Assuming gid=<x> not specified more than once in URL
-            break
+                gid = int(p[len(gid_param_prefix):])
+                # Assuming gid=<x> not specified more than once in URL
+                break
+    else:
+        base_url = url
 
     # TODO get proper error in gsheet_to_frame if we default to gid=0 and that gid
     # somehow doesn't exist on sheet (possible? maybe if first sheet deleted?)
+    # TODO warn in this case?
     if gid is None:
         # Seems to be default for first sheet
         gid = 0
@@ -1521,6 +1547,8 @@ def gsheet_csv_export_link(file_with_edit_link: Union[str, Pathlike],
     return gsheet_link
 
 
+# TODO add option to strip whitespace + replace whitespace-only cells with NaN
+# (then maybe use in natural_odors/literature_data)
 def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
     bool_fillna_false: bool = True, convert_date_col: bool = True,
     drop_trailing_bools: bool = True, restore_ints: bool = True,
@@ -2173,16 +2201,20 @@ def expand_array_cols(df):
     return out_df
 
 
-def diff_dataframes(df1, df2):
-    """Returns a DataFrame summarizing input differences.
+# TODO work with NaN in inputs? i don't want NaN != NaN being reported as a difference.
+# use my new nan_eq if needed/helpful.
+# TODO possible to replace (some of?) this w/ pandas.DataFrame.compare?
+def diff_dataframes(df1, df2) -> Optional[pd.DataFrame]:
+    """Returns a DataFrame summarizing input differences, or None if no differences.
     """
     # TODO do i want df1 and df2 to be allowed to be series?
     # (is that what they are now? need to modify anything?)
-    assert (df1.columns == df2.columns).all(), \
-        "DataFrame column names are different"
+    assert (df1.columns == df2.columns).all(), 'DataFrame column names are different'
+
     if any(df1.dtypes != df2.dtypes):
-        "Data Types are different, trying to convert"
+        print('Data Types are different, trying to convert')
         df2 = df2.astype(df1.dtypes)
+
     # TODO is this really necessary? not an empty df in this case anyway?
     if df1.equals(df2):
         return None
@@ -2216,11 +2248,9 @@ def diff_dataframes(df1, df2):
         other_cols = set(df1.columns) - set(floats1.columns) - set(arr_cols)
         other_diff_mask = df1[other_cols] != df2[other_cols]
 
-        diff_mask = pd.concat([
-            diff_mask_floats,
-            diff_mask_arr,
-            other_diff_mask], axis=1)
-
+        diff_mask = pd.concat([diff_mask_floats, diff_mask_arr, other_diff_mask],
+            axis=1
+        )
         if diff_mask.sum().sum() == 0:
             return None
 
@@ -2234,7 +2264,8 @@ def diff_dataframes(df1, df2):
         changed_from = df1.values[difference_locations]
         changed_to = df2.values[difference_locations]
         return pd.DataFrame({'from': changed_from, 'to': changed_to},
-                            index=changed.index)
+            index=changed.index
+        )
 
 
 def first_group(df, group_cols):
@@ -3898,7 +3929,8 @@ def tiff_title(tif):
 
 # TODO didn't i have some other fn for this? delete one if so
 # (or was it just in natural_odors?)
-def to_filename(x: str, period: bool = True) -> str:
+def to_filename(x: str, period: bool = True,
+    extra_remove_chars: Optional[Sequence[str]] = None) -> str:
     """Take a str and normalizes it a bit to make it a better filename prefix.
 
     E.g. taking a plot title and using it to derive a filename for saving the
@@ -3918,6 +3950,10 @@ def to_filename(x: str, period: bool = True) -> str:
         ']': '',
         '?': '',
     }
+    if extra_remove_chars is not None:
+        for c in extra_remove_chars:
+            replace_dict[c] = ''
+
     for k, v in replace_dict.items():
         x = x.replace(k, v)
 
