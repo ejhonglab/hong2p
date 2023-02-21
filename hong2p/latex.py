@@ -61,11 +61,12 @@ def compile_tex_to_pdf(latex_str, pdf_fname, failed_latex_msg: Optional[str] = N
 
 # TODO maybe delete fig_dir (and compute here from fig paths in section_names2figs?)
 # TODO doc
+# TODO print_tex_on_err output to stderr?
 def make_pdf(pdf_path, fig_dir, section_names2figs, header: Optional[str] = None,
     template_path='template.tex', write_latex_like_pdf: bool = False,
     write_latex_for_testing: bool = False, test_tex_path='test.tex',
-    only_print_latex: bool = False, verbose: bool = False
-    ) -> None:
+    only_print_latex: bool = False, print_tex_on_err: bool = True,
+    verbose: bool = False) -> None:
 
     fig_dir = Path(fig_dir).resolve()
 
@@ -116,9 +117,9 @@ def make_pdf(pdf_path, fig_dir, section_names2figs, header: Optional[str] = None
         with open(test_tex_path, 'w') as f:
             f.write(latex_str)
 
-    failed_latex_msg = f'Rendered TeX:\n{latex_str}\n'
+    latex_msg = f'Rendered TeX:\n{latex_str}\n'
     if only_print_latex or verbose:
-        print(failed_latex_msg)
+        print(latex_msg)
 
     if only_print_latex:
         return
@@ -132,6 +133,11 @@ def make_pdf(pdf_path, fig_dir, section_names2figs, header: Optional[str] = None
 
         with open(tex_fname, 'w') as f:
             f.write(latex_str)
+
+    if print_tex_on_err:
+        failed_latex_msg = latex_msg
+    else:
+        failed_latex_msg = None
 
     compile_tex_to_pdf(latex_str, pdf_path, failed_latex_msg=failed_latex_msg,
         verbose=verbose
