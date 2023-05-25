@@ -189,3 +189,12 @@ def test_const_ranges():
 
     rs = util.const_ranges([0, 0, 1])
     assert rs == [(0, 1), (2, 2)]
+
+    rs = util.const_ranges(['a'], include_val=True)
+    assert rs == [('a', 0, 0)]
+
+    rs = util.const_ranges(['a', 'a', 'b'], include_val=True)
+    assert rs == [('a', 0, 1), ('b', 2, 2)]
+
+    # TODO test include_val=True in empty input case
+
