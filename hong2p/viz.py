@@ -413,33 +413,42 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 # TODO modify group_ticklabels / add option to support contiguous, but varying-length,
 # groups (bar along edge of plot indicating extent of group label + group label placed
 # by center of that bar)
+# TODO try to delete levels_from_labels (transitioning to only the == False case)
+# TODO TODO try options to specify figsize in terms of inches per row/col in dataframe
+# (maybe plus some offset for legends, etc) (might wanna move to a constant fontsize in
+# that case)
+# TODO also allow specifying just index levels for [h|v]line_levels, rather than needing
+# functions?
 @constrained_layout
 @callable_ticklabels
 def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     xtickrotation=None, ylabel=None, ylabel_rotation=None, ylabel_kws=None,
     cbar_label=None, group_ticklabels=False, vline_level_fn=None,
-    hline_level_fn=None, linewidth=0.5, linecolor='w', ax=None, fontsize=None,
-    fontweight=None, figsize=None, dpi=None, transpose_sort_key=None, colorbar=True,
-    cbar_shrink=1.0, cbar_kws=None, **kwargs):
+    hline_level_fn=None, vline_group_text=False, hline_group_text=False,
+    vgroup_label_offset=15, hgroup_label_offset=8, group_fontsize=None,
+    group_fontweight=None, linewidth=0.5, linecolor='w', ax=None, fontsize=None,
+    bigtext_fontsize_scaler=1.5, fontweight=None, figsize=None, dpi=None,
+    inches_per_cell=None, extra_figsize=None, transpose_sort_key=None, colorbar=True,
+    cbar_shrink=1.0, cbar_kws=None, levels_from_labels=True,
+    allow_duplicate_labels=False, **kwargs):
     """
     Args:
         transpose_sort_key (None | function): takes df.index/df.columns and compares
             output to decide whether matrix should be transposed before plotting
 
+        vline_level_fn: callable whose output varies along axis labels/index (see
+            `levels_from_labels` for details). vertical lines will be drawn between
+            changes in the output of this function.
+
+        hline_level_fn: as `vline_level_fn`, but for horizontal lines.
+
+        levels_from_labels: if True, `[h|v]line_level_fn` functions use formatted
+            `[x|y]ticklabels` as input. Otherwise, a dict mapping index level names to
+            values are used. Currently only support drawing labels for each group if
+            this is False.
+
         **kwargs: passed thru to `matplotlib.pyplot.matshow`
     """
-    # TODO shouldn't this get ticklabels from matrix if nothing else?
-    # maybe at least in the case when both columns and row indices are all just
-    # one level of strings?
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-    else:
-        if figsize is not None:
-            raise ValueError('figsize only allowed if ax not passed in')
-
-        fig = ax.get_figure()
-
     # NOTE: if i'd like to also sort on [x/y]ticklabels, would need to move this block
     # after possible ticklabel enumeration, and then assign correctly to index/cols and
     # use that as input to sort_key_val in appropriate instead
@@ -457,6 +466,33 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
 
         if row_sort_key > col_sort_key:
             df = df.T
+
+    # TODO shouldn't this get ticklabels from matrix if nothing else?
+    # maybe at least in the case when both columns and row indices are all just
+    # one level of strings?
+    if inches_per_cell is not None:
+        if figsize is not None:
+            raise ValueError('only specify one of inches_per_cell or figsize')
+
+        if extra_figsize is None:
+            extra_figsize = (2.0, 1.0)
+
+        extra_width, extra_height = extra_figsize
+        figsize = (
+            inches_per_cell * df.shape[1] + extra_width,
+            inches_per_cell * df.shape[0] + extra_height
+        )
+
+    elif extra_figsize is not None:
+        raise ValueError('extra_figsize must be specified with inches_per_cell')
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    else:
+        if figsize is not None:
+            raise ValueError('figsize only allowed if ax not passed in')
+
+        fig = ax.get_figure()
 
     # TODO can probably delete this and replace w/ usage of format_index_row, maybe with
     # some slight modifications
@@ -488,6 +524,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     if fontsize is None:
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
+    bigtext_fontsize = bigtext_fontsize_scaler * fontsize
+
     im = ax.matshow(df, **kwargs)
 
     if colorbar:
@@ -496,7 +534,93 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
 
         # rotation=270?
         #cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink, **cbar_kws)
-        cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink, **cbar_kws)
+        # TODO thread fontsize thru this?
+        cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink,
+            fontsize=bigtext_fontsize, **cbar_kws
+        )
+
+    if group_fontsize is None:
+        group_fontsize = bigtext_fontsize
+
+    def _index_entry_dict(index, index_entry):
+        # If the index is a MultiIndex, iterating over it should yield tuples of the
+        # level values, otherwise we'll convert to a tuple so zipping is the same.
+        if type(index_entry) is not tuple:
+            index_entry = (index_entry,)
+
+        names = index.names
+        assert len(names) == len(index_entry)
+        return dict(zip(names, index_entry))
+
+    # TODO TODO lines showing extent that each text label applies too?
+    # (e.g. parallel to labelled axis, with breaks between levels? might crowd fly
+    # labels less than separator lines perpendicular to axis)
+    # TODO light refactoring to share x/y (v/x) code?
+    # TODO TODO for both of these, make linewidth a constant fration of cell
+    # width/height (whichever is appropriate) (at least by default)
+    # ~(figsize[i] / df.shape[i])?
+    # TODO what is default linewidth here anyway? unclear. 1?
+    # TODO default to only formatting together index levels not used by
+    # [h|v]line_level_fn (possible?), when ?
+    hline_levels = None
+    if hline_level_fn is not None:
+        if levels_from_labels:
+            ranges = util.const_ranges([hline_level_fn(x) for x in yticklabels])
+        else:
+            # TODO need to handle case where we might transpose (e.g. via
+            # transpose_sort_key?)
+            hline_levels = [
+                hline_level_fn(_index_entry_dict(df.index, x)) for x in df.index
+            ]
+            # TODO modify const_ranges to have include_val=True behavior be default?
+            # (+ delete switching flag, if so)
+            ranges = util.const_ranges(hline_levels, include_val=True)
+
+            if hline_group_text:
+                for label, y0, y1 in ranges:
+                    # TODO TODO compute group_label_offset? way to place the text using
+                    # constrained layout?
+                    ax.text(-hgroup_label_offset, np.mean((y0, y1)) + 0.5, label,
+                        fontsize=group_fontsize, fontweight=group_fontweight,
+                        # Right might make consistent spacing wrt line indicating extent
+                        # of group easier to see.
+                        ha='right',
+                        # Seemed to be a bit lower than center? Some other offset?
+                        #va='center'
+                    )
+
+        # If all the ranges have the same start and stop, all groups are length 1, and
+        # the lines would just add visual noise, rather than helping clarify boundaries
+        # between groups.
+        if any([x[-1] > x[-2] for x in ranges]):
+            line_positions = [x[-1] + 0.5 for x in ranges[:-1]]
+            # TODO if we have a lot of matrix elements, may want to decrease size of
+            # line a bit to not approach size of matrix elements...
+            for v in line_positions:
+                # 'w'=white. https://matplotlib.org/stable/tutorials/colors/colors.html
+                ax.axhline(v, linewidth=linewidth, color=linecolor)
+
+    vline_levels = None
+    if vline_level_fn is not None:
+        if levels_from_labels:
+            ranges = util.const_ranges([vline_level_fn(x) for x in xticklabels])
+        else:
+            vline_levels =[
+                vline_level_fn(_index_entry_dict(df.columns, x)) for x in df.columns
+            ]
+            ranges = util.const_ranges(vline_levels, include_val=True)
+
+            if vline_group_text:
+                for label, x0, x1 in ranges:
+                    ax.text(np.mean((x0, x1)) + 0.5, -vgroup_label_offset, label,
+                        fontsize=group_fontsize, fontweight=group_fontweight,
+                        ha='center'
+                    )
+
+        if any([x[-1] > x[-2] for x in ranges]):
+            line_positions = [x[-1] + 0.5 for x in ranges[:-1]]
+            for v in line_positions:
+                ax.axvline(v, linewidth=linewidth, color=linecolor)
 
     def grouped_labels_info(labels):
         if not group_ticklabels or labels is None:
@@ -512,6 +636,32 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
 
     def set_ticklabels(ax, x_or_y, labels, *args, **kwargs):
+        if not allow_duplicate_labels:
+            # TODO refactor?
+            if x_or_y == 'x' and (vline_group_text and vline_levels is not None):
+                to_check = list(zip(vline_levels, labels))
+                err_msg = 'duplicate (vline_level, xticklabel) combinations'
+
+            elif x_or_y == 'y' and (hline_group_text and hline_levels is not None):
+                to_check = list(zip(hline_levels, labels))
+                err_msg = 'duplicate (hline_level, yticklabel) combinations'
+            else:
+                to_check = labels
+                err_msg = f'duplicate {x_or_y}ticklabels'
+
+                if x_or_y == 'x' and vline_level_fn is not None:
+                    err_msg += ('. specifying vline_group_text=True may resolve '
+                        'duplicates.'
+                    )
+
+                elif x_or_y == 'y' and hline_level_fn is not None:
+                    err_msg += ('. specifying hline_group_text=True may resolve '
+                        'duplicates.'
+                    )
+
+            if len(to_check) != len(set(to_check)):
+                raise ValueError(err_msg)
+
         assert x_or_y in ('x', 'y')
         if x_or_y == 'x':
             set_fn = ax.set_xticklabels
@@ -543,54 +693,26 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
         set_ticklabels(ax, 'x', xticklabels,
             fontsize=fontsize, fontweight=fontweight, rotation=xtickrotation
-        #    rotation='horizontal' if group_ticklabels else 'vertical'
         )
 
     if yticklabels is not None:
         ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
         set_ticklabels(ax, 'y', yticklabels,
             fontsize=fontsize, fontweight=fontweight, rotation='horizontal'
-            #rotation='vertical' if group_ticklabels else 'horizontal'
         )
-
-    # TODO test this doesn't change rotation if we just set rotation above
-
-    # this doesn't seem like it will work, since it seems to clear the default
-    # ticklabels that there actually were...
-    #ax.set_yticklabels(ax.get_yticklabels(), fontsize=fontsize,
-    #    fontweight=fontweight
-    #)
 
     # didn't seem to do what i was expecting
     #ax.spines['bottom'].set_visible(False)
     ax.tick_params(bottom=False)
 
     if title is not None:
-        ax.set_xlabel(title, fontsize=(fontsize + 1.5), labelpad=12)
+        ax.set_xlabel(title, fontsize=bigtext_fontsize, labelpad=12)
 
     if ylabel is not None:
         ylabel_kws = _ylabel_kwargs(
             ylabel_rotation=ylabel_rotation, ylabel_kws=ylabel_kws
         )
-        ax.set_ylabel(ylabel, fontsize=(fontsize + 1.5), **ylabel_kws)
-
-    # TODO light refactoring to share x/y (v/x) code?
-    # TODO TODO for both of these, make linewidth a constant fration of cell
-    # width/height (whichever is appropriate) (at least by default)
-    # TODO what is default linewidth here anyway? unclear. 1?
-    if hline_level_fn is not None:
-        ranges = util.const_ranges([hline_level_fn(x) for x in yticklabels])
-        line_positions = [x[1] + 0.5 for x in ranges[:-1]]
-        for v in line_positions:
-            # 'w' = white. https://matplotlib.org/stable/tutorials/colors/colors.html
-            ax.axhline(v, linewidth=linewidth, color=linecolor)
-
-    if vline_level_fn is not None:
-        ranges = util.const_ranges([vline_level_fn(x) for x in xticklabels])
-        line_positions = [x[1] + 0.5 for x in ranges[:-1]]
-        for v in line_positions:
-            # 'w' = white. https://matplotlib.org/stable/tutorials/colors/colors.html
-            ax.axvline(v, linewidth=linewidth, color=linecolor)
+        ax.set_ylabel(ylabel, fontsize=bigtext_fontsize, **ylabel_kws)
 
     return fig, im
 
@@ -606,7 +728,7 @@ def imshow(img, title=None, cmap=DEFAULT_ANATOMICAL_CMAP):
     return fig
 
 
-def add_colorbar(fig, im, label=None, shrink=1.0, **kwargs):
+def add_colorbar(fig, im, label=None, fontsize=None, shrink=1.0, **kwargs):
     """
         shrink: same default as matplotlib
     """
@@ -618,7 +740,8 @@ def add_colorbar(fig, im, label=None, shrink=1.0, **kwargs):
     cbar = fig.colorbar(im, ax=fig.axes, shrink=shrink, **kwargs)
 
     if label is not None:
-        cbar.ax.set_ylabel(label)
+        # TODO test fontsize=None doesn't change default behavior
+        cbar.ax.set_ylabel(label, fontsize=fontsize)
 
     return cbar
 
@@ -646,8 +769,10 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
     Args:
         ax: Axes to plot onto. will use current Axes otherwise.
 
-        if_multiple: 'take_largest'|'join'|'err'. what to do if there are multiple
-            closed contours within footprint.
+        if_multiple: 'take_largest'|'join'|'err'|'ignore'. what to do if there are
+            multiple closed contours within footprint. contour will be plotted
+            regardless, but error will happen before a contour is returned for use in
+            other analysis.
 
         **kwargs: passed through to matplotlib `ax.contour` call
     """
@@ -692,16 +817,46 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
             linewidths=linewidths, linestyles=linestyles, **kwargs
         )
 
+    if label is not None:
+        assert len(mpl_contour.allsegs) == 1
+        # TODO TODO warn? might need to use a particular segment / combination in other
+        # cases
+        #assert len(mpl_contour.allsegs[-1]) == 1
+        assert len(mpl_contour.allsegs[-1]) >= 1
+
+        # Also partially taken from https://stackoverflow.com/questions/48168880
+        cx, cy = contour_center_of_mass(mpl_contour.allsegs[-1][0])
+
+        if text_kws is None:
+            text_kws = dict()
+
+        default_text_kws = {
+            'color': colors,
+            'horizontalalignment': 'center',
+            'fontweight': 'bold',
+            # Default should be 10.
+            'fontsize': 8,
+        }
+        for k, v in default_text_kws.items():
+            if k not in text_kws:
+                text_kws[k] = v
+
+        ax.text(cx, cy, label, **text_kws)
+
     # TODO which of these is actually > 1 in multiple comps case?
     # handle that one approp w/ err_on_multiple_comps!
     assert len(mpl_contour.collections) == 1
 
     paths = mpl_contour.collections[0].get_paths()
+    assert len(paths) > 0
 
     if len(paths) != 1:
+        # NOTE: this will be after drawing contour, but before drawing any label...
         if if_multiple == 'err':
-            #import ipdb; ipdb.set_trace()
             raise RuntimeError('multiple disconnected paths in one footprint')
+
+        elif if_multiple == 'ignore':
+            return None
 
         elif if_multiple == 'take_largest':
             raise NotImplementedError
@@ -761,33 +916,6 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
             raise NotImplementedError
     else:
         path = paths[0]
-
-    if label is not None:
-        if if_multiple != 'err':
-            raise NotImplementedError('label currently only supported for '
-                "if_multiple='err'"
-            )
-
-        assert len(mpl_contour.allsegs) == 1
-        assert len(mpl_contour.allsegs[-1]) == 1
-        # Also partially taken from https://stackoverflow.com/questions/48168880
-        cx, cy = contour_center_of_mass(mpl_contour.allsegs[-1][0])
-
-        if text_kws is None:
-            text_kws = dict()
-
-        default_text_kws = {
-            'color': colors,
-            'horizontalalignment': 'center',
-            'fontweight': 'bold',
-            # Default should be 10.
-            'fontsize': 8,
-        }
-        for k, v in default_text_kws.items():
-            if k not in text_kws:
-                text_kws[k] = v
-
-        ax.text(cx, cy, label, **text_kws)
 
     # TODO TODO need to test that anything that used return value here is still correct,
     # now that i deleted old padding code, after it seemed to be just causing an offset
@@ -859,7 +987,8 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
 # correctly-formatted DataArray input)
 # TODO support similarly-indexed DataArray for background (+ maybe remove ndarray code)
 def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = True,
-    ncols: int = 2, _pad: bool = False, cmap=DEFAULT_ANATOMICAL_CMAP) -> Figure:
+    ncols: int = 2, _pad: bool = False, cmap=DEFAULT_ANATOMICAL_CMAP, **kwargs
+    ) -> Figure:
     # TODO doc
     """
     Args:
@@ -873,6 +1002,8 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
 
         ncols: how many columns for grid showing the background of each plane
             (one panel per plane)
+
+        **kwargs: passed thru to `plot_closed_contours`
     """
     # TODO TODO option to [locally?] histogram equalize the image (or something else to
     # increase contrast + prevent hot pixels from screwing up range in a plane)
@@ -892,6 +1023,7 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
     # Moving 'roi' from end to start.
     rois = rois.transpose('roi', 'z', 'y', 'x')
 
+    err_msg = None
     for z, ax in enumerate(axs.flat):
         try:
             rois_in_curr_z = rois.sel(roi_z=z)
@@ -916,17 +1048,22 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
                 index = dict(zip(index_names, index_vals))
                 name = index['roi_name']
 
-            plot_closed_contours(roi, label=name, ax=ax, _pad=_pad)
-            '''
             try:
-                plot_closed_contours(roi, label=name, ax=ax, _pad=_pad)
+                plot_closed_contours(roi, label=name, ax=ax, _pad=_pad, **kwargs)
 
             except RuntimeError as err:
-                import ipdb; ipdb.set_trace()
-            '''
+                # +1 to index as in ImageJ
+                curr_err_msg = f'{name} (z={z + 1}): {err}'
+                if err_msg is None:
+                    err_msg = curr_err_msg
+                else:
+                    err_msg += f'\n{curr_err_msg}'
 
         if z == (z_size - 1):
             break
+
+    if err_msg is not None:
+        raise RuntimeError(err_msg)
 
     return fig
 
