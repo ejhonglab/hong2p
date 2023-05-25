@@ -17,7 +17,7 @@ import glob
 import re
 import hashlib
 import functools
-from typing import Optional, Tuple, List, Generator, Sequence, Union
+from typing import Optional, Tuple, List, Generator, Sequence, Union, Any
 import xml.etree.ElementTree as etree
 from urllib.error import URLError
 
