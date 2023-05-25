@@ -919,7 +919,10 @@ def md5(fname):
     return hash_md5.hexdigest()
 
 
-def const_ranges(xs: Sequence) -> List[Tuple[int, int]]:
+# TODO transition everytion to as if include_val==True?
+def const_ranges(xs: Sequence, include_val=False) -> Union[
+    List[Tuple[int, int]], List[Tuple[Any, int, int]]
+    ]:
     """Returns tuples of indices for largest contiguous constant-value ranges in input.
 
     >>> const_ranges(['MCH', 'MCH', 'OCT', 'OCT'])
@@ -935,16 +938,28 @@ def const_ranges(xs: Sequence) -> List[Tuple[int, int]]:
     for i, x in enumerate(xs):
         if x_prev is not sentinel and x != x_prev:
             if i > 0:
-                ranges.append((curr_start, i - 1))
+                if not include_val:
+                    range_data = (curr_start, i - 1)
+                else:
+                    range_data = (x_prev, curr_start, i - 1)
+
+                ranges.append(range_data)
 
             curr_start = i
 
         x_prev = x
 
     if len(xs) > 0:
-        # Since elements are only added above at level *changes*, we will always need to
-        # add one at the end of the list.
-        ranges.append((curr_start, len(xs) - 1))
+        x = xs[-1]
+        i = len(xs)
+        if not include_val:
+            range_data = (curr_start, i - 1)
+        else:
+            # Since elements are only added above at level *changes*, we will always
+            # need to add one at the end of the list.
+            range_data = (x, curr_start, i - 1)
+
+        ranges.append(range_data)
 
     return ranges
 
@@ -2606,8 +2621,8 @@ def parent_recording_id(tiffname_or_thorimage_id):
 
 
 # TODO test this works w/ both Path and str input
-def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True, dims=None
-    ) -> None:
+def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
+    dims: Optional[str] = None) -> None:
     # TODO also handle diff color channels
     """Write a TIFF loading the same as the TIFFs we create with ImageJ.
 
@@ -4116,7 +4131,8 @@ def add_recording_id(df, **kwargs):
 @thorimage_dir_input
 def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     output_dir=None, if_exists: str = 'err', flip_lr: Optional[bool] = None,
-    check_round_trip=False, verbose=True, _debug=False) -> Optional[np.ndarray]:
+    discard_channel_b: bool = False, check_round_trip=False, verbose=True, _debug=False
+    ) -> Optional[np.ndarray]:
     """Converts ThorImage .raw file to .tif file in same directory
 
     Args:
@@ -4205,7 +4221,7 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     if verbose:
         print('Reading raw movie...', flush=True, end='')
 
-    movie = thor.read_movie(image_dir)
+    movie = thor.read_movie(image_dir, discard_channel_b=discard_channel_b)
 
     if verbose:
         print(' done', flush=True)
