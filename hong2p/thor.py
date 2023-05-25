@@ -97,6 +97,7 @@ def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> etree.Element:
     return xmlroot(xml_path)
 
 
+# TODO doc
 def thorimage_xml(fn_taking_xml):
 
     @functools.wraps(fn_taking_xml)
@@ -169,29 +170,39 @@ def get_thorimage_n_frames(xml, without_flyback=False, num_volumes=False):
 
 def is_fast_z_enabled_xml(xml):
     streaming = xml.find('Streaming')
-    # TODO may want to only do this check under certain other conditions / not
-    # at all (in case someone were to try to call this / a function that calls
-    # this on non-streaming data)
-    assert streaming.attrib['enable'] == '1'
+    if streaming.attrib['enable'] != '1':
+        # zFastEnable can still be 1 when we aren't doing fast Z (e.g. in some
+        # anatomical stack data)
+        return False
+
     return streaming.attrib['zFastEnable'] == '1'
 
 
-def get_thorimage_z_xml(xml):
+@thorimage_xml
+def get_thorimage_z_xml(xml) -> int:
     """Returns number of different Z depths measured in ThorImage recording.
 
     Does NOT include any flyback frames there may be.
     """
     z = int(xml.find('ZStage').attrib['steps'])
     assert z > 0
-
-    if z > 1 and not is_fast_z_enabled_xml(xml):
-        warnings.warn(f'z > 1 ({z}) despite fast z seeming disabled')
-        # TODO TODO presumably this fails in non-streamiong case. extend support to that
-        # case (handling z correctly, w/o warning. could still warn if we detect
-        # streaming / something else appropriate was enabled)
-        #z = 1
-
     return z
+
+
+@thorimage_xml
+def get_thorimage_z_stream_frames(xml) -> int:
+    """Returns number of different Z depths measured in ThorImage recording.
+
+    Does NOT include any flyback frames there may be.
+    """
+    n = int(xml.find('ZStage').attrib['zStreamFrames'])
+    assert n > 0
+    return n
+
+
+@thorimage_xml
+def get_thorimage_zstep_um(xml) -> float:
+    return float(xml.find('ZStage').attrib['stepSizeUM'])
 
 
 # TODO maybe add a function to get expected movie.size from thorimage .raw
@@ -207,7 +218,8 @@ def get_thorimage_z_xml(xml):
 # have, from what i remember using `du`)
 
 
-def get_thorimage_n_channels_xml(xml):
+@thorimage_xml
+def get_thorimage_n_channels_xml(xml) -> int:
     pmt = xml.find('PMT').attrib
 
     # It does seem that for channel B (perhaps also A but not C/D), you can have it

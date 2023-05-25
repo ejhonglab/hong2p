@@ -613,6 +613,7 @@ def load_stimulus_yaml(yaml_path: Pathlike):
 # TODO how to indicate that the Hashable in the argument and return type should be of
 # the same type? does Hashable take any type of arguments? make my own ~mixin of
 # Hashable + Generic(?)
+# TODO support non-hashable input types too?
 def remove_consecutive_repeats(odor_lists: Sequence[Hashable]
     ) -> Tuple[List[Hashable], int]:
     """Returns a list without any consecutive repeats and int # of consecutive repeats.
@@ -783,6 +784,8 @@ def odor_lists_to_multiindex(odor_lists: ExperimentOdors, **format_odor_kwargs):
         odor2_str_list.append(odor2_str)
         #
 
+        # TODO TODO test w/ input where odor1 odor2 are not sorted / always in a
+        # consistent order (+ probably sort before counting to fix)
         odor_mix = (odor1_str, odor2_str)
         odor_mix_repeats.append(odor_mix_counts[odor_mix])
         odor_mix_counts[odor_mix] += 1
