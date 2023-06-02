@@ -10,6 +10,7 @@ import sys
 from typing import Dict, List, Optional
 from pprint import pformat
 import warnings
+from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
@@ -761,7 +762,7 @@ def contour_center_of_mass(contour):
 
 
 def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None,
-    label: Optional[str] = None, text_kws: Optional[dict] = None, colors='red',
+    label: Optional[str] = None, text_kws: Optional[dict] = None, colors=None,
     linewidths=1.2, linestyles='dotted', **kwargs):
     # TODO doc / delete
     """Plots line around the contiguous positive region(s) in footprint.
@@ -781,6 +782,10 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
 
     if ax is None:
         ax = plt.gca()
+
+    # So we don't need to define default in multiple places.
+    if colors is None:
+        colors = 'red'
 
     # TODO TODO fix what seems to be a (1, 1) pixel offset of contour wrt footprint
     # passed in (when plotted on same axes).
@@ -829,9 +834,17 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
 
         if text_kws is None:
             text_kws = dict()
+        else:
+            # To prevent (shallow) changes being made to input.
+            text_kws = dict(text_kws)
+
+        color = colors
+        if not isinstance(colors, str):
+            if len(colors) == 1:
+                color = colors[0]
 
         default_text_kws = {
-            'color': colors,
+            'color': color,
             'horizontalalignment': 'center',
             'fontweight': 'bold',
             # Default should be 10.
@@ -855,6 +868,11 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
         if if_multiple == 'err':
             raise RuntimeError('multiple disconnected paths in one footprint')
 
+        # TODO TODO still try plotting each in a separate color / printing vertices in
+        # each, to try to get a sense of where these are coming from / how to fix.
+        # main issue currently is just that name seems to get drawn off center for these
+        # ROIs, despite overall ROI shape seeming to match up w/ what I have in ImageJ
+        # in all examples checked so far.
         elif if_multiple == 'ignore':
             return None
 
@@ -986,9 +1004,12 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
 # TODO unit test (that at least it produces a figure without failing for
 # correctly-formatted DataArray input)
 # TODO support similarly-indexed DataArray for background (+ maybe remove ndarray code)
+# TODO TODO add certain_only kwarg, and replace corresponding calculation in
+# al_analysis.ij_traces with setting it true. also make sure it exclude stuff w/ '+' in
+# name (as other places should now too)
 def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = True,
-    ncols: int = 2, _pad: bool = False, cmap=DEFAULT_ANATOMICAL_CMAP, **kwargs
-    ) -> Figure:
+    ncols: int = 2, _pad: bool = False, palette=None, cmap=DEFAULT_ANATOMICAL_CMAP,
+    image_kws=None, **kwargs) -> Figure:
     # TODO doc
     """
     Args:
@@ -1003,8 +1024,41 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
         ncols: how many columns for grid showing the background of each plane
             (one panel per plane)
 
+        cmap: colormap for background image
+
+        palette: for coloring ROIs
+
         **kwargs: passed thru to `plot_closed_contours`
     """
+    if image_kws is None:
+        image_kws = dict()
+
+    # TODO TODO TODO if i'm gonna subset ROIs, do it here (before palette handling)
+
+    roi_name2color = None
+    if palette is not None:
+        assert 'colors' not in kwargs
+
+        roi_names = rois.roi_name.values
+
+        if isinstance(palette, Mapping):
+            # TODO TODO if we subset rois above, need to change this?
+            assert set(roi_names) == set(palette.keys())
+            # Assuming all keys are kroper colors.
+            roi_name2color = palette
+        else:
+            # If palette is a sequence (of colors), this call should leave it unchanged
+            # (unless n_colors changes, where it should cycle).
+            palette = sns.color_palette(palette, n_colors=len(roi_names))
+            assert len(palette) == len(roi_names)
+
+            # any reason to leave it in this order rather than sorting?
+            # (or to sort dorso-ventrally/something?)
+            # TODO TODO try shuffling. sorting seems to make neighboring-color situation
+            # worse...
+            roi_names = sorted(set(roi_names))
+            roi_name2color = dict(zip(roi_names, palette))
+
     # TODO TODO option to [locally?] histogram equalize the image (or something else to
     # increase contrast + prevent hot pixels from screwing up range in a plane)
     # TODO option to color ROIs randomly (perhaps also specifically so no neighboring
@@ -1018,7 +1072,10 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
 
     z_size = rois.sizes['z']
 
-    fig, axs = image_grid(background, ncols=ncols, cmap=cmap)
+    # TODO also support background being xarray, transposing z,y,x into place, if so
+    # (or at least [/ in ndarray case], assert existing shape matches rois (z,y,x)
+    # shape?)
+    fig, axs = image_grid(background, ncols=ncols, cmap=cmap, **image_kws)
 
     # Moving 'roi' from end to start.
     rois = rois.transpose('roi', 'z', 'y', 'x')
@@ -1048,8 +1105,18 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
                 index = dict(zip(index_names, index_vals))
                 name = index['roi_name']
 
+            # Already guaranteed that we only have either `colors` OR `roi_name2color`.
+            # Leaving this None will let keep plot_closed_contours default.
+            colors = kwargs.pop('colors', None)
+            if roi_name2color is not None:
+                # NOTE: must be a single-element list if trying to specify one color
+                # with any type other than a string (from matplotlib Axes.contour docs)
+                colors = [roi_name2color[name]]
+
             try:
-                plot_closed_contours(roi, label=name, ax=ax, _pad=_pad, **kwargs)
+                plot_closed_contours(roi, label=name, ax=ax, _pad=_pad, colors=colors,
+                    **kwargs
+                )
 
             except RuntimeError as err:
                 # +1 to index as in ImageJ
