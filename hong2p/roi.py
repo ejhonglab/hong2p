@@ -5,6 +5,7 @@ from pathlib import Path
 import pickle
 from pprint import pprint
 from typing import Optional, Union
+# TODO replace w/ logging.warning
 import warnings
 
 import numpy as np
@@ -582,6 +583,26 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     masks = ijrois2masks(name_and_roi_list, movie_shape_without_time,
         as_xarray=as_xarray
     )
+
+    # 2023-04-26/3 currently is one of just a few flies w/ ROIs using the optional '+'
+    # suffix syntax (to indicate the same ROI name w/o the suffix is contained by the
+    # suffixed ROI, which might also have more contamination from external signals)
+    #
+    # TODO TODO assert that for each of these, we have ROIs w/ name matching the
+    # non-'+'-suffixed name?
+    # TODO put dropping of these behind flag?
+    maximal_extent_rois = masks.roi_name.str.endswith('+')
+    n_maximal_to_drop = maximal_extent_rois.sum().item(0)
+    if n_maximal_to_drop > 0:
+        # TODO convert to logging.warnings?
+        # TODO better message (indicating what they are)?
+        warnings.warn(f"dropping {n_maximal_to_drop} ROIs with '+' suffix")
+
+        n_rois_before = masks.sizes['roi']
+
+        masks = masks[dict(roi=~maximal_extent_rois)].copy()
+        assert masks.sizes['roi'] == (n_rois_before - n_maximal_to_drop)
+
     return masks
 
     ## TODO modify check_no_overlap to make sure it's also erring if two things that
