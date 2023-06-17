@@ -93,6 +93,8 @@ def db_footprints2array(df, shape):
 # TODO type hint for roi_indices
 def numpy2xarray_rois(rois: np.ndarray, roi_indices: Optional[dict] = None
     ) -> xr.DataArray:
+    # TODO doc what keys of roi_indices should be (/ delete).
+    # currently only used by hong2p.suite2p.suite2p_stat2rois
     """Takes numpy array of shape ([z,]y,x,roi) to labelled xarray.
 
     Args:
@@ -116,11 +118,13 @@ def numpy2xarray_rois(rois: np.ndarray, roi_indices: Optional[dict] = None
     roi_index_levels = [np.arange(rois.shape[-1])]
 
     if roi_indices is not None:
-        # If a 'roi_num' level is passed in, it will replace the one that would be added
-        # automatically.
-        if roi_num_name in roi_indices:
-            roi_index_names = []
-            roi_index_levels = []
+
+        # TODO delete. not useful as is (ijroi_masks subsets output of this fn, before
+        # calling code uses it for integer based indexing)
+        #
+        # Want to be able to rely on roi_num always being [0, len - 1] (in order)
+        # (so we can use numpy/iloc/isel indexing in some places)
+        assert roi_num_name not in roi_indices
 
         n_rois = shape[-1]
         for ns, xs in roi_indices.items():
@@ -263,6 +267,8 @@ def ijrois2masks(ijrois, shape, as_xarray: bool = False
                 z_index, (prefix, suffix) = ijroi.parse_z_from_name(name,
                     return_unmatched=True
                 )
+
+            # TODO assert z_index in range of corresponding element of shape?
 
         points = getattr(roi, 'points', roi)
 
@@ -433,95 +439,100 @@ def merge_single_plane_rois(rois, min_overlap_frac=0.3, n_dilations=1):
 
 # TODO TODO refactor this + hong2p.suite2p.remerge_suite2p_merged to share core code
 # here! (this initially copied from other fn and then adapted)
-def rois2best_planes_only(rois, roi_quality):
+# TODO unit test! (include 2023-04-26/3 ROIs, where some also have '+' in name, that
+# ijroi_masks is currently dropping)
+# TODO change verbose default to False
+def rois2best_planes_only(rois, roi_quality, verbose=True):
     """
     Currently assumes input only has non-zero values in a single plane for a given
     unique combination of ROI identifier variables.
     """
+    # TODO modify calling code to pass roi_quality in w/ compatible metadata to rois,
+    # and try to replace these w/ assertions that metadata is compatible
+    assert rois.sizes['roi'] == len(roi_quality)
+    # (as calling code is currently only gauranteeing that shapes are the same, so
+    # diff index might cause problems...)
+    assert list(roi_quality.index) == list(range(len(roi_quality)))
 
-    verbose = True
+    # TODO delete all this if i can replace roi_index w/ isel / similar
+    roi_quality = roi_quality.copy()
+    roi_quality.index.name = 'roi_index'
+    # TODO remove this from index if i'm going to return other metadata?
+    # (and if i don't manage to replace this code w/ isel/similar)
+    rois = rois.assign_coords({'roi_index': ('roi', range(rois.sizes['roi']))})
 
-    # TODO TODO implement another strategy where as long as the roi_quality are
-    # within some tolerance of the best, they are averaged? or weighted according to
-    # response stat? weight according to variance of response stat (see examples of
-    # weighted averages using something derived from variance for weights online)
+    input_roi_names = set(rois.roi_name.values)
+
+    roi_quality = roi_quality.to_frame(name='roi_quality')
+
+    # TODO better name
+    mo_key = 'name'
+    roi_quality[mo_key] = rois.roi_name.to_numpy()
+
+    gb = roi_quality.groupby(mo_key, sort=False)
+
+    # TODO implement another strategy where as long as the roi_quality are within some
+    # tolerance of the best, they are averaged? or weighted according to response stat?
+    # weight according to variance of response stat (see examples of weighted averages
+    # using something derived from variance for weights online)
     # TODO maybe also use 2/3rd highest lowest frame / percentile rather than actual min
     # / max (for picking 'best' plane), to gaurd against spiking noise
 
-    '''
-    merge_output_roi_nums = np.empty(len(roi_quality.columns)) * np.nan
-    # TODO maybe build up set of seen merge input indices and check they are all seen in
-    # columns of traces by end (that set seen in traces columns is same as set from
-    # unioning all values in merges)
-    for merge_output_roi_num, merge_input_roi_nums in merges.items():
-
-        #merge_output_roi_nums[traces.columns.isin(merge_input_roi_nums)] = \
-        merge_output_roi_nums[roi_quality.columns.isin(merge_input_roi_nums)] = \
-            merge_output_roi_num
-    '''
-
-    roi_quality = roi_quality.to_frame(name='roi_quality')
-    mo_key = 'name'
-    #roi_quality[mo_key] = merge_output_roi_nums
-    roi_quality[mo_key] = rois.roi.roi_name.to_numpy()
-    gb = roi_quality.groupby(mo_key)
-    best_per_merge_output = gb.idxmax()
+    # TODO rename?
+    best_inputs = gb.idxmax()
 
     # Selecting the only column this DataFrame has (i.e. shape (n, 1))
-    best_inputs = best_per_merge_output.iloc[:, 0]
-    # The groupby -> idxmax() otherwise would have left this column named
-    # 'roi_quality', which is what we were picking an index to maximize, but the
-    # indices themselves are not response statistics.
-    best_inputs.name = 'roi'
+    # TODO assertion on shape before this (and maybe values / dtype?)
+    # TODO rename this and/or `best` below
+    best_inputs = best_inputs.iloc[:, 0]
 
     best = roi_quality.loc[best_inputs]
 
-    # TODO delete eventually
-    assert np.array_equal(
-       roi_quality.loc[best_inputs.values],
-       roi_quality.loc[best_inputs]
-    )
-    #
-    assert np.array_equal(
-        best.roi_quality.values,
-        gb.max().roi_quality.values
-    )
+    assert np.array_equal(best.roi_quality.values, gb.max().roi_quality.values)
 
     if verbose:
-        by_response = roi_quality.dropna().set_index('name',
-            append=True).swaplevel()
+        by_response = roi_quality.dropna().set_index('name', append=True).swaplevel()
 
     notbest_to_drop = []
     for row in best.itertuples():
-        merged_name = row.name
+        name = row.name
         curr_best = row.Index
+
         curr_notbest = list(rois.roi[
-            (rois.roi_name == merged_name) & (rois.roi_num != curr_best)
-        ].roi_num.values)
+            (rois.roi_name == name) & (rois.roi_index != curr_best)
+        ].roi_index.values)
 
         notbest_to_drop.extend(curr_notbest)
 
         # only print if multiple inputs (i.e. actually 'merging' in some sense)
         if verbose and len(curr_notbest) > 0:
-            print(f'merging ROI {merged_name}')
+            print(f'merging ROI {name}')
             print(f'selecting input ROI {curr_best} as best plane')
             print(f'dropping other input ROIs {curr_notbest}')
-            print(by_response.loc[merged_name])
+            print(by_response.loc[name])
             print()
 
-    # TODO maybe combine in to one step by just passing subsetted s2p_roi_num to
-    # assign_coords?
-    rois = rois.sel(roi= ~ rois.roi_num.isin(notbest_to_drop))
+    rois = rois.sel(roi= ~ rois.roi_index.isin(notbest_to_drop))
 
-    roi_nums = rois.roi_num.values
+    # TODO delete eventually (just getting metadata of subset of `rois` returned, and
+    # indexing using that in the future)
+    roi_indices = rois.roi_index.values
 
+    output_roi_names = set(rois.roi_name.values)
+    assert input_roi_names == output_roi_names
+    # If input and ouput name sets are equal, this should imply no duplicated ROI names
+    # in output.
+    assert rois.sizes['roi'] == len(input_roi_names)
+
+    # TODO TODO TODO remove need for this (so we can keep metadata in output, at least
+    # by default)
     # TODO should i also include roi_z? would want to also do / use in s2p case for
     # consistency... also, how to modify this call to accomplish that?
     rois = rois.assign_coords(roi=rois.roi_name)
 
     # TODO TODO if i can figure out how to keep multiple levels for the roi dimension,
     # do that rather than return multiple things
-    return roi_nums, rois
+    return roi_indices, rois
 
 
 ijroiset_default_basename = 'RoiSet.zip'
@@ -566,6 +577,10 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     import ijroi
 
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
+
+    # TODO format better + put behind verbose flag
+    #print(f'{ijroiset_fname=}')
+    #print(f'{ijroiset_fname.resolve()=}')
 
     name_and_roi_list = ijroi.read_roi_zip(ijroiset_fname, points_only=False)
 
