@@ -9,8 +9,10 @@ import functools
 import sys
 from typing import Dict, List, Optional
 from pprint import pformat
+# TODO replace w/ logging.warning?
 import warnings
 from collections.abc import Mapping
+from random import Random
 
 import numpy as np
 import pandas as pd
@@ -384,6 +386,10 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
                 )
 
             col_linkage = _linkage(df.T)
+
+    # TODO assert len(df) > 0 (both dims?) early on / raise ValueError
+    # clustermap call will fail in this case, w/ somewhat confusing error message:
+    # ValueError: zero-size array to reduction operation fmin which has no identity
 
     clustergrid = sns.clustermap(df, row_cluster=row_cluster, col_cluster=col_cluster,
         row_linkage=row_linkage, col_linkage=col_linkage, method=method, metric=metric,
@@ -944,8 +950,16 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
     return contour - 1
 
 
+# TODO option to burn in D/V M/L A/P axis labels (or another fn to handle that?)?
+# TODO TODO add kwarg flag to include colorbar
 def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
-    cmap=DEFAULT_ANATOMICAL_CMAP, **imshow_kwargs):
+    cmap=DEFAULT_ANATOMICAL_CMAP, inches_per_pixel=0.014, **imshow_kwargs):
+    # TODO also allow specifying either height_inches/width_inches instead of
+    # inches_per_pixel (would only save specifying one component of figsize...)?
+    """
+    Args:
+        inches_per_pixel: used to calcualte `figsize`, if `figsize` not passed
+    """
 
     def ceil(x):
         return int(np.ceil(x))
@@ -965,6 +979,8 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
         ncols = n_other_axis(nrows)
 
     if figsize is None:
+        # TODO parameter to fit into 8.5x11"?
+
         # Assuming all images in image_list are the same shape
         image_shape = image_list[0].shape
         assert len(image_shape) == 2
@@ -972,10 +988,10 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
         w = image_shape[1]
         h = image_shape[0]
 
-        aspect = (ncols * w) / (nrows * h)
-
-        height_inches = 10
-        figsize = (aspect * height_inches, height_inches)
+        # TODO account for separation that i haven't been able to get rid of betwen
+        # images (e.g. in case where it's nrows=4, ncols=2. nrows=1, ncols=7 seems(?)
+        # fine.)
+        figsize = (inches_per_pixel * (w * ncols), inches_per_pixel * (h * nrows))
 
     # TODO (if not passed) set figsize according to aspect ratio you'd get multiplying
     # nrows/ncols by single image dimensions (to try to fill space as much as possible)
@@ -1008,7 +1024,8 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
 # al_analysis.ij_traces with setting it true. also make sure it exclude stuff w/ '+' in
 # name (as other places should now too)
 def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = True,
-    ncols: int = 2, _pad: bool = False, palette=None, cmap=DEFAULT_ANATOMICAL_CMAP,
+    ncols: int = 2, _pad: bool = False, palette=None, seed=0, focus_roi=None,
+    nonfocus_roi_desat=0.4, focus_roi_linewidth=1.8, cmap=DEFAULT_ANATOMICAL_CMAP,
     image_kws=None, **kwargs) -> Figure:
     # TODO doc
     """
@@ -1047,17 +1064,32 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
             # Assuming all keys are kroper colors.
             roi_name2color = palette
         else:
+            roi_names = list(set(roi_names))
+
+            # Wanted a seeded random order w/o changing global seeds.
+            rng = Random(seed)
+            rng.shuffle(roi_names)
+
             # If palette is a sequence (of colors), this call should leave it unchanged
             # (unless n_colors changes, where it should cycle).
             palette = sns.color_palette(palette, n_colors=len(roi_names))
             assert len(palette) == len(roi_names)
 
-            # any reason to leave it in this order rather than sorting?
-            # (or to sort dorso-ventrally/something?)
-            # TODO TODO try shuffling. sorting seems to make neighboring-color situation
-            # worse...
-            roi_names = sorted(set(roi_names))
             roi_name2color = dict(zip(roi_names, palette))
+
+            #if focus_roi is not None:
+            if focus_roi is not None and focus_roi in roi_name2color:
+                # TODO change back to (by default, but toggleable) erring in this case
+                #assert focus_roi in roi_name2color, \
+                #    f'{focus_roi=} not in roi_name2color'
+
+                assert 0 < nonfocus_roi_desat <= 1
+                roi_name2color = {
+                    n: c if n == focus_roi else sns.desaturate(c, nonfocus_roi_desat)
+                    for n, c in roi_name2color.items()
+                }
+
+            del palette
 
     # TODO TODO option to [locally?] histogram equalize the image (or something else to
     # increase contrast + prevent hot pixels from screwing up range in a plane)
@@ -1113,9 +1145,21 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
                 # with any type other than a string (from matplotlib Axes.contour docs)
                 colors = [roi_name2color[name]]
 
+            # TODO refactor! want default only defined in one place
+            assert 'linewidths' not in kwargs
+            linewidths = 1.2
+            if focus_roi is not None and name == focus_roi:
+                # Otherwise, should use plot_closed_contour default of 1.2
+                linewidths = 1.8
+                # TODO delete. broken.
+                '''
+                kwargs = dict(kwargs)
+                kwargs['linewidths'] = focus_roi_linewidth
+                '''
+
             try:
                 plot_closed_contours(roi, label=name, ax=ax, _pad=_pad, colors=colors,
-                    **kwargs
+                    linewidths=linewidths, **kwargs
                 )
 
             except RuntimeError as err:
