@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from pprint import pformat
 # TODO replace w/ logging.warning?
 import warnings
+from collections import Counter
 from collections.abc import Mapping
 from random import Random
 
@@ -438,6 +439,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     inches_per_cell=None, extra_figsize=None, transpose_sort_key=None, colorbar=True,
     cbar_shrink=1.0, cbar_kws=None, levels_from_labels=True,
     allow_duplicate_labels=False, **kwargs):
+    # TODO doc [v|h]line_group_text
+    # TODO check that levels_from_labels means *_level_fn get a single dict as input,
+    # not an iterable of dicts (or update doc)
     """
     Args:
         transpose_sort_key (None | function): takes df.index/df.columns and compares
@@ -583,6 +587,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
             # (+ delete switching flag, if so)
             ranges = util.const_ranges(hline_levels, include_val=True)
 
+            # TODO allow separating group text from levels? accept yet another fn
+            # mapping from [v|h]line_levels (dict level name -> value form?) to
+            # formatted strs?
             if hline_group_text:
                 for label, y0, y1 in ranges:
                     # TODO TODO compute group_label_offset? way to place the text using
@@ -643,6 +650,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
 
     def set_ticklabels(ax, x_or_y, labels, *args, **kwargs):
+        # TODO allow_duplicate_labels='warn' option, and make that default?
         if not allow_duplicate_labels:
             # TODO refactor?
             if x_or_y == 'x' and (vline_group_text and vline_levels is not None):
@@ -656,17 +664,33 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                 to_check = labels
                 err_msg = f'duplicate {x_or_y}ticklabels'
 
-                if x_or_y == 'x' and vline_level_fn is not None:
+                # TODO TODO just make [v|h]line_group_text=True the default in these
+                # cases, rather than erring, no? there aren't even duplicates here are
+                # there?
+                # TODO at least dont include these parts of the err msg if
+                # [v|h]line_group_text are already True...
+                if (x_or_y == 'x' and vline_level_fn is not None and
+                    not vline_group_text):
+
                     err_msg += ('. specifying vline_group_text=True may resolve '
                         'duplicates.'
                     )
 
-                elif x_or_y == 'y' and hline_level_fn is not None:
+                elif (x_or_y == 'y' and hline_level_fn is not None and
+                    not hline_group_text):
+
                     err_msg += ('. specifying hline_group_text=True may resolve '
                         'duplicates.'
                     )
 
             if len(to_check) != len(set(to_check)):
+
+                err_msg += ' duplicated entries, with counts:\n'
+                for x, count in Counter(to_check).items():
+                    if count > 1:
+                        err_msg += f'{repr(x)} ({count})\n'
+
+                err_msg += 'you may also set allow_duplicate_labels=True'
                 raise ValueError(err_msg)
 
         assert x_or_y in ('x', 'y')
@@ -698,6 +722,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                 xtickrotation = 'vertical'
 
         ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
+
         set_ticklabels(ax, 'x', xticklabels,
             fontsize=fontsize, fontweight=fontweight, rotation=xtickrotation
         )
