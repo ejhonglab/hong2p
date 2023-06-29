@@ -6,16 +6,19 @@ Keeping these functions here rather than in the olfactometer repo because it has
 somewhat heavy dependencies that the analysis side of things will generally not need.
 """
 
+import atexit
 from collections import Counter, defaultdict
 from pprint import pprint, pformat
+import pickle
 import warnings
 from typing import Union, Sequence, Optional, Tuple, List, Dict, Hashable
 
 import numpy as np
 import pandas as pd
 import yaml
+from platformdirs import user_data_path
 
-from hong2p.types import Pathlike, ExperimentOdors
+from hong2p.types import Pathlike, ExperimentOdors, SingleTrialOdors
 
 
 solvent_str = 'solvent'
@@ -24,9 +27,22 @@ conc_delimiter = '@'
 # TODO TODO add something for mapping from the standard-hong-odor-names to the hallem
 # names
 
+odor2abbrev = dict()
+
+# TODO get package + author name from setup.py / package metadata?
+# TODO log we are using this directory (at least at debug level)
+#
+# ensure_exists=True will make it if needed
+_cache_dir = user_data_path('hong2p', 'tom-f-oconnell', ensure_exists=True)
+odor2abbrev_cache = _cache_dir / 'odor2abbrev_cache.p'
+if odor2abbrev_cache.exists():
+    _odor2abbrev_from_cache = pickle.loads(odor2abbrev_cache.read_bytes())
+    odor2abbrev.update(_odor2abbrev_from_cache)
+
+# TODO log (info/debug?) when we override something from cache?
 # TODO fns for adding to this / overriding
 # TODO load/supplement from (union of?) abbrevs included in configs, if possible
-odor2abbrev = {
+_hardcoded_odor2abbrev = {
     'hexyl hexanoate': 'hh',
     'furfural': 'fur',
 
@@ -79,6 +95,64 @@ odor2abbrev = {
     # Another name for 'valeric acid', but the one Remy had used.
     'pentanoic acid': 'va',
 }
+odor2abbrev.update(_hardcoded_odor2abbrev)
+
+_initial_odor2abbrev = dict(odor2abbrev)
+def save_odor2abbrev_cache():
+    # TODO log debug/info that we are writing this (/ that it was unchanged)
+    if odor2abbrev != _initial_odor2abbrev:
+        odor2abbrev_cache.write_bytes(pickle.dumps(odor2abbrev))
+
+atexit.register(save_odor2abbrev_cache)
+
+
+def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
+    name2abbrev: Optional[Dict[str, str]] = None, yaml_path: Optional[Pathlike] = None,
+    *, if_abbrev_mismatch: str = 'warn', verbose: bool = False) -> None:
+    """Adds name->abbreviation mappings in odor_lists to odor2abbrev input.
+    """
+    if name2abbrev is None:
+        # changing the global (module level) odor2abbrev by default
+        name2abbrev = odor2abbrev
+
+    assert if_abbrev_mismatch in ('warn', 'err')
+    for odors in odor_lists:
+        for odor in odors:
+            try:
+                abbrev = odor['abbrev']
+            except KeyError:
+                continue
+
+            name = odor['name']
+            if name in name2abbrev:
+                prev_abbrev = name2abbrev[name]
+                if abbrev != prev_abbrev:
+                    msg = (f'abbreviation {abbrev} (YAML) != {prev_abbrev} '
+                        '(hardcoded, will be used)'
+                    )
+                    if if_abbrev_mismatch == 'err':
+                        raise ValueError(msg)
+
+                    elif if_abbrev_mismatch == 'warn':
+                        # TODO replace w/ logging?
+                        warnings.warn(msg)
+            else:
+                if name == abbrev:
+
+                    msg = f'name and abbrev were both {name}'
+                    if yaml_path is not None:
+                        msg += f' in {yaml_path}'
+
+                    # TODO replace w/ logging?
+                    warnings.warn(msg)
+
+                name2abbrev[name] = abbrev
+                if verbose:
+                    msg = f'adding {name=} -> {abbrev=}'
+                    if yaml_path is not None:
+                        msg += f' from {yaml_path}'
+
+                    print(msg)
 
 
 def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]:
@@ -728,7 +802,8 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
         return solvent_str
 
 
-def format_odor_list(odor_list, delim: Optional[str] = None, **kwargs):
+def format_odor_list(odor_list: SingleTrialOdors, delim: Optional[str] = None,
+    **kwargs) -> str:
     """Takes list of dicts representing odors for one trial to pretty str.
     """
     odor_strs = [format_odor(x, **kwargs) for x in odor_list]
@@ -736,7 +811,11 @@ def format_odor_list(odor_list, delim: Optional[str] = None, **kwargs):
 
 
 # TODO indicate subclass of pd.Index (Type[pd.Index]?) as return type
-def odor_lists_to_multiindex(odor_lists: ExperimentOdors, **format_odor_kwargs):
+def odor_lists_to_multiindex(odor_lists: ExperimentOdors, **format_odor_kwargs
+    ) -> pd.MultiIndex:
+    # TODO doctest
+    """
+    """
 
     unique_lens = {len(x) for x in odor_lists}
     if len(unique_lens) != 1:
@@ -801,4 +880,3 @@ def odor_lists_to_multiindex(odor_lists: ExperimentOdors, **format_odor_kwargs):
     index.names = ['odor1', 'odor2', 'repeat']
 
     return index
-

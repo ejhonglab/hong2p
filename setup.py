@@ -45,6 +45,8 @@ setup(
         # enough to warrant conditional imports
         'ijroi @ git+https://github.com/tom-f-oconnell/ijroi',
 
+        'platformdirs',
+
         'ipdb',
 
         # TODO move cv2 in here (opencv-python)?

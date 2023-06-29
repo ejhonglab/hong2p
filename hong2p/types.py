@@ -35,6 +35,7 @@ OdorDict = NewType('OdorDict', dict)
 # TODO are Sequence types guaranteed to work w/ len()? if not, maybe use union of
 # list/tuple or something
 SingleTrialOdors = Sequence[OdorDict]
+# Of length equal to the number of trials in the experiment
 ExperimentOdors = Sequence[SingleTrialOdors]
 
 # TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray
