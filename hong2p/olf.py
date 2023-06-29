@@ -779,13 +779,14 @@ def format_odor(odor_dict, conc=True, name_conc_delim=None, conc_key='log10_conc
 # remove_consecutive_repeats as well (or maybe in this particular fn, i actually want
 # Iterable[str] in the Union? not striding here..
 def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
-    delim: Optional[str] = None):
+    delim: Optional[str] = None, warn_unused_levels: bool = False):
 
     if isinstance(odor_strs, pd.Series):
         odor_keys = [x for x in odor_strs.keys() if is_odor_var(x)]
 
-        if len(odor_keys) < len(odor_strs):
+        if warn_unused_levels and len(odor_keys) < len(odor_strs):
             nonodor_keys = [x for x in odor_strs.keys() if x not in odor_keys]
+            # TODO replace w/ logging warning?
             warnings.warn('format_mix_from_strs: ignoring levels not starting with '
                 f"'odor' ({nonodor_keys})"
             )
