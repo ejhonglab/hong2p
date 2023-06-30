@@ -106,6 +106,12 @@ def save_odor2abbrev_cache():
 atexit.register(save_odor2abbrev_cache)
 
 
+def abbrev(odor_name: str) -> str:
+    """Takes odor name (no concentration) to abbreviation, or itself if there isn't one.
+    """
+    return odor2abbrev.get(odor_name, odor_name)
+
+
 def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
     name2abbrev: Optional[Dict[str, str]] = None, yaml_path: Optional[Pathlike] = None,
     *, if_abbrev_mismatch: str = 'warn', verbose: bool = False) -> None:

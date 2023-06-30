@@ -828,6 +828,15 @@ def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True,
     return max(getmtime(f) for f in files)
 
 
+# TODO support xarray.DataArrays? (isnull().sum().item(0) should work)
+# TODO factor both to a pandas module
+def num_null(df: pd.DataFrame) -> int:
+    return df.isna().sum().sum()
+
+def num_notnull(df: pd.DataFrame) -> int:
+    return df.notna().sum().sum()
+
+
 # TODO maybe accept dict of names / values? which pd fn to copy the interfact of
 # names/values from (DataFrame creation probably)?
 # TODO TODO support xarray dataarrays?
