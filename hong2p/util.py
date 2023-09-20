@@ -94,10 +94,13 @@ np.set_printoptions(precision=2)
 # TODO migrate all 'prep_date' -> 'date'? (seems i already use 'date' in a lot
 # of places...)
 recording_cols = [
-    'prep_date',
+    # TODO delete after refactoring all code that used this / add_fly_id
+    #'prep_date',
+    'date',
     'fly_num',
     'thorimage_id'
 ]
+# TODO delete [/ update to ('panel', 'odor1', 'odor2', 'repeat')]
 trial_only_cols = [
     'comparison',
     'name1',
@@ -833,6 +836,7 @@ def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True,
 def num_null(df: pd.DataFrame) -> int:
     return df.isna().sum().sum()
 
+# TODO an issue that this returns a float type (at least in case where input is empty)?
 def num_notnull(df: pd.DataFrame) -> int:
     return df.notna().sum().sum()
 
@@ -2515,12 +2519,14 @@ def tiff_filename2keys(tiff_filename):
     })
 
 
+# TODO delete?
 def recording_df2keys(df):
     dupes = df[recording_cols].drop_duplicates()
     assert len(dupes) == 1
     return tuple(dupes.iloc[0])
 
 
+# TODO delete?
 def list_motion_corrected_tifs(include_rigid=False, attempt_analysis_only=True):
     """List motion corrected TIFFs in conventional directory structure on NAS.
     """
@@ -4019,6 +4025,7 @@ def print_color(color_name, *args, **kwargs):
     stop_color()
 
 
+# TODO delete
 def latest_trace_pickles():
     # TODO say which data is searched/included in this fn
     """Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.
@@ -4067,6 +4074,7 @@ def latest_trace_pickles():
 
 # TODO kwarg to have this replace the multiindex levels / columns values it is derived
 # from (and thread through add_fly_id/add_recording_id)
+# TODO TODO axis kwarg?
 def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
     start_at_one=True, sort=True, inplace=False):
     """Adds integer column to identify unique combinations of group_keys.
@@ -4129,6 +4137,7 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
 # gets replaced by current hardcoded value
 def add_fly_id(df, **kwargs):
     name = 'fly_id'
+    # TODO TODO replace prep_date w/ date in recording cols.
     return add_group_id(df, recording_cols[:2], name=name, **kwargs)
 
 

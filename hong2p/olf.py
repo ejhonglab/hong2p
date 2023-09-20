@@ -474,6 +474,9 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
         return sorted([k for k in index.names if is_odor_var(k)])
 
     found_odor_multiindex = False
+    # TODO TODO factor out a fn for finding which axis/axes has/have odor info, so i can
+    # use here and in e.g. al_analysis.sort_odors, where i also addlevel panel info (but
+    # i would like it to automatically add on correct axis)
     for axis_name in ('index', 'columns'):
 
         index = getattr(df, axis_name)

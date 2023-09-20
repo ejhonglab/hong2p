@@ -3,6 +3,18 @@ from setuptools import setup, find_packages
 
 setup(
     name='hong2p',
+
+    # TODO TODO TODO
+    # 1. delete lots of code (mainly from util.py probably) only by:
+    #    - natural_odors/kc_mix_analysis.py
+    #    - kc_natural_mixes/[kc_analysis|populate_db].py
+    #    - hong2p/scripts I no longer use (delete the scripts too)
+    #
+    # 2. bump version to 0.1.0
+    #
+    # 3. specify 0.0.0 in natural_odors / kc_natural_mixes config, and check old version
+    #    installable that way (may need to make releases on github or something? or use
+    #    git[hub] specifier for version, rather than this?
     version='0.0.0',
     packages=find_packages(),
     setup_requires=['pytest-runner'],

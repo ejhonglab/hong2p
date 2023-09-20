@@ -2,11 +2,13 @@
 Utility functions for working with xarray objects, primarily DataArrays
 """
 
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+from hong2p.util import suffix_index_names
 
 
 # NOTE: lots of my current MultiIndex related woes should be tractable once development
@@ -133,4 +135,63 @@ def move_all_coords_to_index(arr: xr.DataArray) -> xr.DataArray:
         dim2coords[dim_name] = dim_coord_names
 
     return arr.set_index(dim2coords)
+
+
+def odor_corr_frame_to_dataarray(df: pd.DataFrame,
+    metadata: Optional[Dict[str, Any]] = None) -> xr.DataArray:
+    """Converts (odor X odor) correlation DataFrame to DataArray.
+    """
+    # TODO also need to check it's .names that are defined and not .name? .names
+    # should be None in that case, causing this to fail, right?
+    assert set(df.index.names) == set(df.columns.names)
+
+    for index in (df.index, df.columns):
+        # Will often also have 'odor2' and 'repeat' levels, but potentially
+        # additional metadata too.
+        assert 'odor1' in index.names
+
+    if metadata is not None:
+        for k in metadata.keys():
+            assert k not in df.index.names, f'metadata key {k} already in index'
+
+    # Since util.suffix_index_names is currently inplace
+    df = df.copy()
+
+    # Adds '_b' to end of all column names
+    suffix_index_names(df)
+
+    # TODO TODO why does corr.odor1 work if odor1 is an input MultiIndex level but
+    # not just the name of an Index? 'odor1' is in index.names either way...
+    # for normal input (with MultiIndex rows/cols), coords look like:
+    # Coordinates:
+    #     odor1     (odor) object '1-5ol @ -3' '1-5ol @ -3' ... 'va @ -3' 'va @ -3'
+    #     odor2     (odor) object 'solvent' 'solvent' ... 'solvent' 'solvent'
+    #     repeat    (odor) int64 0 1 2 0 1 2 0 1 2 0 1 2 0 ... 0 1 2 0 1 2 0 1 2 0 1 2
+    #     odor1_b   (odor_b) object '1-5ol @ -3' '1-5ol @ -3' ... 'va @ -3' 'va @ -3'
+    #     odor2_b   (odor_b) object 'solvent' 'solvent' ... 'solvent' 'solvent'
+    #     repeat_b  (odor_b) int64 0 1 2 0 1 2 0 1 2 0 1 2 ... 0 1 2 0 1 2 0 1 2 0 1 2
+    # Dimensions without coordinates: odor, odor_b
+    #
+    # (c1)
+    # coordinates look like (for input w/ just 'odor1' X 'odor1_b' Index name[s]):
+    # Coordinates:
+    #   * odor     (odor) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'
+    #   * odor_b   (odor_b) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'
+    #
+    # (c2)
+    # if i change this call to xr.DataArray(df), then coordinates looks like this:
+    # Coordinates:
+    #   * odor1    (odor1) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'
+    #   * odor1_b  (odor1_b) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'
+    #
+    # c1.set_index({'odor1': 'odor', 'odor1_b': 'odor_b'}
+    # just converts c1 (above) to c2
+    # TODO what happens if i add an empty level and then drop it though? possible?
+    #
+    corr = xr.DataArray(df, dims=['odor', 'odor_b'])
+
+    if metadata is not None:
+        corr = corr.assign_coords(metadata)
+
+    return corr
 
