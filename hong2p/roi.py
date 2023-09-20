@@ -14,6 +14,8 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+# This must be my fork at https://github.com/tom-f-oconnell/ijroi
+import ijroi
 from hong2p import thor, util, viz
 from hong2p.types import Pathlike, NumpyOrXArray
 
@@ -570,11 +572,12 @@ def ijroi_mtime(ijroiset_dir_or_fname: Pathlike) -> float:
     return getmtime(ijroiset_fname)
 
 
+# TODO maybe delete drop_maximal_extent_rois and move code that drops them to a separate
+# call (or set default to False?)? initially broke some stuff in al_analysis.py and
+# later seemingly plot_roi.py, which expected to be able to index ROI list consistently
 def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
-    as_xarray: bool = True, **kwargs) -> NumpyOrXArray:
-
-    # This must be my fork at https://github.com/tom-f-oconnell/ijroi
-    import ijroi
+    as_xarray: bool = True, drop_maximal_extent_rois: bool = True, **kwargs
+    ) -> NumpyOrXArray:
 
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
 
@@ -606,17 +609,19 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     # TODO TODO assert that for each of these, we have ROIs w/ name matching the
     # non-'+'-suffixed name?
     # TODO put dropping of these behind flag?
-    maximal_extent_rois = masks.roi_name.str.endswith('+')
-    n_maximal_to_drop = maximal_extent_rois.sum().item(0)
-    if n_maximal_to_drop > 0:
-        # TODO convert to logging.warnings?
-        # TODO better message (indicating what they are)?
-        warnings.warn(f"dropping {n_maximal_to_drop} ROIs with '+' suffix")
+    if drop_maximal_extent_rois:
+        # TODO TODO TODO also handle '+?' suffix? warn / assert it isn't there?
+        maximal_extent_rois = masks.roi_name.str.endswith('+')
+        n_maximal_to_drop = maximal_extent_rois.sum().item(0)
+        if n_maximal_to_drop > 0:
+            # TODO convert to logging.warnings?
+            # TODO better message (indicating what they are)?
+            warnings.warn(f"dropping {n_maximal_to_drop} ROIs with '+' suffix")
 
-        n_rois_before = masks.sizes['roi']
+            n_rois_before = masks.sizes['roi']
 
-        masks = masks[dict(roi=~maximal_extent_rois)].copy()
-        assert masks.sizes['roi'] == (n_rois_before - n_maximal_to_drop)
+            masks = masks[dict(roi=~maximal_extent_rois)].copy()
+            assert masks.sizes['roi'] == (n_rois_before - n_maximal_to_drop)
 
     return masks
 
