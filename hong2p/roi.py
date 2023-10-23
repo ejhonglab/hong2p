@@ -7,6 +7,7 @@ from pprint import pprint
 from typing import Optional, Union
 # TODO replace w/ logging.warning
 import warnings
+from zipfile import BadZipFile
 
 import numpy as np
 import pandas as pd
@@ -581,11 +582,20 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
 
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
 
-    # TODO format better + put behind verbose flag
+    # TODO format better + put behind verbose flag (/delete)
     #print(f'{ijroiset_fname=}')
     #print(f'{ijroiset_fname.resolve()=}')
 
-    name_and_roi_list = ijroi.read_roi_zip(ijroiset_fname, points_only=False)
+    # TODO maybe just fix ijroi.read_roi_zip to work in case input is a single lone .roi
+    # file?
+    try:
+        name_and_roi_list = ijroi.read_roi_zip(ijroiset_fname, points_only=False)
+
+    except BadZipFile as e:
+        raise IOError(f'does {ijroiset_fname} only have a single ROI? try adding >1, '
+            'so that ImageJ saves ROIs as a zipfile (or deselect ROIs before any manual'
+            ' saving)'
+        ) from e
 
     _, (x, y), z, c, _, _ =  thor.load_thorimage_metadata(thorimage_dir)
 
