@@ -205,8 +205,8 @@ def parse_odor_name(odor_str: str) -> Optional[str]:
     >>> parse_odor_name('ethyl acetate @ -2')
     'ethyl acetate'
 
-    >>> parse_odor_name(solvent_str)
-    None
+    >>> parse_odor_name(solvent_str) is None
+    True
     """
     if odor_str == solvent_str:
         return None
@@ -400,9 +400,11 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # cols->key fns) to sort before / after odors (as well as orders via another dict?)?)
 # (or just add columns to sort odors w/in groups of? but prob wouldn't wanna use
 # groupby, rather find existing consecutive groups and sort within...)
+# TODO also implement something for getting name order from one of the YAML configs?
+# (do the loading in here? prob take either dict or YAML path)
 def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
-    panel2name_order: Optional[Dict[str, List[str]]] = None, _debug: bool = False,
-    **kwargs) -> pd.DataFrame:
+    panel2name_order: Optional[Dict[str, List[str]]] = None, if_panel_missing='warn',
+    _debug: bool = False, **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to 'solvent' (+ clarify in docstring)
     # TODO doctest examples using panel_order+panel2name_order
@@ -417,6 +419,8 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
 
         panel2name_order: maps str panel names to lists of odor name orders, for each.
             If passed, must also pass panel_order.
+
+        if_panel_missing: 'warn'|'err'|None
 
         **kwargs: passed through to :func:`odor_index_sort_key`.
 
@@ -449,14 +453,14 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
     A @ -3 solvent      0.9
     A @ -2 solvent      1.2
     """
-    # TODO also raise in reverse case, unless i want to support default panel_order
-    # (e.g. alphabetical)
-    # TODO and do i want to support sorting just on concs w/in panels (while sorting on
-    # panels first, via panel_order)?
+    # TODO probably delete, now that i'm allowing some panels to be missing from
+    # panel2name_order
     if panel2name_order is None and panel_order is not None:
         raise ValueError('must pass panel2name_order if supplying panel_order')
 
-    # TODO want to support panel2name_order=None when panel_order is passed?
+    # TODO want to support panel2name_order=None when panel_order is passed
+    # (probably, now that i'm thinking i want [at least the option to] have things run
+    # before i fill out panel2name_order for every new thing?)?
     # could just check panel2name_order not-None if not...
     panel_sort = panel_order is not None or panel2name_order is not None
     if panel_sort:
@@ -511,6 +515,11 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
                     "without a 'panel' level"
                 )
 
+            if panel_order is None:
+                # NOTE: intentionally using order of input dict (which should be order
+                # keys are added to dict)
+                panel_order = list(panel2name_order.keys())
+
             # TODO for a case where no elements of panel2name_order value
             # iterables have overlapping names, test that this method of
             # splitting->sorting->recombining is equivalent to giving a simple key
@@ -525,24 +534,74 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
             # TODO maybe just set sort=True if panel_order not specified
             # (and if i want to allow that...)
             panels = []
-            for panel, pdf in df.groupby('panel', axis=axis_name, sort=False,
+
+            # NOTE: at least in pandas 1.2.4, using level= is required to not have null
+            # panels dropped (despite dropna=False!), so we need to use levels= kwarg,
+            # assuming we want to support null panels.
+            #
+            # Since we are already checking 'panel' is in index.names above, we can
+            # always use level= in groupby (would need to specify as by= [or positional
+            # arg 0] if 'panel' was a column).
+            for panel, pdf in df.groupby(level='panel', axis=axis_name, sort=False,
                 dropna=False):
 
-                name_order = panel2name_order[panel]
+                try:
+                    name_order = panel2name_order[panel]
+
+                except KeyError:
+                    if if_panel_missing == 'err':
+                        raise
+
+                    elif if_panel_missing == 'warn':
+                        # TODO want to consolidate w/ warning odor_index_sort_key will
+                        # also trigger if not in name_order?
+                        warnings.warn(f'{panel=} not in panel2name_order. odor names '
+                            'alphabetical by default. to silence, add to '
+                            'panel2name_order or set if_panel_missing=None to silence.'
+                        )
+
+                    elif if_panel_missing is None:
+                        pass
+                    else:
+                        raise ValueError(f"{if_panel_missing=} must be 'err'|'warn'|"
+                            "None"
+                        )
+
+                    # odor names will be ordered alphanumerically by default
+                    name_order = None
 
                 if _debug:
                     print(f'{panel=}, name_order:')
                     pprint(name_order)
 
-                # TODO TODO TODO does it make sense to sort_index a second time
-                # after the loop? the name panel_sort seems to indicate something
-                # other than what seems to be happening here...
+                # NOTE: name_order here is just getting passed to odor_index_sort_key.
+                # it's not explcitly a kwarg of sort_odors.
                 sorted_pdf = sort_odors(pdf, name_order=name_order, **kwargs)
                 sorted_panel_dfs.append(sorted_pdf)
                 panels.append(panel)
 
+            def _panel_order_key(panel):
+                if pd.isnull(panel):
+                    # True > False, in case it wasn't obvious. null should go to end.
+                    # doesn't matter what 2nd & 3rd components here are, as they should
+                    # never vary within False 1st elements.
+                    return (True, 0, '')
+
+                try:
+                    panel_index = panel_order.index(panel)
+
+                # (e.g. panel was not in explicit panel_order / panel2name_order.keys())
+                # ValueError: <panel> is not in list
+                except ValueError:
+                    # (to put all these at the end)
+                    panel_index = float('inf')
+
+                # secondarily sorting on panel itself, so all stuff not in panel_order
+                # still have a defined order (alphanumeric)
+                return (False, panel_index, panel)
+
             sorted_panel_dfs = [x for _, x in sorted(zip(panels, sorted_panel_dfs),
-                key=lambda y: panel_order.index(y[0])
+                key=lambda y: _panel_order_key(y[0])
             )]
             df = pd.concat(sorted_panel_dfs, axis=axis_name)
             continue
@@ -594,6 +653,8 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
 # TODO maybe move to viz.py, since this is mainly intended as as helper for
 # viz.with_panel_orders plotting function wrapper?
 # TODO alias for the panel2name_order type (+ use in new kwarg to sort_odors too)
+# TODO TODO TODO also accept if_panel_missing here (and try to implement such that some
+# logic is shared w/ sort_odors, or at least try to keep behavior consistent)
 def panel_odor_orders(df: pd.DataFrame,
     panel2name_order: Optional[Dict[str, List[str]]] = None, **kwargs):
     # TODO doctest example
@@ -623,7 +684,8 @@ def panel_odor_orders(df: pd.DataFrame,
         panel_df = panel_df.drop_duplicates(subset=odor_cols)
 
         if panel2name_order is not None:
-            name_order = panel2name_order[panel]
+            # TODO implement (+ warn in right condition of) if_panel_missing here
+            name_order = panel2name_order.get(panel)
 
         panel_df = sort_odors(panel_df, name_order=name_order, **kwargs)
 

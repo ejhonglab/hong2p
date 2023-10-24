@@ -1,4 +1,6 @@
 
+from typing import List
+
 import pytest
 
 import pandas as pd
@@ -7,19 +9,33 @@ import numpy as np
 from hong2p.olf import solvent_str, sort_odors
 
 
-def _make_df(rng, odor1, odor2=None, odors_in_index=True):
-    df = pd.DataFrame({
+def _make_df(rng, odor1, odor2=None, odors_in_index=True, panel=None):
+    odor_keys = ['odor1', 'odor2']
+    for_df = {
         'odor1': odor1,
+        # TODO flag to not make with odor2 at all (and test with that)
         'odor2': [solvent_str] * len(odor1) if odor2 is None else odor2,
         'delta_f': rng.random(len(odor1)),
-    })
+    }
+    if panel is not None:
+        for_df['panel'] = panel
+        odor_keys.insert(0, 'panel')
+
+    df = pd.DataFrame(for_df)
 
     if odors_in_index:
-        df = df.set_index(['odor1', 'odor2'])
+        df = df.set_index(odor_keys)
 
     return df
 
+def _c(names: List[str], c: int = 0) -> List[str]:
+    """Adds concentrations suffixes '@ <c>' (e.g. '@ 0') to list of odor names
+    """
+    return [f'{n} @ {c}' for n in names]
+
 def _odor_level(df, n):
+    # TODO fall back to trying to get it as a column of df (for odors_in_index=False
+    # case. even want to support that case tho?)
     return list(df.index.get_level_values(f'odor{n}'))
 
 def _odor1(df):
@@ -28,8 +44,81 @@ def _odor1(df):
 def _odor2(df):
     return _odor_level(df, 2)
 
+def _panel(df):
+    return list(df.index.get_level_values('panel'))
 
-# TODO test panel2name_order + panel_order kwargs (include odor overlap between panels)
+# TODO easier way?
+# Just need since float('nan') != float('nan') (and pandas seems to turn many None into
+# NaN internally).
+def naneq(seq1, seq2):
+    if len(seq1) != len(seq2):
+        return False
+
+    for x, y in zip(seq1, seq2):
+        if not (x == y or (pd.isnull(x) and pd.isnull(y)) ):
+            return False
+
+    return True
+
+
+def test_sort_odors_with_panel(rng):
+    input_odor1 = _c(['B', 'A', 'Y', 'X', 'Y', 'Z', 'D', 'C'])
+    input_panel = ['1', '1', '2', '2', '3', '3', None, None]
+    panel2name_order = {
+        '1': ['A', 'B'],
+        '2': ['X', 'Y'],
+        # this also checks it doesn't blow up if two panels have an odor w/ same name
+        '3': ['Y', 'Z'],
+    }
+    input_df = _make_df(rng, odor1=input_odor1, panel=input_panel)
+    expected_panel = ['1', '1', '2', '2', '3', '3', None, None]
+    expected_odor1 = _c(['A', 'B', 'X', 'Y', 'Y', 'Z', 'C', 'D'])
+
+    df = sort_odors(input_df, panel2name_order=panel2name_order)
+    odor1 = _odor1(df)
+    panel = _panel(df)
+    assert naneq(panel, expected_panel)
+    assert naneq(odor1, expected_odor1)
+
+    # TODO also try with if_panel_missing=None (should not warn)
+    # TODO test that by default it does warn (if panel missing)
+    # TODO test that if if_panel_missing='err', it errs
+
+    # TODO TODO try a few different kwargs (which?)?
+
+    # TODO TODO try one with panel_order=['2', '1'] (leave '3' out)
+
+    # TODO TODO test w/ panel missing from panel_order (pass panel_order explicitly or
+    # leave out panel from panel2name_order)
+
+    input_odor1 = _c(['D', 'C', 'B', 'A', 'J', 'I', 'Y', 'X', 'Y', 'Z'])
+    # Checking that null panel get moved to end
+    input_panel = [None, None, '1', '1', '0', '0', '2', '2', '3', '3']
+    # Note that panel '0' is missing from keys (and thus, from default panel_order)
+    # Also checking this gets moved to end.
+    # TODO what should order of null and '0' panel be tho? probably null at very end
+    # always?
+    panel2name_order = {
+        # Panels '2' and '1' should be in reverse order now (should be in order in keys
+        # here)
+        '2': ['X', 'Y'],
+        '1': ['A', 'B'],
+        # this also checks it doesn't blow up if two panels have an odor w/ same name
+        '3': ['Y', 'Z'],
+    }
+    input_df = _make_df(rng, odor1=input_odor1, panel=input_panel)
+    # TODO where will it put the NaN tho? at end always? test it moves from beginning
+    # then? panels even comparable (test w/ panel_order passed) then?
+    expected_panel = ['2', '2', '1', '1', '3', '3', '0', '0', None, None]
+    expected_odor1 = _c(['X', 'Y', 'A', 'B', 'Y', 'Z', 'I', 'J', 'C', 'D'])
+
+    df = sort_odors(input_df, panel2name_order=panel2name_order)
+    odor1 = _odor1(df)
+    panel = _panel(df)
+    assert naneq(panel, expected_panel)
+    assert naneq(odor1, expected_odor1)
+
+
 def test_sort_odors(rng):
     # TODO should these all just be separate tests? or grouped into a few?
     # use pytest parameterize?
@@ -113,6 +202,9 @@ def test_sort_odors(rng):
         sdf = sort_odors(df, **kwargs)
         odor1 = list(sdf['odor1'])
         assert odor1 == odor1_out
+
+        # TODO try some where _make_df call has odors_in_index=False?
+        # (eh... want to support?)
 
         # TODO TODO why was this test not failing w/ the MultiIndexed input, but was w/
         # just one 'odor' col? (for input where it's there is a 'solvent' element and we
