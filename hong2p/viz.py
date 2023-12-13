@@ -7,7 +7,7 @@ from os.path import join, exists
 import time
 import functools
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from pprint import pformat
 # TODO replace w/ logging.warning?
 import warnings
@@ -21,12 +21,22 @@ import xarray as xr
 from scipy.cluster.hierarchy import linkage
 import matplotlib.patches as patches
 import matplotlib as mpl
-from matplotlib.figure import Figure
+import matplotlib.patheffects as PathEffects
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 import seaborn as sns
+# Only for type hinting
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
+from matplotlib.colorbar import Colorbar
 
 from hong2p import util, thor
 from hong2p import roi as hong_roi
+# TODO replace w/ select_certain_rois (after adapting it to work w/ DataArray input)
+# TODO possible to fix circular import error this seemed to cause? maybe via changing
+# hong2p.roi (only/too)?
+#from hong2p.roi import is_ijroi_certain
+#
 from hong2p.olf import remove_consecutive_repeats
 from hong2p.types import DataFrameOrDataArray
 
@@ -544,8 +554,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
             cbar_kws = dict()
 
         # rotation=270?
-        #cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink, **cbar_kws)
         # TODO thread fontsize thru this?
+        # TODO TODO add option to fix size to that of axes we are stealing from
+        # (or maybe to set size relative to those?)?
         cbar = add_colorbar(fig, im, label=cbar_label, shrink=cbar_shrink,
             fontsize=bigtext_fontsize, **cbar_kws
         )
@@ -594,6 +605,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                 for label, y0, y1 in ranges:
                     # TODO TODO compute group_label_offset? way to place the text using
                     # constrained layout?
+                    # TODO possible to get this work w/ constrained layout /
+                    # bbox_inches='tight' (work w/ either as-is?)?
                     ax.text(-hgroup_label_offset, np.mean((y0, y1)) + 0.5, label,
                         fontsize=group_fontsize, fontweight=group_fontweight,
                         # Right might make consistent spacing wrt line indicating extent
@@ -626,6 +639,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
 
             if vline_group_text:
                 for label, x0, x1 in ranges:
+                    # TODO possible to get this work w/ constrained layout /
+                    # bbox_inches='tight' (work w/ either as-is?)?
                     ax.text(np.mean((x0, x1)) + 0.5, -vgroup_label_offset, label,
                         fontsize=group_fontsize, fontweight=group_fontweight,
                         ha='center'
@@ -760,16 +775,91 @@ def imshow(img, title=None, cmap=DEFAULT_ANATOMICAL_CMAP):
     return fig
 
 
-def add_colorbar(fig, im, label=None, fontsize=None, shrink=1.0, **kwargs):
+# TODO type hint matplotlib.cm.ScalarMappable for im (as in mpl docs)?
+# TODO possible to get it to work reasonably w/o explicit im passed in?
+# (maybe use a generic ScalarMappable as
+# https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.colorbar.html talks about
+# in this case?) or behave as `plt.colorbar` does in that case (also mentioned in link)
+# TODO shrink=None work same as shrink=1.0 (default), when passed to fig.colorbar?
+# if so, change matshow's default cbar_shrink to None here, and then if it's None, use
+# make_axes_locatable -> .append_axes method to make same size as axes?  if shrink=None
+# not same, maybe implement myself here (would just be slightly more complicated)
+#
+# TODO TODO TODO even when im is passed in, should i check all axes have the same
+# vmin/vmax as im? (or if im not passed, check they are all the same? there should be
+# multiple colorbars otherwise, right? what happens currently?)
+def add_colorbar(fig: Figure, im, match_axes_size: bool = False, size=None, pad=None,
+    cax: Optional[Axes] = None, label: Optional[str] = None, fontsize=None, **kwargs
+    ) -> Colorbar:
     """
-        shrink: same default as matplotlib
-    """
+    Args:
+        fig: figure to add colorbar to
 
+        im: typically output of a `ax.imshow`/similar call
+            see `Figure.colorbar` docs for more details:
+            https://matplotlib.org/stable/api/figure_api.html#matplotlib.figure.Figure.colorbar
+
+        match_axes_size: if True, colorbar will be made same size (for now, just height)
+            as Axes. assumed that all Axes are same height and in one row (if multiple).
+
+        size: passed to `AxesDivider.append_axes`, if `match_axes_size=True`.
+            unused otherwise.
+
+        pad: passed to `divier.append_axes` (default: '2%'), if `match_axes_size=True`.
+            passed to `fig.colorbar` otherwise
+
+        cax: passed to `fig.colorbar`. use for more control of size/shape of colorbar,
+            e.g. to make colorbar same height as `Axes`, as in
+            https://stackoverflow.com/a/18195921
+            (via `make_axes_locatable` + `append_axes`)
+
+        label: label for colorbar
+
+        fontsize: passed to `Axes.set_ylabel`
+
+        **kwargs: passed to `Figure.colorbar`
+    """
     # TODO check whether kwargs `label=label` to fig.colorbar can replace
     # cbar.ax.set_ylabel. i think so, but poorly documented.
+    # (i.e. does it handle None the same way [/ close enough])
+    # (would also need to check fontsize works as fig.colorbar kwarg now tho, and not
+    # sure it does...)
 
-    # I think this relies on use of Matplotlib's constrained layout
-    cbar = fig.colorbar(im, ax=fig.axes, shrink=shrink, **kwargs)
+    # TODO delete? currently unused... some code might benefit from it tho
+    if match_axes_size:
+        assert cax is None
+        assert 'shrink' not in kwargs or kwargs['shrink'] == 1.0
+
+        # TODO need to handle / err in case Axes are not all taking up same vertical
+        # extent? what if one is larger? what if there's more than one row?
+
+        # TODO OK that are are using just last axes? if it doesn't actually steal space,
+        # probably doesn't matter? using fig.axes didn't work.
+        divider = make_axes_locatable(fig.axes[-1])
+
+        # TODO refactor handling of these defaults to not have to duplicate in doc
+        # (i.e. by having default as kwarg default)?
+        size = '7%' if size is None else size
+        pad = '2%' if pad is None else pad
+
+        # TODO would not work if orientation/location were in kwargs (unless ==
+        # 'right'). support other cases? err?
+        assert 'orientation' not in kwargs
+        assert 'location' not in kwargs
+        cax = divider.append_axes('right', size=size, pad=pad)
+
+        # TODO fix so cbar label / ticks not cut off (was w/ one row at least, when
+        # called from plot_roi_util.py, where i actually didn't want to end up using it)
+
+    if cax is None:
+        kwargs['ax'] = fig.axes
+
+    if not match_axes_size and pad is not None:
+        # in match_axes_size case, we already used pad above in this case, and shouldn't
+        # try using it again in call below. pad=None does not work in fig.colorbar
+        kwargs['pad'] = pad
+
+    cbar = fig.colorbar(im, cax=cax, **kwargs)
 
     if label is not None:
         # TODO test fontsize=None doesn't change default behavior
@@ -792,9 +882,10 @@ def contour_center_of_mass(contour):
     return 1. / (6 * A) * np.array([cx, cy])
 
 
-def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None,
-    label: Optional[str] = None, text_kws: Optional[dict] = None, colors=None,
-    linewidths=1.2, linestyles='dotted', **kwargs):
+def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
+    ax: Optional[Axes] = None, label: Optional[str] = None,
+    text_kws: Optional[dict] = None, colors=None, linewidths=1.2, linestyles='dotted',
+    **kwargs):
     # TODO doc / delete
     """Plots line around the contiguous positive region(s) in footprint.
 
@@ -843,6 +934,11 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
         # Checking for what I believe was the reason we needed padding, though it might
         # not affect plotting if that's all we want in _pad=False case anyway
         positive = footprint > 0
+        # TODO TODO better error message (and print label if available)
+        # (this will be triggered by stuff touching the edge, even at a single point)
+        # (maybe i should just always be padding tho? i.e. above branch?)
+        # TODO TODO and catch in plot_rois and print plane / other info if there
+        # (so people can actually fix the ROI that has an issue)
         assert not any([
             np.array(positive[0, :]).any(),
             np.array(positive[-1, :]).any(),
@@ -976,15 +1072,56 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True, ax=None
 
 
 # TODO option to burn in D/V M/L A/P axis labels (or another fn to handle that?)?
-# TODO TODO add kwarg flag to include colorbar
-def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
-    cmap=DEFAULT_ANATOMICAL_CMAP, inches_per_pixel=0.014, **imshow_kwargs):
+# TODO add kwarg flag to include colorbar (always added now?) (delete comment?)
+# TODO rename scale_per_plane to scale_per_image?
+# TODO type hint image_list as list/ndarray (of ndarrays, in either case)?
+# TODO type hint return
+def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] = None,
+    figsize=None, dpi=None, scale_per_plane: bool = False,
+    minmax_clip_frac: float = 0.0, vmin=None, vmax=None, norm=None,
+    cmap=DEFAULT_ANATOMICAL_CMAP, inches_per_pixel=0.014,
+    cbar_label: Optional[str] = None, cbar_kws: Optional[Dict[str, Any]] = None,
+    **imshow_kwargs):
     # TODO also allow specifying either height_inches/width_inches instead of
     # inches_per_pixel (would only save specifying one component of figsize...)?
     """
     Args:
+        image_list: list/array of images, whose length is equal to the number of images
+            (i.e. number of planes, for typical input of single-fly volumetric data,
+            where input has been reduced across timepoints)
+
+        ncols: how many columns for grid showing the background of each plane
+            (one panel per plane)
+
         inches_per_pixel: used to calcualte `figsize`, if `figsize` not passed
+
+        scale_per_plane: if False, min/max of colorscale will be picked from min/max of
+            all data (after excluding `minmax_clip_frac`, if it's greater than 0).
+
+        minmax_clip_frac: clip this fraction of data from BOTH the lower/upper end, when
+            deciding the limits of the colormap for the background images.
+            `v[min|max]` must not be set if this is, and vice versa.
     """
+    image_list = np.array(image_list)
+
+    # TODO even want to support scale_per_plane=True? delete all related branches?
+    # TODO want to check vmin/vmax not passed if scale_per_plane=True?
+    # TODO make a decorator to convert assertion errors like these to ValueErrors?
+    # (and maybe also have it modify the docstring to add something like "raises
+    # ValueError"?)
+    assert 0 <= minmax_clip_frac < 0.5
+    if vmin is not None or vmax is not None:
+        # (assuming if it's 0, it wasn't explicitly passed in. good enough for now.
+        # this shouldn't be passed if vmin/vmax are, and vice versa)
+        assert minmax_clip_frac == 0
+        assert not scale_per_plane
+
+    if cbar_kws is None:
+        cbar_kws = dict()
+
+    elif 'label' in cbar_kws:
+        assert cbar_label is None
+        cbar_label = cbar_kws.pop('label')
 
     def ceil(x):
         return int(np.ceil(x))
@@ -1021,38 +1158,108 @@ def image_grid(image_list, *, nrows=None, ncols=None, figsize=None, dpi=None,
     # TODO (if not passed) set figsize according to aspect ratio you'd get multiplying
     # nrows/ncols by single image dimensions (to try to fill space as much as possible)
 
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi)
+    # TODO keep specifying layout in here? or use decorator? generally move from
+    # decorator to specifying inside fig creation (for fns that make fig, at least?)
+    # probably
+    #
+    # NOTE: 'compressed' layout ended up being key to getting decent (e.g. minimal)
+    # spacing between the images if anything (suptitle, colorbar) was added to fig after
+    # this call. from matplotlib docs:
+    # "'compressed': uses the same algorithm as 'constrained', but removes extra space
+    # between fixed-aspect-ratio Axes. Best for simple grids of axes."
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi,
+        layout='compressed'
+    )
 
     # TODO see: https://stackoverflow.com/questions/42850225 or related to find a
     # good solution for reliably eliminating all unwanted whitespace between subplots
     # (honestly i think it will ultimately come down to figsize, potentially more so
     # when using constrained layout, as i'd now generally like to)
 
+    # TODO TODO why do defaults seem to produce way more saturated plots (at least e.g.
+    # using average fluorescence bg input) want to change? is it just a matter of
+    # specifying norm=<some appropriate string>?
+
+    single_colorbar = True
+    if vmin is None and vmax is None:
+        # If we aren't scaling per plane, then we are scaling ACROSS ALL planes
+        # (by default, just using the min/max across all)
+        if not scale_per_plane:
+            # (across all axes by default, as if flattening array first)
+            vmin = np.quantile(image_list, minmax_clip_frac)
+            vmax = np.quantile(image_list, 1 - minmax_clip_frac)
+            # TODO want to do any checking we are throwing away (only) a reasonable
+            # amount of data? like not all of it at least?
+        else:
+            single_colorbar = False
+
     for ax, img in zip(axs.flat, image_list):
-        ax.imshow(img, cmap=cmap, **imshow_kwargs)
+        if scale_per_plane:
+            vmin = np.quantile(img, minmax_clip_frac)
+            vmax = np.quantile(img, 1 - minmax_clip_frac)
+
+        im = ax.imshow(img, vmin=vmin, vmax=vmax, norm=norm, cmap=cmap, **imshow_kwargs)
         ax.axis('off')
+
+    if scale_per_plane:
+        del vmin, vmax
+
+    # TODO should still at least be able to disable this w/ kwarg
+    if single_colorbar:
+        # TODO thread thru any cbar_kws explicitly (maybe cbar_label, as in matshow?)?
+        # TODO work as expected if scales on images are different (would need
+        # scale_per_plane=False and no vmin/vmax, right?... not sure i want to support
+        # that anyway)
+        add_colorbar(fig, im, label=cbar_label, **cbar_kws)
+        # TODO maybe in nrow/cols aren't specified, and we end up wanting a single
+        # colorbar, we default to one row when we might not otherwise?
 
     for ax in axs.flat[len(image_list):]:
         fig.delaxes(ax)
 
-    # TODO detect if contstrained layout is enabled, and if not, call this?
-    # or maybe just put the @constrained_layout decorator on this fn to guarantee it?
-    #fig.subplots_adjust(wspace=0, hspace=0.05)
-
     return fig, axs
 
 
+# TODO implement option for setting xlabel instead (if i decide to have these plots
+# in a column rather than row)?
+# TODO type hint Axes (and in other stuff that takes it)
+def micrometer_depth_title(ax, zstep_um, z_index, **kwargs) -> None:
+    curr_z = -zstep_um * z_index
+
+    # TODO even want this default? taken from al_analysis
+    fontsize = kwargs.pop('fontsize', 7)
+
+    # TODO check no decimal point in figures now that i'm formatting a float here
+    # (used to be int)
+    # TODO check formatting of 0 looks good (or disable that here? currently some
+    # code excludes this call on that plane, so not sure of formatting)
+    ax.set_title(f'{curr_z:.0f} $\\mu$m', fontsize=fontsize, **kwargs)
+
+
+# TODO delete show_names? ever want show_names=False?
+# TODO type alias for Dict[str, Any] (maybe KWArgs?)?
 # TODO unit test (that at least it produces a figure without failing for
 # correctly-formatted DataArray input)
 # TODO support similarly-indexed DataArray for background (+ maybe remove ndarray code)
-# TODO TODO add certain_only kwarg, and replace corresponding calculation in
-# al_analysis.ij_traces with setting it true. also make sure it exclude stuff w/ '+' in
-# name (as other places should now too)
-def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = True,
-    ncols: int = 2, _pad: bool = False, palette=None, seed=0, focus_roi=None,
-    nonfocus_roi_desat=0.4, focus_roi_linewidth=1.8, cmap=DEFAULT_ANATOMICAL_CMAP,
-    image_kws=None, **kwargs) -> Figure:
-    # TODO doc
+# TODO should background be optional (probably...)?
+# TODO refactor scale_per_plane/minmax_clip_frac handling to just use defaults from
+# image_grid?
+# TODO see fig 4 in https://www.sciencedirect.com/science/article/pii/S096098222301285X
+# for some ideas (about colorscale / use of color / other aesthetic choices)
+# TODO TODO option for plotting dotted outline around whole AL (per plane, perhaps
+# specified as sam's plane<n> ROIs) (like in paper above, tho seen before)
+# TODO TODO TODO add (option for) adding a XY scale bar to one image
+# TODO TODO also include A/P L/M axis arrows in plot (or option to)
+# TODO maybe include (D<->V in/near titles that have depths?)
+def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
+    certain_only: bool = False, best_planes_only: bool = False, show_names: bool = True,
+    ncols: Optional[int] = None, nrows: Optional[int] = 1, palette=None, seed=0,
+    focus_roi=None, nonfocus_roi_desat: Optional[float] = 0.4,
+    scale_per_plane: bool = False, minmax_clip_frac: float = 0.0, vmin=None, vmax=None,
+    norm=None, cmap=DEFAULT_ANATOMICAL_CMAP, image_kws: Optional[Dict[str, Any]] = None,
+    zstep_um: Optional[float] = None, depth_title_kws: Optional[dict] = None,
+    title: Optional[str] = None, _pad: bool = False, **kwargs) -> Figure:
+    # TODO doc whether palette can be a dict (str -> color) (yea, right?) anything else?
     """
     Args:
         rois: with dims ('roi', 'z', 'y', 'x'). coords must have at least
@@ -1061,33 +1268,91 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
         background: must have shape equal to the (<z>, <y>, <x>) lengths of the
             corresponding entries in `rois.sizes`
 
+        certain_only: whether to only show ROIs whose names indicate certainty about
+            their ID (see `roi.`)
+
+        best_planes_only: whether to only show best plane for each volumetric ROI.
+            If True, requires input also has 'is_best_plane' on 'roi' dimension.
+
         show_names: whether to plot ROI names in the center of each ROI
 
-        ncols: how many columns for grid showing the background of each plane
-            (one panel per plane)
+        ncols: passed to `image_grid`
+
+        nrows: passed to `image_grid`
 
         cmap: colormap for background image
 
         palette: for coloring ROIs
 
+        nonfocus_roi_desat: desaturate each ROI's color by this amount, except any ROIs
+            who name is that of `focus_roi` (if passed). if `focus_roi` not passed,
+            still desaturating everything by this amount, for consistency.
+
+        zstep_um: if passed, axes titles will be added to indicate depth of each plane
+
+        depth_title_kws: passed to `ax.set_title` (if `zstep_um` is provided).
+            fontsize will default to 7 if not specified in this arg, or if this arg not
+            passed.
+
+        title: will set as `suptitle` if passesd
+
+        image_kws: passed to `image_grid`, for plotting background(s)
+
         **kwargs: passed thru to `plot_closed_contours`
     """
+    if certain_only:
+        # TODO replace w/ select_certain_rois (after adapting to work w/ DataArray
+        # input)
+        certain_rois = [hong_roi.is_ijroi_certain(x) for x in rois.roi_name.values]
+        rois = rois.sel(roi=certain_rois)
+        #
+
+    # TODO also add options to just plot these diff (maybe brighter color / thicker
+    # lines / only one with name shown / solid [/diff style] line?)
+    if best_planes_only:
+        # TODO catch error if is_best_plane not there -> better error message
+        # (about it being required if best_planes_only=True)
+        #
+        # didn't seem to matter whether I added .values to the end of sel arg
+        rois = rois.sel(roi=rois.is_best_plane)
+
+    # TODO TODO warn/err if rois are empty here (after subsetting above)?
+    # TODO TODO warn/err (probably just warn) if focus_roi is not None and not in
+    # rois.roi_name.values
+
     if image_kws is None:
         image_kws = dict()
 
-    # TODO TODO TODO if i'm gonna subset ROIs, do it here (before palette handling)
+    if palette is None and 'colors' not in kwargs:
+        # I think I generally like the way this looks better if it's a bit desaturated
+        #
+        # TODO maybe pick less than 10 if we have <10 ROIs? matter?
+        #
+        # 10 is max colors before wrapping
+        palette = sns.color_palette('hls', n_colors=10)
 
+    # TODO also support a color= kwarg that just makes all ROIs that color
+    # (+ use in making 'ijroi/with_focusroi' variants in al_analysis)
+    # (already have colors=[<color>], but color=<color> would be simpler...)
     roi_name2color = None
     if palette is not None:
+        # TODO TODO doc colors. where is it used (passed to plot_closed_contour)?
+        # why is it not just a regular kwarg (it prob should be?)? why not `color` (list
+        # of colors?) (just haven't implemented yet)?
         assert 'colors' not in kwargs
 
         roi_names = rois.roi_name.values
 
         if isinstance(palette, Mapping):
-            # TODO TODO if we subset rois above, need to change this?
+            # TODO if we subset rois above, need to change this? not actually using this
+            # branch now i don't think...
             assert set(roi_names) == set(palette.keys())
             # Assuming all keys are kroper colors.
             roi_name2color = palette
+
+        # this branch covers things like lists of colors (including sns.color_palette
+        # output, which is actually a custom class, but seems to present like a list of
+        # colors)
         else:
             roi_names = list(set(roi_names))
 
@@ -1102,19 +1367,22 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
 
             roi_name2color = dict(zip(roi_names, palette))
 
-            #if focus_roi is not None:
-            if focus_roi is not None and focus_roi in roi_name2color:
-                # TODO change back to (by default, but toggleable) erring in this case
-                #assert focus_roi in roi_name2color, \
-                #    f'{focus_roi=} not in roi_name2color'
+    # TODO change to warning. not gonna work as an assertion.
+    #if focus_roi is not None:
+    #    assert focus_roi in roi_name2color, f'{focus_roi=} not in roi_name2color'
 
-                assert 0 < nonfocus_roi_desat <= 1
-                roi_name2color = {
-                    n: c if n == focus_roi else sns.desaturate(c, nonfocus_roi_desat)
-                    for n, c in roi_name2color.items()
-                }
+    if nonfocus_roi_desat is not None:
+        # TODO update message in this assertion. no longer only running this desat if
+        # focus_roi passed!
+        assert roi_name2color is not None, 'focus_roi not supported w/ colors= kwarg'
 
-            del palette
+        assert 0 < nonfocus_roi_desat <= 1
+        roi_name2color = {
+            n: c if n == focus_roi else sns.desaturate(c, nonfocus_roi_desat)
+            for n, c in roi_name2color.items()
+        }
+
+    del palette
 
     # TODO TODO option to [locally?] histogram equalize the image (or something else to
     # increase contrast + prevent hot pixels from screwing up range in a plane)
@@ -1129,53 +1397,90 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
 
     z_size = rois.sizes['z']
 
+    # TODO TODO just list explicitly in fn def above, to doc better?
+    #
+    # just assuming only one or the other will be passed in here
+    # technically someone might think to put label= in cbar_kws...
+    cbar_label = kwargs.pop('cbar_label', None)
+    cbar_kws = kwargs.pop('cbar_kws', None)
+
     # TODO also support background being xarray, transposing z,y,x into place, if so
     # (or at least [/ in ndarray case], assert existing shape matches rois (z,y,x)
     # shape?)
-    fig, axs = image_grid(background, ncols=ncols, cmap=cmap, **image_kws)
+    fig, axs = image_grid(background, ncols=ncols, nrows=nrows,
+        scale_per_plane=scale_per_plane, minmax_clip_frac=minmax_clip_frac,
+        vmin=vmin, vmax=vmax, norm=norm, cmap=cmap, cbar_label=cbar_label,
+        cbar_kws=cbar_kws, **image_kws
+    )
+
+    # TODO factor into image_grid, to handle the layout there?
+    # TODO same for colorbar?
+    # (image_grid is currently picking figsize based on image dims, but this doesn't
+    # account for colorbar / suptitle / anything else)
+    # TODO kwargs to image to specify extra space, and use that?
+    if title is not None:
+        # TODO need to do layout any differently here?
+        # (it does throw off spacing, yes. rcParam changes in al_analysis could be
+        # having an affect tho? prob still want to address here)
+        fig.suptitle(title)
 
     # Moving 'roi' from end to start.
     rois = rois.transpose('roi', 'z', 'y', 'x')
 
     err_msg = None
     for z, ax in enumerate(axs.flat):
+
+        if zstep_um is not None:
+            if depth_title_kws is None:
+                depth_title_kws = dict()
+
+            # TODO TODO want to exclude z=0?
+            micrometer_depth_title(ax, zstep_um, z, **depth_title_kws)
+
         try:
             rois_in_curr_z = rois.sel(roi_z=z)
         except KeyError:
             continue
 
+        # TODO what if not all coordinates associated w/ this dimension are on
+        # the index? if i make a solution to also handle that, put in
+        # hong2p.xarray
+        index_names = rois.get_index('roi').names
+
+        # Since the .sel operation above removes this coordinate.
+        index_names = [x for x in index_names if x != 'roi_z']
+
         for roi in rois_in_curr_z:
             roi = roi[z]
 
-            label = None
-            if show_names:
-                # TODO what if not all coordinates associated w/ this dimension are on
-                # the index? if i make a solution to also handle that, put in
-                # hong2p.xarray
-                index_names = rois.get_index('roi').names
+            index_vals = roi.roi.item()
+            assert len(index_vals) == len(index_names)
+            index = dict(zip(index_names, index_vals))
+            name = index['roi_name']
 
-                # Since the .sel operation above removes this coordinate.
-                index_names = [x for x in index_names if x != 'roi_z']
-
-                index_vals = roi.roi.item()
-                assert len(index_vals) == len(index_names)
-                index = dict(zip(index_names, index_vals))
-                name = index['roi_name']
+            del index, index_vals
 
             # Already guaranteed that we only have either `colors` OR `roi_name2color`.
-            # Leaving this None will let keep plot_closed_contours default.
-            colors = kwargs.pop('colors', None)
             if roi_name2color is not None:
                 # NOTE: must be a single-element list if trying to specify one color
                 # with any type other than a string (from matplotlib Axes.contour docs)
                 colors = [roi_name2color[name]]
+            else:
+                # Leaving this None will let keep plot_closed_contours default.
+                colors = kwargs.pop('colors', None)
 
             # TODO refactor! want default only defined in one place
             assert 'linewidths' not in kwargs
             linewidths = 1.2
             if focus_roi is not None and name == focus_roi:
+                colors = ['red']
+
+                # TODO maybe they should always be 1.8 tho (whether focus or not)?
+                # or something between 1.2 and 1.8?
+                #
                 # Otherwise, should use plot_closed_contour default of 1.2
-                linewidths = 1.8
+                #linewidths = 1.8
+
                 # TODO delete. broken.
                 '''
                 kwargs = dict(kwargs)
@@ -1183,8 +1488,26 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, show_names: bool = Tru
                 '''
 
             try:
-                plot_closed_contours(roi, label=name, ax=ax, _pad=_pad, colors=colors,
-                    linewidths=linewidths, **kwargs
+                # TODO probably err, not warn, if this gets unknown kwargs
+                # (it's currently seaborn doing the warning, right?)
+                plot_closed_contours(roi, label=name if show_names else None, ax=ax,
+                    _pad=_pad, colors=colors, linewidths=linewidths,
+                    # TODO TODO turn off this path effect if it screws up ease of
+                    # editing in illustrator / inkscape. test!
+                    # TODO want to add same / similar path effect on ROI outline itself?
+                    # cases where it really seems like it'd help more than it'd hurt?
+                    text_kws=dict(path_effects=[
+                        # 0.2 was too small linewidth, at least with other settings as
+                        # they are. 1.0 was possibly too big. might need to change other
+                        # settings if I can't find a good middle ground otherwise.
+                        # 1.0 probably still looks better than 0.5
+                        #
+                        # https://osxastrotricks.wordpress.com/2014/12/02/add-border-around-text-with-matplotlib/
+                        # see also:
+                        # https://matplotlib.org/stable/users/explain/artists/patheffects_guide.html
+                        PathEffects.withStroke(linewidth=0.75, foreground='black')
+                    ]),
+                    **kwargs
                 )
 
             except RuntimeError as err:
@@ -1929,7 +2252,8 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
             #boxlabel_fontsize = 9
             boxlabel_fontsize = 6
             text_artist = avg_ax.text(box.xmin, box.ymin - 2, text,
-                color='b', size=boxlabel_fontsize, fontweight='bold')
+                color='b', size=boxlabel_fontsize, fontweight='bold'
+            )
             # TODO jitter somehow (w/ arrow pointing to box?) to ensure no
             # overlap? (this would be ideal, but probably hard to implement)
             avg_ax.add_patch(rect)

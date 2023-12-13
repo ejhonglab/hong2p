@@ -99,6 +99,8 @@ def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> etree.Element:
 
 # TODO doc
 def thorimage_xml(fn_taking_xml):
+    """Converts an attribute lookup fn taking XML to allow ThorImage directory input.
+    """
 
     @functools.wraps(fn_taking_xml)
     def fn_taking_path_or_xml(thorimage_dir_or_xmlroot: PathOrXML, **kwargs):
