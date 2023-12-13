@@ -4,6 +4,7 @@ from os.path import join, split, exists, getmtime
 from pathlib import Path
 import pickle
 from pprint import pprint
+import re
 from typing import Optional, Union
 # TODO replace w/ logging.warning
 import warnings
@@ -139,13 +140,136 @@ def numpy2xarray_rois(rois: np.ndarray, roi_indices: Optional[dict] = None
     return xr.DataArray(rois, dims=dims, coords={'roi': roi_index})
 
 
+# TODO doc + test
+# TODO complete? check against imagej internal code?
+def is_ijroi_name_default(roi):
+
+    parts = roi.split('-')
+    if len(parts) not in (2, 3):
+        return False
+
+    for p in parts:
+        try:
+            int(p)
+        except ValueError:
+            return False
+
+    return True
+
+
+# TODO doc + test
+def is_ijroi_named(roi):
+    try:
+        int(roi)
+        return False
+    except ValueError:
+        return not is_ijroi_name_default(roi)
+
+
+# TODO drop support for '/' (and maybe also '|'?)
+ijroi_uncertainty_chars = ('?', '|', '/', '+')
+# TODO doc + test
+def is_ijroi_certain(roi):
+    """Returns whether an ROI is named indicating it's ID is certain.
+
+    False for names that are default, integers, or include one of
+    `ijroi_uncertainty_chars` (e.g. '?'), and True otherwise.
+    """
+    # Won't contain any of the characters indicating uncertainty if it's just a number.
+    if not is_ijroi_named(roi):
+        return False
+
+    if any(x in roi for x in ijroi_uncertainty_chars):
+        return False
+
+    return True
+
+
+def ijroi_name_as_if_certain(roi_name: str) -> Optional[str]:
+    # TODO or raise ValueError instead of returning None?
+    """Removes characters indicating uncertainty, to group ROIs by best guess at ID
+
+    'VM3' -> 'VM3'
+    'VM3?' -> 'VM3'
+    'VM3+?' -> 'VM3'
+    'VM2|VM3?' -> None
+    'VM2+VM3?' -> None
+
+    Any time ijroi_uncertainty_chars split remainder of name into more than one part,
+    None is returned (ambiguous which name it should refer to).
+    """
+    # the regex below would work without stripping these first (as long as we remove the
+    # final '' string if there was a suffix), but by handling these first we shouldn't
+    # need to handle empty strings in split output (don't want to support names that
+    # would have them anywhere besides end either)
+    allowed_suffix_chars = ('?', '+')
+    without_uncertainty_suffix = roi_name.strip(''.join(allowed_suffix_chars))
+
+    pattern = f"[{''.join([re.escape(c) for c in ijroi_uncertainty_chars])}]+"
+    parts = re.split(pattern, without_uncertainty_suffix)
+
+    assert len(parts) > 0, f'{roi_name=} had nothing besides {ijroi_uncertainty_chars=}'
+    if len(parts) > 1:
+        return None
+
+    return parts[0]
+
+
+def ijroi_comparable_via_name(n: str) -> bool:
+    """Returns whether input refers to only a single ROI name
+    ('VM3?' and 'VM3')
+    """
+    if is_ijroi_certain(n):
+        return True
+
+    if not is_ijroi_named(n):
+        return False
+
+    # TODO is this where i want this? just drop anything with '+' in it
+    # (in other stuff in here that currently does '+' suffix dropping)?
+    #
+    # will currently deal with stuff like: 'VM2+', 'VM2+?', 'VM2+VM3'
+    if '+' in n:
+        return False
+    #
+
+    # 'VM2|VM3', 'VM2+VM3', etc will have None for this, as there are
+    # multiple names it could be (not sure which to compare to, or whether
+    # signal is just one)
+    as_if_certain = ijroi_name_as_if_certain(n)
+    if as_if_certain is None:
+        return False
+
+    return True
+
+
+# TODO also test on w/ non-MultiIndex 'roi' columns?
+# TODO adapt to also work w/ DataArray input (at least w/ 'roi_name' level, but maybe
+# also 'roi' (or 'name', on 'roi' dimension?))
+def certain_roi_indices(df: pd.DataFrame) -> np.ndarray:
+    """Returns boolean mask of certain ROIs, for DataFrame with 'roi' column level
+    """
+    # TODO some reason i'm not using Index.map? do i specifically want the numpy array
+    # type for some reason?
+    return np.array([is_ijroi_certain(x) for x in df.columns.get_level_values('roi')])
+
+
+# TODO TODO adapt to also work w/ DataArray input
+def select_certain_rois(df: pd.DataFrame) -> pd.DataFrame:
+    """Returns input subset with certain ROI labels, for input with 'roi' column level
+    """
+    mask = certain_roi_indices(df)
+    # no need to copy, because indexing with a bool mask always does
+    return df.loc[:, mask]
+
+
 # TODO TODO rename / delete one-or-the-other of this and contour2mask etc
 # (+ accept ijroi[set] filename or something if actually gonna call it this)
 # (ALSO include ijrois2masks in consideration for refactoring. this fn might not be
 # necessary)
-def ijroi2mask(roi, shape, z=None):
+def ijroi2mask(roi, shape, z: Optional[int] = None):
     """
-        z (None | int): (optional) z-index ROI was drawn on
+        z: z-index ROI was drawn on
     """
     # This mask creation was taken from Yusuke N.'s answer here:
     # https://stackoverflow.com/questions/3654289
@@ -445,7 +569,8 @@ def merge_single_plane_rois(rois, min_overlap_frac=0.3, n_dilations=1):
 # TODO unit test! (include 2023-04-26/3 ROIs, where some also have '+' in name, that
 # ijroi_masks is currently dropping)
 # TODO change verbose default to False
-def rois2best_planes_only(rois, roi_quality, verbose=True):
+def rois2best_planes_only(rois: xr.DataArray, roi_quality: pd.Series,
+    verbose: bool = True) -> xr.DataArray:
     """
     Currently assumes input only has non-zero values in a single plane for a given
     unique combination of ROI identifier variables.
@@ -472,6 +597,7 @@ def rois2best_planes_only(rois, roi_quality, verbose=True):
     mo_key = 'name'
     roi_quality[mo_key] = rois.roi_name.to_numpy()
 
+    # TODO dropna=False? or at least assert no null in it then...
     gb = roi_quality.groupby(mo_key, sort=False)
 
     # TODO implement another strategy where as long as the roi_quality are within some
@@ -576,6 +702,9 @@ def ijroi_mtime(ijroiset_dir_or_fname: Pathlike) -> float:
 # TODO maybe delete drop_maximal_extent_rois and move code that drops them to a separate
 # call (or set default to False?)? initially broke some stuff in al_analysis.py and
 # later seemingly plot_roi.py, which expected to be able to index ROI list consistently
+# TODO rename *_maximal_extent_rois -> *_nonseparated_rois? something else?
+# want to indicate the signal may be a mixture from multiple glomeruli (/ biological
+# regions)
 def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     as_xarray: bool = True, drop_maximal_extent_rois: bool = True, **kwargs
     ) -> NumpyOrXArray:
@@ -617,9 +746,12 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     # suffixed ROI, which might also have more contamination from external signals)
     #
     # TODO TODO assert that for each of these, we have ROIs w/ name matching the
-    # non-'+'-suffixed name?
+    # non-'+'-suffixed name (we might not tho... could be impossible to get a clean ROI
+    # for some glomeruli)?
     # TODO put dropping of these behind flag?
     if drop_maximal_extent_rois:
+        # TODO TODO just check if '+' is in roi name? or want to still handle diff if
+        # there is a '?' suffix? kinda want to support e.g. 'DM2+DM5' tho
         # TODO TODO TODO also handle '+?' suffix? warn / assert it isn't there?
         maximal_extent_rois = masks.roi_name.str.endswith('+')
         n_maximal_to_drop = maximal_extent_rois.sum().item(0)
@@ -1492,6 +1624,8 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
         claimed.append(center)
         center2radius[tuple(center)] = radius_px
 
+    # TODO change to not need to import (all of?) viz? would that help avoid some
+    # circular import issues?
     '''
     if debug and _show_packing_constraints:
         title = 'greedy_roi_packing overlap exlusion mask'
