@@ -106,10 +106,22 @@ def save_odor2abbrev_cache():
 atexit.register(save_odor2abbrev_cache)
 
 
-def abbrev(odor_name: str) -> str:
-    """Takes odor name (no concentration) to abbreviation, or itself if there isn't one.
+def abbrev(odor_str: str, *, _name_only=False) -> str:
+    """Abbreviates odor name in input, when an abbreviation is available.
+
+    Args:
+        odor_str: can optionally contain concentration information (followed by
+        `olf.conc_delimiter`, if so).
     """
-    return odor2abbrev.get(odor_name, odor_name)
+    if conc_delimiter not in odor_str:
+        return odor2abbrev.get(odor_str, odor_str)
+
+    # TODO add tests for this case (+ above, if don't already have)
+    else:
+        assert not _name_only
+        odor = parse_odor(odor_str, require_conc=True)
+        odor['name'] = abbrev(odor['name'], _name_only=True)
+        return format_odor(odor)
 
 
 def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
@@ -184,7 +196,25 @@ def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]
 
     parts = odor_str.split(conc_delimiter)
     assert len(parts) == 2
-    return float(parts[1].strip())
+    conc_part = parts[1].strip()
+
+    # TODO replace this try-int(...)-first strategy w/ some float formatting that
+    # formats stuff w/o stuff after '.' when that component is 0 (or close enough)?
+    # is there such a formatting option?
+    try:
+        # trying this first so that we can preserve formatting of input in round trip
+        # cases, rather than adding '.0'
+        #
+        # int should be correct for return type of float still
+        # (as far as type system goes)
+        log10_conc = int(conc_part)
+
+    # e.g. `ValueError: invalid literal for int() with base 10: '-2.'`
+    except ValueError:
+        # if this parsing fails, we want that error to raise, so no try/except in here
+        log10_conc = float(conc_part)
+
+    return log10_conc
 
 
 def parse_odor_name(odor_str: str) -> Optional[str]:

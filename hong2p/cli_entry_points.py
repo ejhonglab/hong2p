@@ -19,6 +19,9 @@ from hong2p.suite2p import print_suite2p_params
 #    in the `entry_points` keyword argument to `setup`.
 
 
+# TODO TODO add entrypoint for diffing odor set between two flies (reporting any odors
+# in one but not the other, any concentrations that changed, any solvents that changed)
+
 def thor2tiff_cli():
     parser = argparse.ArgumentParser()
     parser.add_argument('thor_raw_dir',
