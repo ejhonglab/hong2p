@@ -5,7 +5,7 @@ from pathlib import Path
 import pickle
 from pprint import pprint
 import re
-from typing import Optional, Union
+from typing import Optional, Union, List
 # TODO replace w/ logging.warning
 import warnings
 from zipfile import BadZipFile
@@ -334,6 +334,13 @@ def ijroi2mask(roi, shape, z: Optional[int] = None):
 # output don't break / change them
 # TODO TODO TODO fn to convert suite2p representation of masks to the same [xarray]
 # representation of masks this spits out
+#
+# TODO do try to make it faster. think it's probably a big part of why al_analysis.py is
+# slow to recompute ijroi stuff. less of an issue from plot_roi.py now though, since
+# only calculating for particular roi index now.
+# ~25% of time in ijroi2mask calls, and ~75% of time in np.stack(masks, ...) call
+# (would require `from line_profiler import profile` (pip install line-profiler)
+#@profile
 def ijrois2masks(ijrois, shape, as_xarray: bool = False
     # TODO type hint alias for ndarray|DataArray?
     ) -> Union[np.ndarray, xr.DataArray]:
@@ -705,9 +712,11 @@ def ijroi_mtime(ijroiset_dir_or_fname: Pathlike) -> float:
 # TODO rename *_maximal_extent_rois -> *_nonseparated_rois? something else?
 # want to indicate the signal may be a mixture from multiple glomeruli (/ biological
 # regions)
+#
+# 95% of the time this fn took was from ijrois2masks
 def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
-    as_xarray: bool = True, drop_maximal_extent_rois: bool = True, **kwargs
-    ) -> NumpyOrXArray:
+    as_xarray: bool = True, drop_maximal_extent_rois: bool = True,
+    indices: Optional[List[int]] = None, **kwargs) -> NumpyOrXArray:
 
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
 
@@ -736,6 +745,11 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
         movie_shape_without_time = (y, x)
     else:
         movie_shape_without_time = (z, y, x)
+
+    # since current mask calculation is seems to have some slow steps, and we don't need
+    # to compute all of them when calling from plot_roi[_util].py
+    if indices is not None:
+        name_and_roi_list = [name_and_roi_list[i] for i in indices]
 
     masks = ijrois2masks(name_and_roi_list, movie_shape_without_time,
         as_xarray=as_xarray
@@ -840,6 +854,12 @@ def footprints_to_flat_cnmf_dims(footprints):
     return np.reshape(footprints, (frame_pixels, n_footprints), order='F')
 
 
+# TODO change this + how plot_roi_util.py calls it, so that we can only calculate mean
+# for the relevant subset of frames (e.g. only for baseline frames + within odor
+# response window)? would that even save much time? (could make mean same length, but
+# NaN, and fill in calculated timepoints, so indexing output would be the same)
+#
+# 90% of time was from the np.mean line
 def extract_traces_bool_masks(movie, footprints, verbose=False):
     # TODO doc shape/type expectations on movie / footprints
     """
