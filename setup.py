@@ -41,6 +41,8 @@ setup(
 
         'matplotlib',
         'seaborn',
+        # https://github.com/ppinard/matplotlib-scalebar
+        'matplotlib-scalebar',
 
         'scikit-learn',
         'gitpython',

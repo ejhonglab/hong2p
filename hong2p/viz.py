@@ -29,6 +29,7 @@ import seaborn as sns
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.colorbar import Colorbar
+from matplotlib_scalebar.scalebar import ScaleBar
 
 from hong2p import util, thor
 from hong2p import roi as hong_roi
@@ -1223,11 +1224,11 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
 # TODO implement option for setting xlabel instead (if i decide to have these plots
 # in a column rather than row)?
 # TODO type hint Axes (and in other stuff that takes it)
-def micrometer_depth_title(ax, zstep_um, z_index, **kwargs) -> None:
-    curr_z = -zstep_um * z_index
+def micrometer_depth_title(ax, zstep_um, z_index, fontsize=9, **kwargs) -> None:
+    # fontsize, for diagnostic examples (plot_rois):
+    # - too small: 7
 
-    # TODO even want this default? taken from al_analysis
-    fontsize = kwargs.pop('fontsize', 7)
+    curr_z = -zstep_um * z_index
 
     # TODO check no decimal point in figures now that i'm formatting a float here
     # (used to be int)
@@ -1237,6 +1238,8 @@ def micrometer_depth_title(ax, zstep_um, z_index, **kwargs) -> None:
 
 
 # TODO delete show_names? ever want show_names=False?
+# TODO TODO TODO option to only show name for focus_roi (like betty wanted)
+# TODO TODO also try just coloring focus_roi and not showing name for anything
 # TODO type alias for Dict[str, Any] (maybe KWArgs?)?
 # TODO unit test (that at least it produces a figure without failing for
 # correctly-formatted DataArray input)
@@ -1256,10 +1259,15 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     ncols: Optional[int] = None, nrows: Optional[int] = 1, palette=None, seed=0,
     focus_roi=None, nonfocus_roi_desat: Optional[float] = 0.4,
     scale_per_plane: bool = False, minmax_clip_frac: float = 0.0, vmin=None, vmax=None,
-    norm=None, cmap=DEFAULT_ANATOMICAL_CMAP, image_kws: Optional[Dict[str, Any]] = None,
-    zstep_um: Optional[float] = None, depth_title_kws: Optional[dict] = None,
-    title: Optional[str] = None, _pad: bool = False, **kwargs) -> Figure:
+    norm=None, cmap=DEFAULT_ANATOMICAL_CMAP, scalebar: bool = False,
+    pixelsize_um: Optional[float] = None, scalebar_kws: Optional[dict] = None,
+    image_kws: Optional[Dict[str, Any]] = None, zstep_um: Optional[float] = None,
+    depth_title_kws: Optional[dict] = None, title: Optional[str] = None,
+    _pad: bool = False, **kwargs) -> Figure:
     # TODO doc whether palette can be a dict (str -> color) (yea, right?) anything else?
+    # TODO TODO add kwargs to position scalebar? kws param for scalebar?
+    # just kws + something to pick between first/last axes to draw it on?
+    # TODO TODO scalebar um? can i handle via kws?
     """
     Args:
         rois: with dims ('roi', 'z', 'y', 'x'). coords must have at least
@@ -1288,13 +1296,20 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
             who name is that of `focus_roi` (if passed). if `focus_roi` not passed,
             still desaturating everything by this amount, for consistency.
 
+        scalebar: if True, will draw scalebar on first plane
+            (must also pass `pixelsize_um`)
+
+        pixelsize_um: for use drawing scalebar
+
+        scalebar_kws: passed to `matplotlib_scalebar.scalebar.ScaleBar`
+
         zstep_um: if passed, axes titles will be added to indicate depth of each plane
 
         depth_title_kws: passed to `ax.set_title` (if `zstep_um` is provided).
             fontsize will default to 7 if not specified in this arg, or if this arg not
             passed.
 
-        title: will set as `suptitle` if passesd
+        title: will set as `suptitle` if passed
 
         image_kws: passed to `image_grid`, for plotting background(s)
 
@@ -1397,6 +1412,9 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
 
     z_size = rois.sizes['z']
 
+    # TODO TODO TODO try cbar beneath (and same size as) one/each of plane images
+    # (if beneath each, could have one fixed scale per plane, shared across odors)
+    #
     # TODO TODO just list explicitly in fn def above, to doc better?
     #
     # just assuming only one or the other will be passed in here
@@ -1413,6 +1431,35 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
         cbar_kws=cbar_kws, **image_kws
     )
 
+    if scalebar:
+        assert pixelsize_um is not None
+
+        # TODO TODO TODO check this scale bar library provides nice, vector
+        # editable, outputs (at least when saving as such)
+
+        # TODO should i handle scalebar inside image_grid (and if so, can handle
+        # None->dict(...) conversion there too)?
+        if scalebar_kws is None:
+            # TODO default to maybe ~20uM instead of the 25uM it seems to pick
+            # (at least for the 2023-05-10/1/diagnostics1 data i've tested w/ so far)
+            #
+            # TODO want diff default location ('upper right', etc)? (eh, pretty happy)
+            #
+            # TODO or use these defaults but then allow stuff passed in to override?
+            #
+            # color is for "the scale bar, scale and label"
+            scalebar_kws = dict(color='w', frameon=False, length_fraction=0.25)
+
+        # for other ScaleBar options, see:
+        # https://github.com/ppinard/matplotlib-scalebar
+        sb = ScaleBar(pixelsize_um, 'um', **scalebar_kws)
+
+        # TODO TODO add kwarg to select which?
+        # TODO try ax=axs[-1] by default? (honestly probably less likely to hit
+        # stuff in top plane (i.e. axs[0]). VL2p might be there-ish in bottom...)
+        ax = axs[0]
+        ax.add_artist(sb)
+
     # TODO factor into image_grid, to handle the layout there?
     # TODO same for colorbar?
     # (image_grid is currently picking figsize based on image dims, but this doesn't
@@ -1428,6 +1475,7 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     rois = rois.transpose('roi', 'z', 'y', 'x')
 
     err_msg = None
+    # TODO refactor to "micrometer_depth_titleS", that loops over axes and does for each
     for z, ax in enumerate(axs.flat):
 
         if zstep_um is not None:
