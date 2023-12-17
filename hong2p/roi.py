@@ -1866,7 +1866,7 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
         keys = util.tiff_filename2keys(tif)
         ti_dir = util.thorimage_dir(*tuple(keys))
         xmlroot = thor.get_thorimage_xmlroot(ti_dir)
-        um_per_pixel_xy = thor.get_thorimage_pixelsize_xml(xmlroot)
+        um_per_pixel_xy = thor.get_thorimage_pixelsize_um(xmlroot)
         del keys, ti_dir, xmlroot
     else:
         um_per_pixel_xy = _um_per_pixel_xy

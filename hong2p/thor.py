@@ -274,16 +274,33 @@ def get_thorimage_dims(xml):
     return get_thorimage_dims_xml(xml)
 
 
-def get_thorimage_pixelsize_xml(xml):
+@thorimage_xml
+def get_thorimage_pixelsize_um(xml):
     """Takes etree XML root object to XY pixel size in um.
 
     Pixel size in X is the same as pixel size in Y.
 
     XML object should be as returned by `get_thorimage_xmlroot`.
     """
-    # TODO does thorimage (and their xml) even support unequal x and y?
-    # TODO support z here?
-    return float(xml.find('LSM').attrib['pixelSizeUM'])
+    lsm = xml.find('LSM')
+
+    # TODO put behind a checks= bool kwarg?
+    # TODO does thorimage (and their xml) ever support unequal x and y resolution?
+    pixelsize_x = float(lsm.attrib['widthUM']) / float(lsm.attrib['pixelX'])
+    pixelsize_y = float(lsm.attrib['heightUM']) / float(lsm.attrib['pixelY'])
+    assert np.isclose(pixelsize_x, pixelsize_y), f'{pixelsize_x=} != {pixelsize_y}'
+
+    pixelsize_xy = float(lsm.attrib['pixelSizeUM'])
+
+    # pixelSizeUM is entered with 3 digits after decimal place in XML
+    # [width|height]UM both have 5 sig figs in XML, with pixel[X|Y] generally having 3.
+    #
+    # atol=6e-4 should ignore anything different beyond pixelSizeUM's 3 digits after
+    # decimal (and assuming rounding going into that)
+    assert np.isclose(pixelsize_xy, pixelsize_x, atol=6e-4), \
+        f'{pixelsize_xy=} != {pixelsize_x=}'
+
+    return pixelsize_xy
 
 
 def get_thorimage_n_averaged_frames_xml(xml):
@@ -2384,7 +2401,7 @@ def cnmf_metadata_from_thor(filename):
     fps = get_thorimage_fps_xml(xml_root)
     # "spatial resolution of FOV in pixels per um" "(float, float)"
     # TODO do they really mean pixel/um, not um/pixel?
-    pixels_per_um = 1 / get_thorimage_pixelsize_xml(xml_root)
+    pixels_per_um = 1 / get_thorimage_pixelsize_um(xml_root)
     dxy = (pixels_per_um, pixels_per_um)
     # TODO maybe load dims anyway?
     return {'fr': fps, 'dxy': dxy}

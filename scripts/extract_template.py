@@ -346,7 +346,7 @@ def main():
             xy_shape = row_index2frame_shape[row.Index]
 
             xmlroot = row_index2thorimage_xmlroots[row.Index]
-            um_per_pixel_xy = thor.get_thorimage_pixelsize_xml(xmlroot)
+            um_per_pixel_xy = thor.get_thorimage_pixelsize_um(xmlroot)
 
             ijroi_file = row.ijroi_file_path
             curr_mtime = datetime.fromtimestamp(getmtime(ijroi_file))
