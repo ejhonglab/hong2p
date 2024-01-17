@@ -184,7 +184,7 @@ def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]
         require: if `True`, raises `ValueError` if `olf.conc_delimiter` is not in input
 
     >>> parse_log10_conc('ethyl acetate @ -2')
-    -2.0
+    -2
     """
     # If conc_delimiter is in the string, we are assuming that it should be followed by
     # parseable float concentration. Letting it err below if that is not the case.
