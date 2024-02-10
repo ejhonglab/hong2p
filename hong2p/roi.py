@@ -69,6 +69,7 @@ def crop_to_nonzero(matrix, margin=0):
     return crop_to_coord_bbox(matrix, coords, margin=margin)
 
 
+# TODO delete (and other stuff no longer used)
 # TODO if these 'db_row2*' fns are really just db related, move to db.py, but
 # probably just rename...
 # TODO better name?
@@ -84,6 +85,7 @@ def db_row2footprint(db_row, shape=None):
     return footprint
 
 
+# TODO delete (and other stuff no longer used)
 def db_footprints2array(df, shape):
     """Returns footprints in an array of dims (shape + (n_footprints,)).
     """
@@ -142,7 +144,7 @@ def numpy2xarray_rois(rois: np.ndarray, roi_indices: Optional[dict] = None
 
 # TODO doc + test
 # TODO complete? check against imagej internal code?
-def is_ijroi_name_default(roi):
+def is_ijroi_name_default(roi: str) -> bool:
 
     parts = roi.split('-')
     if len(parts) not in (2, 3):
@@ -158,7 +160,7 @@ def is_ijroi_name_default(roi):
 
 
 # TODO doc + test
-def is_ijroi_named(roi):
+def is_ijroi_named(roi: str) -> bool:
     try:
         int(roi)
         return False
@@ -166,10 +168,20 @@ def is_ijroi_named(roi):
         return not is_ijroi_name_default(roi)
 
 
+def is_ijroi_plane_outline(roi: str) -> bool:
+    """Returns ROI name indicates it's an outline of a whole structure (e.g. the AL)
+
+    There will typically be exactly one of these per plane, when used. Sub-ROIs (e.g.
+    glomeruli) should be contained within this larger region.
+    """
+    # TODO also support sam's 'plane<x>' syntax?
+    return roi == 'AL'
+
+
 # TODO drop support for '/' (and maybe also '|'?)
 ijroi_uncertainty_chars = ('?', '|', '/', '+')
 # TODO doc + test
-def is_ijroi_certain(roi):
+def is_ijroi_certain(roi: str) -> bool:
     """Returns whether an ROI is named indicating it's ID is certain.
 
     False for names that are default, integers, or include one of

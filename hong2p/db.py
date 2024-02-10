@@ -442,7 +442,7 @@ def merge_gsheet(df, *args, use_cache=False):
         except FileNotFoundError as e:
             continue
 
-        gsdf.loc[i, 'recording_from'] = thor.get_thorimage_time_xml(xml_root)
+        gsdf.loc[i, 'recording_from'] = thor.get_thorimage_time(xml_root)
 
     # TODO fail if stuff marked attempt_analysis has missing xml files?
     # or if nothing was found?
@@ -1064,7 +1064,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
         last_block = int(last_block) - 1
 
     xml = thor.get_thorimage_xmlroot(image_dir)
-    started_at = thor.get_thorimage_time_xml(xml)
+    started_at = thor.get_thorimage_time(xml)
 
     # TODO upload full_frame_avg_trace like in kc_natural_mixes/populate_db?
     recording_df = pd.DataFrame({

@@ -111,7 +111,8 @@ def thorimage_xml(fn_taking_xml):
     return fn_taking_path_or_xml
 
 
-def get_thorimage_time_xml(xml) -> datetime:
+@thorimage_xml
+def get_thorimage_time(xml) -> datetime:
     """Takes etree XML root object to recording start time.
 
     XML object should be as returned by `get_thorimage_xmlroot`.
@@ -121,14 +122,6 @@ def get_thorimage_time_xml(xml) -> datetime:
     from_utime = datetime.fromtimestamp(float(date_ele.attrib['uTime']))
     assert (from_date - from_utime).total_seconds() < 1
     return from_utime
-
-
-def get_thorimage_time(thorimage_dir) -> datetime:
-    """Takes ThorImage directory to recording start time (from XML).
-    """
-    xml_path = get_thorimage_xml_path(thorimage_dir)
-    xml = xmlroot(xml_path)
-    return get_thorimage_time_xml(xml)
 
 
 @thorimage_xml

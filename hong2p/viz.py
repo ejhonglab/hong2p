@@ -14,6 +14,7 @@ from pprint import pformat, pprint
 import warnings
 from collections import Counter
 from collections.abc import Mapping
+from colorsys import rgb_to_hsv
 from random import Random
 
 import numpy as np
@@ -53,6 +54,8 @@ DEFAULT_ANATOMICAL_CMAP = 'gray'
 
 # TODO use this other places that redefine, now that it's module-level
 dff_latex = r'$\Delta F/F$'
+
+_debug = False
 
 # TODO machinery to register combinations of level names -> how they should be formatted
 # into str labels for matshow (e.g. ('odor1','odor2') -> olf.format_mix_from_strs)?
@@ -179,67 +182,140 @@ def callable_ticklabels(plot_fn):
     return wrapped_plot_fn
 
 
-# TODO delete (should be replaced by wrapper below, adapted from this, but not sure
-# either was ever tested...)
+# TODO delete (or add to test_viz.test_is_cmap_diverging)
 '''
-def _handle_norm_kwargs(norm: Optional[Union[str, Normalize, Type[Normalize]]] = None,
-    vmin: Optional[float] = None, vmax: Optional[float] = None, **kwargs
-    ) -> Dict[str, Any]:
-    # TODO want to add warning about clipping in here (right place to do so? do i even
-    # have reliable access to data?)?
+def _palettable_diverging_cmaps():
+    # TODO move up if i end up using
+    from importlib import import_module
 
-    if norm == 'centered':
-        norm = CenteredNorm
+    from palettable.palette import Palette
+    #
 
-    elif norm == 'two-slope':
-        norm = TwoSlopeNorm
+    # TODO TODO where is 'vlag'? in here? doesn't seem to be in palettable. fuck.
+    # (not in 'matplotlib', it seems)
 
-    if norm is None or type(norm) is str or isinstance(norm, Normalize):
-        return dict(norm=norm, vmin=vmin, vmax=vmax, **kwargs)
+    # copied from doc
+    modules_with_palettes = [
+        'cartocolors.diverging',
+        #'cartocolors.qualitative',
+        #'cartocolors.sequential',
+        'cmocean.diverging',
+        #'cmocean.sequential',
+        'colorbrewer.diverging',
+        #'colorbrewer.qualitative',
+        #'colorbrewer.sequential',
+        'lightbartlein.diverging',
+        #'lightbartlein.sequential',
 
-    assert issubclass(norm, Normalize)
+        # TODO do these also have cmaps labelled as divering?
+        'matplotlib',
+        'mycarta',
 
-    # TODO want to support any input norms having vmin/vmax already? (w/ input
-    # vmin/vmax too). warn and use one from norm?
+        'scientific.diverging',
+        #'scientific.sequential',
 
-    # could pop('vcenter', 0) from kwargs, as both Centered/TwoSlope take it, but i
-    # think i prob always want it at 0 (the default for these)
+        # TODO do these also have cmaps labelled as divering?
+        'tableau',
+        'wesanderson',
+    ]
 
-    # TODO delete? even care about dynamically instantiated CenteredNorm in plotting fns
-    # (maybe if i warn, but allow+process vmin/vmax not symmetric about 0?)?
-    if issubclass(norm, CenteredNorm):
-        # TODO add flag (+ consume in here) for suppressing this warning?
-        # TODO warn + set vmin negative vmax (asserting current vmin is smaller)?
-        assert vmin == -vmax, (f'{vmin=} != negative {vmax=} with CenteredNorm. '
-            'unsupported.'
-        )
-        assert vmin is not None and vmax is not None
-        # TODO just require a halfrange arg is also passed in?
-        # TODO TODO just warn if this isn't true, but set halfrange to max( -1 * vmin,
-        # vmax) (should be ok if vmin negative)
-        halfrange = max(-vmin, vmax)
-        # NOTE: this has clip=False by default (UNLIKE two slope, which doesn't support
-        # clip kwarg)
-        #
-        # regarding halfrange "Defaults to the largest absolute difference to vcenter
-        # for the values in the dataset."
-        # TODO how does it do that? via what imshow does w/ norm input?
-        norm = CenteredNorm(halfrange=vmax)
+    all_diverging_palettes = []
+    for mod_name in modules_with_palettes:
+        mod = import_module(f'.{mod_name}', 'palettable')
+        print(mod_name)
 
-    elif issubclass(norm, TwoSlopeNorm):
-        assert vmin is not None and vmax is not None
-        norm = TwoSlopeNorm(vmin=vmin, vmax=vmax)
-        # TODO TODO TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False?
-        # True?)
-    else:
-        raise NotImplementedError
-        # TODO could assume anything else takes vmin/vmax, like TwoSlopeNorm, e.g.:
-        #norm = norm(vmin=vmin, vmax=vmax)
+        # TODO delete
+        #mod.print_maps()
 
-    # not passing vmin/vmax, as matplotlib would raise ValueError since norm also passed
-    return dict(norm=norm, **kwargs)
+        # (at least for cartocolors.diverging)
+        # this seems to include stuff with '_r' at end, where mod.print_maps() does not.
+        # each there has a '_r' variant. otherwise, palette lists look the same as in
+        # mod.print_maps.
+        palettes = [
+            x for x in dir(mod) if isinstance(getattr(mod, x), Palette)
+        ]
+        # TODO check against internal variable listing palettes? can we rely on such a
+        # variable? what name?
+
+        diverging_palettes = [
+            f'{mod_name}.{x}' for x in palettes if getattr(mod, x).type == 'diverging'
+        ]
+        # TODO check if plt.get_cmap(x) works for each?
+        # TODO TODO maybe only return ones where that is true?
+
+        all_diverging_palettes.extend(diverging_palettes)
+
+        # TODO delete
+        #pprint(diverging_palettes)
+        #print()
+
+    # TODO TODO check whether just last component of names are unique across modules
+    # (hopefully all could be provided to plt.get_cmap?, so we can check cmap.name
+    # against a set from these names)
+    pprint(all_diverging_palettes)
+    import ipdb; ipdb.set_trace()
 '''
-#
+
+
+def is_cmap_diverging(cmap) -> bool:
+    """Returns guess as to whether input colormap is a diverging colormap.
+
+    Args:
+        cmap: anything that could be passed to `plt.get_cmap`, such as str colormap name
+    """
+    # NOTE: does not support 'RdGy', or other diverging cmaps where one side is not
+    # saturated
+
+    cmap = plt.get_cmap(cmap)
+
+    # TODO delete
+    '''
+    # TODO just iterate over list of entries in cmap (many already enumerated, right?)
+    # do they interpolate between (lut? is that what lut is?) entries?
+    # TODO or at least change num=50 to default # of entries in lut (/cmap)?
+    xs = np.linspace(0, 1, 50)
+    cs = np.array([cmap(x) for x in xs])
+    # shape: (n_colors, 3)
+    cs_hsv = np.array([rgb_to_hsv(*c[:3]) for c in cs])
+    saturations = cs_hsv[:, 1]
+    plt.close('all')
+    print(f'{cmap.name=}')
+    plt.plot(xs, saturations)
+    plt.title(cmap.name)
+    plt.show()
+    import ipdb; ipdb.set_trace()
+    '''
+    #
+
+    def _get_hsv(x):
+        assert 0. <= x <= 1.
+        return rgb_to_hsv(*cmap(x)[:3])
+
+    def _get_sat(x):
+        return _get_hsv(x)[1]
+
+    # TODO also fn to check value (as in V from HSV) at middle, to determine whether to
+    # draw using white / black over it?
+
+    # TODO check minimum saturation is ~middle. anything else?
+
+    mid = _get_sat(0.5)
+
+    low = _get_sat(0.0)
+    high = _get_sat(1.0)
+
+    # mid should be pretty much either black or white. adding this check allows us to
+    # support stuff like 'icefire' w/o false positive of 'cividis' (which I also use)
+    mid_val = _get_hsv(0.5)[2]
+
+    # TODO delete
+    #print(f'{cmap.name}: {mid=}, {low=}, {high=}')
+    #print(f'mid val: {mid_val}')
+    #
+    if 0.15 < mid_val < 0.85:
+        return False
+
+    return mid < 0.28 and (low > mid * 2 and high > mid * 2)
 
 
 def add_norm_options(plot_fn):
@@ -265,70 +341,72 @@ def add_norm_options(plot_fn):
     for descriptions of `vmin`/`vmax`/`norm` kwargs.
     """
     @functools.wraps(plot_fn)
-    def wrapped_plot_fn(*args, norm=None, vmin=None, vmax=None, **kwargs):
+    def wrapped_plot_fn(data, *args, norm=None, vmin=None, vmax=None, **kwargs):
 
-        if norm == 'centered':
-            norm = CenteredNorm
-
-        elif norm == 'two-slope':
+        if norm == 'two-slope':
             norm = TwoSlopeNorm
 
+        elif norm == 'centered':
+            norm = CenteredNorm
+
         if norm is None or type(norm) is str or isinstance(norm, Normalize):
-            return plot_fn(*args, norm=norm, vmin=vmin, vmax=vmax, **kwargs)
+            return plot_fn(data, *args, norm=norm, vmin=vmin, vmax=vmax, **kwargs)
 
         assert issubclass(norm, Normalize)
 
-        # TODO want to support any input norms having vmin/vmax already? (w/ input
-        # vmin/vmax too). warn and use one from norm?
+        # using None should give us consistent default behavior w/ plt.get_cmap
+        cmap = kwargs.get('cmap', None)
+        if not is_cmap_diverging(cmap):
+            warnings.warn(f'using seemingly non-diverging cmap ({cmap.name}) with '
+                f'{norm=}, where center has special meaning. probably a mistake!'
+            )
+
+        dmin = data.min().min()
+        dmax = data.max().max()
+
+        # letting negative vmin pass thru, but modifying vmin=0 to have that convenience
+        # when calling (rather than hardcoding vmin=-epsilon a bunch of places)
+        if dmin > 0 and (vmin is None or vmin == 0):
+            # NOTE: this would break CenteredNorm stuff below, but might want to
+            # delete that option anyway...
+            #
+            # needs to actually be slightly less than 0, as vmin=vcenter triggers
+            # same ValueError about vmin, vcenter, vmax not being in ascending order
+            vmin = -1e-6
+            warnings.warn(f'setting vmin={vmin} (~0) because using norm centered at'
+                f'0 and data min ({dmin}) > 0'
+            )
+
+        if vmin is None:
+            vmin = dmin
+
+        if vmax is None:
+            vmax = dmax
+
+        assert vmin is not None and vmax is not None
 
         # could pop('vcenter', 0) from kwargs, as both Centered/TwoSlope take it, but i
         # think i prob always want it at 0 (the default for these)
+        # TODO actually, probably do want to pop it
+
+        if issubclass(norm, TwoSlopeNorm):
+            # TODO still accept vcenter as kwarg here (and in CenteredNorm above)
+            try:
+                norm = TwoSlopeNorm(vcenter=0., vmin=vmin, vmax=vmax)
+
+            # ValueError: vmin, vcenter, and vmax must be in ascending order
+            except ValueError as err:
+                print(f'{vmin=}, {vmax=}')
+                import ipdb; ipdb.set_trace()
+
+            # TODO TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False?
+            # True?)
 
         # TODO delete? even care about dynamically instantiated CenteredNorm in plotting
         # fns (maybe if i warn, but allow+process vmin/vmax not symmetric about 0?)?
-        if issubclass(norm, CenteredNorm):
-            # TODO maybe i should add new kwargs rather than using the vmin/vmax things?
-            # just thread thru kwargs to norm constructor directly?
-            #
-            # TODO TODO TODO fix!
-            # $ ./al_analysis.py -d pebbled -n 6f -t 2023-11-19
-            # ...
-            # scale_per_plane=False
-            # minmax_clip_frac=0.0
-            # kwargs.get("norm")=<class 'matplotlib.colors.CenteredNorm'>
-            # vmin/vmax not set at input!
-            # Uncaught exception
-            # Traceback (most recent call last):
-            #   File "./al_analysis.py", line 11653, in <module>
-            #     main()
-            #   File "./al_analysis.py", line 10758, in main
-            #     was_processed = list(starmap(process_recording, keys_and_paired_dirs))
-            #   File "./al_analysis.py", line 4433, in process_recording
-            #     ij_trial_df, best_plane_rois, full_rois = ij_trace_plots(analysis_dir,
-            #   File "./al_analysis.py", line 3539, in ij_trace_plots
-            #     traces, best_plane_rois, z_indices, full_rois = ij_traces(analysis_dir, movie,
-            #   File "./al_analysis.py", line 3261, in ij_traces
-            #     fig = plot_rois(full_rois, background, **plot_rois_kws)
-            #   File "./al_analysis.py", line 2915, in plot_rois
-            #     return viz.plot_rois(*args, nrows=nrows, cmap=cmap, _pad=False,
-            #   File "/home/tom/src/hong2p/hong2p/viz.py", line 2122, in plot_rois
-            #     fig, axs = image_grid(background, **image_kws)
-            #   File "/home/tom/src/hong2p/hong2p/viz.py", line 1772, in image_grid
-            #     im = imshow(img, cmap=cmap, **kwargs)
-            #   File "/home/tom/src/hong2p/hong2p/viz.py", line 292, in wrapped_plot_fn
-            #     assert vmin == -vmax, (f'{vmin=} != negative {vmax=} with CenteredNorm. '
-            # TypeError: bad operand type for unary -: 'NoneType'
-            # TODO add flag (+ consume in here) for suppressing this warning?
-            # TODO warn + set vmin negative vmax (asserting current vmin is smaller)?
-            # TODO or just assert vmin/vmax are None for this, and check we have
-            # the halfrange parameter?
-            assert vmin == -vmax, (f'{vmin=} != negative {vmax=} with CenteredNorm. '
-                'unsupported.'
-            )
-            assert vmin is not None and vmax is not None
-            # TODO just require a halfrange arg is also passed in?
-            # TODO TODO just warn if this isn't true, but set halfrange to max( -1 *
-            # vmin, vmax) (should be ok if vmin negative)
+        elif issubclass(norm, CenteredNorm):
+            # TODO require/accept a halfrange kwarg? (mutex w/ vmin/vmax)
+            assert vmin < 0, 'halfrange calculation below assumes vmin > 0 (center=0)'
             halfrange = max(-vmin, vmax)
             # NOTE: this has clip=False by default (UNLIKE two slope, which doesn't
             # support clip kwarg)
@@ -336,53 +414,44 @@ def add_norm_options(plot_fn):
             # regarding halfrange "Defaults to the largest absolute difference to
             # vcenter for the values in the dataset."
             # TODO how does it do that? via what imshow does w/ norm input?
-            norm = CenteredNorm(halfrange=vmax)
+            norm = CenteredNorm(halfrange=halfrange)
 
-        elif issubclass(norm, TwoSlopeNorm):
-            # TODO TODO TODO fix!
-            # $ ./al_analysis.py -d pebbled -n 6f -t 2023-11-19
-            # ...
-            # Warning: max_trialmean_dff: shared key 'label_outline':
-            # True (overwritten)
-            # True
-            # scale_per_plane=False
-            # minmax_clip_frac=0.0
-            # kwargs.get("norm")=<class 'matplotlib.colors.TwoSlopeNorm'>
-            # vmin/vmax not set at input!
-            # Uncaught exception
-            # Traceback (most recent call last):
-            #   File "./al_analysis.py", line 11646, in <module>
-            #     main()
-            #   File "./al_analysis.py", line 10751, in main
-            #     was_processed = list(starmap(process_recording, keys_and_paired_dirs))
-            #   File "./al_analysis.py", line 4426, in process_recording
-            #     ij_trial_df, best_plane_rois, full_rois = ij_trace_plots(analysis_dir,
-            #   File "./al_analysis.py", line 3532, in ij_trace_plots
-            #     traces, best_plane_rois, z_indices, full_rois = ij_traces(analysis_dir, movie,
-            #   File "./al_analysis.py", line 3254, in ij_traces
-            #     fig = plot_rois(full_rois, background, **plot_rois_kws)
-            #   File "./al_analysis.py", line 2908, in plot_rois
-            #     return viz.plot_rois(*args, nrows=nrows, cmap=cmap, _pad=False,
-            #   File "/home/tom/src/hong2p/hong2p/viz.py", line 2090, in plot_rois
-            #     fig, axs = image_grid(background, **image_kws)
-            #   File "/home/tom/src/hong2p/hong2p/viz.py", line 1740, in image_grid
-            #     im = imshow(img, cmap=cmap, **kwargs)
-            #   File "/home/tom/src/hong2p/hong2p/viz.py", line 309, in wrapped_plot_fn
-            #     assert vmin is not None and vmax is not None
-            # AssertionError
-            assert vmin is not None and vmax is not None
-
-            norm = TwoSlopeNorm(vmin=vmin, vmax=vmax)
-            # TODO TODO TODO test + doc clip behavior of TwoSlopeNorm (same as
-            # clip=False?  True?)
         else:
             raise NotImplementedError
-            # TODO could assume anything else takes vmin/vmax, like TwoSlopeNorm, e.g.:
-            #norm = norm(vmin=vmin, vmax=vmax)
+
+        # TODO threshold fraction before warning?
+        # TODO TODO only warn here if we can't show clipping in plot
+        # (like w/ default TwoSlopeNorm [right?]) (and/or not configured to)
+
+        # .<op>().<op>() should work w/ at least ndarrays and DataFrames
+        # (e.g. for min/max/sum ops)
+        vmin_clipped_frac = (data < vmin).sum().sum() / data.size
+        clip_msgs = []
+        if vmin_clipped_frac > 0:
+            clip_msgs.append(f'{vmin_clipped_frac:.4f} of data < {vmin=}')
+
+        vmax_clipped_frac = (data > vmax).sum().sum() / data.size
+        if vmax_clipped_frac > 0:
+            clip_msgs.append(f'{vmax_clipped_frac:.4f} of data > {vmax=}')
+
+        if len(clip_msgs) > 0:
+            # TODO have this be an error by default, allowing decorator (/decorated
+            # fn) to be run w/ warning instead, so that it can err if any of matshow
+            # data is over/under (but more OK/expected to have imshow data over/under)
+            # (just watch for plot_fn.__name__ == 'matshow' in output...)
+            warnings.warn(f"{plot_fn.__name__}: {', '.join(clip_msgs)}")
+
+        # TODO delete
+        # see notes in add_colorbar TwoSlopeNorm section for some hints about plots that
+        # might be affected by this (maybe more plots affected by this fn than that
+        # one?)
+        if _debug:
+            print(f'{plot_fn.__name__}: end of add_norm_options: {vmin=}, {vmax=}')
+        #
 
         # not passing vmin/vmax, as matplotlib would raise ValueError since norm also
         # passed
-        return plot_fn(*args, norm=norm, **kwargs)
+        return plot_fn(data, *args, norm=norm, **kwargs)
 
     return wrapped_plot_fn
 
@@ -735,6 +804,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     elif extra_figsize is not None:
         raise ValueError('extra_figsize must be specified with inches_per_cell')
 
+    # TODO warn if ax not set? or at least in the case where plt.gca() returns
+    # something? (to make sure we aren't making figures that don't get populated/closed)
+    # (factor this check into wrapper shared w/ imshow?)
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     else:
@@ -781,6 +853,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         if cbar_kws is None:
             cbar_kws = dict()
 
+        # TODO TODO use same extend= kwarg logic as i settle on for image_grid? refactor
+        # to share? (want to be able to show clipped data in both cases)
+        #
         # rotation=270?
         # TODO thread fontsize thru this?
         # TODO TODO add option to fix size to that of axes we are stealing from
@@ -877,7 +952,13 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         if any([x[-1] > x[-2] for x in ranges]):
             line_positions = [x[-1] + 0.5 for x in ranges[:-1]]
             for v in line_positions:
-                ax.axvline(v, linewidth=linewidth, color=linecolor)
+                # TODO try to delete try/except. why is this, of all things, throwing
+                # this error? only when plot has no data?
+                try:
+                    ax.axvline(v, linewidth=linewidth, color=linecolor)
+
+                except np.linalg.LinAlgError as err:
+                    import ipdb; ipdb.set_trace()
 
     def grouped_labels_info(labels):
         if not group_ticklabels or labels is None:
@@ -1004,8 +1085,14 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
 # TODO TODO want to keep title/cmap handling? replace cmap w/ **kwargs?
 # (only hong2p/scripts/extract_template.py and hong2p/roi.py currently seem to use
 # this. al_analysis dff_imshow could maybe be replaced by this (or image_grid?))
+# TODO type hint img (arraylike?)
 @add_norm_options
 def imshow(img, ax=None, title=None, cmap=DEFAULT_ANATOMICAL_CMAP, **kwargs):
+    # TODO warn if ax not set? or at least in the case where plt.gca() (/gcf?) returns
+    # something? (to make sure we aren't making figures that don't get populated/closed)
+    # (factor this check into wrapper shared w/ matshow?)
+    # (could test by removing the ax=ax from the imshow call inside image_grid, where i
+    # originally noticed issues as a result of this)
     if ax is None:
         # none of the cases i was calling this actually used returned figure
         fig, ax = plt.subplots()
@@ -1039,6 +1126,9 @@ def imshow(img, ax=None, title=None, cmap=DEFAULT_ANATOMICAL_CMAP, **kwargs):
 # multiple colorbars otherwise, right? what happens currently?)
 # TODO TODO TODO warn (unless flag set False) if any values would be clipped? especially
 # if extend='both' not passed.
+# TODO TODO or automatically set_[over|under] if needed (to show which things are
+# clipped)? test it actually shows correctly in all cases (rather than pre-clipping or
+# something)
 # TODO TODO maybe search any AxesImages in fig and do same for all of them (if sharing a
 # colorbar... can i tell that in here tho?)
 def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int = -1,
@@ -1187,9 +1277,103 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int
 
     cbar = fig.colorbar(im, cax=cax, **kwargs)
 
+    assert np.isclose(cbar.norm.vmin, cbar.vmin)
+    assert np.isclose(cbar.norm.vmax, cbar.vmax)
+
+    # TODO comment explaining why we are doing this. seems there is often not a tick
+    # shown on lower end by default, but a bit confused about that b/c i was getting:
+    # ipdb> cbar.get_ticks()
+    # array([-0.4, -0.2,  0. ,  0.2,  0.4,  0.6,  0.8,  1. ])
+    # ...and if the -0.25 set manually below works, then why doesn't the -0.2 display?
+    #
+    # TODO TODO should i do something else to clarify scales are diff on two sides?
+    # break in middle (could add in illustrator / inkscape tho)?
+    # maybe https://stackoverflow.com/questions/53642861 ?
+    # see also:
+    # https://matplotlib.org/stable/gallery/subplots_axes_and_figures/broken_axis.html
+    if isinstance(cbar.norm, TwoSlopeNorm):
+        # this seems to change the cbar ticks, so we need to re-set them after
+        #
+        # i think it would just make size of each side of TwoSlopeNorm cbar seem
+        # proportionate, w/o changing colors in image plotted.
+        # https://github.com/matplotlib/matplotlib/issues/22197
+        cbar.ax.set_yscale('linear')
+
+        # TODO delete
+        if 'ticks' not in kwargs:
+            # TODO delete? OK w/ ticks not set, as-is?
+
+            # NOTE: some of the plots mentioned below probably currently have their cbar
+            # ticks hardcoded (via cbar_kws=dict(ticks=<x>), e.g. [-0.3, 2.5] set for
+            # some in al_analysis.response_matrix_plots), in which case this branch
+            # should not be hit (if below, outside conditional on norm type, should be)
+            #
+            # some plots i care about that this probably applies to:
+            # - ijroi/certain[_mean|_stddev].pdf
+            #   (stddev using same norm, but starts from midpoint=0)
+            #   - and ijroi/by_panel/<panel>/*certain[_mean|_stddev].pdf
+            #
+            # - ijroi/by_panel/glomeruli_diagnostics/
+            #   - each_fly/
+            #     - *_certain.pdf
+            #     - diag-highlight_certain.pdf
+            #
+            # - 2023-05-10_1_diagnostics1/ijroi/with_rois/*
+            #
+            # other plots with this norm that i'm not using/generating as actively:
+            # - 2023-05-10_1_diagnostics1/ijroi/timeseries/*
+            # - 2023-05-10_1_diagnostics1/ijroi/*_rois_on_max_triamean_dff.pdf
+            #
+            # 2023-05-10/1 is the fly i was using for diagnostic examples, so often only
+            # generated some <fly_dir>/ijroi/* plots for that one
+            #
+            # main thing we are missing, is no ticks on lower end of scale
+            # (after set_yscale('linear') call above)
+            # TODO at least also print existing ticks if i still wanna find a better
+            # solution for this?
+            if _debug:
+                print('add_colorbar: NOT SETTING CBAR TICKS FOR TWOSLOPENORM')
+
+            # TODO keep? (no, replace w/ only adding 0 tick if this is true)
+            assert cbar.vmin < 0
+
+            # TODO TODO only show stuff at nice even numbers
+            # (or at least force formatter to not show 5 sigfigs?)
+            # TODO TODO find |smallest| nearby multiple of 0.1, 0.25, 1.0, etc that is
+            # under vmin/vmax? (how does mpl do it by default? can i use some of their
+            # code?)
+            #cbar.set_ticks([cbar.vmin, 0., cbar.vmax / 2, cbar.vmax])
+
+            # TODO this work OK?
+            #cbar.set_ticks([cbar.vmin, 0., cbar.vmax])
+
+            # TODO TODO just prepend cbar.vmin to ticks?
+
+            # TODO delete
+            '''
+            if cbar.vmin < -0.2:
+                print(f'{cbar.vmin=}')
+                old_ticks = cbar.get_ticks()
+                print(f'{cbar.get_ticks()=}')
+                import ipdb; ipdb.set_trace()
+            '''
+            #
+        #
+
+        # TODO TODO draw axes break or something (hline at least?) to indicate diff
+        # scales on two sides of cbar?
+
+    if 'ticks' in kwargs:
+        # NOTE: important that this happens after possible set_yscale('linear') call
+        # above, as that seems to reset the cbar ticks
+        cbar.set_ticks(kwargs['ticks'])
+
     if label is not None:
         # TODO test fontsize=None doesn't change default behavior
         cbar.ax.set_ylabel(label, fontsize=fontsize)
+
+    # TODO TODO delete. check if we can set_over|under cbar. where else is cmap?
+    #import ipdb; ipdb.set_trace()
 
     return cbar
 
@@ -1236,10 +1420,15 @@ def contour_center_of_mass(contour):
 def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
     ax: Optional[Axes] = None, label: Optional[str] = None,
     label_over_contour: bool = False, label_to_bbox_dy: int = 0,
-    text_kws: Optional[dict] = None, colors=None, linewidths=1.2, linestyles='dotted',
-    label_outline: bool = False, label_outline_linewidth=0.75,
-    label_outline_color='black', **kwargs):
+    text_kws: Optional[dict] = None, colors=None, color=None, linewidths=1.2,
+    linestyles='dotted', label_outline: bool = False,
+
+    label_outline_linewidth=0.75, label_outline_color='black',
+    #label_outline_linewidth=0.9, label_outline_color='white',
+
+    smooth=False, **kwargs):
     # TODO doc / delete
+    # TODO doc footprint type, to start
     # TODO specify if label_to_bbox_dy is in data/axes coords (former, i think?)
     """Plots line around the contiguous positive region(s) in footprint.
 
@@ -1268,18 +1457,55 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
 
         **kwargs: passed through to matplotlib `ax.contour` call
     """
-    # NOTE: linewidths=0.8 seems good for linestyles='solid', but I prefer thicker for
-    # dotted.
-
     if ax is None:
         ax = plt.gca()
 
     # So we don't need to define default in multiple places.
     if colors is None:
-        colors = 'red'
+        if color is not None:
+            colors = color
+        else:
+            colors = 'red'
+
+    if smooth:
+        raise NotImplementedError
+
+        # TODO delete
+        # TODO TODO TODO is this not triggering?
+        '''
+        if label == 'DM3':
+            plt.close('all')
+            plt.figure()
+            plt.imshow(footprint)
+        '''
+        #
+
+        # does not work with my data (interior of each ROI gets filled with jagged
+        # things), and image is in top left corner (still at original size, w/ ax and
+        # contours scaled by factor here)
+        #
+        # TODO TODO this even work w/ binary data i'm using? alternative?
+        #
+        # https://stackoverflow.com/questions/12274529
+        # "Resample your data grid by a factor of 3 using cubic spline interpolation."
+        # TODO TODO probably need to rescale coordinates / other things by same
+        # factor (e.g. for text placement)
+        #footprint = scipy.ndimage.zoom(footprint, 3)
+
+        # TODO delete
+        '''
+        if label == 'DM3':
+            plt.figure()
+            plt.imshow(footprint)
+            plt.show()
+            # TODO TODO TODO does zoom keep size same?
+            # need to fix if not...
+            import ipdb; ipdb.set_trace()
+        '''
+        #
 
     # TODO TODO fix what seems to be a (1, 1) pixel offset of contour wrt footprint
-    # passed in (when plotted on same axes).
+    # passed in (when plotted on same axes). (still?)
     # TODO TODO does extent= kwarg to contour call just change the plotted range, or
     # would it prevent my padding code from fixing footprint-touching-border cases, if
     # i were to find values for extent= that would invert plotting offset?
@@ -1293,6 +1519,9 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
 
         mpl_contour = ax.contour(padded_footprint > 0, [0.5], colors=colors,
             linewidths=linewidths, linestyles=linestyles,
+
+            # TODO also try line font props similar to solo stuff
+
             #extent=(0, dims[0] - 1, 0, dims[1] - 1),
             **kwargs
         )
@@ -1301,7 +1530,6 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
         #)
     else:
         # Checking for what I believe was the reason we needed padding, though it might
-        # not affect plotting if that's all we want in _pad=False case anyway
         positive = footprint > 0
         # TODO TODO better error message (and print label if available)
         # (this will be triggered by stuff touching the edge, even at a single point)
@@ -1315,9 +1543,50 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
             np.array(positive[:, -1]).any(),
         ])
         mpl_contour = ax.contour(positive, [0.5], colors=colors,
-            linewidths=linewidths, linestyles=linestyles, **kwargs
+            linewidths=linewidths, linestyles=linestyles,
+            **kwargs
         )
 
+    # TODO really want conditional on linestyles?
+    # TODO just flag / path_effects kwarg to disable for some calls?
+    # (the 'dotted' one was the whole AL plane outline)
+    if linestyles != 'dotted':
+        # TODO delete
+        # TODO define default color dynamically based on cmap (like elsewhere)
+        #'''
+        # TODO TODO was ~one call not using black + a diff lw? maybe thru defaults?
+        if _debug and label_outline_color != 'w':
+            print(f'{label_outline_linewidth=} {label_outline_color=}')
+
+        #import ipdb; ipdb.set_trace()
+        #'''
+
+        # TODO possible to make it go all the way around the dash (not just the 2 long
+        # edges of the line)
+        path_effects = [
+            PathEffects.withStroke(linewidth=label_outline_linewidth,
+                foreground=label_outline_color
+            )
+        ]
+
+        # TODO delete
+        #print(f'{type(mpl_contour)=}')
+
+        # TODO TODO why do docs make it seem like .set should be availaible directly on what
+        # ax.contour returns? version thing?
+        #mpl_contour.set(path_effects=path_effects)
+        # https://matplotlib.org/stable/gallery/misc/tickedstroke_demo.html
+        for c in mpl_contour.collections:
+            c.set(path_effects=path_effects)
+
+    # TODO delete
+    # (assuming i can set dash params via linestyles=[offset, (dash on, dash off)]`
+    '''
+    # https://stackoverflow.com/questions/12434426
+    for c in mpl_contour.collections:
+        c.set_dashes([(0, (2.0, 2.0))])
+    import ipdb; ipdb.set_trace()
+    '''
 
     if label is not None:
         if text_kws is None:
@@ -1400,7 +1669,6 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
                     foreground=label_outline_color
                 )
             ]
-
 
         ax.text(text_x, text_y, label, **text_kws)
 
@@ -1578,8 +1846,6 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
 
         **kwargs: passed to `imshow`
     """
-    _debug = False
-
     if figsize is not None:
         assert all(x is None for x in (width, height, extra_figsize))
 
@@ -1588,9 +1854,9 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
 
     # TODO TODO why was i printing these out again? was something not working?
     # TODO delete
-    print(f'{scale_per_plane=}')
-    print(f'{minmax_clip_frac=}')
-    print(f'{kwargs.get("norm")=}')
+    #print(f'{scale_per_plane=}')
+    #print(f'{minmax_clip_frac=}')
+    #print(f'{kwargs.get("norm")=}')
     #
 
     # TODO even want to support scale_per_plane=True? delete all related branches?
@@ -1603,8 +1869,8 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     if vmin is not None or vmax is not None:
         assert vmin is not None and vmax is not None
         # TODO delete
-        print('vmin/vmax set at input!')
-        print(f'at image_grid input: {vmin=}, {vmax=}')
+        #print('vmin/vmax set at input!')
+        #print(f'at image_grid input: {vmin=}, {vmax=}')
         #
 
         # TODO TODO TODO also need to not conflict with any norms i might want to use
@@ -1672,13 +1938,15 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
             inches_per_pixel * (w * ncols) + extra_width,
             inches_per_pixel * (h * nrows) + extra_height
         )
-        if _debug:
-            print(f'{inches_per_pixel=}')
-            print(f'{(inches_per_pixel * (w * ncols))=}')
-            print(f'{(inches_per_pixel * (h * nrows))=}')
-            print(f'{(inches_per_pixel * (w * ncols) + extra_width)=}')
-            print(f'{(inches_per_pixel * (h * nrows) + extra_height)=}')
-            print(f'{figsize=}')
+        # TODO delete? /uncomment after resolving other things i'm using _debug for
+        # (+ removing `viz._debug = True` in my al_analysis.py)
+        #if _debug:
+        #    print(f'{inches_per_pixel=}')
+        #    print(f'{(inches_per_pixel * (w * ncols))=}')
+        #    print(f'{(inches_per_pixel * (h * nrows))=}')
+        #    print(f'{(inches_per_pixel * (w * ncols) + extra_width)=}')
+        #    print(f'{(inches_per_pixel * (h * nrows) + extra_height)=}')
+        #    print(f'{figsize=}')
 
         if width is not None:
             assert np.isclose(figsize[0], width)
@@ -1783,45 +2051,23 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
             # with anything other than str norm, which seems to preclude
             # centered/two-slope norms)
             # TODO delete
-            print(f'from minmax_clip_frac: {vmin=} {vmax=}')
+            #print(f'from minmax_clip_frac: {vmin=} {vmax=}')
             #
         else:
             single_colorbar = False
 
     for ax, img in zip(axs.flat, image_list):
         if scale_per_plane:
-            # TODO also test this branch works w/ new add_norm_options stuff
+            # TODO TODO also test this branch works w/ new add_norm_options stuff
             # (including if norm=CenteredNorm/similar)
             # TODO delete
-            print(f'(curr plane) {vmin=} {vmax=}')
+            #print(f'(curr plane) {vmin=} {vmax=}')
             #
             vmin = np.quantile(img, minmax_clip_frac)
             vmax = np.quantile(img, 1 - minmax_clip_frac)
-            # TODO TODO also don't fuck up non-str norms
+            # TODO TODO also don't fuck up non-str norms (test?)
 
-        # TODO delete (replace w/ below. should be handled by new add_norm_options to
-        # imshow wrapper) (not sure this was working anyway, cause--for one--i'm
-        # popping from kwargs in a loop. that makes no sense)
-        '''
-        _norm_kws = _handle_norm_kwargs(norm=kwargs.pop('norm'), vmin=vmin, vmax=vmax)
-        norm = _norm_kws['norm']
-        vmin = _norm_kws['vmin']
-        vmax = _norm_kws['vmax']
-        # TODO use a version of imshow wrapped w/ something like _handle_norm_kwargs
-        # instead? (could also remove cmap from explicit kwargs above then)
-
-        # matplotlib does raise a ValueError in this case, so I don't need to do that
-        # myself:
-        # "It is an error to use vmin/vmax when a norm instance is given (but using a
-        # str norm name together with vmin/vmax is acceptable)."
-        im = ax.imshow(img, norm=norm, vmin=vmin, vmax=vmax, cmap=cmap,
-            **kwargs
-        )
-        '''
-        # TODO delete
-        print(f'RIGHT BEFORE IMSHOW: {vmin=}, {vmax=}')
-        #
-        im = imshow(img, cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
+        im = imshow(img, ax=ax, cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
 
     if scale_per_plane:
         del vmin, vmax
@@ -1844,9 +2090,15 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
         # (aphe -4? fench?)
         add_colorbar(fig, im, cax=single_cax, label=cbar_label,
             # TODO may need cmap.set_[under|over]
+
+            # TODO TODO comment explaining purpose of this!
+            # TODO move to al_analysis, and only in diverging cmap kwargs?
+            # (or something more specific?) don't really care for anatomical version
+            #
             # TODO delete. testing cmap/vmin/vmax/norm/clipping handling.
             extend='both',
             #
+
             **cbar_kws
         )
 
@@ -1872,24 +2124,13 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     for ax in axs.flat[len(image_list):]:
         fig.delaxes(ax)
 
-    # TODO delete
-    '''
-    if _debug:
-        divider = grid.get_divider()
-        print(f'{divider.get_position()=}')
-        #fig.canvas.draw()
-        # (didn't change after draw)
-        #print(f'after draw(), {divider.get_position()=}')
-        # TODO some way to plot a box in fig over this whole region, for debugging plot
-        # layout?
-    '''
-    #
-
     return fig, axs
 
 
 def micrometer_depth_title(ax: Axes, zstep_um: float, z_index: int, *,
     as_ylabel: bool = False, as_overlay: bool = False, fontsize=8, **kwargs) -> None:
+    # TODO cleanup formatting of doc re: as_ylabel/as_overlay changes to which fn gets
+    # args passed thru to it
     """
     Args:
         as_ylabel: if True, use `ax.set_ylabel` instead of `ax.title`, to put this
@@ -1900,7 +2141,8 @@ def micrometer_depth_title(ax: Axes, zstep_um: float, z_index: int, *,
         as_overlay: draws on `ax` instead of labelling above / to the side. in top left
             corner by default. mutually exclusive with `as_ylabel`.
 
-        fontsize: passed to `ax.set_title` (or `ax.set_ylabel`, if `as_ylabel=True`)
+        fontsize: passed to `ax.set_title` (or `ax.set_ylabel`, if `as_ylabel=True`;
+            `ax.text` if `as_overlay=True`)
 
         **kwargs: passed to `ax.set_title` (or `ax.set_ylabel`, if `as_ylabel=True`)
     """
@@ -1917,11 +2159,10 @@ def micrometer_depth_title(ax: Axes, zstep_um: float, z_index: int, *,
         extra_default_kws = dict(rotation=0, labelpad=16)
 
     elif as_overlay:
-        # TODO maybe check ax actually does have a ~black background (would have to
-        # assume it's already been drawn on, and could be hard / overly complicated...)?
-        #
-        # assuming a black backround (may not be true...)
-        #extra_default_kws = dict(x=0.03, y=0.91, color='w')
+        # color='w' works w/ black background (e.g. w/ cmap='gray'), but would prefer
+        # color='k' (black) w/ white background (e.g. w/ cmap='vlag', or other diverging
+        # where center is white). plot_rois will change default according to input image
+        # + cmap.
         extra_default_kws = dict(x=0.02, y=0.92, color='w')
 
         # TODO TODO TODO make scalebar font consistent with this
@@ -1968,14 +2209,14 @@ def micrometer_depth_title(ax: Axes, zstep_um: float, z_index: int, *,
 # all...
 def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     certain_only: bool = False, best_planes_only: bool = False, show_names=True,
-    color=None, palette=None, seed=0, focus_roi=None,
-    focus_roi_color='red', focus_roi_linewidth: Optional[float] = None,
-    palette_desat: Optional[float] = 0.4, scalebar: bool = False, cbar=True,
-    cbar_label=None, cbar_kws=None, pixelsize_um:
-    Optional[float] = None, scalebar_kws: Optional[dict] = None, image_kws:
-    Optional[Dict[str, Any]] = None, zstep_um: Optional[float] = None, depth_text_kws:
-    Optional[dict] = None, title: Optional[str] = None,
-    title_kws: Optional[dict] = None, linewidth=1.2, _pad: bool = False, **kwargs
+    color=None, palette=None, seed=0, focus_roi=None, focus_roi_color='red',
+    focus_roi_linewidth: Optional[float] = None, palette_desat: Optional[float] = 0.4,
+    scalebar: bool = False, cbar=True, cbar_label=None, cbar_kws=None,
+    pixelsize_um: Optional[float] = None, scalebar_kws: Optional[dict] = None,
+    image_kws: Optional[Dict[str, Any]] = None, zstep_um: Optional[float] = None,
+    depth_text_kws: Optional[dict] = None, title: Optional[str] = None,
+    title_kws: Optional[dict] = None, linewidth=1.2, _pad: bool = False,
+    zero_outside_plane_outlines: bool = False, plane_outline_line_kws=None, **kwargs
     ) -> Figure:
     # TODO doc whether palette can be a dict (str -> color) (yea, right?) anything else?
     # TODO use color= kwarg in making 'ijroi/with_focusroi' variant (/similar) in
@@ -1991,6 +2232,8 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     # but may need to refactor some other stuff if so)
     # (handling via kwargs now anyway, but i don't love the 'label' vs 'name' in param
     # names)
+    # TODO refactor default plane outline kwargs, so defaults can also be mentioned in
+    # plane_outline_line_kws doc here
     """
     Args:
         rois: with dims ('roi', 'z', 'y', 'x'). coords must have at least
@@ -2043,8 +2286,22 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
 
         linewidth: linewidth for ROI outline
 
+        zero_outside_plane_outlines: if True, and will zero the background outside ROIs
+            matching `roi.is_ijroi_plane_outline` (assumed there is at most one per
+            plane).
+
+        plane_outline_line_kws: passed to `plot_closed_contours` for each ROI matching
+            `roi.is_ijroi_plane_outline`. defaults specified internally (different from
+            for regular ROIs).
+
         **kwargs: passed thru to `plot_closed_contours`
     """
+    is_plane_outline = np.array(
+        [hong_roi.is_ijroi_plane_outline(x) for x in rois.roi_name]
+    )
+    plane_outlines = rois.sel(roi=is_plane_outline)
+    rois = rois.sel(roi= ~ is_plane_outline)
+
     if certain_only:
         # TODO replace w/ select_certain_rois (after adapting to work w/ DataArray
         # input)
@@ -2168,27 +2425,100 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
         if k in kwargs:
             image_kws[k] = kwargs.pop(k)
 
+
+    z_with_outlines = set(plane_outlines.roi_z.values)
+    assert len(z_with_outlines) == plane_outlines.sizes['roi']
+
+    if zero_outside_plane_outlines:
+        if len(z_with_outlines) > 0:
+            background = background.copy()
+
+        for z in sorted(z_with_outlines):
+            # should be fully False in the planes other than that where z==roi_z
+            outline_vol = plane_outlines.sel(roi_z=z)
+
+            # the .squeeze() is to collapse a length-1 'roi' dimension. may not need.
+            plane_outline = outline_vol.isel(z=z).squeeze()
+            assert plane_outline.sum().item(0) == outline_vol.sum().item(0)
+
+            # TODO TODO this type of assignment into background work?
+            #
+            # may not need the .values
+            background[z] = (background[z] * plane_outline).values
+
     # TODO also support background being xarray, transposing z,y,x into place, if so
     # (or at least [/ in ndarray case], assert existing shape matches rois (z,y,x)
     # shape?)
     fig, axs = image_grid(background, **image_kws)
 
+    # TODO refactor to use is_cmap_diverging instead? is what i want here actually
+    # different?
+    #
+    # TODO refactor, at least to not pollute namespace w/ these
+    # NOTE: requires that imshow (/equiv) has been called already
+    ax = axs.flat[0]
+    images = ax.get_images()
+    assert len(images) == 1
+    im = images[0]
+    # TODO just get directly from background?
+    arr = im.get_array()
+
+    # TODO delete
+    # for 192x192 frames, this seems to be about the section where depth title +
+    # scalebar are currently drawn.
+    #lowish_img_value = arr[:40, :].mean()
+
+    # get warning "'partition' will ignore the 'mask' of the MaskedArray." if we don't
+    # convert from MaskedArray w/ np.array(arr) first
+    lowish_img_value = np.percentile(np.array(arr).flatten(), 15)
+
+    # should be subclass of Normalize if not str
+    assert type(im.norm) is not str
+    # should map image value to [0.0, 1.0] (which should be input range of cmap)
+    cmap_input = im.norm(lowish_img_value)
+    lowish_value_color = im.cmap(cmap_input)
+
+    # excluding alpha channel (which should be 1.0 anyway)
+    luminance = np.mean(lowish_value_color[:3])
+
+    if luminance > 0.5:
+        # black
+        default_color_over_image = 'k'
+    else:
+        default_color_over_image = 'w'
+
+    del ax, im
+    #
+
     if scalebar:
         assert pixelsize_um is not None
+
+        # TODO also try to detect whether bg is more white/black -> use opposite as
+        # default color (as i'd like to do in micrometer_depth_title as well)
+
+        # TODO refactor this type of default kwarg handling to share w/ some other
+        # places?
 
         # TODO should i handle scalebar inside image_grid (and if so, can handle
         # None->dict(...) conversion there too)?
         if scalebar_kws is None:
-            # TODO allow overriding some of these without losing all defaults
-            #
-            # color is for "the scale bar, scale and label"
-            #
-            # I did check (in 2023-05-10/1, where FOV width/height are 100.[6?] uM,
-            # that w/ fixed_value=99 [instead of length_fraction], the bar is just
-            # slightly shorter than width of image)
-            scalebar_kws = dict(color='w', frameon=False, length_fraction=0.25)
+            scalebar_kws = dict()
+        else:
+            scalebar_kws = dict(scalebar_kws)
 
-        # TODO TODO TODO make font (see lowercase mu character) consistent with ax.text
+        # color is for "the scale bar, scale and label"
+        #
+        # I did check (in 2023-05-10/1, where FOV width/height are 100.[6?] uM,
+        # that w/ fixed_value=99 [instead of length_fraction], the bar is just
+        # slightly shorter than width of image)
+        default_scalebar_kws = dict(color=default_color_over_image, frameon=False,
+            length_fraction=0.25
+        )
+        for k, v in default_scalebar_kws.items():
+            if k not in scalebar_kws:
+                scalebar_kws[k] = v
+
+        # TODO TODO make font (see lowercase mu character) consistent with ax.text
         # called from micrometer_depth_titles
         # (one way or the other. preferably by changing this)
         #
@@ -2206,6 +2536,29 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
         if focus_roi_linewidth is None:
             focus_roi_linewidth = linewidth
 
+    default_plane_outline_line_kws = dict(color='gray', linestyles='dotted',
+        # TODO translate here OR don't in general kwarg linestyle->*s case,
+        # for consistency (or move all translation into plot_closed*...)
+        # TODO TODO make thicker on plots like certain_rois_on_avg.pdf
+        # (via plane_outline_line_kws) or resize the entirety of those plots?
+        linewidths=0.6
+    )
+    if plane_outline_line_kws is None:
+        plane_outline_line_kws = dict()
+    else:
+        plane_outline_line_kws = dict(plane_outline_line_kws)
+
+    for k, v in default_plane_outline_line_kws.items():
+        if k not in plane_outline_line_kws:
+            plane_outline_line_kws[k] = v
+    # TODO take any defaults from general **kwargs (the ones that other ROIs use)?
+
+    # TODO replace above w/ rhs if assertion works
+    # (and try to make similar replacement elsewhere!)
+    assert plane_outline_line_kws == {
+        **default_plane_outline_line_kws, **plane_outline_line_kws
+    }
+
     # Moving 'roi' from end to start.
     rois = rois.transpose('roi', 'z', 'y', 'x')
 
@@ -2216,10 +2569,36 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
         if zstep_um is not None:
             if depth_text_kws is None:
                 depth_text_kws = dict()
+            else:
+                depth_text_kws = dict(depth_text_kws)
+
+            if (depth_text_kws.get('as_overlay', False) and
+                'color' not in depth_text_kws):
+
+                depth_text_kws['color'] = default_color_over_image
 
             # TODO rename this fn to have title->text (since may want to burn in)
             # (or do outside this fn?)
             micrometer_depth_title(ax, zstep_um, z, **depth_text_kws)
+
+        # TODO fix! (what is issue? any times where we get KeyError when we
+        # actually had a plane outline ROI for that plane? delete comment?)
+        try:
+            plane_outline = plane_outlines.sel(roi_z=z)[z].squeeze()
+
+            # TODO TODO refactor to not have this inside try block. it's itself like to
+            # raise errors...
+            #
+            # just naively assuming these ROIs won't trigger same exceptions as
+            # plot_closed_contours call below. that's probably not true in general, and
+            # will just need to copy try/except structure from there.
+            plot_closed_contours(plane_outline, ax=ax, _pad=_pad,
+                **plane_outline_line_kws
+            )
+
+        except KeyError:
+            #import ipdb; ipdb.set_trace()
+            pass
 
         try:
             rois_in_curr_z = rois.sel(roi_z=z)
@@ -2227,8 +2606,7 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
             continue
 
         # TODO what if not all coordinates associated w/ this dimension are on
-        # the index? if i make a solution to also handle that, put in
-        # hong2p.xarray
+        # the index? if i make a solution to also handle that, put in hong2p.xarray
         index_names = rois.get_index('roi').names
 
         # Since the .sel operation above removes this coordinate.
@@ -2320,6 +2698,7 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
             # using to separate Axes with images from the colorbar axes
             # (which may also have been added in image_grid)
             n_images = len(ax.get_images())
+
             assert n_images in (0, 1)
             if n_images == 0:
                 continue
@@ -2333,7 +2712,6 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
                 xmax = max(xmax, pos.xmax)
 
         assert xmin is not None and xmax is not None
-
         x = xmin + (xmax - xmin) / 2
 
         if title_kws is None:

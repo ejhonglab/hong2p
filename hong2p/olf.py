@@ -541,7 +541,7 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
 
         else:
             if 'panel' not in index.names:
-                raise ValueError('panel sorting requested, but axis had odor levels'
+                raise ValueError('panel sorting requested, but axis had odor levels '
                     "without a 'panel' level"
                 )
 

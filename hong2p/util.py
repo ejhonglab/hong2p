@@ -816,6 +816,8 @@ def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True,
         files = [x for x in Path(path).glob('*') if x.is_file()]
 
     if len(files) == 0:
+        # TODO err if path doesn't exist (/ is not dir)? warn?
+        # TODO also print if verbose and here
         return None
 
     if verbose:
