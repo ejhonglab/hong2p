@@ -935,13 +935,20 @@ def md5(fname):
 
 
 # TODO transition everytion to as if include_val==True?
-def const_ranges(xs: Sequence, include_val=False) -> Union[
+def const_ranges(xs: Sequence, include_val: bool = False) -> Union[
     List[Tuple[int, int]], List[Tuple[Any, int, int]]
     ]:
     """Returns tuples of indices for largest contiguous constant-value ranges in input.
 
+    Args:
+        include_val: if True, each tuple in output will be length 3, with the first
+            element the value for the range specified by rest of tuple.
+
     >>> const_ranges(['MCH', 'MCH', 'OCT', 'OCT'])
     [(0, 1), (2, 3)]
+
+    >>> const_ranges(['MCH', 'MCH', 'OCT', 'OCT'], include_val=True)
+    [('MCH', 0, 1), ('OCT', 2, 3)]
     """
     # Since I want to allow xs to contain None, the sentinel I would have otherwise used
     # https://python-patterns.guide/python/sentinel-object/
@@ -4078,12 +4085,18 @@ def latest_trace_pickles():
 # from (and thread through add_fly_id/add_recording_id)
 # TODO TODO axis kwarg?
 def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
-    start_at_one=True, sort=True, inplace=False):
+    letter: bool = False, start_at_one=True, sort=True, inplace=False):
     """Adds integer column to identify unique combinations of group_keys.
 
     Args:
         data: DataFrame or DataArray to add metadata to
+
+        letter: if True, use letters starting from 'A' (rather than integers) for the
+            new ID variable
     """
+    # TODO TODO add axis kwarg? or just transpose (and back) always when using?
+    # TODO TODO option to add directly to an index level?
+
     if name is None:
         name = '_'.join(group_keys) + '_id'
 
@@ -4117,13 +4130,18 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
         #import ipdb; ipdb.set_trace()
         df = pd.DataFrame({n: data[n] for n in group_keys})
 
-    group_numbers = df.groupby(group_keys, sort=sort).ngroup()
+    # TODO does sort work as expected if they are index levels?
+    group_ids = df.groupby(group_keys, sort=sort).ngroup()
 
-    if start_at_one:
-        group_numbers = group_numbers + 1
+    if letter:
+        assert group_ids.nunique() <= 26
+        group_ids = group_ids.map(lambda x: chr(x + ord('A')))
+
+    elif start_at_one:
+        group_ids = group_ids + 1
 
     if isinstance(data, pd.DataFrame):
-        df[name] = group_numbers
+        df[name] = group_ids
         return df
     else:
         if inplace:
@@ -4132,11 +4150,14 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
             # that wouldn't need to?)
             raise NotImplementedError('inplace=True not supported for DataArray input')
 
-        return data.assign_coords({name: (dim, group_numbers)})
+        return data.assign_coords({name: (dim, group_ids)})
 
 
 # TODO replace hardcoded recording_cols[:2] w/ kwarg that defaults to None where None
 # gets replaced by current hardcoded value
+# TODO TODO make option for all these to use letters instead of numbers, and probably
+# have that be the default (to avoid ambiguity w/ fly_num, which is numbered within each
+# day)
 def add_fly_id(df, **kwargs):
     name = 'fly_id'
     # TODO TODO replace prep_date w/ date in recording cols.
