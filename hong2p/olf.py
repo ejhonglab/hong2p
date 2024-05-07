@@ -434,7 +434,7 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # (do the loading in here? prob take either dict or YAML path)
 def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
     panel2name_order: Optional[Dict[str, List[str]]] = None, if_panel_missing='warn',
-    _debug: bool = False, **kwargs) -> pd.DataFrame:
+    axis: Optional[str] = None, _debug: bool = False, **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to 'solvent' (+ clarify in docstring)
     # TODO doctest examples using panel_order+panel2name_order
@@ -451,6 +451,9 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
             If passed, must also pass panel_order.
 
         if_panel_missing: 'warn'|'err'|None
+
+        axis: if None, detect which axes to sort (and may sort both). otherwise,
+            expecting 'columns'|'index'
 
         **kwargs: passed through to :func:`odor_index_sort_key`.
 
@@ -512,6 +515,11 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
     # use here and in e.g. al_analysis.sort_odors, where i also addlevel panel info (but
     # i would like it to automatically add on correct axis)
     for axis_name in ('index', 'columns'):
+
+        if axis is not None:
+            assert axis in ('index', 'columns')
+            if axis != axis_name:
+                continue
 
         index = getattr(df, axis_name)
         levels = levels_to_sort(index)
@@ -845,11 +853,17 @@ def remove_consecutive_repeats(odor_lists: Sequence[Hashable]
     return without_consecutive_repeats, n_repeats
 
 
-def format_odor(odor_dict, conc=True, name_conc_delim=None, conc_key='log10_conc'):
+# TODO take float format specifier?
+def format_odor(odor_dict, conc: bool = True, name_conc_delim: Optional[str] = None,
+    conc_key: str = 'log10_conc', cast_int_concs: bool = False):
     """Takes a dict representation of an odor to a pretty str.
 
     Expected to have at least 'name' key, but will also use 'log10_conc' (or `conc_key`)
     if available, unless `conc=False`.
+
+    Args:
+        cast_int_concs: if True, will convert (log10) concentrations to integer if they
+            are `np.isclose` to their nearest integer.
 
     >>> odor = {'name': 'ethyl acetate', 'log10_conc': -2}
     >>> format_odor(odor)
@@ -863,11 +877,20 @@ def format_odor(odor_dict, conc=True, name_conc_delim=None, conc_key='log10_conc
     if conc_key in odor_dict:
         # TODO opt to choose between 'solvent' and no string (w/ no delim below used?)?
         # what do i do in hong2p.util fn now?
+        # TODO TODO warn/fail if name isn't in some set here? or just don't do this?
+        # wouldn't this fail for some of undiluted kiwi samples, for one?
         if odor_dict[conc_key] is None:
             return solvent_str
 
         if conc:
-            ostr += f'{name_conc_delim}{odor_dict[conc_key]}'
+            log10_conc = odor_dict[conc_key]
+
+            if cast_int_concs:
+                int_log10_conc = int(round(log10_conc))
+                if np.isclose(log10_conc, int_log10_conc):
+                    log10_conc = int_log10_conc
+
+            ostr += f'{name_conc_delim}{log10_conc}'
 
     return ostr
 
