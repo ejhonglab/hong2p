@@ -342,7 +342,8 @@ def add_norm_options(plot_fn):
     for descriptions of `vmin`/`vmax`/`norm` kwargs.
     """
     @functools.wraps(plot_fn)
-    def wrapped_plot_fn(data, *args, norm=None, vmin=None, vmax=None, **kwargs):
+    def wrapped_plot_fn(data, *args, norm=None, vmin=None, vmax=None, vcenter=None,
+        **kwargs):
 
         if norm == 'two-slope':
             norm = TwoSlopeNorm
@@ -350,7 +351,10 @@ def add_norm_options(plot_fn):
         elif norm == 'centered':
             norm = CenteredNorm
 
+        # NOTE: TwoSlopeNorm/CenteredNorm (as defined in conditionals above) are classes
+        # and not instances of them, and so the isinstance call will be False
         if norm is None or type(norm) is str or isinstance(norm, Normalize):
+            assert vcenter is None, 'explicit vcenter not supported in this case'
             return plot_fn(data, *args, norm=norm, vmin=vmin, vmax=vmax, **kwargs)
 
         assert issubclass(norm, Normalize)
@@ -362,56 +366,76 @@ def add_norm_options(plot_fn):
                 f'{norm=}, where center has special meaning. probably a mistake!'
             )
 
+        # TODO also support discrete colormap here (instantiating from just str cmap
+        # name)? would be to replace stuff like in al_analysis.plot_n_per_odor_and_glom
+
         dmin = data.min().min()
         dmax = data.max().max()
 
-        # letting negative vmin pass thru, but modifying vmin=0 to have that convenience
-        # when calling (rather than hardcoding vmin=-epsilon a bunch of places)
-        if dmin > 0 and (vmin is None or vmin == 0):
+        if vmin is None:
+            vmin = dmin
+            if vcenter is not None:
+                assert vmin > vcenter
+
+        if vmax is None:
+            vmax = dmax
+            if vcenter is not None:
+                assert vcenter < vmax
+
+        # TODO could also try to instead check if norm takes vcenter kwarg?
+        # are there actually any (builtin to matplotlib, at least) norms that take
+        # vcenter besides these two?
+        centered_norm = False
+        if issubclass(norm, TwoSlopeNorm) or issubclass(norm, CenteredNorm):
+            centered_norm = True
+
+        if centered_norm and vcenter is None:
+            vcenter = 0
+
+        # modifying vmin=0 for convenience when calling (when vcenter would also be 0),
+        # rather than hardcoding vmin=-epsilon a bunch of places
+        if vmin == vcenter:
             # NOTE: this would break CenteredNorm stuff below, but might want to
             # delete that option anyway...
             #
             # needs to actually be slightly less than 0, as vmin=vcenter triggers
             # same ValueError about vmin, vcenter, vmax not being in ascending order
-            vmin = -1e-6
-            warnings.warn(f'setting vmin={vmin} (~0) because using norm centered at '
-                f'0 and data min ({dmin}) > 0'
+            old_vmin = vmin
+            epsilon = 1e-6
+            vmin = vcenter - epsilon
+            warnings.warn(
+                f'setting {vmin=} (was {old_vmin}) to make vmin < {vcenter=} True'
             )
-
-        if vmin is None:
-            vmin = dmin
-
-        if vmax is None:
-            vmax = dmax
+            del old_vmin
 
         assert vmin is not None and vmax is not None
 
         # could pop('vcenter', 0) from kwargs, as both Centered/TwoSlope take it, but i
         # think i prob always want it at 0 (the default for these)
-        # TODO actually, probably do want to pop it
+        # TODO actually, probably do want to pop it (why?)
 
         if issubclass(norm, TwoSlopeNorm):
-            # TODO still accept vcenter as kwarg here (and in CenteredNorm above)
-            try:
-                norm = TwoSlopeNorm(vcenter=0., vmin=vmin, vmax=vmax)
-
-            # TODO TODO TODO fix
+            # NOTE: if (vmin < vcenter < vmax) is not strictly True
+            # (e.g. if vmin == vcenter), the following line would raise:
             # ValueError: vmin, vcenter, and vmax must be in ascending order
-            except ValueError as err:
-                print(f'{vmin=}, {vmax=}')
-                # TODO TODO TODO delete + fix
-                norm = TwoSlopeNorm(vcenter=0., vmin=0 - 1e-5, vmax=vmax)
-                #
-                #import ipdb; ipdb.set_trace()
+            norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
 
-            # TODO TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False?
-            # True?)
+            # TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False? True?)
 
         # TODO delete? even care about dynamically instantiated CenteredNorm in plotting
         # fns (maybe if i warn, but allow+process vmin/vmax not symmetric about 0?)?
         elif issubclass(norm, CenteredNorm):
+            if vcenter != 0 or vmin < 0:
+                # TODO TODO may need to take difference from vcenter first -> add back?
+                print()
+                print('finish supporting vcenter in CenteredNorm case')
+                print(f'{vmin=}')
+                print(f'{vcenter=}')
+                import ipdb; ipdb.set_trace()
+
             # TODO require/accept a halfrange kwarg? (mutex w/ vmin/vmax)
             assert vmin < 0, 'halfrange calculation below assumes vmin > 0 (center=0)'
+
             halfrange = max(-vmin, vmax)
             # NOTE: this has clip=False by default (UNLIKE two slope, which doesn't
             # support clip kwarg)
@@ -419,7 +443,7 @@ def add_norm_options(plot_fn):
             # regarding halfrange "Defaults to the largest absolute difference to
             # vcenter for the values in the dataset."
             # TODO how does it do that? via what imshow does w/ norm input?
-            norm = CenteredNorm(halfrange=halfrange)
+            norm = CenteredNorm(vcenter=vcenter, halfrange=halfrange)
 
         else:
             raise NotImplementedError
@@ -739,7 +763,13 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 # that case)
 # TODO also allow specifying just index levels for [h|v]line_levels, rather than needing
 # functions?
+# TODO TODO make default behavior show all ticklabels (of any multiindices), and only if
+# [x|y]ticklabels=False don't. might be a bit of work to have defaults look reasonable
+# in a wide variety of cases tho... (mostly b/c fontsize issues?)?
 @add_norm_options
+# TODO TODO should i move off of constrained layout, now that it's giving me issues
+# placing group labels via ax.text (may just need to manually tweak an offset for each
+# plot, without changing implementation substantially...)
 @constrained_layout
 @callable_ticklabels
 def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
@@ -752,19 +782,22 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     # TODO TODO can maybe specify in axes coords w/ new blended transform approach i'm
     # trying
     # TODO move fontsize default out too. too big for small matrices (e.g. 9x9)
-    # these were default values before I switched to specifying these in Axes coords
-    #vgroup_label_offset=15, hgroup_label_offset=8
     # TODO what value to use for axes-coords offets? still need these kwargs to vary?
     # TODO rename label->text to be consistent (or vice versa)
-    # TODO TODO rename h/v -> x/y for easier understanding?
+    # TODO rename h/v -> x/y for easier understanding?
     # these values seemed ok for 9x9 sensitivity analysis input
+    # (but causing issues w/ plot_n_per_odor_and_glom plot, and probably also similar
+    # old top-level al_analysis ijroi plots)
     vgroup_label_offset=0.08, hgroup_label_offset=0.12,
+    vgroup_label_rotation: Union[float, str] = 'horizontal',
+    hgroup_label_rotation: Union[float, str] = 'horizontal',
     group_fontsize=None,
     group_fontweight=None, linewidth=0.5, linecolor='w', ax=None, fontsize=None,
     bigtext_fontsize_scaler=1.5, fontweight=None, figsize=None, dpi=None,
     inches_per_cell=None, extra_figsize=None, transpose_sort_key=None, colorbar=True,
     cbar_shrink=1.0, cbar_kws=None, levels_from_labels=True,
-    allow_duplicate_labels=False, xticks_also_on_bottom: bool = False, **kwargs):
+    allow_duplicate_labels=False, xticks_also_on_bottom: bool = False, _debug=_debug,
+    **kwargs):
     # TODO doc [v|h]line_group_text
     # TODO check that levels_from_labels means *_level_fn get a single dict as input,
     # not an iterable of dicts (or update doc)
@@ -790,6 +823,13 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         hline_level_fn: as `vline_level_fn`, but for horizontal lines.
 
         [h|v]group_formatter: optional function to map group values to str
+
+        [h|v]group_label_offset: in axes (not data) coordinates. should probably be in
+            [0, 1] and pretty close to 0. increase if constrained layout warning emitted
+            when showing / saving plot.
+
+        [h|v]group_label_rotation: passed to `rotation` of corresponding `Axes.text`
+            call
 
         levels_from_labels: if True, `[h|v]line_level_fn` functions use formatted
             `[x|y]ticklabels` as input. Otherwise, a dict mapping index level names to
@@ -904,14 +944,25 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     if group_fontsize is None:
         group_fontsize = bigtext_fontsize
 
-    def _index_entry_dict(index, index_entry):
+    # TODO docstring + type hints for this (+ factor to util?)
+    def _index_entry_dict(index: pd.Index, index_entry: Any) -> Dict[str, Any]:
+        """Returns dict of index names zipped with values in index_entry.
+        """
         # If the index is a MultiIndex, iterating over it should yield tuples of the
         # level values, otherwise we'll convert to a tuple so zipping is the same.
         if type(index_entry) is not tuple:
+            # only non-MultiIndex index should have non-tuple index_entry (otherwise
+            # wrong index may have been passed in)
+            # https://stackoverflow.com/questions/21081042
+            assert not isinstance(index, pd.MultiIndex)
             index_entry = (index_entry,)
 
         names = index.names
+        # if these mismatch, that implies index passed in is not where index_entry came
+        # from (though the lengths could also happen to match if wrong index was passed
+        # in).
         assert len(names) == len(index_entry), f'{names=}\n{index_entry=}'
+
         return dict(zip(names, index_entry))
 
     def grouped_labels_info(labels):
@@ -932,7 +983,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         # TODO need to handle case where we might transpose (e.g. via
         # transpose_sort_key?)
         hline_levels =[
-            hline_level_fn(_index_entry_dict(df.columns, x)) for x in df.index
+            hline_level_fn(_index_entry_dict(df.index, x)) for x in df.index
         ]
 
     vline_levels = None
@@ -1063,6 +1114,15 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
             # formatted strs?
             if hline_group_text:
                 trans = transforms.blended_transform_factory(ax.transAxes, ax.transData)
+
+                if _debug:
+                    print()
+                    print(f'{hline_level_fn=}')
+                    # NOTE: may need to tweak this offset if current value is causing
+                    # constrained layout warning for a given call
+                    print(f'{hgroup_label_offset=}')
+                    print('hline group labels:')
+
                 for label, y0, y1 in ranges:
                     # assuming const_ranges index output wouldn't change by formatting
                     if hgroup_formatter is not None:
@@ -1077,6 +1137,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                     # (converting  via str didn't seem to change anything...)
                     ax.text(-hgroup_label_offset, np.mean((y0, y1)), label,
                         fontsize=group_fontsize, fontweight=group_fontweight,
+                        rotation=hgroup_label_rotation,
                         # Right might make consistent spacing wrt line indicating extent
                         # of group easier to see.
                         ha='right',
@@ -1101,6 +1162,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                     # )
                     # here? (to ensure text is either fully shown or there is an error)
 
+                    if _debug:
+                        print(f'{label=} ({y0=}, {y1=})')
+
         # If all the ranges have the same start and stop, all groups are length 1, and
         # the lines would just add visual noise, rather than helping clarify boundaries
         # between groups.
@@ -1121,8 +1185,18 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
 
             if vline_group_text:
                 # NOTE: data and axes coords swapped from hgroup line above
-                # TODO TODO TODO modify so it's above axes, not below
+                # TODO TODO modify so it's above axes, not below (2024-06-05: still
+                # relevant?)
                 trans = transforms.blended_transform_factory(ax.transData, ax.transAxes)
+
+                if _debug:
+                    print()
+                    print(f'{vline_level_fn=}')
+                    # NOTE: may need to tweak this offset if current value is causing
+                    # constrained layout warning for a given call
+                    print(f'{vgroup_label_offset=}')
+                    print('vline group labels:')
+
                 for label, x0, x1 in ranges:
                     # assuming const_ranges index output wouldn't change by formatting
                     if vgroup_formatter is not None:
@@ -1132,9 +1206,11 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                     # bbox_inches='tight' (work w/ either as-is?)?
                     ax.text(np.mean((x0, x1)), 1 + vgroup_label_offset, label,
                         fontsize=group_fontsize, fontweight=group_fontweight,
+                        rotation=vgroup_label_rotation,
                         ha='center', va='bottom', transform=trans,
-                        rotation=xtickrotation
                     )
+                    if _debug:
+                        print(f'{label=} ({x0=}, {x1=})')
 
         # TODO comment explaining this conditional / rewrite for clarity
         if any([x[-1] > x[-2] for x in ranges]):
@@ -1425,8 +1501,12 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int
                 print('add_colorbar: not setting cbar ticks for twoslopenorm')
             #
 
+            # TODO cbar doesn't have a vcenter does it? (to use instead of 0)
+
+            # wouldn't work w/ cmap i set up for correlation-distance viz.matshow plots
+            # (from al_analysis.plot_corrs)
             # TODO keep? (no, replace w/ only adding 0 tick if this is true)
-            assert cbar.vmin < 0
+            #assert cbar.vmin < 0
 
             # TODO TODO only show stuff at nice even numbers
             # (or at least force formatter to not show 5 sigfigs?)
@@ -2868,7 +2948,7 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
             axis='columns'
         )
         if odors_in_order is None:
-            # TODO 
+            # TODO
             raise NotImplementedError
 
         if 'group_ticklabels' not in kwargs:
