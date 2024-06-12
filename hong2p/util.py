@@ -879,6 +879,8 @@ def addlevel(df: pd.DataFrame, names, values, *, axis='index'):
     return df
 
 
+# TODO replace w/ np.array_equal w/ equal_nan=True? maybe adding checks on index/cols
+# for a similar DataFrame fn (or a path for DataFrame inputs here)?
 # TODO test w/ ndarray/DataFrame[/DataArray?] input + typehint
 # TODO type hint so that output type is same as input type (TypeVar?)
 # TODO already have something like this in diff_dataframes? (didn't seem like it, but
@@ -1514,7 +1516,8 @@ def df_to_odor_order(df, observed=True, return_name1=False):
 # maybe default changed?)
 # TODO get rid of gid kwarg and just require it to be in url?
 def gsheet_csv_export_link(file_with_edit_link: Union[str, Pathlike],
-    gid: Optional[int] = None, no_append_gid: bool = False) -> str:
+    gid: Optional[int] = None, no_append_gid: bool = False,
+    extra_search_dirs: Optional[Sequence[Pathlike]] = None) -> str:
     """
     Takes a gsheet link copied from browser while editing it, and returns a
     URL suitable for reading it as a CSV into a DataFrame.
@@ -1522,30 +1525,32 @@ def gsheet_csv_export_link(file_with_edit_link: Union[str, Pathlike],
     GID seems to default to 0 for the first sheet, but seems unpredictable for further
     sheets in the same document, though you can extract it from the URL in those cases.
     """
-    # TODO convert to pathlib
-
     if str(file_with_edit_link).startswith('http'):
         url = str(file_with_edit_link)
 
     # If the input wasn't a link itself, then it should be a path to a file containing
     # the link.
     else:
-        pkg_data_dir = split(split(__file__)[0])[0]
+        # with hong2p installed editable as I typically have it, this will be the root
+        # of hong2p (e.g. ~/src/hong2p, not ~/src/hong2p/hong2p)
+        hong2p_root = Path(__file__).resolve().parent.parent
 
-        dirs_to_try = (os.getcwd(), pkg_data_dir)
+        dirs_to_try = (Path.cwd(), hong2p_root)
+        if extra_search_dirs is not None:
+            dirs_to_try = tuple(extra_search_dirs) + dirs_to_try
+
         # .txt file containing link
-        link_filename = None
+        link_txt_path = None
         for d in dirs_to_try:
-            fname = join(d, file_with_edit_link)
-            if exists(fname):
-                link_filename = fname
+            path = d / file_with_edit_link
+            if path.exists():
+                link_txt_path = path
                 break
 
-        if link_filename is None:
+        if link_txt_path is None:
             raise IOError(f'{file_with_edit_link} not found in any of {dirs_to_try}')
 
-        with open(link_filename, 'r') as f:
-            url = f.readline()
+        url = link_txt_path.read_text()
 
     base_url_and_param_seperator = '/edit'
     if base_url_and_param_seperator in url:
@@ -1589,7 +1594,8 @@ def gsheet_csv_export_link(file_with_edit_link: Union[str, Pathlike],
 def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
     bool_fillna_false: bool = True, convert_date_col: bool = True,
     drop_trailing_bools: bool = True, restore_ints: bool = True,
-    normalize_col_names: bool = False, use_cache: bool = False) -> pd.DataFrame:
+    normalize_col_names: bool = False, use_cache: bool = False,
+    extra_search_dirs: Optional[Sequence[Pathlike]] = None) -> pd.DataFrame:
     # TODO doc file_with_edit_link / gid (w/ expected format + how to get them)
     # TODO want to allow str url for file_with_edit_link too (allowed in called fn)?
     """
@@ -1626,10 +1632,16 @@ def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
             connection error when trying to load the sheet data from online. Each call
             will unconditionally write to this cache, saved as a hidden file in the same
             directory as `file_with_edit_link`.
+
+        extra_search_dirs: extra directories to search for file with name
+            `file_with_edit_link`. will be searched before defaults (current directory
+            and hong2p root)
     """
     file_with_edit_link = Path(file_with_edit_link)
 
-    gsheet_link = gsheet_csv_export_link(file_with_edit_link, gid=gid)
+    gsheet_link = gsheet_csv_export_link(file_with_edit_link, gid=gid,
+        extra_search_dirs=extra_search_dirs
+    )
 
     try:
         df = pd.read_csv(gsheet_link)
@@ -1739,8 +1751,8 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
     else:
         # TODO TODO maybe env var pointing to this? or w/ link itself?
         # TODO maybe just get relative path from __file__ w/ /.. or something?
-        # TODO TODO TODO give this an [add_]default_gid=True (set to False here)
-        # so other code of mine can use this function
+        # TODO give this an [add_]default_gid=True (set to False here) so other code of
+        # mine can use this function (this not served by no_append_gid?)
         gsheet_link = gsheet_csv_export_link('mb_team_sheet_link.txt',
             no_append_gid=True
         )
@@ -4084,6 +4096,7 @@ def latest_trace_pickles():
 # TODO kwarg to have this replace the multiindex levels / columns values it is derived
 # from (and thread through add_fly_id/add_recording_id)
 # TODO TODO axis kwarg?
+# TODO add option to drop existing levels/columns used to make this?
 def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
     letter: bool = False, start_at_one=True, sort=True, inplace=False):
     """Adds integer column to identify unique combinations of group_keys.
