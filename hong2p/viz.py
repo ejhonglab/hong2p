@@ -454,21 +454,29 @@ def add_norm_options(plot_fn):
 
         # .<op>().<op>() should work w/ at least ndarrays and DataFrames
         # (e.g. for min/max/sum ops)
-        vmin_clipped_frac = (data < vmin).sum().sum() / data.size
+        vmin_n_clipped = (data < vmin).sum().sum()
+        vmin_clipped_frac = vmin_n_clipped / data.size
         clip_msgs = []
         if vmin_clipped_frac > 0:
-            clip_msgs.append(f'{vmin_clipped_frac:.4f} of data < {vmin=}')
+            clip_msgs.append(
+                f'{vmin_clipped_frac:.4f} of data ({vmin_n_clipped} points) < {vmin=}'
+            )
 
-        vmax_clipped_frac = (data > vmax).sum().sum() / data.size
+        vmax_n_clipped = (data > vmax).sum().sum()
+        vmax_clipped_frac = vmax_n_clipped / data.size
         if vmax_clipped_frac > 0:
-            clip_msgs.append(f'{vmax_clipped_frac:.4f} of data > {vmax=}')
+            clip_msgs.append(
+                f'{vmax_clipped_frac:.4f} of data ({vmax_n_clipped} points) > {vmax=}'
+            )
 
         if len(clip_msgs) > 0:
             # TODO have this be an error by default, allowing decorator (/decorated
             # fn) to be run w/ warning instead, so that it can err if any of matshow
             # data is over/under (but more OK/expected to have imshow data over/under)
             # (just watch for plot_fn.__name__ == 'matshow' in output...)
-            warnings.warn(f"{plot_fn.__name__}: {', '.join(clip_msgs)}")
+            warnings.warn(f"{plot_fn.__name__} (add_norm_options wrapper): "
+                f"{', '.join(clip_msgs)}"
+            )
 
         # TODO delete
         # see notes in add_colorbar TwoSlopeNorm section for some hints about plots that
@@ -929,6 +937,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     if colorbar:
         if cbar_kws is None:
             cbar_kws = dict()
+
+        # TODO TODO automatically set default extend='both'|'min'|'max'|'neither' based
+        # on which limits actually exceeded by data?
 
         # TODO TODO use same extend= kwarg logic as i settle on for image_grid? refactor
         # to share? (want to be able to show clipped data in both cases)
@@ -1444,8 +1455,11 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int
 
     cbar = fig.colorbar(im, cax=cax, **kwargs)
 
+    assert im.norm is cbar.norm
     assert np.isclose(cbar.norm.vmin, cbar.vmin)
     assert np.isclose(cbar.norm.vmax, cbar.vmax)
+    cbar_min = cbar.vmin
+    cbar_max = cbar.vmax
 
     # TODO comment explaining why we are doing this. seems there is often not a tick
     # shown on lower end by default, but a bit confused about that b/c i was getting:
@@ -1535,16 +1549,44 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int
         # scales on two sides of cbar?
 
     if 'ticks' in kwargs:
+        # TODO TODO maybe also default to setting ticks to include these limits by
+        # default?
+
+        # TODO TODO can i change how ticks are formatted to have a diff number of
+        # sigfigs per tick (only as many as needed for each)?
+
+        # TODO delete. redundant w/ warnings in add_norm_options.
+        # (could be used to set default ticks tho...?)
+        '''
+        # NOTE: this is a MaskedArray (at least, as I'm looking at it now), but not sure
+        # if it will ever actually be masked (maybe some cmap's use that for things like
+        # set_bad/etc?)
+        # TODO some way to ensure i'm getting min/max of full data, not masked portion?
+        #
+        # get_array() seemed to be only way to access data from `im`. limits matched w/
+        # what I expected in my first test.
+        data = im.get_array()
+        dmin = data.min()
+        dmax = data.max()
+        # these are both scalars after single min|max operation (unlike pandas where i'd
+        # need 2 generally, for 2d input)
+        assert dmin.shape == tuple() and dmax.shape == tuple()
+        '''
+        #
+
+        ticks = kwargs['ticks']
+        # TODO delete. ticks can be off cbar and that's fine. (still in shared kwargs
+        # for some plots that set vmin to -1e-6, and seems to not cause bad output)
+        #assert cbar_min <= min(ticks), f'{cbar_min} > {min(ticks)=}'
+        #assert cbar_max >= max(ticks), f'{cbar_max} > {max(ticks)=}'
+
         # NOTE: important that this happens after possible set_yscale('linear') call
         # above, as that seems to reset the cbar ticks
-        cbar.set_ticks(kwargs['ticks'])
+        cbar.set_ticks(ticks)
 
     if label is not None:
         # TODO test fontsize=None doesn't change default behavior
         cbar.ax.set_ylabel(label, fontsize=fontsize)
-
-    # TODO TODO delete. check if we can set_over|under cbar. where else is cmap?
-    #import ipdb; ipdb.set_trace()
 
     return cbar
 
