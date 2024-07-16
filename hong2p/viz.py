@@ -341,6 +341,8 @@ def add_norm_options(plot_fn):
     See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html
     for descriptions of `vmin`/`vmax`/`norm` kwargs.
     """
+    # TODO possible to inspect whether wrapped fn already has defaults for vmin/vmax,
+    # and use those if so (for dff_imshow in al_analysis)?
     @functools.wraps(plot_fn)
     def wrapped_plot_fn(data, *args, norm=None, vmin=None, vmax=None, vcenter=None,
         **kwargs):
@@ -391,6 +393,9 @@ def add_norm_options(plot_fn):
 
         if centered_norm and vcenter is None:
             vcenter = 0
+            if vmin > vcenter:
+                # TODO maybe warn in this case?
+                vmin = 0
 
         # modifying vmin=0 for convenience when calling (when vcenter would also be 0),
         # rather than hardcoding vmin=-epsilon a bunch of places
@@ -2065,13 +2070,6 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     elif width is not None:
         assert height is None
 
-    # TODO TODO why was i printing these out again? was something not working?
-    # TODO delete
-    #print(f'{scale_per_plane=}')
-    #print(f'{minmax_clip_frac=}')
-    #print(f'{kwargs.get("norm")=}')
-    #
-
     # TODO even want to support scale_per_plane=True? delete all related branches?
     # TODO want to check vmin/vmax not passed if scale_per_plane=True?
     # TODO make a decorator to convert assertion errors like these to ValueErrors?
@@ -2081,12 +2079,8 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     assert 0 <= minmax_clip_frac < 0.5
     if vmin is not None or vmax is not None:
         assert vmin is not None and vmax is not None
-        # TODO delete
-        #print('vmin/vmax set at input!')
-        #print(f'at image_grid input: {vmin=}, {vmax=}')
-        #
 
-        # TODO TODO TODO also need to not conflict with any norms i might want to use
+        # TODO TODO also need to not conflict with any norms i might want to use
         #
         # (assuming if it's 0, it wasn't explicitly passed in. good enough for now.
         # this shouldn't be passed if vmin/vmax are, and vice versa)
@@ -2259,7 +2253,7 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
             # TODO want to do any checking we are throwing away (only) a reasonable
             # amount of data? like not all of it at least?
 
-            # TODO TODO TODO also need to not conflict with any norms i might want to
+            # TODO TODO also need to not conflict with any norms i might want to
             # use (here and anywhere else we compute vmin/vmax, which can't be passed
             # with anything other than str norm, which seems to preclude
             # centered/two-slope norms)
@@ -2297,14 +2291,15 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
         #add_colorbar(fig, im, label=cbar_label, match_axes_size=True, **cbar_kws)
 
         single_cax = axs[-1].cax
-        # TODO TODO if i want to support one cbar per plane, loop over axes w/ .cax, or
-        # over other stored lists of cax's in grid?
-        # TODO TODO TODO check on weak odors to see if i really WANT one cbar per plane
-        # (aphe -4? fench?)
+
+        # TODO TODO try to keep, but only set if values actually go out of range?
+        # TODO delete
+        #print('viz.image_grid: delete extend=both (on add_colorbar call)?')
+        #
         add_colorbar(fig, im, cax=single_cax, label=cbar_label,
             # TODO may need cmap.set_[under|over]
 
-            # TODO TODO comment explaining purpose of this!
+            # TODO comment explaining purpose of this!
             # TODO move to al_analysis, and only in diverging cmap kwargs?
             # (or something more specific?) don't really care for anatomical version
             #
@@ -2315,9 +2310,9 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
             **cbar_kws
         )
 
-        # TODO TODO TODO check all image axes data wrt limits of cbar (+clip status?) ->
-        # warn about clipping? may make more sense here than ~add_colorbar, which may
-        # not see the rest of the data
+        # TODO check all image axes data wrt limits of cbar (+clip status?) -> warn
+        # about clipping? may make more sense here than ~add_colorbar, which may not see
+        # the rest of the data
 
         n_matching_cax = 0
         for cax in grid.cbar_axes:
@@ -2394,6 +2389,88 @@ def micrometer_depth_title(ax: Axes, zstep_um: float, z_index: int, *,
     # code excludes this call on that plane, so not sure of formatting)
     # (it currently looks like "-0uM")
     set_title(f'{curr_z:.0f} $\\mu$m', fontsize=fontsize, **kwargs)
+
+
+# TODO use is_cmap_diverging instead? is what i want here actually different?
+# TODO also use in micrometer_depth_title
+def get_default_overlay_color(ax: Axes) -> str:
+    """Returns 'w' or 'k' (white/black), depending on current image colors.
+
+    Aims to provide the color that would be higher contrast with respect to the
+    background.
+    """
+    # NOTE: requires that imshow (/equiv) has been called already
+    images = ax.get_images()
+    if len(images) == 0:
+        # TODO catch in add_scalebar -> provide better error message including that we
+        # can just pass in color explicitly
+        raise RuntimeError('has imshow() [/ similar] been called on this Axes yet?')
+
+    assert len(images) == 1
+    im = images[0]
+    # TODO just get directly from background?
+    arr = im.get_array()
+
+    # TODO delete
+    # for 192x192 frames, this seems to be about the section where depth title +
+    # scalebar are currently drawn.
+    #lowish_img_value = arr[:40, :].mean()
+
+    # get warning "'partition' will ignore the 'mask' of the MaskedArray." if we don't
+    # convert from MaskedArray w/ np.array(arr) first
+    lowish_img_value = np.percentile(np.array(arr).flatten(), 15)
+
+    # should be subclass of Normalize if not str
+    assert type(im.norm) is not str
+    # should map image value to [0.0, 1.0] (which should be input range of cmap)
+    cmap_input = im.norm(lowish_img_value)
+    lowish_value_color = im.cmap(cmap_input)
+
+    # excluding alpha channel (which should be 1.0 anyway)
+    luminance = np.mean(lowish_value_color[:3])
+
+    if luminance > 0.5:
+        # black
+        default_color_over_image = 'k'
+    else:
+        default_color_over_image = 'w'
+
+    return default_color_over_image
+
+
+def add_scalebar(ax: Axes, pixelsize_um: float, *, color=None, **kwargs) -> None:
+    # TODO move default_kwargs to actual default kwarg values in fn def? why not?
+    #
+    # I did check (in 2023-05-10/1, where FOV width/height are 100.[6?] uM,
+    # that w/ fixed_value=99 [instead of length_fraction], the bar is just
+    # slightly shorter than width of image)
+    default_kwargs = dict(
+        frameon=False,
+        units='um',
+        # TODO restore? or just keep at hardcoded 10um (via fixed_value=10)?
+        #length_fraction=0.25
+        fixed_value=10,
+        # OK for contexts of plot_rois? (got this value from 10uM ScaleBar's made in
+        # al_analysis stuff not using plot_rois...)
+        width_fraction=0.025,
+        # NOTE: tried font_properties=dict(family='DejaVu Sans'), but didn't seem to
+        # get same italic font as in titles (not sure if font changed at all?)
+        # (can also set font size via size= in same font_properties dict)
+    )
+    kwargs = {**default_kwargs, **kwargs}
+
+    # color is for "the scale bar, scale and label"
+    if color is None:
+        color = get_default_overlay_color(ax)
+
+    # TODO make font (see lowercase mu character) consistent with ax.text called
+    # from micrometer_depth_titles
+    # (one way or the other. preferably by changing this)
+    #
+    # for other ScaleBar options, see:
+    # https://github.com/ppinard/matplotlib-scalebar
+    sb = ScaleBar(pixelsize_um, color=color, **kwargs)
+    ax.add_artist(sb)
 
 
 # TODO TODO option to only show name for focus_roi (like betty wanted)
@@ -2664,86 +2741,19 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     # shape?)
     fig, axs = image_grid(background, **image_kws)
 
-    # TODO refactor to use is_cmap_diverging instead? is what i want here actually
-    # different?
-    #
-    # TODO refactor, at least to not pollute namespace w/ these
-    # NOTE: requires that imshow (/equiv) has been called already
-    ax = axs.flat[0]
-    images = ax.get_images()
-    assert len(images) == 1
-    im = images[0]
-    # TODO just get directly from background?
-    arr = im.get_array()
-
-    # TODO delete
-    # for 192x192 frames, this seems to be about the section where depth title +
-    # scalebar are currently drawn.
-    #lowish_img_value = arr[:40, :].mean()
-
-    # get warning "'partition' will ignore the 'mask' of the MaskedArray." if we don't
-    # convert from MaskedArray w/ np.array(arr) first
-    lowish_img_value = np.percentile(np.array(arr).flatten(), 15)
-
-    # should be subclass of Normalize if not str
-    assert type(im.norm) is not str
-    # should map image value to [0.0, 1.0] (which should be input range of cmap)
-    cmap_input = im.norm(lowish_img_value)
-    lowish_value_color = im.cmap(cmap_input)
-
-    # excluding alpha channel (which should be 1.0 anyway)
-    luminance = np.mean(lowish_value_color[:3])
-
-    if luminance > 0.5:
-        # black
-        default_color_over_image = 'k'
-    else:
-        default_color_over_image = 'w'
-
-    del ax, im
-    #
+    default_color_over_image = get_default_overlay_color(axs.flat[0])
 
     if scalebar:
         assert pixelsize_um is not None
 
-        # TODO also try to detect whether bg is more white/black -> use opposite as
-        # default color (as i'd like to do in micrometer_depth_title as well)
-
-        # TODO refactor this type of default kwarg handling to share w/ some other
-        # places?
-
-        # TODO should i handle scalebar inside image_grid (and if so, can handle
-        # None->dict(...) conversion there too)?
         if scalebar_kws is None:
             scalebar_kws = dict()
-        else:
-            scalebar_kws = dict(scalebar_kws)
-
-        # color is for "the scale bar, scale and label"
-        #
-        # I did check (in 2023-05-10/1, where FOV width/height are 100.[6?] uM,
-        # that w/ fixed_value=99 [instead of length_fraction], the bar is just
-        # slightly shorter than width of image)
-        default_scalebar_kws = dict(color=default_color_over_image, frameon=False,
-            length_fraction=0.25
-        )
-        for k, v in default_scalebar_kws.items():
-            if k not in scalebar_kws:
-                scalebar_kws[k] = v
-
-        # TODO TODO make font (see lowercase mu character) consistent with ax.text
-        # called from micrometer_depth_titles
-        # (one way or the other. preferably by changing this)
-        #
-        # for other ScaleBar options, see:
-        # https://github.com/ppinard/matplotlib-scalebar
-        sb = ScaleBar(pixelsize_um, units='um', **scalebar_kws)
 
         # TODO add kwarg to select which?
         # TODO try ax=axs[-1] by default? (honestly probably less likely to hit
         # stuff in top plane (i.e. axs[0]). VL2p might be there-ish in bottom...)
         ax = axs[0]
-        ax.add_artist(sb)
+        add_scalebar(ax, pixelsize_um, color=default_color_over_image, **scalebar_kws)
 
     if focus_roi is not None:
         if focus_roi_linewidth is None:
