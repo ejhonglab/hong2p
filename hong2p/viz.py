@@ -2964,7 +2964,7 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
         odor_order = True
 
     if odor_order:
-        # 'name2' is just 'no_second_odor' for a lot of my data
+        # 'name2' is just olf.NO_ODOR for a lot of my data
         # (the non-pair stuff)
         name_prefix = 'name1'
 
@@ -3810,9 +3810,10 @@ def plot_pair_n(df, *args):
     # TODO borrow more of this / call this in part of kc_analysis that made that
     # table w/ these counts for repeats?
 
-    # TODO also handle no_second_odor
+    # TODO also handle olf.NO_ODOR
     df = df.drop(
-        index=df[(df.name1 == 'paraffin') | (df.name2 == 'paraffin')].index)
+        index=df[(df.name1 == 'paraffin') | (df.name2 == 'paraffin')].index
+    )
 
     # TODO possible to do at least a partial check w/ n_accepted_blocks sum?
     # (would have to do outside of this fn. presentations here doesn't have it.

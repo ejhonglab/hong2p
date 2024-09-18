@@ -341,7 +341,7 @@ class Segmentation(QWidget):
         # TODO this fixed_dpi thing work? let me make things resizable again?
         # unclear... probably no?
         ###self.mpl_canvas.fixed_dpi = 100
-        
+
         # TODO test that zoom doesn't change what is serialized. especially
         # the png / svgs (it doesnt clip but does change some relative sizes
         # / spaces)
@@ -501,7 +501,7 @@ class Segmentation(QWidget):
 
     # TODO TODO provide facilities to show which differ
     # from current set of params, at least. maybe between arbitrary selections
-    # of pairs. maybe just color backgrounds of widgets for differing params 
+    # of pairs. maybe just color backgrounds of widgets for differing params
     # yellow or something (and overlay current value?)
     # TODO TODO what happens in case where cnmf changes and a param is now:
     # 1) missing
@@ -1162,7 +1162,7 @@ class Segmentation(QWidget):
         - self.footprints
         - self.raw_f
         - self.df_over_f
-        - self.ijroi_file_path 
+        - self.ijroi_file_path
         - self.run_at
         - self.parameter_json (to None)
         - self.run_len_seconds (to None)
@@ -1173,7 +1173,7 @@ class Segmentation(QWidget):
             print('Load a movie before loading ImageJ ROIs.')
             return
 
-        #def ijroi_segmentation(tiff_fname, movie, 
+        #def ijroi_segmentation(tiff_fname, movie,
         # TODO maybe just combine w/ open_recording and load movie and
         # everything? or optionally?
 
@@ -1430,7 +1430,7 @@ class Segmentation(QWidget):
                 break
             elif any(blocks_accepted):
                 any_partially_accepted = True
-                
+
         if any_all_accepted:
             recording_widget.setBackground(0, QColor(self.accepted_color))
         elif any_partially_accepted:
@@ -1510,7 +1510,7 @@ class Segmentation(QWidget):
         dpi = self.fig.dpi
         # TODO not sure why this isn't happening automatically, when figure
         # size changes. i feel like i'm missing something.
-        # something like adjust size 
+        # something like adjust size
         self.mpl_canvas.resize(dpi * fig_w_inches, dpi * fig_h_inches)
         self.fig_w_inches = fig_w_inches
         self.fig_h_inches = fig_h_inches
@@ -1574,7 +1574,7 @@ class Segmentation(QWidget):
         # TODO more idiomatic way?
         setattr(self, key, new_value)
 
-    
+
     def check_run_btn_enbl(self) -> None:
         self.params_changed = True
         if (not self.processing and self.movie is not None):
@@ -1719,7 +1719,7 @@ class Segmentation(QWidget):
             assert self.params_copy == self.params, \
                 'CNMF changed params on init'
 
-        # TODO what to do in case of memory error? 
+        # TODO what to do in case of memory error?
         # is the cost / benefit there for trying to save intermediate results?
         # or just clear them all out?
 
@@ -1891,7 +1891,7 @@ class Segmentation(QWidget):
         # TODO rename all presentation_df(s) to meta_df(s) and
         # comparison_df(s) to response_df(s), if not just gonna merge
         #meta_dfs, response_dfs, footprint_df = util.recording_frames(raw_f,
-        #    df_over_f, footprints, 
+        #    df_over_f, footprints,
 
         # TODO are self.df_over_f and raw_f the same shape? shouldn't raw_f be
         # one shorter? otherwise, how is that final value imputed?
@@ -2282,7 +2282,7 @@ class Segmentation(QWidget):
 
         # TODO could set this based on whether i want 1 / both orders
         #h_inches_per_traceplot = 5
-        #h_inches_traceplots = h_inches_per_traceplot * 
+        #h_inches_traceplots = h_inches_per_traceplot *
 
         widths = [w_inches_footprint_axes]
         heights = [h_inches_footprint_axes]
@@ -2351,7 +2351,7 @@ class Segmentation(QWidget):
             presentations_df = db.merge_odors(presentations_df,
                 self.db_odors.reset_index()
             )
-            # TODO maybe adapt to case where name2 might have only occurence of 
+            # TODO maybe adapt to case where name2 might have only occurence of
             # an odor, or name1 might be paraffin.
             # TODO TODO check this is actually in the order i want across blocks
             # (idk if name1,name2 are sorted / re-ordered somewhere)
@@ -2359,7 +2359,7 @@ class Segmentation(QWidget):
             name2_unique = presentations_df.name2.unique()
             # TODO should fail earlier (rather than having to wait for cnmf
             # to finish)
-            assert (set(name2_unique) == {'no_second_odor'} or 
+            assert (set(name2_unique) == {NO_ODOR} or
                 set(name2_unique) - set(name1_unique) == {'paraffin'}
             )
             # TODO TODO TODO factor all abbreviation into its own function
@@ -2398,13 +2398,13 @@ class Segmentation(QWidget):
 
             # TODO rewrite later stuff to avoid need for this.
             # it just adds a bit of confusion at this point.
-            # TODO need to deal w/ no_second_odor in here?
+            # TODO need to deal w/ NO_ODOR in here?
             # So that code detecting which combinations of name1+name2 are
             # monomolecular does not need to change.
             # TODO TODO doesn't chemutils do this at this point? test
             odor2abbrev['paraffin'] = 'paraffin'
             # just so name2 isn't all NaN for now...
-            odor2abbrev['no_second_odor'] = 'no_second_odor'
+            odor2abbrev[NO_ODOR] = NO_ODOR
 
             block_iter = list(range(n_blocks))
         else:
@@ -2836,7 +2836,7 @@ class Segmentation(QWidget):
             # TODO TODO include concentration in odor column / new column
             print('\nOdor abbreviations:')
             for k in abbrev_iter:
-                if k != 'paraffin' and k != 'no_second_odor':
+                if k != 'paraffin' and k != NO_ODOR:
                     cell_text.append([k, abbrev2odor[k]])
                     print('{}: {}'.format(k, abbrev2odor[k]))
             print('')
@@ -3043,7 +3043,7 @@ class Segmentation(QWidget):
         # is manually setting canonical)
         # TODO what to do with this?
         '''
-        if (any_accepted and 
+        if (any_accepted and
             pd.isnull(self.current_recording_widget.data(0, Qt.UserRole))):
             self.make_canonical(self.current_segrun_widget)
         '''
@@ -3060,7 +3060,7 @@ class Segmentation(QWidget):
         row = segrun_treeitem.data(0, Qt.UserRole)
 
         # TODO to get rid of some false positives here, could actually check
-        # db for existance of presentations / traces for a given block 
+        # db for existance of presentations / traces for a given block
         # right now, intial accept -> relabel as rejected -> restart relabelling
         # -> try to accept, should fail, though it technically does not need to.
         if (self.relabeling_db_segrun and
@@ -3244,7 +3244,7 @@ class Segmentation(QWidget):
             self.accepted[i] = target
             # (all of the below comments copied from old accept_cnmf fn)
             # TODO just calculate metadata outright here?
-                
+
             # TODO TODO save file to nas (particularly so that it can still be
             # there if database gets wiped out...) (should thus include
             # parameters [+version?] info)
@@ -3373,7 +3373,7 @@ class Segmentation(QWidget):
 
             if have_accept_states:
                 self.color_block_btn(i, to_be_accepted[i])
-                # TODO TODO TODO also want to set any of 
+                # TODO TODO TODO also want to set any of
                 # accepted/to_be_accepted/uploaded_block_info here?
             else:
                 self.to_be_accepted.append(None)
@@ -3553,7 +3553,7 @@ class Segmentation(QWidget):
         # TODO also load correct data params
         # is it a given that param json reflects correct data params????
         # if not, may need to model after open_recording
-        
+
         # TODO if clear was taking a lot of time here, and can just make a new
         # one, why not do that for each time i plot? like for the trace, etc?
         # memory leak or something? mpl internals get screwed up?
@@ -3746,7 +3746,7 @@ class Segmentation(QWidget):
         self.thorimage_id = thorimage_id
         self.started_at = started_at
         self.n_blocks = n_blocks_from_gsheet
-        self.presentations_per_block = presentations_per_block 
+        self.presentations_per_block = presentations_per_block
         self.odor_ids = odor_ids
         self.frame_times = frame_times
         self.block_first_frames = block_first_frames
@@ -3890,7 +3890,7 @@ class ROIAnnotation(QWidget):
         # TODO TODO maybe just make this the average image and overlay clickable
         # rois / make cells clickable?
         # TODO TODO TODO make a list widget part of this, but add stuff below to
-        # use all cells / pick fraction and sample subset (seeded / not?) / 
+        # use all cells / pick fraction and sample subset (seeded / not?) /
         # maybe give letter labels + randomize order of real cell_ids, to the
         # extent that the way CNMF works causing some property of cells to vary
         # systematically along cell_id axis?
@@ -3982,7 +3982,7 @@ class ROIAnnotation(QWidget):
             self.label_button_layout.addWidget(button)
             button.clicked.connect(self.label_footprint)
 
-    
+
     # TODO TODO modify to work on either recordings or comparisons, and factor
     # s.t. all widgets can use it (or at least this and segmentation one)
     # TODO when refactoring, should i aim to share any loaded data across
@@ -4269,7 +4269,7 @@ class ROIAnnotation(QWidget):
 
         # TODO combine w/ current cell/comparison info and...
         # TODO TODO insert values into database
-        
+
     # TODO TODO TODO hotkeys / buttons for labelling
 
 
@@ -4366,7 +4366,7 @@ class MainWindow(QMainWindow):
 
         self.setFocus()
 
-    
+
     def change_user(self, user):
         if user not in self.nicknames:
             pd.DataFrame({'nickname': [user]}).to_sql('people', conn,

@@ -11,21 +11,35 @@ from collections import Counter, defaultdict
 from pprint import pprint, pformat
 import pickle
 import warnings
-from typing import Union, Sequence, Optional, Tuple, List, Dict, Hashable
+from typing import Union, Sequence, Optional, Tuple, List, Dict, Hashable, Any
 
 import numpy as np
 import pandas as pd
 import yaml
 from platformdirs import user_data_path
 
+from hong2p import util
 from hong2p.types import Pathlike, ExperimentOdors, SingleTrialOdors
 
 
 solvent_str = 'solvent'
 conc_delimiter = '@'
+# NOTE: do need the whitespace here, if i want abbrev to be able to handle abritrary
+# input strs (whether single odors / mixes / whatever) (w/o having to specify which type
+# of input it is, at least), because of odors like '(1S)-(+)-carene'
+# (and also to deal with in-vial mixtures like 'ea+eb @ 0', which I'm going to stick to
+# formatting without the whitespace, so this can work)
+component_delim = ' + '
 
-# TODO TODO add something for mapping from the standard-hong-odor-names to the hallem
-# names
+# should just be for when no valve is actuated on the corresponding manifold
+# TODO delete? not used anywhere... or replace (some?) usage of solvent_str w/ this
+# (actually, it is used in viz,util[, and deprecated db + scripts/gui], but is it
+# actually needed? at least clarify more here how it's use should actually differ from
+# solvent_str) (and why is this not the fill value for the pad_odor_* fns below?)
+# TODO TODO probably replace pad_odor_* fn use of solvent_str w/ this
+NO_ODOR = 'no_odor'
+
+# TODO add something for mapping from the standard-hong-odor-names to the hallem names
 
 odor2abbrev = dict()
 
@@ -106,22 +120,29 @@ def save_odor2abbrev_cache():
 atexit.register(save_odor2abbrev_cache)
 
 
-def abbrev(odor_str: str, *, _name_only=False) -> str:
+def abbrev(odor_str: str, *, component_delim: str = component_delim,
+    conc_delim: str = conc_delimiter) -> str:
     """Abbreviates odor name in input, when an abbreviation is available.
 
     Args:
         odor_str: can optionally contain concentration information (followed by
         `olf.conc_delimiter`, if so).
     """
-    if conc_delimiter not in odor_str:
-        return odor2abbrev.get(odor_str, odor_str)
+    # TODO add tests for each of the 3 cases (doctest?)
 
-    # TODO add tests for this case (+ above, if don't already have)
-    else:
-        assert not _name_only
+    if component_delim in odor_str:
+        # TODO refactor to use parse_odor_lists? (would need an abbrev fn that takes
+        # dict input)
+        odor_strs = [x.strip() for x in odor_str.split(component_delim)]
+
+        return format_mix_from_strs(odor_strs, delim=component_delim)
+
+    elif conc_delim in odor_str:
         odor = parse_odor(odor_str, require_conc=True)
-        odor['name'] = abbrev(odor['name'], _name_only=True)
+        odor['name'] = abbrev(odor['name'])
         return format_odor(odor)
+
+    return odor2abbrev.get(odor_str, odor_str)
 
 
 def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
@@ -241,6 +262,7 @@ def parse_odor_name(odor_str: str) -> Optional[str]:
     if odor_str == solvent_str:
         return None
 
+    # TODO take this as kwarg?
     if conc_delimiter not in odor_str:
         raise ValueError(f'{conc_delimiter=} not in {odor_str}')
 
@@ -256,6 +278,21 @@ def parse_odor(odor_str: str, *, require_conc: bool = False) -> dict:
         'name': parse_odor_name(odor_str),
         'log10_conc': parse_log10_conc(odor_str, require=require_conc),
     }
+
+
+def parse_odor_list(trial_odors_str: str, *, delim: str = component_delim,
+    **parse_odor_kwargs) -> SingleTrialOdors:
+
+    # NOTE: actually, don't think i can do this, considering i have some odors like
+    # '(1S)-(+)-carene' (and in-vial mixtures, that I'm currently representing as e.g.
+    # 'ea+eb @ 0', w/o the whitespace around '+')
+    #
+    # so that i work w/ condensed representations (e.g. 'A+B') if i want
+    #delim = delim.strip()
+
+    odor_strs = [x.strip() for x in trial_odors_str.split(delim)]
+
+    return [parse_odor(s, **parse_odor_kwargs) for s in odor_strs]
 
 
 # TODO maybe take a name_order kwarg here and return index of name in list instead, if
@@ -403,12 +440,14 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
     return pd.Index(conc_keys, name=level.name)
 
 
+component_level_prefix = 'odor'
+
 def is_odor_var(var_name: Optional[str]) -> bool:
     """Returns True if column/level name or Series-key is named to store odor metadata
 
-    Variables behind matching names should store strings representing *one*, of
-    potentially multiple, component odors presented on a given trial. My convention for
-    representing multiple components presented together one one trial is to make
+    Values for matching keys should store strings representing *one*, of potentially
+    multiple, component odors presented (simultaneously) on a given trial. My convention
+    for representing multiple components presented together one one trial is to make
     multiple variables (e.g. columns), named such as ['odor1', 'odor2', ...], with a
     different sufffix number for each component.
     """
@@ -416,7 +455,10 @@ def is_odor_var(var_name: Optional[str]) -> bool:
     if var_name is None:
         return False
 
-    return var_name.startswith('odor')
+    # TODO do i actually care to support stuff like 'odor_a'? 'odor' probably
+    # (those are basically only 2 reasons this fn still exists, rather than having
+    # replaced it w/ is_odor_component_level)
+    return var_name.startswith(component_level_prefix)
 
 
 # TODO add some kind of lookup for odor panels (might just need to get the set of all
@@ -436,7 +478,7 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
     panel2name_order: Optional[Dict[str, List[str]]] = None, if_panel_missing='warn',
     axis: Optional[str] = None, _debug: bool = False, **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
-    # to 'solvent' (+ clarify in docstring)
+    # to solvent_str (+ clarify in docstring)
     # TODO doctest examples using panel_order+panel2name_order
     """Sorts DataFrame by odor index/columns.
 
@@ -461,7 +503,7 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
     Index will be checked first, and if it contains odor information, will sort on that.
     Otherwise, will check and sort on matching columns.
 
-    Sorts by concentration, then name. 'solvent' is treated as less than all odors.
+    Sorts by concentration, then name. `solvent_str` is treated as less than all odors.
 
     >>> df = pd.DataFrame({
     ...     'odor1': ['B @ -2', 'A @ -2', 'A @ -3'],
@@ -877,8 +919,9 @@ def format_odor(odor_dict, conc: bool = True, name_conc_delim: Optional[str] = N
     if conc_key in odor_dict:
         # TODO opt to choose between 'solvent' and no string (w/ no delim below used?)?
         # what do i do in hong2p.util fn now?
-        # TODO TODO warn/fail if name isn't in some set here? or just don't do this?
-        # wouldn't this fail for some of undiluted kiwi samples, for one?
+        # TODO warn/fail if name isn't in some set here (e.g. NO_ODOR/solvent_str)?
+        # or just don't do this? wouldn't this fail for some of undiluted kiwi samples,
+        # for one?
         if odor_dict[conc_key] is None:
             return solvent_str
 
@@ -902,10 +945,14 @@ def format_odor(odor_dict, conc: bool = True, name_conc_delim: Optional[str] = N
 # TODO factor out this union type (+ probably add np.ndarray), and use in
 # remove_consecutive_repeats as well (or maybe in this particular fn, i actually want
 # Iterable[str] in the Union? not striding here..
-def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
-    delim: Optional[str] = None, warn_unused_levels: bool = False):
+def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series, Dict[str, Any]], *,
+    delim: str = component_delim, warn_unused_levels: bool = False):
 
-    if isinstance(odor_strs, pd.Series):
+    # TODO what's an example of Series input? why using same fn name for this?
+    # doc at least... (can make some handling of iterating over index values easier,
+    # when we get tuples that we can then zip with index names. can then be easier to
+    # drop repeats / other info, without worrying about lengths and things like that)
+    if hasattr(odor_strs, 'keys'):
         odor_keys = [x for x in odor_strs.keys() if is_odor_var(x)]
 
         if warn_unused_levels and len(odor_keys) < len(odor_strs):
@@ -917,9 +964,6 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
 
         odor_strs = [odor_strs[k] for k in odor_keys]
 
-    if delim is None:
-        delim = ' + '
-
     odor_strs = [x for x in odor_strs if x != solvent_str]
     if len(odor_strs) > 0:
         return delim.join(odor_strs)
@@ -927,7 +971,7 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series],
         return solvent_str
 
 
-def format_odor_list(odor_list: SingleTrialOdors, delim: Optional[str] = None,
+def format_odor_list(odor_list: SingleTrialOdors, *, delim: str = component_delim,
     **kwargs) -> str:
     """Takes list of dicts representing odors for one trial to pretty str.
     """
@@ -935,73 +979,174 @@ def format_odor_list(odor_list: SingleTrialOdors, delim: Optional[str] = None,
     return format_mix_from_strs(odor_strs, delim=delim)
 
 
+# TODO use to format odor[mixtures] in al_analysis
+def strip_concs_from_odor_str(odor_str: str, **kwargs) -> str:
+    """
+    Works with input representing either single components or air mixtures of multiple.
+
+    Args:
+        **kwargs: passed thru to `format_odor`
+    """
+    # TODO thread thru component delim (delim= kwarg) here?
+    odor_list = parse_odor_list(odor_str)
+    return format_odor_list(odor_list, conc=False, **kwargs)
+
+
 # TODO indicate subclass of pd.Index (Type[pd.Index]?) as return type
-def odor_lists_to_multiindex(odor_lists: ExperimentOdors, **format_odor_kwargs
-    ) -> pd.MultiIndex:
+def odor_lists_to_multiindex(odor_lists: ExperimentOdors, *,
+    # TODO try to update all over code to work w/ pad_to_n_odors=None default?  (would
+    # prob be a step in direction of being agnostic to number of components, rather than
+    # generally expecting the metadata for 2 [even if often only 1 was used])
+    sort_components: bool = True, pad_to_n_odors: Optional[int] = None, #2,
+    **format_odor_kwargs) -> pd.MultiIndex:
     # TODO doctest
     """
+    Args:
+        pad_to_n_odors: if `int`, returned `MultiIndex` will have at least this many
+            levels dedicated to odor components (+ the 1 'repeat' level always
+            included).
     """
+    if min(len(x) for x in odor_lists) < 1:
+        raise ValueError('odor_lists should not have any empty lists')
 
-    unique_lens = {len(x) for x in odor_lists}
-    if len(unique_lens) != 1:
-        raise NotImplementedError
+    max_components_per_trial = max(len(x) for x in odor_lists)
 
-    # This one would be more straight forward to relax than the above one
-    if unique_lens == {2}:
-        pairs = True
+    if pad_to_n_odors is not None and pad_to_n_odors > max_components_per_trial:
+        max_components_per_trial = pad_to_n_odors
 
-    elif unique_lens == {1}:
-        pairs = False
-    else:
-        raise NotImplementedError
-
-    odor1_str_list = []
-    odor2_str_list = []
+    # of length equal to number of trials. each element will have a str for each
+    # component (currently padding w/ 'solvent' up to max # of components seen, so all
+    # of length equal to max # of components)
+    odor_strs = []
 
     odor_mix_counts = defaultdict(int)
     odor_mix_repeats = []
 
     for odor_list in odor_lists:
 
-        if pairs:
-            odor1, odor2 = odor_list
-        else:
-            odor1 = odor_list[0]
-            assert len(odor_list) == 1
-            # format_odor -> format_mix_from_strs should treat this as:
-            # 'solvent' (hong2p.olf.solvent_str) -> not being shown as part of mix
-            # TODO is this actually reached? i'm not seeing it in some of the
-            # ij_trial_dfs at end of main
-            odor2 = {'name': 'no_second_odor', 'log10_conc': None}
+        curr_trial_odor_strs = []
+        for odor in odor_list:
+            # TODO move into format_odor? why not? (behind abbrev=True kwarg?)
+            if odor['name'] in odor2abbrev:
+                odor = dict(odor)
+                odor['name'] = odor2abbrev[odor['name']]
+            #
 
-        # TODO refactor
-        if odor1['name'] in odor2abbrev:
-            odor1['name'] = odor2abbrev[odor1['name']]
+            odor_str = format_odor(odor, **format_odor_kwargs)
+            curr_trial_odor_strs.append(odor_str)
 
-        if odor2['name'] in odor2abbrev:
-            odor2['name'] = odor2abbrev[odor2['name']]
+        if sort_components:
+            curr_trial_odor_strs = sorted(curr_trial_odor_strs)
 
-        odor1_str = format_odor(odor1, **format_odor_kwargs)
-        odor1_str_list.append(odor1_str)
+        curr_trial_odor_strs = (curr_trial_odor_strs +
+            [solvent_str] * (max_components_per_trial - len(odor_list))
+        )
+        assert len(curr_trial_odor_strs) == max_components_per_trial
 
-        odor2_str = format_odor(odor2, **format_odor_kwargs)
-        odor2_str_list.append(odor2_str)
-        #
+        odor_strs.append(curr_trial_odor_strs)
 
-        # TODO TODO test w/ input where odor1 odor2 are not sorted / always in a
+        # TODO test w/ input where odor1 odor2 are not sorted / always in a
         # consistent order (+ probably sort before counting to fix)
-        odor_mix = (odor1_str, odor2_str)
+        # TODO maybe i want it to be the responsibility of the caller to sort
+        # multiindices if they want (after) (they'd then have to recalc repeat, so
+        # idk...) (maybe i should just err / warn if same mix seen in >1 diff orders?)?
+        odor_mix = tuple(curr_trial_odor_strs)
         odor_mix_repeats.append(odor_mix_counts[odor_mix])
         odor_mix_counts[odor_mix] += 1
 
-    # NOTE: relying on sorting odor_list(s) at load time seems to produce consistent
-    # ordering, though that alphabetical ordering (based on full odor names) is
+    # NOTE: relying on sorting odor_list(s) at load time (so not here? where?) seems to
+    # produce consistent ordering (but doing the same here shouldn't cause any extra
+    # issues, right?), though that alphabetical ordering (based on full odor names) is
     # different from what would be produced sorting on abbreviated odor names (at least
     # in some cases)
 
-    index = pd.MultiIndex.from_arrays([odor1_str_list, odor2_str_list,
-        odor_mix_repeats
-    ])
-    index.names = ['odor1', 'odor2', 'repeat']
+    index = pd.MultiIndex.from_arrays(list(np.array(odor_strs).T) + [odor_mix_repeats])
+    names = [f'odor{i}' for i in range(1, max_components_per_trial + 1)] + ['repeat']
+    index.names = names
 
     return index
+
+
+# TODO decide if i want 'odor' -> True (and if so, add that behavior here before
+# replacing is_odor_var with this)
+# TODO and do i want to support just anything starting w/ 'odor'? e.g. 'odor_a'? was i
+# actually using w/ any inputs like that? just leaving both this and is_odor_var for
+# now...
+def is_odor_component_level(level_name: Optional[str]) -> bool:
+    """Returns True if column/level name or Series-key is named to store odor metadata
+
+    Values for matching keys should store strings representing *one*, of potentially
+    multiple, component odors presented (simultaneously) on a given trial. My convention
+    for representing multiple components presented together one one trial is to make
+    multiple variables (e.g. columns), named such as ['odor1', 'odor2', ...], with a
+    different sufffix number for each component.
+    """
+    # for index [level] names that are not defined.
+    if level_name is None:
+        return False
+
+    # .isdigit() also works for things with multiple characters (e.g. '10')
+    return (
+        level_name.startswith(component_level_prefix) and
+        level_name[len(component_level_prefix):].isdigit()
+    )
+
+
+def n_odor_component_levels(df: pd.DataFrame) -> int:
+    # TODO do i want this to drop levels w/ all solvent_str? flag? prob doesn't matter
+    # for current usage.
+    odor_level_names = [x for x in df.index.names if is_odor_component_level(x)]
+    # TODO relax? may need to modify assertion below, if so
+    assert len(odor_level_names) > 0
+
+    # should all be consecutive starting at 1
+    level_nums = set(int(x[len(component_level_prefix):]) for x in odor_level_names)
+    assert level_nums == set(range(1, 1 + len(level_nums)))
+
+    return len(odor_level_names)
+
+
+def pad_odor_index_to_n_components(df: pd.DataFrame, n: int) -> pd.DataFrame:
+    """Pads dataframe odor index, so that it has `n` 'odor<n>' component levels.
+
+    Args:
+        n: target number of odor levels
+
+    Odors presented together (e.g. in one trial, mixed in air), should each have their
+    own level in the odor MultiIndex, with `olf.solvent_str` used to fill when a given
+    trial had less components presented at once.
+    """
+    assert n >= 1
+
+    n_odor_levels = n_odor_component_levels(df)
+    if n_odor_levels == n:
+        return df
+
+    assert n > n_odor_levels
+
+    old_names = list(df.index.names)
+    last_idx = max(i for i, x in enumerate(old_names) if is_odor_component_level(x))
+
+    new_names = old_names[:(last_idx + 1)]
+    for i in range(n_odor_levels, n):
+        # my convention for these level names has to been to start from 'odor1', hence
+        # the +1
+        new_name = f'{component_level_prefix}{i+1}'
+        assert new_name not in df.index.names
+        df = util.addlevel(df, new_name, solvent_str)
+        new_names.append(new_name)
+
+    new_names.extend(old_names[(last_idx + 1):])
+
+    return df.reorder_levels(new_names)
+
+
+def pad_odor_indices_to_max_components(dfs: Sequence[pd.DataFrame]
+    ) -> Sequence[pd.DataFrame]:
+    """Pads odor index each each dataframe to max number of input component levels.
+    """
+    max_n_odor_component_levels = max(n_odor_component_levels(x) for x in dfs)
+    return [pad_odor_index_to_n_components(df, max_n_odor_component_levels)
+        for df in dfs
+    ]
+

@@ -32,6 +32,7 @@ from hong2p.err import NoStimulusFile, TooManyStimulusFiles
 from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
     DataFrameOrDataArray
 )
+from hong2p.olf import NO_ODOR
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
@@ -3313,9 +3314,10 @@ def format_mixture(*args):
     else:
         raise ValueError('incorrect number of args')
 
+    # TODO replace 'paraffin' w/ olf solvent def?
     if n1 == 'paraffin':
         title = format_odor_conc(n2, log10_c2)
-    elif n2 == 'paraffin' or n2 == 'no_second_odor' or n2 is None:
+    elif n2 == 'paraffin' or n2 == NO_ODOR or n2 is None:
         title = format_odor_conc(n1, log10_c1)
     else:
         title = '{} + {}'.format(
@@ -3379,7 +3381,7 @@ def pair_ordering(comparison_df):
     has_paraffin = [p for p in pairs if 'paraffin' in p]
     if len(has_paraffin) == 0:
         import chemutils as cu
-        assert {x[1] for x in pairs} == {'no_second_odor'}
+        assert {x[1] for x in pairs} == {NO_ODOR}
         odors = [p[0] for p in pairs]
 
         # TODO change how odorset is identified so it can fail if none should be
@@ -3391,8 +3393,8 @@ def pair_ordering(comparison_df):
             original_name_order = df_to_odor_order(comparison_df)
             o2n = comparison_df[['original_name1','name1']].drop_duplicates(
                 ).set_index('original_name1').name1
-            # TODO maybe don't assume 'no_second_odor' like this (& below)?
-            ordering = {(v, 'no_second_odor'): i for i, v in
+            # TODO maybe don't assume NO_ODOR like this (& below)?
+            ordering = {(v, NO_ODOR): i for i, v in
                 enumerate(o2n[original_name_order])}
         else:
             # TODO also support case where there isn't something we want to
@@ -3405,13 +3407,13 @@ def pair_ordering(comparison_df):
                     else:
                         raise ValueError('multiple mixtures in odors to order')
             assert last is not None, 'expected a mix'
-            ordering[(last, 'no_second_odor')] = len(odors) - 1
+            ordering[(last, NO_ODOR)] = len(odors) - 1
 
             i = 0
             for o in sorted(odors):
                 if o == last:
                     continue
-                ordering[(o, 'no_second_odor')] = i
+                ordering[(o, NO_ODOR)] = i
                 i += 1
     else:
         no_pfo = [p for p in pairs if 'paraffin' not in p]
@@ -4239,13 +4241,13 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     if exists(output_name):
         if if_exists == 'ignore':
             if _debug:
-                print(f'TIFF {output_name} already exists. Doing nothing.')
+                print(f'TIFF {output_name} already exists. doing nothing.')
 
             return None
 
         elif if_exists == 'load':
             if _debug:
-                print(f'TIFF {output_name} exists. Reading it (instead of raw)...',
+                print(f'TIFF {output_name} exists. reading it (instead of raw)...',
                     flush=True, end=''
                 )
 
@@ -4266,14 +4268,14 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
 
         elif if_exists == 'overwrite':
             if _debug:
-                print(f'TIFF {output_name} existed. Overwriting.')
+                print(f'TIFF {output_name} existed. overwriting.')
 
     # TODO maybe also load metadata like fps (especially stuff, as w/ fps, that isn't
     # already baked into the TIFF, assuming the TIFF is saved correctly. so not
     # including stuff like z, c, xy), and print w/ -v flag?
 
     if verbose:
-        print('Reading raw movie...', flush=True, end='')
+        print('reading raw movie...', flush=True, end='')
 
     movie = thor.read_movie(image_dir, discard_channel_b=discard_channel_b)
 
@@ -4282,7 +4284,7 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
 
     if flip_lr:
         if verbose:
-            print('Flipping movie along left/right axis, as requested')
+            print('flipping movie along left/right axis, as requested')
 
         # axis=-1 should be the X axis (in a ([z,], y, x) shape movie), and does
         # visually flip left/right when plotting frames.
@@ -4297,7 +4299,7 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     # currently reproduce this issue
 
     if verbose:
-        print(f'Writing TIFF to {output_name}...', flush=True, end='')
+        print(f'writing TIFF to {output_name}...', flush=True, end='')
 
     write_tiff(output_name, movie)
 
@@ -4309,7 +4311,7 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
         # and we don't want it to become a core pare of a pipeline w/o being aware of
         # it.
         if verbose:
-            print('Reading written TIFF for round trip check...', flush=True, end='')
+            print('reading written TIFF for round trip check...', flush=True, end='')
 
         round_tripped = tifffile.imread(output_name)
         assert np.array_equal(movie, round_tripped)

@@ -12,6 +12,7 @@ import time
 
 from hong2p import util, thor
 from hong2p.roi import ijrois2masks
+from hong2p.olf import NO_ODOR
 
 # TODO test/check that all necessary imports were brought over in refactoring
 # (+ all refs to util.py fns below are prefixed w/ 'util.')
@@ -1116,11 +1117,11 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
         # some of the fly food cases (missing fly food b)
         '''
         odors = pd.DataFrame([split_odor_w_conc(x) for x in
-            (data['odors'] + ['no_second_odor'])
+            (data['odors'] + [NO_ODOR])
         ])
         '''
         odors = pd.DataFrame([split_odor_w_conc(x) for x in
-            (list(set(data['odor_lists'])) + ['no_second_odor'])
+            (list(set(data['odor_lists'])) + [NO_ODOR])
         ])
 
     to_sql_with_duplicates(odors, 'odors')
@@ -1169,7 +1170,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
         # TODO fix db to represent arbitrary mixtures more generally,
         # so this hack isn't necessary
         no_second_odor_id = db_odors.at[
-            ('no_second_odor', 0.0), 'odor_id'
+            (NO_ODOR, 0.0), 'odor_id'
         ]
         odor2_ids = [no_second_odor_id] * len(odor1_ids)
 
@@ -1664,7 +1665,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     name2_unique = presentations_df.name2.unique()
     # TODO should fail earlier (rather than having to wait for cnmf
     # to finish)
-    assert (set(name2_unique) == {'no_second_odor'} or 
+    assert (set(name2_unique) == {NO_ODOR} or 
         set(name2_unique) - set(name1_unique) == {'paraffin'}
     )
     # TODO TODO TODO factor all abbreviation into its own function
@@ -1696,13 +1697,13 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
 
     # TODO rewrite later stuff to avoid need for this.
     # it just adds a bit of confusion at this point.
-    # TODO need to deal w/ no_second_odor in here?
+    # TODO need to deal w/ NO_ODOR in here?
     # So that code detecting which combinations of name1+name2 are
     # monomolecular does not need to change.
     # TODO TODO doesn't chemutils do this at this point? test
     odor2abbrev['paraffin'] = 'paraffin'
     # just so name2 isn't all NaN for now...
-    odor2abbrev['no_second_odor'] = 'no_second_odor'
+    odor2abbrev[NO_ODOR] = NO_ODOR
 
     block_iter = list(range(n_blocks))
 
