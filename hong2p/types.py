@@ -38,6 +38,7 @@ SingleTrialOdors = Sequence[OdorDict]
 # Of length equal to the number of trials in the experiment
 ExperimentOdors = Sequence[SingleTrialOdors]
 
+DataFrameOrSeries = Union[pd.DataFrame, pd.Series]
 # TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray
 # / better check for both?)? maybe in another type?
 # TODO i once was wrapper the args to Union with Type[...]. did that serve a purpose?

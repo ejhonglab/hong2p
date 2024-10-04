@@ -9,6 +9,7 @@ import numpy as np
 from hong2p.olf import solvent_str, sort_odors
 
 
+# TODO move to conftest.py? share w/ test_util.py where i copied some of this to?
 def _make_df(rng, odor1, odor2=None, odors_in_index=True, panel=None):
     odor_keys = ['odor1', 'odor2']
     for_df = {

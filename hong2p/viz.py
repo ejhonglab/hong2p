@@ -809,8 +809,9 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     bigtext_fontsize_scaler=1.5, fontweight=None, figsize=None, dpi=None,
     inches_per_cell=None, extra_figsize=None, transpose_sort_key=None, colorbar=True,
     cbar_shrink=1.0, cbar_kws=None, levels_from_labels=True,
-    allow_duplicate_labels=False, xticks_also_on_bottom: bool = False, _debug=_debug,
-    **kwargs):
+    allow_duplicate_labels=False, xticks_also_on_bottom: bool = False,
+    overlay_values: bool = False, overlay_fmt: str = '.2f',
+    overlay_kws: Optional[Dict[str, Any]] = None, _debug=_debug, **kwargs):
     # TODO doc [v|h]line_group_text
     # TODO check that levels_from_labels means *_level_fn get a single dict as input,
     # not an iterable of dicts (or update doc)
@@ -852,6 +853,12 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         xticks_also_on_bottom: if True, show same xticks on bottom as will be shown on
             top. for very tall plots where we can sometimes more easily reference the
             bottom than the top, when scrolling through.
+
+        overlay_values: if True, overlays text with numerical value for each cell
+
+        overlay_fmt: float format str, used to format `overlay_values` text
+
+        overlay_kws: optional dict of kwargs to pass to overlay `ax.text` calls
 
         **kwargs: passed thru to `matplotlib.pyplot.matshow`
     """
@@ -1259,6 +1266,20 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         )
         ax.set_ylabel(ylabel, fontsize=bigtext_fontsize, **ylabel_kws)
 
+    # TODO test w/ input that is not symmetric
+    # (thought this same code caused issues in one of the al_analysis N-plotting fns.
+    # seemed to work in al_analysis.plot_corr tho)
+    if overlay_values:
+        if overlay_kws is None:
+            overlay_kws = dict()
+
+        # https://stackoverflow.com/questions/20998083
+        for (i, j), c in np.ndenumerate(df):
+            # TODO color visible enough? way to put white behind?
+            # or just use some color distinguishable from whole colormap?
+            ax.text(j, i, f'{c:{overlay_fmt}}', ha='center', va='center', **overlay_kws)
+
+    # TODO also return ax?
     return fig, im
 
 

@@ -6,6 +6,54 @@ import pandas as pd
 
 from hong2p import util
 
+from hong2p.olf import solvent_str
+
+
+# TODO refactor to share w/ test_olf.py (where i copied this from)
+def _make_df(rng, odor1, odor2=None, odors_in_index=True, panel=None):
+    odor_keys = ['odor1', 'odor2']
+    for_df = {
+        'odor1': odor1,
+        # TODO flag to not make with odor2 at all (and test with that)
+        'odor2': [solvent_str] * len(odor1) if odor2 is None else odor2,
+        'delta_f': rng.random(len(odor1)),
+    }
+    if panel is not None:
+        for_df['panel'] = panel
+        odor_keys.insert(0, 'panel')
+
+    df = pd.DataFrame(for_df)
+
+    if odors_in_index:
+        df = df.set_index(odor_keys)
+
+    return df
+
+
+def test_frame_pdist(rng):
+    odors = ['a', 'b', 'c']
+
+    # df1 and df2 will have different randomly-generated data
+    df1 = _make_df(rng, odors)
+    df2 = _make_df(rng, odors)
+
+    df = pd.concat([df1, df2], axis='columns')
+    df.columns = [0, 1]
+    df.columns.name = 'cell'
+
+    # want this fn to behave the same as df.corr() (in terms of having same shape
+    # output, for same shape input)
+    corr1 = df.corr()
+
+    # metric='correlation' is a correlation DISTANCE (1 - corr)
+    corr2 = 1 - util.frame_pdist(df, metric='correlation')
+
+    assert corr1.index.equals(corr2.index)
+    assert corr1.columns.equals(corr2.columns)
+
+    # corr1.equals(corr2) fails because of numerical issues
+    assert np.allclose(corr1, corr2)
+
 
 def test_addlevel():
     df = pd.DataFrame(data=[[0,1,2],[4,5,6]], columns=['a', 'b', 'c'])

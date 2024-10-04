@@ -26,11 +26,12 @@ import pandas as pd
 import yaml
 import matplotlib.pyplot as plt
 import tifffile
+from scipy.spatial.distance import pdist, squareform
 
 from hong2p import matlab, db, thor, olf
 from hong2p.err import NoStimulusFile, TooManyStimulusFiles
 from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
-    DataFrameOrDataArray
+    DataFrameOrDataArray, DataFrameOrSeries
 )
 from hong2p.olf import NO_ODOR
 
@@ -4322,6 +4323,70 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     # automatically handle that conversion + add kwarg to toggle (how to get metadata
     # though...)?
     return movie
+
+
+# TODO test
+def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
+    if_index_mismatch: Optional[str] = None, **kwargs) -> bool:
+    """
+    Args:
+        a|b: inputs to compare. must both be either DataFrames or Series.
+
+        if_index_mismatch: whether to return False (None), warn (and return False), or
+            raise ValueError if either row/column indices do not match
+
+        **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)
+    """
+    def _indices_equal(a, b, axis):
+        # TODO factor this axis checking into fn [decorator?]?
+        assert axis in ('index', 'columns')
+
+        index1 = getattr(a, axis)
+        index2 = getattr(b, axis)
+
+        # TODO need/want to check [index|columns].name[s] ever? Series case?
+        if index1.equals(index2):
+            return True
+
+        if axis == 'index':
+            msg = 'row index mismatch'
+        elif axis == 'columns':
+            msg = 'columns mismatch'
+
+        if if_index_mismatch == 'warn':
+            warnings.warn(msg)
+        elif if_index_mismatch == 'err':
+            raise ValueError(msg)
+
+        return False
+
+    if not _indices_equal(a, b, 'index'):
+        return False
+
+    if isinstance(a, pd.DataFrame):
+        # TODO don't assert (share if_index_mismatch / similar for this -> raise
+        # ValueError?)?
+        assert isinstance(b, pd.DataFrame)
+
+        if not _indices_equal(a, b, 'columns'):
+            return False
+    else:
+        # TODO don't?
+        assert isinstance(a, pd.Series) and isinstance(b, pd.Series)
+
+    return np.allclose(a, b, **kwargs)
+
+
+def frame_pdist(df: pd.DataFrame, *, metric='euclidean') -> pd.DataFrame:
+    """Returns a DataFrame matrix of all pairwise distances between input rows.
+
+    Returns output of same shape as DataFrame.corr() (calculating distances between
+    all pairs of input *rows*), so output rows and columns will be same as input
+    columns.
+    """
+    return pd.DataFrame(squareform(pdist(df.T, metric=metric)), index=df.columns,
+        columns=df.columns
+    )
 
 
 # TODO rename from melt (if that's not the closest-functionality pandas fn)?
