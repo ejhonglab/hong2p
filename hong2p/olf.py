@@ -60,7 +60,9 @@ _hardcoded_odor2abbrev = {
     'hexyl hexanoate': 'hh',
     'furfural': 'fur',
 
-    '1-octen-3-ol': 'oct',
+    '1-octen-3-ol': '1o3ol',
+    # TODO delete
+    #'1-octen-3-ol': 'oct',
 
     'acetone': 'ace',
     'butanal': 'but',
@@ -71,12 +73,13 @@ _hardcoded_odor2abbrev = {
     'ethanol': 'EtOH',
     'isoamyl alcohol': 'IAol',
 
-    # TODO change back when i'm reading to convert / recompute all old analysis
+    # TODO change back when i'm ready to convert / recompute all old analysis
     # intermediates using old ('~kiwi', 'control mix') names
-    'kiwi approx.': '~kiwi',
-    'control mix': 'control mix',
-    #'kiwi approx.': 'kmix',
-    #'control mix': 'cmix',
+    # TODO delete?
+    #'kiwi approx.': '~kiwi',
+    #'control mix': 'control mix',
+    'kiwi approx.': 'kmix',
+    'control mix': 'cmix',
 
     'ethyl lactate': 'elac',
     'methyl acetate': 'ma',
@@ -149,6 +152,10 @@ def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
     name2abbrev: Optional[Dict[str, str]] = None, yaml_path: Optional[Pathlike] = None,
     *, if_abbrev_mismatch: str = 'warn', verbose: bool = False) -> None:
     """Adds name->abbreviation mappings in odor_lists to odor2abbrev input.
+
+    Args:
+        yaml_path: this is used included in some print/warning messages, but is not
+            loaded.
     """
     if name2abbrev is None:
         # changing the global (module level) odor2abbrev by default
@@ -166,6 +173,10 @@ def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
             if name in name2abbrev:
                 prev_abbrev = name2abbrev[name]
                 if abbrev != prev_abbrev:
+                    # TODO print yaml_path instead of 'YAML', when available?
+                    # TODO update '(hardcoded'... part of message (when it is probably
+                    # more often from previous calls of this fn... esp in the
+                    # al_analysis.preprocess_recording context)?
                     msg = (f'abbreviation {abbrev} (YAML) != {prev_abbrev} '
                         '(hardcoded, will be used)'
                     )
@@ -480,6 +491,7 @@ def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to solvent_str (+ clarify in docstring)
     # TODO doctest examples using panel_order+panel2name_order
+    # TODO TODO how to deal w/ odor2 != solvent_str?
     """Sorts DataFrame by odor index/columns.
 
     Args:
