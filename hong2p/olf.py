@@ -123,13 +123,16 @@ def save_odor2abbrev_cache():
 atexit.register(save_odor2abbrev_cache)
 
 
-def abbrev(odor_str: str, *, component_delim: str = component_delim,
-    conc_delim: str = conc_delimiter) -> str:
+def abbrev(odor_str: str, abbrevs: Optional[Dict[str, str]] = None, *,
+    component_delim: str = component_delim, conc_delim: str = conc_delimiter) -> str:
     """Abbreviates odor name in input, when an abbreviation is available.
 
     Args:
         odor_str: can optionally contain concentration information (followed by
         `olf.conc_delimiter`, if so).
+
+        abbrevs: dict mapping from input names to the names (abbreviations) you want. if
+            not passed, the dict `olf.odor2abbrev` is used
     """
     # TODO add tests for each of the 3 cases (doctest?)
 
@@ -138,14 +141,19 @@ def abbrev(odor_str: str, *, component_delim: str = component_delim,
         # dict input)
         odor_strs = [x.strip() for x in odor_str.split(component_delim)]
 
+        # TODO need to pass abbrevs thru? why do i even have this branch, if it's not
+        # gonna recursively call abbrev?
         return format_mix_from_strs(odor_strs, delim=component_delim)
 
     elif conc_delim in odor_str:
         odor = parse_odor(odor_str, require_conc=True)
-        odor['name'] = abbrev(odor['name'])
+        odor['name'] = abbrev(odor['name'], abbrevs=abbrevs)
         return format_odor(odor)
 
-    return odor2abbrev.get(odor_str, odor_str)
+    if abbrevs is None:
+        abbrevs = odor2abbrev
+
+    return abbrevs.get(odor_str, odor_str)
 
 
 def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
@@ -485,7 +493,7 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # groupby, rather find existing consecutive groups and sort within...)
 # TODO also implement something for getting name order from one of the YAML configs?
 # (do the loading in here? prob take either dict or YAML path)
-def sort_odors(df: pd.DataFrame, panel_order: Optional[List[str]] = None,
+def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
     panel2name_order: Optional[Dict[str, List[str]]] = None, if_panel_missing='warn',
     axis: Optional[str] = None, _debug: bool = False, **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
