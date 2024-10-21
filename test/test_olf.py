@@ -92,6 +92,8 @@ def test_sort_odors_with_panel(rng):
     # TODO TODO test w/ panel missing from panel_order (pass panel_order explicitly or
     # leave out panel from panel2name_order)
 
+    # TODO change sort_odors to not warn (about panel not in panel2name_order) if panel
+    # is null (None/NaN)
     input_odor1 = _c(['D', 'C', 'B', 'A', 'J', 'I', 'Y', 'X', 'Y', 'Z'])
     # Checking that null panel get moved to end
     input_panel = [None, None, '1', '1', '0', '0', '2', '2', '3', '3']
@@ -113,11 +115,15 @@ def test_sort_odors_with_panel(rng):
     expected_panel = ['2', '2', '1', '1', '3', '3', '0', '0', None, None]
     expected_odor1 = _c(['X', 'Y', 'A', 'B', 'Y', 'Z', 'I', 'J', 'C', 'D'])
 
-    df = sort_odors(input_df, panel2name_order=panel2name_order)
+    # just setting is_panel_missing=None to not have the warning about panel '0'
+    # missing from panel2name_order (which was intentional)
+    df = sort_odors(input_df, panel2name_order=panel2name_order, if_panel_missing=None)
     odor1 = _odor1(df)
     panel = _panel(df)
     assert naneq(panel, expected_panel)
     assert naneq(odor1, expected_odor1)
+
+    # TODO add test w/ panel=<x> instead of index-level / column specifying <x>
 
 
 def test_sort_odors(rng):

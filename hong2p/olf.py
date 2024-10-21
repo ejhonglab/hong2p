@@ -494,7 +494,8 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # TODO also implement something for getting name order from one of the YAML configs?
 # (do the loading in here? prob take either dict or YAML path)
 def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
-    panel2name_order: Optional[Dict[str, List[str]]] = None, if_panel_missing='warn',
+    panel2name_order: Optional[Dict[str, List[str]]] = None,
+    panel: Optional[str] = None, if_panel_missing='warn',
     axis: Optional[str] = None, _debug: bool = False, **kwargs) -> pd.DataFrame:
     # TODO add doctest examples clarifying how the two columns interact + what happens
     # to solvent_str (+ clarify in docstring)
@@ -511,6 +512,11 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
 
         panel2name_order: maps str panel names to lists of odor name orders, for each.
             If passed, must also pass panel_order.
+
+        panel: to specify panel for input data, if it does not have separate index
+            level(s) / column indicating which panel each odor belongs to. must have a
+            matching key in `panel2name_order`. all data will be assumed to belong to
+            this panel.
 
         if_panel_missing: 'warn'|'err'|None
 
@@ -553,6 +559,9 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
     if panel2name_order is None and panel_order is not None:
         raise ValueError('must pass panel2name_order if supplying panel_order')
 
+    if panel2name_order is None and panel is not None:
+        raise ValueError('must pass panel2name_order if supplying panel')
+
     # TODO want to support panel2name_order=None when panel_order is passed
     # (probably, now that i'm thinking i want [at least the option to] have things run
     # before i fill out panel2name_order for every new thing?)?
@@ -564,6 +573,14 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
                 'instead of name_order'
             )
 
+        if panel is not None:
+            # TODO change handling of panel missing from panel2name_order, to be
+            # consistent w/ if_panel_missing conditional below (+ update doc above)
+            # (see comment above loop over panels below)
+            assert panel in panel2name_order
+            name_order = panel2name_order[panel]
+            return sort_odors(df, name_order=name_order, axis=axis, **kwargs)
+
     kwargs['_debug'] = _debug
 
     def levels_to_sort(index):
@@ -573,7 +590,7 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
         return sorted([k for k in index.names if is_odor_var(k)])
 
     found_odor_multiindex = False
-    # TODO TODO factor out a fn for finding which axis/axes has/have odor info, so i can
+    # TODO factor out a fn for finding which axis/axes has/have odor info, so i can
     # use here and in e.g. al_analysis.sort_odors, where i also addlevel panel info (but
     # i would like it to automatically add on correct axis)
     for axis_name in ('index', 'columns'):
@@ -635,6 +652,10 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
             # (and if i want to allow that...)
             panels = []
 
+            # TODO factor out body of loop to helper fn -> call in panel=<not-None> case
+            # above too (to make missing panel handling same as in here, rather than not
+            # allowing it)
+            #
             # NOTE: at least in pandas 1.2.4, using level= is required to not have null
             # panels dropped (despite dropna=False!), so we need to use levels= kwarg,
             # assuming we want to support null panels.
@@ -653,12 +674,17 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
                         raise
 
                     elif if_panel_missing == 'warn':
-                        # TODO want to consolidate w/ warning odor_index_sort_key will
-                        # also trigger if not in name_order?
-                        warnings.warn(f'{panel=} not in panel2name_order. odor names '
-                            'alphabetical by default. to silence, add to '
-                            'panel2name_order or set if_panel_missing=None to silence.'
-                        )
+                        # TODO if panel null, is there still at least some warning?
+                        # if not, just warn w/ a diff message? separate warning flag to
+                        # control that? or rename this one to be more general?
+                        if not pd.isnull(panel):
+                            # TODO want to consolidate w/ warning odor_index_sort_key
+                            # will also trigger if not in name_order?
+                            warnings.warn(f'{panel=} not in panel2name_order. odor '
+                                'names alphabetical by default. to silence, add to '
+                                'panel2name_order or set if_panel_missing=None to '
+                                'silence.'
+                            )
 
                     elif if_panel_missing is None:
                         pass
