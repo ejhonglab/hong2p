@@ -885,16 +885,14 @@ def load_stimulus_yaml(yaml_path: Pathlike):
 # the same type? does Hashable take any type of arguments? make my own ~mixin of
 # Hashable + Generic(?)
 # TODO support non-hashable input types too?
+# TODO TODO add kwarg to enforce consecutive (also raising some kind of error if not)?
 def remove_consecutive_repeats(odor_lists: Sequence[Hashable]
     ) -> Tuple[List[Hashable], int]:
+    # TODO doc what happens if there is not an equal number of repeats for each thing,
+    # or if not consecutive. error? (two diff cases)
     """Returns a list without any consecutive repeats and int # of consecutive repeats.
 
     Raises ValueError if there is a variable number of consecutive repeats.
-
-    Wanted to also take a list-of-lists-of-dicts, where each dict represents one odor
-    and each internal list represents all of the odors on one trial, but the internal
-    lists (nor the dicts they contain) would not be hashable, and thus cannot work with
-    Counter as-is.
 
     Assumed that all elements of `odor_lists` are repeated the same number of times,
     for each consecutive group of repeats. As long as any repeats are to full
@@ -916,6 +914,11 @@ def remove_consecutive_repeats(odor_lists: Sequence[Hashable]
     >>> without_repeats, n = remove_consecutive_repeats(['a','a','a','b','b'])
     Traceback (most recent call last):
     ValueError: variable number of consecutive repeats
+
+    Wanted to also take a list-of-lists-of-dicts, where each dict represents one odor
+    and each internal list represents all of the odors on one trial, but the internal
+    lists (nor the dicts they contain) would not be hashable, and thus cannot work with
+    Counter as-is.
     """
     # In Python 3.7+, order should be guaranteed to be equal to order first encountered
     # in odor_lists.

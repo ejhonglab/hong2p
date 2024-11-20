@@ -17,7 +17,9 @@ import glob
 import re
 import hashlib
 import functools
-from typing import Optional, Tuple, List, Generator, Sequence, Union, Any
+from typing import (Optional, Tuple, List, Generator, Sequence, Union, Any, Dict,
+    Collection
+)
 import xml.etree.ElementTree as etree
 from urllib.error import URLError
 
@@ -3360,6 +3362,30 @@ def format_keys(date, fly, *other_keys):
     fly = str(int(fly))
     others = [str(k) for k in other_keys]
     return '/'.join([date] + [fly] + others)
+
+
+# TODO also use in al_analysis modeling code that defines a param_str?
+def format_params(params: Dict[str, Any], *, delim: str = ', ', sort: bool = True,
+    exclude_params: Optional[Collection] = None,
+    abbrevs: Optional[Dict[str, str]] = None) -> str:
+    """Formats dict with params into one string.
+
+    Args:
+        sort: whether to sort keys
+    """
+    items = params.items()
+    if sort:
+        items = sorted(items, key=lambda x: x[0])
+
+    if exclude_params is None:
+        exclude_params = tuple()
+
+    if abbrevs is None:
+        abbrevs = dict()
+
+    return delim.join([
+        f'{abbrevs.get(k, k)}={v}' for k, v in items if k not in exclude_params
+    ])
 
 
 # TODO rename to be inclusive of cases other than pairs

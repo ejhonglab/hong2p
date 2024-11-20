@@ -785,6 +785,8 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 # plot, without changing implementation substantially...)
 @constrained_layout
 @callable_ticklabels
+# TODO TODO should be raising a warning by default if [h|v]line_level_fn not producing
+# any divisions
 def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     xtickrotation=None, xlabel=None, ylabel=None, ylabel_rotation=None, ylabel_kws=None,
     cbar_label=None, group_ticklabels=False, vline_level_fn=None,
@@ -940,6 +942,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     # currently calling this (particularly using constrained layout from
     # al_analysis.py)
     if fontsize is None:
+        # TODO delete this... more trouble than it's worth these days
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
     bigtext_fontsize = bigtext_fontsize_scaler * fontsize
@@ -1083,6 +1086,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         # (couldn't assume len is defined if so)
         if xtickrotation is None:
             # TODO delete this guesswork and just back a default probably...
+            # (yea, it's causing TypeErrors w/o clear explanation)
             if all([len(x) == 1 for x in xticklabels]):
                 xtickrotation = 'horizontal'
             else:
