@@ -4352,16 +4352,17 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
 
 
 # TODO test
-def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
-    if_index_mismatch: Optional[str] = None, **kwargs) -> bool:
+# TODO use in al_analysis.py (and other places i'm checking indices equal w/o checking
+# data equal)
+# TODO add kwarg for also checking index name[s]?
+def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
+    if_index_mismatch: Optional[str] = None) -> bool:
     """
     Args:
         a|b: inputs to compare. must both be either DataFrames or Series.
 
         if_index_mismatch: whether to return False (None), warn (and return False), or
             raise ValueError if either row/column indices do not match
-
-        **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)
     """
     def _indices_equal(a, b, axis):
         # TODO factor this axis checking into fn [decorator?]?
@@ -4399,6 +4400,23 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     else:
         # TODO don't?
         assert isinstance(a, pd.Series) and isinstance(b, pd.Series)
+
+    return True
+
+
+# TODO test
+def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
+    if_index_mismatch: Optional[str] = None, **kwargs) -> bool:
+    """
+    Args:
+        a|b: inputs to compare. must both be either DataFrames or Series.
+
+        if_index_mismatch: passed to `pd_indices_equal`
+
+        **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)
+    """
+    if not pd_indices_equal(a, b, if_index_mismatch=if_index_mismatch):
+        return False
 
     return np.allclose(a, b, **kwargs)
 
