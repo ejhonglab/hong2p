@@ -27,7 +27,6 @@ import matplotlib as mpl
 import matplotlib.patheffects as PathEffects
 import matplotlib.transforms as transforms
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.axes_grid1 import ImageGrid
 import seaborn as sns
@@ -136,6 +135,8 @@ def callable_ticklabels(plot_fn):
     wrapped function.
     """
     def _check_bools(ticklabels):
+        # TODO rewrite doc. don't know what i was even doing passing (a single?) str
+        # before...
         """Makes True equivalent to passing str, and False equivalent to None.
         """
         if ticklabels == True:
@@ -171,12 +172,16 @@ def callable_ticklabels(plot_fn):
         if 'xticklabels' in kwargs:
             xticklabels = _check_bools(kwargs['xticklabels'])
             if callable(xticklabels):
-                kwargs['xticklabels'] = col_labels(df, xticklabels)
+                xticklabels = col_labels(df, xticklabels)
+
+            kwargs['xticklabels'] = xticklabels
 
         if 'yticklabels' in kwargs:
             yticklabels = _check_bools(kwargs['yticklabels'])
             if callable(yticklabels):
-                kwargs['yticklabels'] = row_labels(df, yticklabels)
+                yticklabels = row_labels(df, yticklabels)
+
+            kwargs['yticklabels'] = yticklabels
 
         return plot_fn(df, *args, **kwargs)
 
@@ -664,7 +669,7 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
     ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
     row_cluster=True, col_cluster=True, row_linkage=None, col_linkage=None,
     method='average', metric='euclidean', z_score=None, standard_scale=None,
-    **kwargs):
+    return_linkages: bool = False, **kwargs):
     """Same as seaborn.clustermap but allows callable [x/y]ticklabels + adds opts.
 
     Adds `optimal_ordering` kwarg to `scipy.cluster.hierarchy.linkage` that is not
@@ -673,7 +678,6 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
     Also turns off constrained layout for the duration of the seaborn function, to
     prevent warnings + disabling that would otherwise happen.
     """
-
     if row_linkage is not None:
         # seaborn will just show a subset of the data if passed a linkage of a smaller
         # shape. Not sure what happens in reverse case. Either way, I think failing
@@ -759,7 +763,12 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
         )
         clustergrid.ax_heatmap.set_ylabel(ylabel, **ylabel_kws)
 
-    return clustergrid
+    if not return_linkages:
+        return clustergrid
+    else:
+        # can use scipy.cluster.hierarchy.leaves_list to get order of input data from
+        # these linkages
+        return clustergrid, row_linkage, col_linkage
 
 
 # TODO consider calling sns.heatmap internally? or replacing some uses of this w/ that?
@@ -827,6 +836,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     # TODO accept str level names for specifying [v|h]line_levels (maybe rename
     # [v|h]line_level_fn to include this type of input?)
     # TODO + support labelling level names off to side in that case?
+    # TODO am i supporting False for [x|y]ticklabels? how else to hide default
+    # regularly-spaced int ones?
     """
     Args:
         transpose_sort_key (None | function): takes df.index/df.columns and compares
@@ -1000,6 +1011,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         offset = n_repeats / 2 - 0.5
         return without_consecutive_repeats, tick_step, offset
 
+    # TODO skip if either is None?
     # TODO make fontsize / weight more in group_ticklabels case?
     xticklabels, xstep, xoffset = grouped_labels_info(xticklabels)
     yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
@@ -1324,10 +1336,6 @@ def imshow(img, ax=None, title=None, cmap=DEFAULT_ANATOMICAL_CMAP, **kwargs):
 # (maybe use a generic ScalarMappable as
 # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.colorbar.html talks about
 # in this case?) or behave as `plt.colorbar` does in that case (also mentioned in link)
-# TODO shrink=None work same as shrink=1.0 (default), when passed to fig.colorbar?
-# if so, change matshow's default cbar_shrink to None here, and then if it's None, use
-# make_axes_locatable -> .append_axes method to make same size as axes?  if shrink=None
-# not same, maybe implement myself here (would just be slightly more complicated)
 #
 # TODO TODO TODO even when im is passed in, should i check all axes have the same
 # vmin/vmax as im? (or if im not passed, check they are all the same? there should be
@@ -1383,7 +1391,6 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int
         cax: passed to `fig.colorbar`. use for more control of size/shape of colorbar,
             e.g. to make colorbar same height as `Axes`, as in
             https://stackoverflow.com/a/18195921
-            (via `make_axes_locatable` + `append_axes`)
 
         label: label for colorbar
 
@@ -1455,33 +1462,24 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int
             # distances, not up/down.
             borderpad=0,
         )
-        # TODO keep this method or always do inset_axes based approach now?
-        # (delete imports if deleting)
-        '''
-        divider = make_axes_locatable(ax)
-
-        # TODO refactor handling of these defaults to not have to duplicate in doc
-        # (i.e. by having default as kwarg default)?
-        pad = '2%' if pad is None else pad
-
-        cax = divider.append_axes(location, size=size, pad=pad)
-        '''
-
         # TODO fix so cbar label / ticks not cut off (was w/ one row at least, when
         # called from plot_roi_util.py, where i actually didn't want to end up using it)
 
     if cax is None:
         kwargs['ax'] = fig.axes
 
-    if not match_axes_size:
-        # TODO TODO may not want in case cax is passed in (e.g. from ImageGrid output)
-        kwargs['location'] = location
+        # TODO TODO this causing problems in natmix_data/analysis.py usage? (when cax
+        # defined from inset_axes) (moving into `if cax is None` conditional to see)
+        if not match_axes_size:
+            # TODO TODO may not want in case cax is passed in (e.g. from ImageGrid
+            # output)
+            kwargs['location'] = location
 
-        if pad is not None:
-            # in match_axes_size case, we already used pad above in this case, and
-            # shouldn't try using it again in call below. pad=None does not work in
-            # fig.colorbar
-            kwargs['pad'] = pad
+            if pad is not None:
+                # in match_axes_size case, we already used pad above in this case, and
+                # shouldn't try using it again in call below. pad=None does not work in
+                # fig.colorbar
+                kwargs['pad'] = pad
 
     cbar = fig.colorbar(im, cax=cax, **kwargs)
 
