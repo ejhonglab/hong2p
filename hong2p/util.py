@@ -3366,8 +3366,11 @@ def format_keys(date, fly, *other_keys):
 
 # TODO also use in al_analysis modeling code that defines a param_str?
 def format_params(params: Dict[str, Any], *, delim: str = ', ', sort: bool = True,
-    exclude_params: Optional[Collection] = None,
+    exclude_params: Optional[Collection] = None, float_format: str = '#.3g',
     abbrevs: Optional[Dict[str, str]] = None) -> str:
+    # TODO float_format option to print all decimal places, as if no format specifier
+    # was provided? some float_format value equiv to that? otherwise, make optional and
+    # use None for that? even care to support this behavior tho?
     """Formats dict with params into one string.
 
     Args:
@@ -3383,8 +3386,10 @@ def format_params(params: Dict[str, Any], *, delim: str = ', ', sort: bool = Tru
     if abbrevs is None:
         abbrevs = dict()
 
-    return delim.join([
-        f'{abbrevs.get(k, k)}={v}' for k, v in items if k not in exclude_params
+    return delim.join([f'{abbrevs.get(k, k)}=' +
+        # TODO need some other test to also handle the similar numpy type(s)?
+        (f'{v:{float_format}}' if isinstance(v, float) else str(v))
+        for k, v in items if k not in exclude_params
     ])
 
 
@@ -4419,6 +4424,14 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
         return False
 
     return np.allclose(a, b, **kwargs)
+
+
+# TODO use (/delete)
+def subset_levels(index: pd.MultiIndex, subset: List[str]) -> pd.Index:
+    # does pandas really still not have a function like this? am i missing something?
+    # TODO work w/ one level index? change type hint to `-> pd.MultiIndex` if so.
+    # if not, fix
+    return pd.MultiIndex.from_frame(index.to_frame(index=True)[subset])
 
 
 def frame_pdist(df: pd.DataFrame, *, metric='euclidean') -> pd.DataFrame:
