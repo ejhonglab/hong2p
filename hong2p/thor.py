@@ -564,6 +564,12 @@ def read_movie(thorimage_dir: Pathlike, discard_flyback: bool = True,
     assert n_frames == get_thorimage_n_frames(xml), \
         f'{n_frames} != {get_thorimage_n_frames(xml)}'
 
+    # TODO delete?
+    if _debug:
+        print(f'read_movie: initial {data.shape=}')
+        print(f'read_movie: {x=} {y=} {z=} {n_frames=}')
+    #
+
     # TODO how to reshape if there are also multiple channels?
 
     # TODO TODO TODO just delete the data that needed special casing here unless it
@@ -629,7 +635,14 @@ def read_movie(thorimage_dir: Pathlike, discard_flyback: bool = True,
         # TODO test multi-channel handling in this case
         data = np.reshape(data, (n_frames, c, y, x))
 
+    # TODO delete
+    if _debug:
+        print(f'read_movie: after reshaping {data.shape=}')
+    #
+
     if discard_channel_b:
+        # TODO delete?
+        '''
         if _debug:
             from hong2p.viz import image_grid
             import matplotlib.pyplot as plt
@@ -652,13 +665,23 @@ def read_movie(thorimage_dir: Pathlike, discard_flyback: bool = True,
             image_grid(ch1_images)
             image_grid(ch2_images)
             plt.show()
+        '''
 
         slices = [slice(None)] * len(data.shape)
+        # TODO delete
+        if _debug:
+            print(f'read_movie: {slices=}')
+            print(f'read_movie: assuming {slices[-3]=} corresponds to color channel dim')
+        #
 
         # (the channel dimension)
         slices[-3] = 0
 
         data = data[tuple(slices)]
+        # TODO delete
+        if _debug:
+            print(f'read_movie: after slicing to exclude color channel {data.shape=}')
+        #
         assert len(data.shape) == len(slices) - 1, ('channel dimension should no longer'
             'be in shape'
         )

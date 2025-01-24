@@ -60,6 +60,7 @@ setup(
         'ijroi @ git+https://github.com/tom-f-oconnell/ijroi',
 
         'platformdirs',
+        'tqdm',
 
         'ipdb',
 

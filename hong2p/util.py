@@ -17,6 +17,7 @@ import glob
 import re
 import hashlib
 import functools
+from itertools import product
 from typing import (Optional, Tuple, List, Generator, Sequence, Union, Any, Dict,
     Collection
 )
@@ -28,7 +29,9 @@ import pandas as pd
 import yaml
 import matplotlib.pyplot as plt
 import tifffile
+from tifffile import TiffFile
 from scipy.spatial.distance import pdist, squareform
+from tqdm import tqdm
 
 from hong2p import matlab, db, thor, olf
 from hong2p.err import NoStimulusFile, TooManyStimulusFiles
@@ -2662,7 +2665,7 @@ def parent_recording_id(tiffname_or_thorimage_id):
 
 # TODO test this works w/ both Path and str input
 def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
-    dims: Optional[str] = None) -> None:
+    dims: Optional[str] = None, _debug: bool = False) -> None:
     # TODO also handle diff color channels
     """Write a TIFF loading the same as the TIFFs we create with ImageJ.
 
@@ -2680,8 +2683,7 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
 
     if strict_dtype:
         dtype = movie.dtype
-        if not (dtype.itemsize == 2 and
-            np.issubdtype(dtype, np.unsignedinteger)):
+        if not (dtype.itemsize == 2 and np.issubdtype(dtype, np.unsignedinteger)):
 
             # TODO TODO TODO handle casting from float (for df/f images, for example)
             # (how does imagej do this type of casting? i would think it would also need
@@ -2707,12 +2709,12 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
 
     # TODO TODO maybe change so ImageJ considers appropriate dimension the time
     # dimension (both in 2d x T and 3d x T cases)
-    # TODO TODO TODO convert from thor data to appropriate dimension order (w/
+    # TODO convert from thor data to appropriate dimension order (w/
     # singleton dimensions as necessary) (or keep dimensions + dimension order
     # of array, and pass metadata={'axes': 'TCXY'}, w/ the value constructed
     # appropriately? that work w/ imagej=True?) (i dont think it did)
 
-    # TODO TODO TODO since scipy docs say [their version] of tifffile expects
+    # TODO TODO since scipy docs say [their version] of tifffile expects
     # channels in TZCYXS order
     # https://scikit-image.org/docs/0.14.x/api/skimage.external.tifffile.html
 
@@ -2740,29 +2742,42 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
                 f'{len(movie.shape)}. expected 3 (TYX) or 4 (TZYX).'
             )
 
+    # TODO delete?
+    if _debug:
+        print(f'initial: {movie.shape=}')
+    #
+
     n_dims_to_add = len(imagej_dims) - len(movie.shape)
     movie = np.expand_dims(movie, axis=tuple(range(n_dims_to_add)))
 
     new_dims = ''.join([c for c in imagej_dims if c not in dims])
     dims = new_dims + dims
     assert set(dims) == set(imagej_dims)
+    axes = [dims.index(c) for c in imagej_dims]
 
-    movie = np.transpose(movie, axes=[dims.index(c) for c in imagej_dims])
+    # TODO delete?
+    if _debug:
+        print(f'after expand_dims: {movie.shape=}')
+        print(f'{dims=}')
+        print(f'for np.transpose: {axes=}')
+    #
 
-    # TODO TODO is "UserWarning: TiffWriter: truncating ImageJ file" actually
-    # something to mind? for example, w/ 2020-04-01/2/fn as input, the .raw is
-    # 8.3GB and the .tif is 5.5GB (w/ 3 flyback frames for each 6 non-flyback
-    # frames -> 8.3 * (2/3) = ~5.53  (~ 5.5...). some docs say bigtiff is not
-    # supported w/ imagej=True, so maybe that wouldn't be a quick fix if the
-    # warning actually does matter. if not, maybe suppress it somehow?
+    movie = np.transpose(movie, axes=axes)
 
-    # TODO maybe just always do test from test_readraw here?
-    # (or w/ flag to disable the check)
+    # TODO delete?
+    if _debug:
+        print(f'right before imsave: {movie.shape=}')
+    #
 
-    # TODO TODO maybe just don't save w/ imagej=True? suite2p docs (or maybe it was
-    # caiman docs?) seemed to suggest imagej tiffs might have some potentially-relevant
-    # limitations... super specific i know
-    tifffile.imsave(tiff_filename, movie, imagej=True)
+    # some docs (suite2p?) say bigtiff is not supported w/ imagej=True, and switching to
+    # ome=True seemed to produce TIFFs i can roundtrip test w/ low memory TiffFile
+    # pages-based method (but suite2p ScanImageReader based reading doesn't work w/
+    # these ome tiffs, so it defaults to reading w/ tifffile and that was still causing
+    # memory issues for Sam), and w/o the warning about truncating for large inputs.
+    # round trip tests still passing (for at least 2 test files from Sam, one old and
+    # one new) after switching from imagej=True to ome=True
+    # TODO try just removing all kwargs to imsave?
+    tifffile.imsave(tiff_filename, movie, ome=True)
 
 
 def full_frame_avg_trace(movie):
@@ -4309,7 +4324,9 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     if verbose:
         print('reading raw movie...', flush=True, end='')
 
-    movie = thor.read_movie(image_dir, discard_channel_b=discard_channel_b)
+    movie = thor.read_movie(image_dir, discard_channel_b=discard_channel_b,
+        _debug=_debug
+    )
 
     if verbose:
         print(' done', flush=True)
@@ -4333,7 +4350,12 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     if verbose:
         print(f'writing TIFF to {output_name}...', flush=True, end='')
 
-    write_tiff(output_name, movie)
+    # TODO (prob not relevant after no longer saving imagej=True tiffs w/ tifffile) add
+    # option to catch:
+    # `Warning: <tifffile.TiffWriter 'raw.tif'> truncating ImageJ file` and convert to
+    # error? i think there may be a regime where the warning isn't an issue, but also
+    # seems like i may have now found another regime where it is...
+    write_tiff(output_name, movie, _debug=_debug)
 
     if verbose:
         print(' done', flush=True)
@@ -4345,8 +4367,27 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
         if verbose:
             print('reading written TIFF for round trip check...', flush=True, end='')
 
-        round_tripped = tifffile.imread(output_name)
-        assert np.array_equal(movie, round_tripped)
+        with TiffFile(output_name) as tif:
+            # NOTE: currently assuming movie.shape of (t, z, y, x)
+            assert len(movie.shape) == 4
+            nt, nz, ny, nx = movie.shape
+            assert nt > 1
+            assert ny > 1
+            assert nx > 1
+
+            indices = list(product(range(nt), range(nz)))
+
+            # NOTE: len(tif.pages) == 1 in (probably) truncated TIFF w/ that large
+            # George+Sam input (despite len(indices) == 6500 * 12 == 78000)
+            assert len(indices) == len(tif.pages), 'tif likely truncated'
+
+            for idx, page in tqdm(zip(indices, tif.pages), total=len(indices),
+                desc='checking TIFF vs raw frames', unit='XY frames', leave=False):
+
+                frame = movie[idx]
+                frame2 = page.asarray()
+                assert np.array_equal(frame, frame2)
+
         if verbose:
             print(' passed', flush=True)
 
@@ -4409,6 +4450,10 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     return True
 
 
+# TODO add support for dtype mismatch (but where one can be cast to the other)?  maybe
+# also support for cols in diff orders? utility fns (maybe exposed behind verbose kwarg)
+# for printing differences between dtypes / etc? (use new dtypes_equal fn below for
+# this?)
 # TODO test
 def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     if_index_mismatch: Optional[str] = None, **kwargs) -> bool:
@@ -4424,6 +4469,37 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
         return False
 
     return np.allclose(a, b, **kwargs)
+
+
+def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
+    cast: bool = True, verbose: bool = False) -> bool:
+
+    # NOTE: Series do not seem to have dtypes available on a per-key basis anymore. just
+    # has one dtype (and a .dtypes attribute, but still just a scalar, not per-column).
+    # tested by doing .iloc to get a Series from a DataFrame with non-uniform values in
+    # .dtypes.
+
+    if not reorder_cols:
+        assert a.columns.equals(b.columns)
+    else:
+        if not a.columns.equals(b.columns):
+            assert not a.columns.duplicated().any()
+            assert not b.columns.duplicated().any()
+            assert set(a.columns) == set(b.columns)
+            b = b[a.columns]
+
+    if cast and not a.dtypes.equal(b.dtypes):
+        # TODO how will this fail if casting not possible? need to catch and return
+        # False?
+        b = b.astype(a.dtypes)
+
+    equal = a.dtypes.equals(b.dtypes)
+
+    if verbose and not equal:
+        print('mismatching dtypes:')
+        print(a.dtypes[a.dtypes != b.dtypes])
+
+    return equal
 
 
 # TODO use (/delete)
