@@ -103,10 +103,22 @@ def col_labels(df, label_fn):
     return matlabels(df, label_fn, axis='columns')
 
 
-def format_index_row(row: pd.Series, delim: str = ' / '):
+# TODO take dict of level -> formatting str/fn (name `formatters` as
+# DataFrame.to_string())?
+def format_index_row(row: pd.Series, *, delim: str = ' / ',
+    float_format: Optional[str] = None, _debug=False):
     """Takes Series to a str with the concatenated values, separated by `delim`.
     """
-    return delim.join([str(x) for x in row.values])
+    def _format_value(x) -> str:
+        # TODO handle NaN separately (defaulting to not showing?) like na_rep in
+        # DataFrame.to_string()?
+        if isinstance(x, float) and float_format is not None:
+            # assuming float_format is a valid float formatting string (e.g. '.2f')
+            return f'{x:{float_format}}'
+
+        return str(x)
+
+    return delim.join([_format_value(x) for x in row.values])
 
 
 # TODO rename to indicate xarray coersion (/ move that to a separate decorator called
@@ -134,7 +146,7 @@ def callable_ticklabels(plot_fn):
     `<arr>.set_index(<dimension name>=...)` appropriately before passing the array to a
     wrapped function.
     """
-    def _check_bools(ticklabels):
+    def _check_bools(ticklabels, **kwargs):
         # TODO rewrite doc. don't know what i was even doing passing (a single?) str
         # before...
         """Makes True equivalent to passing str, and False equivalent to None.
@@ -142,7 +154,8 @@ def callable_ticklabels(plot_fn):
         if ticklabels == True:
             # TODO TODO probably also default to this in case ticklabels=None
             # (might just need to modify some of the calling code)
-            return format_index_row
+            format_fn = lambda x: format_index_row(x, **kwargs)
+            return format_fn
 
         elif ticklabels == False:
             return None
@@ -163,6 +176,19 @@ def callable_ticklabels(plot_fn):
     @functools.wraps(plot_fn)
     def wrapped_plot_fn(df_or_arr: DataFrameOrDataArray, *args, **kwargs):
 
+        # TODO use inspect to get any kwargs to format_index_row, then pass that subset
+        # of kwargs thru to _check_bools (so i don't have to keep manually including in
+        # this list?)?
+        default_format_fn_kwarg_names = ['delim', 'float_format', '_debug']
+        _pass_thru_to_plot_fn = ['_debug']
+        default_format_fn_kws = {
+            k: kwargs[k] for k in default_format_fn_kwarg_names if k in kwargs
+        }
+        for k in default_format_fn_kws.keys():
+            if k not in _pass_thru_to_plot_fn:
+                kwargs.pop(k)
+        #
+
         if isinstance(df_or_arr, xr.DataArray):
             # Requires df_or_arr to be <=2d
             df = df_or_arr.to_pandas()
@@ -170,14 +196,14 @@ def callable_ticklabels(plot_fn):
             df = df_or_arr
 
         if 'xticklabels' in kwargs:
-            xticklabels = _check_bools(kwargs['xticklabels'])
+            xticklabels = _check_bools(kwargs['xticklabels'], **default_format_fn_kws)
             if callable(xticklabels):
                 xticklabels = col_labels(df, xticklabels)
 
             kwargs['xticklabels'] = xticklabels
 
         if 'yticklabels' in kwargs:
-            yticklabels = _check_bools(kwargs['yticklabels'])
+            yticklabels = _check_bools(kwargs['yticklabels'], **default_format_fn_kws)
             if callable(yticklabels):
                 yticklabels = row_labels(df, yticklabels)
 
@@ -665,8 +691,8 @@ def with_panel_orders(plot_fn, panel2order=None, **fn_kwargs):
 # TODO modify to call matshow internally, rather than relying on seaborn much/at all?
 # (to get the convenience features i added to matshow...) (or at least make another
 # decorator like callable_ticklabels to deal w/ [h|v]line_level_fn matshow kwargs)
-def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=None,
-    ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
+def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
+    ylabel=None, ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
     row_cluster=True, col_cluster=True, row_linkage=None, col_linkage=None,
     method='average', metric='euclidean', z_score=None, standard_scale=None,
     return_linkages: bool = False, **kwargs):
@@ -677,8 +703,14 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 
     Also turns off constrained layout for the duration of the seaborn function, to
     prevent warnings + disabling that would otherwise happen.
+
+    Args:
+        method: default 'average' is same as `sns.clustermap`
+        metric: default 'euclidean' is same as `sns.clustermap`
     """
     if row_linkage is not None:
+        # TODO or does seaborn already have passed row_linkage imply row_cluster=True?
+        row_cluster = True
         # seaborn will just show a subset of the data if passed a linkage of a smaller
         # shape. Not sure what happens in reverse case. Either way, I think failing
         # is safer.
@@ -687,6 +719,7 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
             raise ValueError(f'row_linkage.shape must be {expected_row_linkage_shape}')
 
     if col_linkage is not None:
+        col_cluster = True
         expected_col_linkage_shape = (df.shape[1] - 1, 4)
         if col_linkage.shape != expected_col_linkage_shape:
             raise ValueError(f'col_linkage.shape must be {expected_col_linkage_shape}')
@@ -705,9 +738,22 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
 
         cbar_kws['label'] = cbar_label
 
+    let_seaborn_compute_linkages = False
     if z_score is not None or standard_scale is not None:
-        warnings.warn('disabling optimal_ordering since z_score or standard_scale')
-        optimal_ordering = False
+        assert row_linkage is None and col_linkage is None
+
+        if return_linkages:
+            # TODO unless it's available in the seaborn object, or i want to
+            # re-implement this preprocessing before my own linkage computations?
+            raise NotImplementedError('can not return linkages while z_score or '
+                'standard_scale is True'
+            )
+
+        if optimal_ordering:
+            warnings.warn('disabling optimal_ordering since z_score or standard_scale')
+            optimal_ordering = False
+
+        let_seaborn_compute_linkages = True
 
         kwargs['z_score'] = z_score
         kwargs['standard_scale'] = standard_scale
@@ -715,30 +761,19 @@ def clustermap(df, *, optimal_ordering=True, title=None, xlabel=None, ylabel=Non
     # TODO if z-scoring / standard-scaling requested, calculate before in this case
     # (so it actually affects linkage, as it would w/ seaborn version)
     # (currently just disabling optimal ordering in these cases)
-    if optimal_ordering:
-        def _linkage(df):
-            # TODO way to get this to work w/ some NaNs? worth it?
-            return linkage(df.values, optimal_ordering=True, method=method,
-                metric=metric
-            )
+    def _linkage(df):
+        # TODO way to get this to work w/ some NaNs? worth it?
+        return linkage(df.values, optimal_ordering=optimal_ordering, method=method,
+            metric=metric
+        )
+
+    if not let_seaborn_compute_linkages:
+        if row_cluster and row_linkage is None:
+            row_linkage = _linkage(df)
 
         # This behavior of when to transpose for which linkage is consistent w/ seaborn
         # (I read clustermap implementation)
-
-        if row_cluster:
-            if row_linkage is not None:
-                raise ValueError('can not pass row_linkage if using '
-                    'optimal_ordering=True'
-                )
-
-            row_linkage = _linkage(df)
-
-        if col_cluster:
-            if col_linkage is not None:
-                raise ValueError('can not pass col_linkage if using '
-                    'optimal_ordering=True'
-                )
-
+        if col_cluster and col_linkage is None:
             col_linkage = _linkage(df.T)
 
     # TODO assert len(df) > 0 (both dims?) early on / raise ValueError
@@ -861,7 +896,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         levels_from_labels: if True, `[h|v]line_level_fn` functions use formatted
             `[x|y]ticklabels` as input. Otherwise, a dict mapping index level names to
             values are used. Currently only support drawing labels for each group if
-            this is False.
+            this is False (still true?).
 
         xticks_also_on_bottom: if True, show same xticks on bottom as will be shown on
             top. for very tall plots where we can sometimes more easily reference the
@@ -1269,17 +1304,30 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     # good way to layout text and ensure it doesn't overlap / is seen, as i understand
     # it...
 
+    # TODO change xlabel/ylabel defaults from None->True?
+    # (at least if only one level for each?)
+    def _names_to_label(curr_label: Union[bool, str], index: pd.Index) -> str:
+        if curr_label == True:
+            return '/'.join(index.names)
+
+        assert type(curr_label) is str
+        return curr_label
+
+
     if xlabel is not None:
         assert title is None, 'currently title also uses xlabel in this fn'
         title = xlabel
 
     if title is not None:
+        title = _names_to_label(title, df.columns)
         ax.set_xlabel(title, fontsize=bigtext_fontsize, labelpad=12)
 
     if ylabel is not None:
+        ylabel = _names_to_label(ylabel, df.index)
         ylabel_kws = _ylabel_kwargs(
             ylabel_rotation=ylabel_rotation, ylabel_kws=ylabel_kws
         )
+        # TODO allow ylabel_kws to override bigtext_fontsize (w/ 'fontsize' key)?
         ax.set_ylabel(ylabel, fontsize=bigtext_fontsize, **ylabel_kws)
 
     # TODO test w/ input that is not symmetric
