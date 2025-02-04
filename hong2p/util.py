@@ -2777,7 +2777,17 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
     # round trip tests still passing (for at least 2 test files from Sam, one old and
     # one new) after switching from imagej=True to ome=True
     # TODO try just removing all kwargs to imsave?
-    tifffile.imsave(tiff_filename, movie, ome=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error', category=UserWarning,
+            message=f'.*truncating ImageJ file'
+        )
+        try:
+            tifffile.imsave(tiff_filename, movie, imagej=True)
+        except UserWarning:
+            warnings.warn('saving TIFF with ome=True, because ImageJ TIFF would have '
+                'been truncated'
+            )
+            tifffile.imsave(tiff_filename, movie, ome=True)
 
 
 def full_frame_avg_trace(movie):
