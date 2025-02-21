@@ -157,8 +157,12 @@ def callable_ticklabels(plot_fn):
             format_fn = lambda x: format_index_row(x, **kwargs)
             return format_fn
 
-        elif ticklabels == False:
-            return None
+        # NOTE: this broke ticklabel=False support sns.clustermap has (from
+        # sns.heatmap). currently moved this processing into matshow, which had come to
+        # expect this behavior (but maybe revert the matshow changes alongside when this
+        # code was added?)
+        #elif ticklabels == False:
+        #    return None
 
         # TODO delete after checking code that could be affected to see if it trips.
         #
@@ -910,6 +914,13 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
 
         **kwargs: passed thru to `matplotlib.pyplot.matshow`
     """
+    # added after reverting callable_ticklabels code that would do the same,
+    # which was needed to continue using w/ sns.clustermap
+    if xticklabels == False:
+        xticklabels = None
+    if yticklabels == False:
+        yticklabels = None
+
     # NOTE: if i'd like to also sort on [x/y]ticklabels, would need to move this block
     # after possible ticklabel enumeration, and then assign correctly to index/cols and
     # use that as input to sort_key_val in appropriate instead

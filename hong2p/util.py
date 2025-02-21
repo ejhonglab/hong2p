@@ -933,13 +933,16 @@ def print_block_frames(block_first_frames, block_last_frames):
     print('')
 
 
-def md5(fname):
+def md5(fname: Pathlike) -> str:
     """Calculates MD5 hash on file with name `fname`.
+
+    Should match output of Linux utility md5sum.
     """
     hash_md5 = hashlib.md5()
     with open(fname, 'rb') as f:
         for chunk in iter(lambda: f.read(4096), b''):
             hash_md5.update(chunk)
+
     return hash_md5.hexdigest()
 
 

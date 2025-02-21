@@ -292,6 +292,8 @@ def parse_odor_name(odor_str: str) -> Optional[str]:
     return parts[0].strip()
 
 
+# TODO is require_conc=True actually supported? cause currently parse_odor_name will err
+# w/o that conc_delimiter... change it so that's not the case?
 def parse_odor(odor_str: str, *, require_conc: bool = False) -> dict:
     return {
         'name': parse_odor_name(odor_str),
