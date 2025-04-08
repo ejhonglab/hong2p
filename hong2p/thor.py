@@ -5,14 +5,17 @@ with naming conventions we use for outputs of these programs.
 
 from os import listdir
 from os.path import join, split, sep, exists, isdir, normpath, getmtime, abspath
+# TODO replace w/ stock ElementTree name? no good justification for this renaming
 import xml.etree.ElementTree as etree
-from datetime import datetime
+from xml.etree.ElementTree import Element
+from datetime import datetime, timedelta
 import warnings
 from pprint import pprint, pformat
 import glob
 from itertools import zip_longest
 import functools
 from pathlib import Path
+import re
 from typing import Union, List, Tuple, Optional
 
 import numpy as np
@@ -42,7 +45,7 @@ class NotAllFramesAssigned(Exception):
     pass
 
 
-def xmlroot(xml_path: str) -> etree.Element:
+def xmlroot(xml_path: str) -> Element:
     """Loads contents of xml_path into xml.etree.ElementTree and returns root.
 
     Use calls to <node>.find(<child name>) to traverse down tree and at leaves,
@@ -73,14 +76,14 @@ def get_thorimage_xml_path(thorimage_dir: str) -> str:
 
 
 # TODO does this work?
-PathOrXML = Union[str, etree.Element]
+PathOrXML = Union[str, Element]
 
 
 # TODO TODO now that this behaves as identity if given xml object, actually use that to
 # collapse some of the functions w/ and w/o _xml suffix and allow those of only one type
 # to work with both types of input
 # TODO should i relax typehing to something like PathlikeOrXML or nah?
-def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> etree.Element:
+def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> Element:
     """Takes ThorImage output dir to object w/ XML data.
 
     Returns the input without doing anything if it is already the same type of XML
@@ -88,7 +91,7 @@ def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> etree.Element:
     paths to ThorImage directories or re-use an already loaded representation of its
     XML.
     """
-    if isinstance(thorimage_dir_or_xmlroot, etree.Element):
+    if isinstance(thorimage_dir_or_xmlroot, Element):
         return thorimage_dir_or_xmlroot
 
     thorimage_dir = thorimage_dir_or_xmlroot
@@ -163,7 +166,8 @@ def get_thorimage_n_frames(xml, without_flyback=False, num_volumes=False):
         return n_raw_xy_frames - (n_flyback * n_volumes)
 
 
-def is_fast_z_enabled_xml(xml):
+@thorimage_xml
+def is_fast_z_enabled_xml(xml) -> bool:
     streaming = xml.find('Streaming')
     if streaming.attrib['enable'] != '1':
         # zFastEnable can still be 1 when we aren't doing fast Z (e.g. in some
@@ -173,13 +177,33 @@ def is_fast_z_enabled_xml(xml):
     return streaming.attrib['zFastEnable'] == '1'
 
 
+def _get_zstage(xml):
+    # TODO assert there is only one ZStage object? is it always only primary (assumed
+    # piezo) saved into xml, even if there is a stepper secondary z-axis too?
+    zstage = xml.find('ZStage')
+
+    # TODO replace .find w/ findall(...)[0]?
+    #
+    # yang's test XML she sent has multiple ZStage elements, but only one with name
+    # defined (='ThorZPiezo')
+    assert len([x for x in xml.findall('ZStage') if 'name' in x.attrib]) == 1
+
+    # TODO and if fastZ is enabled, is that sufficient evidence it is piezo?
+    # NO! (at least it's possible to misconfigure downstairs system so that non-piezo
+    # stage is selected for both primary/secondary, and it will still let you collect a
+    # recording with fast Z apparently enabled)
+
+    return zstage
+
+
 @thorimage_xml
 def get_thorimage_z_xml(xml) -> int:
     """Returns number of different Z depths measured in ThorImage recording.
 
     Does NOT include any flyback frames there may be.
     """
-    z = int(xml.find('ZStage').attrib['steps'])
+    zstage = _get_zstage(xml)
+    z = int(zstage.attrib['steps'])
     assert z > 0
     return z
 
@@ -190,14 +214,18 @@ def get_thorimage_z_stream_frames(xml) -> int:
 
     Does NOT include any flyback frames there may be.
     """
-    n = int(xml.find('ZStage').attrib['zStreamFrames'])
+    zstage = _get_zstage(xml)
+    n = int(zstage.attrib['zStreamFrames'])
+    # TODO warn if streaming acqusition mode (or something else to rule out anatomical
+    # recordings) AND is_fast_z_enabled_xml(xml) is False?
     assert n > 0
     return n
 
 
 @thorimage_xml
 def get_thorimage_zstep_um(xml) -> float:
-    return float(xml.find('ZStage').attrib['stepSizeUM'])
+    zstage = _get_zstage(xml)
+    return float(zstage.attrib['stepSizeUM'])
 
 
 # TODO maybe add a function to get expected movie.size from thorimage .raw
@@ -239,11 +267,15 @@ def get_thorimage_n_channels_xml(xml) -> int:
 # (though would need to take into account flyback as well as potentially
 # averaging in order to have this dimension reflect shape of movie (as if the
 # output of this function were `movie.shape` for the corresponding movie))
-def get_thorimage_dims_xml(xml):
+@thorimage_xml
+def get_thorimage_dims(xml):
     """Takes etree XML root object to (xy, z, c) dimensions of movie.
 
     XML object should be as returned by `get_thorimage_xmlroot`.
     """
+    # TODO exclude ~empty LSM tags, when multiple (finding first *should* still work),
+    # like in test data yang sent. attrib['name'] should only be defined for one tag?
+    # TODO factor out LSM tag getting to do this (-> share w/ other fns getting it)
     lsm_attribs = xml.find('LSM').attrib
     x = int(lsm_attribs['pixelX'])
     y = int(lsm_attribs['pixelY'])
@@ -258,13 +290,6 @@ def get_thorimage_dims_xml(xml):
     # may want to add ZStage -> stepSizeUM to TIFF metadata?
 
     return xy, z, c
-
-
-# TODO replace all instances of above w/ calls to this
-@thorimage_xml
-def get_thorimage_dims(xml):
-    # TODO replace this w/ body of above when replace calls to the above
-    return get_thorimage_dims_xml(xml)
 
 
 @thorimage_xml
@@ -296,6 +321,7 @@ def get_thorimage_pixelsize_um(xml):
     return pixelsize_xy
 
 
+# TODO replace w/ wrapped version + remove _xml suffix (and replace all calls similarly)
 def get_thorimage_n_averaged_frames_xml(xml):
     """Returns how many frames ThorImage averaged for a single output frame.
     """
@@ -307,7 +333,21 @@ def get_thorimage_n_averaged_frames_xml(xml):
     if average_mode == 0:
         n_averaged_frames = 1
     else:
+        # TODO this sufficient check that frame averaging broken, or also/only check
+        # z>1?
+        # TODO is there some cutoff version beyond which volumetric frame averaging is
+        # supported for real?
+        # NOTE: i think all thorimage versions we are using don't actually support frame
+        # averaging if recording volumetrically. raw output will have all frames despite
+        # value of this.
         if is_fast_z_enabled_xml(xml):
+            # TODO flag to disable warning?
+            name = get_thorimage_name(xml)
+            warnings.warn(f'{name}: XML indicates frame averaging was configured, '
+                'but our ThorImage versions do not actually support this when fastZ '
+                'is enabled. setting n_averaged_frames=1.'
+            )
+
             n_averaged_frames = 1
         else:
             n_averaged_frames = int(lsm_attribs['averageNum'])
@@ -315,6 +355,7 @@ def get_thorimage_n_averaged_frames_xml(xml):
     return n_averaged_frames
 
 
+# TODO replace w/ wrapped version + remove _xml suffix (and replace all calls similarly)
 def get_thorimage_fps_xml(xml, before_averaging=False):
     # TODO TODO clarify in doc whether this is volumes-per-second or
     # xy-planes-per-second in the volumetric case (latter, i believe, though
@@ -332,7 +373,6 @@ def get_thorimage_fps_xml(xml, before_averaging=False):
 
     if before_averaging:
         return raw_fps
-
     n_averaged_frames = get_thorimage_n_averaged_frames_xml(xml)
 
     saved_fps = raw_fps / n_averaged_frames
@@ -355,6 +395,7 @@ def get_thorimage_fps(thorimage_directory, **kwargs):
     return get_thorimage_fps_xml(xml, **kwargs)
 
 
+@thorimage_xml
 def get_thorimage_n_flyback_xml(xml):
     if is_fast_z_enabled_xml(xml):
         streaming = xml.find('Streaming')
@@ -375,6 +416,376 @@ def get_thorimage_name(xml):
     return xml.find('Name').attrib['name']
 
 
+@thorimage_xml
+def get_thorimage_version(xml):
+    # e.g. '3.0.2016.10131'. no other attribs under Software tag (on this older
+    # ThorImage version, at least)
+    return xml.find('Software').attrib['version']
+
+
+@thorimage_xml
+def get_thorimage_scannertype(xml):
+    lp = xml.find('LightPath').attrib
+    # TODO can there ever be multiple LightPath tags (yes, but first should probably
+    # still work. exclude elements with nothing or only cam enabled. share logic w/
+    # other places i want to get a unique tag)? (test on output from systems w/
+    # camera enabled too?)
+
+    lsm_name = xml.find('LSM').attrib['name']
+
+    if lp['GalvoGalvo'] == '1':
+        scanner = 'GalvoGalvo'
+        assert lsm_name == 'GalvoGalvo'
+    else:
+        assert lp['GalvoResonance'] == '1'
+        scanner = 'GalvoResonance'
+        # NOTE: different str from above. this is the case in at least output from
+        # 4.3.2023.6261 Yang sent me
+        assert lsm_name == 'ResonanceGalvo'
+
+    return scanner
+
+
+# TODO TODO delete this fn / fix. ThorStage does (hopefully) not seem at all to imply we
+# are not using a piezo. probably need to check fast z.
+# TODO TODO what happens if you try to do fast z downstairs w/ just non-piezo zstage? or
+# w/ it as primary? does it work? data issues? slower? ideally, we could tell from xml
+# output, or it wouldn't allow recording...
+@thorimage_xml
+def get_thorimage_zstage_type(xml):
+    # TODO TODO fastZ enabled imply that a ThorStage is actually piezo?
+    # NO! (at least it's possible to misconfigure downstairs system so that non-piezo
+    # stage is selected for both primary/secondary, and it will still let you collect a
+    # recording with fast Z apparently enabled)
+
+    # NOTE: enable=1 set in yang's newer test data, but not referenced in one of mine.
+    zstage = _get_zstage(xml).attrib
+    regtype = zstage['name']
+    assert regtype in ('ThorStage', 'ThorZPiezo')
+    return regtype
+
+
+@thorimage_xml
+# TODO modify to return a third item, a dict w/ any remaining settings relevant to the
+# particular power regulator (e.g. w/ 'offset' for 'non-pockel', or 'minV'/'maxV'/etc
+# for pockel)?
+def get_thorimage_power_regtype_and_level(xml) -> Tuple[str, float]:
+    """Returns `regtype`, `power_level` where `regtype` is either 'pockel'|'non_pockel'
+    """
+    # looks like if there is any <Pockels> tag w/ start="<nonzero>" (presumably ==
+    # stop), then it's a pockel?
+    #
+    # there can still be <PowerRegulator[2]> elements w/ enable="1", just start/stop
+    # should be 0
+
+    # first element should be fine. seems to be only one that has non-zero start/stop
+    # ever, at least in 3 test outputs from diff systems.
+    pockels = xml.find('Pockels').attrib
+    pockel_start = float(pockels['start'])
+    pockel_stop = float(pockels['stop'])
+    # would need to support (and don't think we ever use)
+    assert pockel_start == pockel_stop
+
+    reg = xml.find('PowerRegulator').attrib
+    reg_start = float(reg['start'])
+    reg_stop = float(reg['stop'])
+    # would need to support (and don't think we ever use)
+    assert reg_start == reg_stop
+
+    if pockel_start > 0:
+        assert reg_start == 0
+        # TODO blank percentage? min/maxV? always return these other settings in 3rd
+        # return arg as dict (and use for offset above?)?
+        return 'pockel', pockel_start
+    else:
+        assert reg_start > 0
+        # TODO better str here ('waveplate'? accurate?)?
+        # TODO also return offset?
+        return 'non-pockel', reg_start
+
+
+@thorimage_xml
+def print_xml(xml: Element) -> None:
+    encoding = 'utf-8'
+    print(etree.tostring(xml, encoding).decode(encoding))
+
+
+# TODO unit test
+def _parse_driver_and_indicator(fly_str: str, debug: bool = False
+    ) -> Tuple[Optional[str], Optional[str]]:
+
+    # TODO move a \b from indicator to uas regex? have at start of both? make
+    # optional in one/both?
+    # works, at least for all but negative lookahead within driver
+    #uas_regex = 'u?(?:as)?'
+    uas_regex = '(?:u(?:as)?)'
+    # TODO explicitly exclude u[as] match in driver_regex?
+    # (e.g. so that 'uas-6f' doesn't parse as driver='uas' indicator='6f')
+    driver_regex = r'\b(?P<driver>\w+)\s?-\s?g?(?:al)?4?'
+    # TODO fix? was trying to get "negative lookahead assertion" to work to exclude
+    # uas from matching in driver portion
+    # https://stackoverflow.com/questions/5030041
+    # (but can't get this one to match anything)
+    #driver_regex = f'\\b(?P<driver>^(?!{uas_regex})\\w+)\\s?-\\s?g?(?:al)?4?'
+
+    # TODO fix how we aren't matching e.g. '6f' alone
+    # (or add a hack to try matching w/ just indicator_regex?)
+    #
+    # worked w/ commented uas_regex above
+    #indicator_regex = f'\\b{uas_regex}-?g?(?:camp)?(?P<indicator>[6-9][fms])\\b'
+    indicator_regex = f'{uas_regex}?-?g?(?:camp)?(?P<indicator>[6-9][fms])\\b'
+
+    # making driver_regex optional this way seems to break it... not sure why
+    # fly_str='5 day old pb-Gal4/+;+;UAS-G6f/+ from prat'
+    # ipdb> re.findall(f'{driver_regex}.*{indicator_regex}', fly_str, flags=re.IGNORECASE)
+    # [('pb', '6f')]
+    # ipdb> re.findall(f'(?:{driver_regex}).*{indicator_regex}', fly_str, flags=re.IGNORECASE)
+    # [('pb', '6f')]
+    # ipdb> re.findall(f'(?:{driver_regex})?.*{indicator_regex}', fly_str, flags=re.IGNORECASE)
+    # [('', '6f')]
+
+    # e.g. '5 day old pb-Gal4/+;+;UAS-G6f/+ from prat' -> ('pb', '6f')
+    # ';' and '/' seem to count as a word boundaries (\b)
+    # TODO can i make driver_regex optional? can i do that be wrapping it w/ another
+    # non-matching group here, or can't nest?
+    matches = re.findall(f'{driver_regex}.*{indicator_regex}', fly_str,
+        flags=re.IGNORECASE
+    )
+    driver = None
+    indicator = None
+    if len(matches) > 0:
+        assert len(matches) == 1
+        driver, indicator = matches[0]
+
+        driver = driver.lower()
+        # hack since i couldn't figure out how to exclude uas_regex match from
+        # <driver> group in driver_regex above
+        if re.match(f'^{uas_regex}$', driver):
+            driver = None
+    else:
+        # hack since i couldn't figure out how to get the one large regex to match
+        # indicator strs by themselves
+        matches = re.findall(f'\\b{indicator_regex}', fly_str, flags=re.IGNORECASE)
+        # TODO test this branch
+        if len(matches) > 0:
+            assert len(matches) == 1
+            indicator = matches[0]
+            assert type(indicator) is str
+
+    if indicator is not None:
+        indicator = indicator.lower()
+
+    return driver, indicator
+
+
+@thorimage_xml
+def parse_thorimage_notes(xml, *, debug: bool = False) -> dict:
+    """Returns dict of metadata, with `<key>: <val>` lines and rest parsed separately.
+
+    Args:
+        thorimage_dir_or_xml: path to ThorImage output directory or XML Element
+            containing parsed contents of the corresponding Experiment.xml file.
+
+    Lines not matching the `<key>: <val>` format will be appended together under the
+    'prose' key in the returned dict.
+
+    It is assumed there will be a single line with the YAML path from `olf`, and this
+    line is not included in output (should be handled separately, via
+    `util.stimulus_yaml_from_thorimage`, and would only add noise in dealing with what
+    remains here).
+    """
+    notes = get_thorimage_notes(xml)
+    recording_start_time = get_thorimage_time(xml)
+    # TODO delete
+    debug = True
+    #
+    if debug:
+        print()
+        print('notes:')
+        print(notes)
+
+    # TODO unit test?
+    # TODO rename (_parse_power?)
+    def _match_power(power_str) -> Optional[dict]:
+        m = re.match(r'~?(?P<power_mw>\d+(\.\d*)?)\s?m[wW]\s*(?P<power_note>.*)\s*',
+            power_str
+        )
+        if m is None:
+            return m
+
+        power_dict = m.groupdict()
+        assert ('power_mw' in power_dict and 'power_note' in power_dict
+            and len(power_dict) == 2
+        )
+        assert power_dict['power_mw'] is not None
+        power_dict['power_mw'] = float(power_dict['power_mw'])
+        return power_dict
+
+    data = dict()
+    non_dict_lines = []
+    n_yaml_parts = 0
+    n_power_lines = 0
+    # stimulus_yaml_from_thorimage uses .split() instead of .splitlines(), so just want
+    # to check that I never actually had any experiments where a line has a YAML path
+    # AND any other non-whitespace chars. would be simpler to just use .splitlines() in
+    # both places, if checks below never fail.
+    for line in notes.splitlines():
+        line = line.strip()
+
+        if line.endswith('.yaml'):
+            n_yaml_parts += 1
+            # should be the single line containing yaml_path (the path parsed by
+            # hong2p.util.stimulus_yaml_from_thorimage)
+            continue
+
+        parts = line.split()
+        # see comment above if this ever fails
+        assert not any(p.strip().endswith('.yaml') for p in parts)
+
+        p0 = parts[0]
+        # seems this should be behavior of <str>.strip() no matter the amount of
+        # whitespace
+        assert p0 == p0.strip()
+
+        if not p0.endswith(':'):
+            # TODO may need to make parseing more complex (or just use a regex that
+            # allows whitespace between key and ':' or something?), if this fails
+            assert ':' not in line
+
+            power_dict = _match_power(line)
+            if power_dict:
+                # TODO refactor to share?
+                assert not any(k in data for k in power_dict.keys())
+                data.update(power_dict)
+                n_power_lines += 1
+                #
+                continue
+
+            non_dict_lines.append(line)
+            continue
+
+        assert len(p0) > 1
+        key = p0[:-1]
+        value = ' '.join(parts[1:])
+
+        assert key != 'prose'
+
+        if key == 'power':
+            power_dict = _match_power(value)
+            # TODO refactor to share?
+            try:
+                assert power_dict is not None, f'{value=}'
+            except AssertionError:
+                warnings.warn(f"could not parse power from '{value}'")
+                # TODO or put this whole line into power_note instead?
+                non_dict_lines.append(line)
+                continue
+
+            assert not any(k in data for k in power_dict.keys())
+            data.update(power_dict)
+            n_power_lines += 1
+            #
+            continue
+
+        assert key not in data
+        data[key] = value
+
+    data['prose'] = '\n'.join(non_dict_lines)
+
+    # TODO or maybe <= 1 (if some recordings don't have this path, which should be true
+    # for anatomical recording)
+    assert n_yaml_parts == 1
+
+    # not guaranteed. should ffill from previous recordings on same fly.
+    assert n_power_lines <= 1
+
+    if 'fly' in data:
+        # TODO also support strings like this:
+        # 'pb>6f (same lines/genetics as all recent experiments), ecclosed 11/14. from
+        # sam.'
+        # TODO TODO why current date parsing not working w/ ecclosed 11/14?
+
+        # example strings to match:
+        # '5 day old pb-Gal4/+;+;UAS-G6f/+ from prat'
+        fly_str = data['fly']
+
+        # TODO is this guaranteed to match largest number of chars for n_days_old that
+        # would satisfy \d+? using search (vs match) in case i didn't always say this at
+        # start of fly line value
+        m = re.search(r'\b(?P<n_days_old>\d+)\s*days?(?:\sold)?\b', fly_str)
+        if m:
+            assert m['n_days_old'] is not None
+            n_days_old = int(m['n_days_old'])
+            # see comment below on why i'm assuming it starts from 1
+            assert n_days_old >= 1
+            # TODO delete
+            #assert n_days_old >= 0
+            assert 'n_days_old' not in data
+            data['n_days_old'] = n_days_old
+            if debug:
+                print(f'{n_days_old=}')
+        else:
+            if debug:
+                print('no match for n_days_old!')
+
+            # TODO similar post-processing of 'odors' value (look for date)?
+            # example odor strings to match:
+            # (actually do i want to match this? can i always rely on just getting first
+            # date?)
+            # '3/27 except few diagnostics changed on 4/11'
+
+            # TODO should there need to be an 'ec[c]losed ' prefix? is there always tho?
+            # 'pb-Gal/x;;U-G6f/+ eclosed 4/23'
+            matches = re.findall(r'\b(?P<month>\d\d?)/(?P<day>\d\d?)\b', fly_str)
+            if matches:
+                assert all(len(m) == 2 for m in matches)
+
+                # only one date should be in line
+                assert len(matches) == 1
+                month, day = matches[0]
+
+                # TODO warn if recording_start_time is in first few weeks of year?
+                eclosion_date = datetime(year=recording_start_time.year,
+                    month=int(month), day=int(day)
+                )
+
+                # TODO TODO are flies considered 1 or 0 days old on eclosion day?
+                # (let's operate under assumption it's 1 for now)
+                # what have i been doing before? what does prat think? what's min of
+                # n_days_old values parsed directly in branch above?
+                curr = recording_start_time - timedelta(hours=6)
+
+                # this seems to be essentially taking floor, since seconds/etc fields
+                # can be >=0, but are ignored by using .days (e.g. so any time on 4/26
+                # is still 3 days after eclosion_date=4/23)
+                n_days_old = (curr - eclosion_date).days
+                data['n_days_old'] = n_days_old
+                if debug:
+                    print(f'{eclosion_date=}')
+                    print(f'{curr=}')
+                    print(f'{n_days_old=}')
+
+            else:
+                if debug:
+                    print('no match for eclosion_date!')
+
+        driver, indicator = _parse_driver_and_indicator(fly_str, debug=debug)
+        assert 'driver' not in data
+        data['driver'] = driver
+        assert 'indicator' not in data
+        data['indicator'] = indicator
+
+    # there should also not be any whitespace-only string values at this point
+    data = {k: v if v != '' else None for k, v in data.items()}
+
+    if debug:
+        print('data:')
+        pprint(data)
+        print()
+
+    return data
+
+
 def load_thorimage_metadata(thorimage_dir: Pathlike, return_xml=False):
     """Returns (fps, xy, z, c, n_flyback, raw_output_path) for ThorImage dir.
 
@@ -389,7 +800,7 @@ def load_thorimage_metadata(thorimage_dir: Pathlike, return_xml=False):
     # volumes-per-second in that case here, and return that for fps. just need
     # to check it doesn't break other stuff.
     fps = get_thorimage_fps_xml(xml)
-    xy, z, c = get_thorimage_dims_xml(xml)
+    xy, z, c = get_thorimage_dims(xml)
 
     n_flyback_frames = get_thorimage_n_flyback_xml(xml)
     if z == 1:
@@ -560,7 +971,7 @@ def read_movie(thorimage_dir: Pathlike, discard_flyback: bool = True,
     # refers to XY frames there too.
     # TODO test this assertion on all data, though perhaps via a new function
     # get get expected n_frames from size of .raw file + other metadata
-    # (mentioned in comments above get_thorimage_dims_xml)
+    # (mentioned in comments above get_thorimage_dims)
     assert n_frames == get_thorimage_n_frames(xml), \
         f'{n_frames} != {get_thorimage_n_frames(xml)}'
 

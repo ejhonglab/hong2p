@@ -826,6 +826,7 @@ def panel_odor_orders(df: pd.DataFrame,
     return panel2order
 
 
+# TODO type hint return type (just List[int], or List[List[int]]?)
 def yaml_data2pin_lists(yaml_data: dict):
     """
     Pins used as balances can be part of these lists despite not having a corresponding
@@ -834,7 +835,7 @@ def yaml_data2pin_lists(yaml_data: dict):
     return [x['pins'] for x in yaml_data['pin_sequence']['pin_groups']]
 
 
-def yaml_data2odor_lists(yaml_data: dict, sort=True):
+def yaml_data2odor_lists(yaml_data: dict, *, sort: bool = True):
     # TODO doctest example showing within-trial sorting
     """Returns a list-of-lists of dictionary representation of odors.
 

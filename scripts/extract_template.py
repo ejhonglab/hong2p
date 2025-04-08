@@ -290,7 +290,7 @@ def main():
             xmlroot = thor.get_thorimage_xmlroot(thorimage_dir)
             row_index2thorimage_xmlroots[row.Index] = xmlroot
 
-            xy_shape, _, _ = thor.get_thorimage_dims_xml(xmlroot)
+            xy_shape, _, _ = thor.get_thorimage_dims(xmlroot)
             row_index2frame_shape[row.Index] = xy_shape
 
             if xy_shape in movie_xy_shape_counts:

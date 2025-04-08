@@ -1073,7 +1073,7 @@ class Segmentation(QWidget):
 
         row = self.current_segrun_widget.data(0, Qt.UserRole)
         tiff = row.input_filename
-        xy, z, _ = thor.get_thorimage_dims_xml(thor.tif2xml_root(tiff))
+        xy, z, _ = thor.get_thorimage_dims(thor.tif2xml_root(tiff))
         if z is None:
             frame_shape = xy
         else:
