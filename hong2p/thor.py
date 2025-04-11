@@ -596,9 +596,6 @@ def parse_thorimage_notes(xml, *, debug: bool = False) -> dict:
     """
     notes = get_thorimage_notes(xml)
     recording_start_time = get_thorimage_time(xml)
-    # TODO delete
-    debug = True
-    #
     if debug:
         print()
         print('notes:')

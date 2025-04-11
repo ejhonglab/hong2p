@@ -692,6 +692,7 @@ def shorten_stimfile_path(stimfile_path, stimfile_dir: Optional[Pathlike] = None
     return stimfile_path[(len(str(stimfile_dir)) + 1):]
 
 
+# TODO check no code would be broken by swapping output of this to Path
 def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
     """Returns absolute path to stimulus YAML file from note field in ThorImage XML.
 
@@ -703,14 +704,18 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
             If not passed, `stimfile_root()` is used.
 
     Raises:
-        IOError if stimulus file directory does not exist
         TooManyStimulusFiles if multiple substrings of note field end with .yaml
         NoStimulusFile if no substrings of note field end with .yaml
+        IOError if stimulus file directory does not exist
 
     XML should contain a manually-entered path relative to where the olfactometer code
     that generated it was run, but assuming it was copied to the appropriate location
     (directly under `stimfile_dir` if passed or `stimfile_root()` otherwise), this
     absolute path should exist.
+
+    My typical workflow is to paste this path into the ThorImage note field, while doing
+    the experiment. `olf` will automatically populate clipboard with this path, when
+    running the olfactometer program, to facilitate this.
     """
     stimfile_dir = _stimfile_dir(stimfile_dir)
 
@@ -722,6 +727,9 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
         name = thorimage_dir_or_xml
 
     yaml_path = None
+    # TODO ever any cases where i have other things on the line w/ yaml path?
+    # i.e. can i use splitlines() instead? might make easier to share parse-ing of this
+    # part w/ more general notes->dict parsing fn
     parts = notes.split()
     for p in parts:
         p = p.strip()
@@ -738,7 +746,9 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
             'note field'
         )
 
-    assert yaml_path is not None
+    # Since paths copied/pasted within Windows may have '\' as a file
+    # separator character.
+    yaml_path = yaml_path.replace('\\', '/')
 
     # TODO change data that has this to expand paths + delete this hack
     if '""' in yaml_path:
@@ -746,24 +756,34 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
         old_yaml_path = yaml_path
         yaml_path = yaml_path.replace('""', date_str)
 
-        warnings.warn(f'{name}: replacing of stimulus YAML path of {old_yaml_path} '
+        warnings.warn(f'{name}: replacing stimulus YAML path of {old_yaml_path} '
             f'with {yaml_path}'
         )
     #
 
-    # Since paths copied/pasted within Windows may have '\' as a file
-    # separator character.
-    yaml_path = yaml_path.replace('\\', '/')
-
+    # TODO delete? what's reason for this branch? at least doc
     if not exists(join(stimfile_dir, yaml_path)):
         prefix, ext = splitext(yaml_path)
+        # TODO why :3? include reason in comment / rewrite. depend on a particular yaml
+        # filename format i assume (that might sometimes be broken for manual ones tho,
+        # right?)?
         yaml_dir = '_'.join(prefix.split('_')[:3])
         subdir_path = join(stimfile_dir, yaml_dir, yaml_path)
+        # TODO delete
+        print()
+        print(f'{stimfile_dir=}')
+        print(f'{yaml_path=}')
+        print(f'{prefix=}')
+        print(f'{yaml_dir=}')
+        print(f'{subdir_path=}')
+        print('doc reason for this branch')
+        #import ipdb; ipdb.set_trace()
+        #
         if exists(subdir_path):
             yaml_path = subdir_path
+    #
 
     yaml_abspath = join(stimfile_dir, yaml_path)
-
     if not exists(yaml_abspath):
         raise IOError(f'{name} references {yaml_path}, but it did not '
             f'exist under stimfile_dir={stimfile_dir}'

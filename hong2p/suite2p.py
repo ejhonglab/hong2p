@@ -300,7 +300,10 @@ def suite2p_params(thorimage_dir: Pathlike):
 def print_suite2p_params(thorimage_dir, print_movie_shape=False):
     ops = suite2p_params(thorimage_dir)
     print('nplanes:', ops['nplanes'])
+
+    # this should be volumetric fps (in Hz)
     print(f'fs: {ops["fs"]:.2f}')
+
     print('tau: 0.7 (recommended for GCaMP6f)')
 
     if print_movie_shape:
