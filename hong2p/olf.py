@@ -1023,6 +1023,24 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series, Dict[str, An
         return solvent_str
 
 
+mix_col = 'odor'
+def add_mix_str_index_level(df: pd.DataFrame, mix_col: str = mix_col) -> pd.DataFrame:
+    mix_strs = []
+    for index_row_tuple in df.index:
+        index_row_dict = dict(zip(df.index.names, index_row_tuple))
+        mix_str = format_mix_from_strs(index_row_dict)
+        mix_strs.append(mix_str)
+
+    for_odor_index = df.index.to_frame(index=False)
+    assert mix_col not in for_odor_index.columns
+    for_odor_index[mix_col] = mix_strs
+    odor_index = pd.MultiIndex.from_frame(for_odor_index)
+
+    df = df.copy()
+    df.index = odor_index
+    return df
+
+
 def format_odor_list(odor_list: SingleTrialOdors, *, delim: str = component_delim,
     **kwargs) -> str:
     """Takes list of dicts representing odors for one trial to pretty str.
