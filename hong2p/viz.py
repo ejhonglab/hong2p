@@ -7,7 +7,7 @@ from os.path import join, exists
 import time
 import functools
 import sys
-from typing import Dict, List, Tuple, Optional, Any, Union, Type
+from typing import Dict, List, Tuple, Optional, Any, Union, Type, Callable
 # TODO delete pprint import
 from pprint import pformat, pprint
 # TODO replace w/ logging.warning?
@@ -810,6 +810,144 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
         return clustergrid, row_linkage, col_linkage
 
 
+# TODO appropriate type hints for x and y? Sequence[str]?
+def add_group_labels_and_lines(ax: Axes, x=None, *, y=None, lines: bool = True,
+    labels: bool = True, formatter: Optional[Callable] = None,
+    label_offset: Optional[float] = None, label_name: Optional[str] = None,
+    label_name_offset: float = 3, linewidth=0.5, linecolor='k', _debug=False, **kwargs
+    ) -> None:
+    """
+    Args:
+        **kwargs: passed thru to `ax.text` calls for group text labels
+    """
+    # TODO validation on length of x/y? what to check against? doc, if i come up
+    # with something (check against [x|y]ticklabels, from Axes [assuming already set]?)
+
+    # TODO maybe allow specifying both in one call?
+    if x is not None and y is not None:
+        raise ValueError('must only specify x OR y')
+
+    if x is not None:
+        levels = x
+        line_fn = ax.axvline
+        # TODO modify so it's above axes, not below (2024-06-05: still relevant?)
+        group_text_coords = (ax.transData, ax.transAxes)
+
+        if label_offset is None:
+            label_offset = 0.08
+
+    elif y is not None:
+        levels = y
+        line_fn = ax.axhline
+        group_text_coords = (ax.transAxes, ax.transData)
+
+        if label_offset is None:
+            label_offset = 0.12
+    else:
+        raise ValueError('must specify either x/y')
+
+    if not (lines or labels):
+        raise ValueError('at least one of lines/labels must be True')
+
+    # TODO lines showing extent that each text label applies to?
+    # (e.g. parallel to labelled axis, with breaks between levels? might crowd fly
+    # labels less than separator lines perpendicular to axis)
+    # TODO make linewidth a constant fration of cell width/height (whichever is
+    # appropriate) (at least by default) ~(figsize[i] / df.shape[i])?
+    # TODO what is default linewidth here anyway? unclear. 1?
+    # TODO default to only formatting together index levels not used by
+    # [h|v]line_level_fn (possible?), when ?
+
+    # TODO modify const_ranges to have include_val=True behavior be default?
+    # (+ delete switching flag, if so)
+    ranges = util.const_ranges(levels, include_val=True)
+
+    # If all the ranges have the same start and stop, all groups are length 1, and
+    # the lines would just add visual noise, rather than helping clarify boundaries
+    # between groups.
+    if lines and any([x[-1] > x[-2] for x in ranges]):
+        line_positions = [x[-1] + 0.5 for x in ranges[:-1]]
+        # TODO if we have a lot of matrix elements, may want to decrease size of
+        # line a bit to not approach size of matrix elements...
+        for v in line_positions:
+            # TODO delete try/except. not sure i can repro this error...
+            try:
+                # 'w'=white. https://matplotlib.org/stable/tutorials/colors/colors.html
+                line_fn(v, linewidth=linewidth, color=linecolor)
+
+            except np.linalg.LinAlgError as err:
+                import ipdb; ipdb.set_trace()
+
+    # TODO allow separating group text from levels? accept yet another fn mapping
+    # from [v|h]line_levels (dict level name -> value form?) to formatted strs?
+    if labels:
+        trans = transforms.blended_transform_factory(*group_text_coords)
+
+        if x is not None:
+            def text_fn(label, start, stop):
+                ax.text(np.mean((start, stop)), 1 + label_offset, label,
+                    ha='center', va='bottom', transform=trans, **kwargs
+                )
+
+        elif y is not None:
+            def text_fn(label, start, stop):
+                # TODO compute group_label_offset? way to place the text using
+                # constrained layout?
+                # TODO possible to get this work w/ constrained layout /
+                # bbox_inches='tight' (work w/ either as-is?)?
+                # TODO what happens is label is not str? does nothing? why not erring?
+                # or is it not displaying for another reason? (converting via str didn't
+                # seem to change anything...)
+                ax.text(-label_offset, np.mean((start, stop)), label,
+                    # Right might make consistent spacing wrt line indicating extent of
+                    # group easier to see.
+                    ha='right',
+                    # for 9x9 input at least, va='center' was better than without
+                    # (though still seemed *slightly* above corresponding ticklabel)
+                    va='center',
+                    transform=trans, **kwargs
+                )
+                # TODO TODO how is above text seemingly not clipped and in layout, but
+                # not showing up after constrained layout, and getting that warning:
+                # ./test_matshow.py:41: UserWarning: constrained_layout not applied
+                # because axes sizes collapsed to zero.  Try making figure larger or
+                # axes decorations smaller.
+                # ipdb> text.get_in_layout()
+                # True
+                # ipdb> text.get_clip_on()
+                # False
+                # TODO TODO can i register (some restricted version of?)
+                # warnings.filterwarnings('error',
+                #     message='constrained_layout not applied.*'
+                # )
+                # here? (to ensure text is either fully shown or there is an error)
+        else:
+            assert False
+
+        if _debug:
+            # NOTE: may need to tweak this offset if current value is causing
+            # constrained layout warning for a given call
+            print(f'{label_offset=}')
+            print('group labels:')
+
+        for label, start, stop in ranges:
+            # assuming const_ranges index output wouldn't change by formatting
+            if formatter is not None:
+                label = formatter(label)
+
+            text_fn(label, start, stop)
+
+            if _debug:
+                print(f'{label=} ({start=}, {stop=})')
+
+        if label_name is not None:
+            # TODO ideally allow configuring such that it could also be centered on
+            # relevant axis (rather than off to one side), but then would have to place
+            # in a way not relying on text_fn... (or would at least need to modify
+            # text_fns)
+            text_fn(label_name, -label_name_offset, 1 - label_name_offset)
+
+
 # TODO consider calling sns.heatmap internally? or replacing some uses of this w/ that?
 # TODO may want to add xlabel / ylabel kwargs to be consistent w/ my clustermap wrapper,
 # but then again i'm currently using xlabel for a "title" here...
@@ -838,7 +976,7 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
 def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     xtickrotation=None, xlabel=None, ylabel=None, ylabel_rotation=None, ylabel_kws=None,
     cbar_label=None, group_ticklabels=False, vline_level_fn=None,
-    hline_level_fn=None, vline_group_text=False, hline_group_text=False,
+    hline_level_fn=None, vline_group_text: bool = False, hline_group_text: bool = False,
     # TODO combine [h|v]line_group_text into these, using True for no formatting?
     # (or these into former...)
     vgroup_formatter=None, hgroup_formatter=None,
@@ -858,8 +996,8 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     group_fontweight=None, linewidth=0.5, linecolor='w', ax=None, fontsize=None,
     bigtext_fontsize_scaler=1.5, fontweight=None, figsize=None, dpi=None,
     inches_per_cell=None, extra_figsize=None, transpose_sort_key=None, colorbar=True,
-    cbar_shrink=1.0, cbar_kws=None, levels_from_labels=True,
-    allow_duplicate_labels=False, xticks_also_on_bottom: bool = False,
+    cbar_shrink=1.0, cbar_kws=None, levels_from_labels: bool = True,
+    allow_duplicate_labels: bool = False, xticks_also_on_bottom: bool = False,
     overlay_values: bool = False, overlay_fmt: str = '.2f',
     overlay_kws: Optional[Dict[str, Any]] = None, _debug=_debug, **kwargs):
     # TODO doc [v|h]line_group_text
@@ -1027,31 +1165,14 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     if group_fontsize is None:
         group_fontsize = bigtext_fontsize
 
-    # TODO docstring + type hints for this (+ factor to util?)
-    def _index_entry_dict(index: pd.Index, index_entry: Any) -> Dict[str, Any]:
-        """Returns dict of index names zipped with values in index_entry.
-        """
-        # If the index is a MultiIndex, iterating over it should yield tuples of the
-        # level values, otherwise we'll convert to a tuple so zipping is the same.
-        if type(index_entry) is not tuple:
-            # only non-MultiIndex index should have non-tuple index_entry (otherwise
-            # wrong index may have been passed in)
-            # https://stackoverflow.com/questions/21081042
-            assert not isinstance(index, pd.MultiIndex)
-            index_entry = (index_entry,)
-
-        names = index.names
-        # if these mismatch, that implies index passed in is not where index_entry came
-        # from (though the lengths could also happen to match if wrong index was passed
-        # in).
-        assert len(names) == len(index_entry), f'{names=}\n{index_entry=}'
-
-        return dict(zip(names, index_entry))
-
+    # TODO delete?
     def grouped_labels_info(labels):
         if not group_ticklabels or labels is None:
             return labels, 1, 0
 
+        # TODO TODO delete remove_consecutive_repeats stuff (replacing w/
+        # util.const_ranges based code, which i'm already using below, and which [unlike
+        # this] supports variable numbers of repeats)?
         without_consecutive_repeats, n_repeats = remove_consecutive_repeats(labels)
         tick_step = n_repeats
         offset = n_repeats / 2 - 0.5
@@ -1061,22 +1182,55 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     # TODO make fontsize / weight more in group_ticklabels case?
     xticklabels, xstep, xoffset = grouped_labels_info(xticklabels)
     yticklabels, ystep, yoffset = grouped_labels_info(yticklabels)
+    #
+
+    if _debug and (hline_level_fn is not None or vline_level_fn is not None):
+        print(f'{levels_from_labels=}')
 
     hline_levels = None
-    if hline_level_fn is not None and not levels_from_labels:
-        # TODO need to handle case where we might transpose (e.g. via
-        # transpose_sort_key?)
-        hline_levels =[
-            hline_level_fn(_index_entry_dict(df.index, x)) for x in df.index
-        ]
+    if hline_level_fn is not None:
+        if _debug:
+            print(f'{hline_level_fn=}')
+
+        if not levels_from_labels:
+            # TODO need to handle case where we might transpose (e.g. via
+            # transpose_sort_key?) (or maybe delete support for transpose_sort_key?)
+            hline_levels = [hline_level_fn(x) for x in util.index2dict_list(df.index)]
+        else:
+            hline_levels = [hline_level_fn(x) for x in yticklabels]
+
+        if _debug:
+            print('hline_levels:')
+            pprint(hline_levels)
 
     vline_levels = None
-    if vline_level_fn is not None and not levels_from_labels:
-        vline_levels =[
-            vline_level_fn(_index_entry_dict(df.columns, x)) for x in df.columns
-        ]
+    if vline_level_fn is not None:
+        if _debug:
+            print(f'{vline_level_fn=}')
 
-    def set_ticklabels(ax, x_or_y, labels, *args, **kwargs):
+        if not levels_from_labels:
+            vline_levels = [vline_level_fn(x) for x in util.index2dict_list(df.columns)]
+        else:
+            vline_levels = [vline_level_fn(x) for x in xticklabels]
+
+        if _debug:
+            print('vline_levels:')
+            pprint(vline_levels)
+
+    # TODO TODO factor out? what all do i actually want tho...
+    # TODO TODO need to combine into one fn that also adds group labels (so we have
+    # access to group labels for allow_duplicate_labels=False checks)
+    #
+    # TODO allow specifying `x=labels` (in kwargs) instead of `x_or_y='x', labels`
+    # (and same for y, if so)?
+    # TODO type hint for labels? Sequence[str]?
+    def set_ticklabels(ax: Axes, x_or_y: str, labels, *args,
+        # TODO delete allow_duplicate_labels here if i don't end up factoring this inner
+        # fn out of matshow
+        allow_duplicate_labels: bool = False, **kwargs) -> None:
+
+        assert x_or_y in ('x', 'y')
+
         # TODO allow_duplicate_labels='warn' option, and make that default?
         if not allow_duplicate_labels:
             # TODO refactor?
@@ -1091,9 +1245,10 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                 to_check = labels
                 err_msg = f'duplicate {x_or_y}ticklabels'
 
-                # TODO TODO just make [v|h]line_group_text=True the default in these
-                # cases, rather than erring, no? there aren't even duplicates here are
-                # there?
+                # TODO TODO only print something like this if doing so would actually
+                # remove duplicates?
+                # TODO just make [v|h]line_group_text=True the default in these cases,
+                # rather than erring, no? there aren't even duplicates here are there?
                 # TODO at least dont include these parts of the err msg if
                 # [v|h]line_group_text are already True...
                 if (x_or_y == 'x' and vline_level_fn is not None and
@@ -1120,7 +1275,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                 err_msg += 'you may also set allow_duplicate_labels=True'
                 raise ValueError(err_msg)
 
-        assert x_or_y in ('x', 'y')
+
         if x_or_y == 'x':
             set_fn = ax.set_xticklabels
         elif x_or_y == 'y':
@@ -1128,6 +1283,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
 
         try:
             set_fn(labels, *args, **kwargs)
+
         # Intended to catch stuff like:
         # "ValueError: The number of FixedLocator locations (19), usually from a call to
         # set_ticks, does not match the number of ticklabels (16)."
@@ -1138,6 +1294,7 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
                 file=sys.stderr
             )
             raise
+
 
     if xticklabels is not None:
         # TODO nan / None value aren't supported in ticklabels are they?
@@ -1154,160 +1311,31 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         ax.set_xticks(np.arange(0, len(df.columns), xstep) + xoffset)
 
         set_ticklabels(ax, 'x', xticklabels,
+            allow_duplicate_labels=allow_duplicate_labels,
             fontsize=fontsize, fontweight=fontweight, rotation=xtickrotation
         )
 
     if yticklabels is not None:
         ax.set_yticks(np.arange(0, len(df), ystep) + yoffset)
+
         set_ticklabels(ax, 'y', yticklabels,
+            allow_duplicate_labels=allow_duplicate_labels,
             fontsize=fontsize, fontweight=fontweight, rotation='horizontal'
         )
 
-    if not xticks_also_on_bottom:
-        # didn't seem to do what i was expecting
-        #ax.spines['bottom'].set_visible(False)
-        # TODO this implicitly make them shown at top?
-        ax.tick_params(bottom=False)
-    else:
-        # TODO difference between top and labeltop? former always required for latter?
-        # https://stackoverflow.com/questions/55289921
-        ax.tick_params(axis='x', bottom=True, top=True, labelbottom=True, labeltop=True)
+    if hline_levels is not None:
+        add_group_labels_and_lines(ax, y=hline_levels, labels=hline_group_text,
+            formatter=hgroup_formatter, label_offset=hgroup_label_offset,
+            rotation=hgroup_label_rotation, linewidth=linewidth, linecolor=linecolor,
+            fontsize=group_fontsize, fontweight=group_fontweight, _debug=_debug
+        )
 
-    # TODO lines showing extent that each text label applies too?
-    # (e.g. parallel to labelled axis, with breaks between levels? might crowd fly
-    # labels less than separator lines perpendicular to axis)
-    # TODO light refactoring to share x/y (v/x) code?
-    # TODO TODO for both of these, make linewidth a constant fration of cell
-    # width/height (whichever is appropriate) (at least by default)
-    # ~(figsize[i] / df.shape[i])?
-    # TODO what is default linewidth here anyway? unclear. 1?
-    # TODO default to only formatting together index levels not used by
-    # [h|v]line_level_fn (possible?), when ?
-    if hline_level_fn is not None:
-        if levels_from_labels:
-            ranges = util.const_ranges([hline_level_fn(x) for x in yticklabels])
-        else:
-            assert hline_levels is not None
-            # TODO modify const_ranges to have include_val=True behavior be default?
-            # (+ delete switching flag, if so)
-            ranges = util.const_ranges(hline_levels, include_val=True)
-
-            # TODO why am i only doing this just in !levels_from_labels case? any
-            # reason? worth changing? or just delete levels_from_labels=True path?
-            # TODO allow separating group text from levels? accept yet another fn
-            # mapping from [v|h]line_levels (dict level name -> value form?) to
-            # formatted strs?
-            if hline_group_text:
-                trans = transforms.blended_transform_factory(ax.transAxes, ax.transData)
-
-                if _debug:
-                    print()
-                    print(f'{hline_level_fn=}')
-                    # NOTE: may need to tweak this offset if current value is causing
-                    # constrained layout warning for a given call
-                    print(f'{hgroup_label_offset=}')
-                    print('hline group labels:')
-
-                for label, y0, y1 in ranges:
-                    # assuming const_ranges index output wouldn't change by formatting
-                    if hgroup_formatter is not None:
-                        label = hgroup_formatter(label)
-
-                    # TODO compute group_label_offset? way to place the text using
-                    # constrained layout?
-                    # TODO possible to get this work w/ constrained layout /
-                    # bbox_inches='tight' (work w/ either as-is?)?
-                    # TODO what happens is label is not str? does nothing? why not
-                    # erring? or is it not displaying for another reason?
-                    # (converting  via str didn't seem to change anything...)
-                    ax.text(-hgroup_label_offset, np.mean((y0, y1)), label,
-                        fontsize=group_fontsize, fontweight=group_fontweight,
-                        rotation=hgroup_label_rotation,
-                        # Right might make consistent spacing wrt line indicating extent
-                        # of group easier to see.
-                        ha='right',
-                        # for 9x9 input at least, va='center' was better than without
-                        # (though still seemed *slightly* above corresponding ticklabel)
-                        va='center',
-                        transform=trans
-                    )
-                    # TODO TODO how is above text seemingly not clipped and in layout,
-                    # but not showing up after constrained layout, and getting that
-                    # warning:
-                    # ./test_matshow.py:41: UserWarning: constrained_layout not applied
-                    # because axes sizes collapsed to zero.  Try making figure larger or
-                    # axes decorations smaller.
-                    # ipdb> text.get_in_layout()
-                    # True
-                    # ipdb> text.get_clip_on()
-                    # False
-                    # TODO TODO can i register (some restricted version of?)
-                    # warnings.filterwarnings('error',
-                    #     message='constrained_layout not applied.*'
-                    # )
-                    # here? (to ensure text is either fully shown or there is an error)
-
-                    if _debug:
-                        print(f'{label=} ({y0=}, {y1=})')
-
-        # If all the ranges have the same start and stop, all groups are length 1, and
-        # the lines would just add visual noise, rather than helping clarify boundaries
-        # between groups.
-        if any([x[-1] > x[-2] for x in ranges]):
-            line_positions = [x[-1] + 0.5 for x in ranges[:-1]]
-            # TODO if we have a lot of matrix elements, may want to decrease size of
-            # line a bit to not approach size of matrix elements...
-            for v in line_positions:
-                # 'w'=white. https://matplotlib.org/stable/tutorials/colors/colors.html
-                ax.axhline(v, linewidth=linewidth, color=linecolor)
-
-    if vline_level_fn is not None:
-        if levels_from_labels:
-            ranges = util.const_ranges([vline_level_fn(x) for x in xticklabels])
-        else:
-            assert vline_levels is not None
-            ranges = util.const_ranges(vline_levels, include_val=True)
-
-            if vline_group_text:
-                # NOTE: data and axes coords swapped from hgroup line above
-                # TODO TODO modify so it's above axes, not below (2024-06-05: still
-                # relevant?)
-                trans = transforms.blended_transform_factory(ax.transData, ax.transAxes)
-
-                if _debug:
-                    print()
-                    print(f'{vline_level_fn=}')
-                    # NOTE: may need to tweak this offset if current value is causing
-                    # constrained layout warning for a given call
-                    print(f'{vgroup_label_offset=}')
-                    print('vline group labels:')
-
-                for label, x0, x1 in ranges:
-                    # assuming const_ranges index output wouldn't change by formatting
-                    if vgroup_formatter is not None:
-                        label = vgroup_formatter(label)
-
-                    # TODO possible to get this work w/ constrained layout /
-                    # bbox_inches='tight' (work w/ either as-is?)?
-                    ax.text(np.mean((x0, x1)), 1 + vgroup_label_offset, label,
-                        fontsize=group_fontsize, fontweight=group_fontweight,
-                        rotation=vgroup_label_rotation,
-                        ha='center', va='bottom', transform=trans,
-                    )
-                    if _debug:
-                        print(f'{label=} ({x0=}, {x1=})')
-
-        # TODO comment explaining this conditional / rewrite for clarity
-        if any([x[-1] > x[-2] for x in ranges]):
-            line_positions = [x[-1] + 0.5 for x in ranges[:-1]]
-            for v in line_positions:
-                # TODO try to delete try/except. why is this, of all things, throwing
-                # this error? only when plot has no data?
-                try:
-                    ax.axvline(v, linewidth=linewidth, color=linecolor)
-
-                except np.linalg.LinAlgError as err:
-                    import ipdb; ipdb.set_trace()
+    if vline_levels is not None:
+        add_group_labels_and_lines(ax, x=vline_levels, labels=vline_group_text,
+            formatter=vgroup_formatter, label_offset=vgroup_label_offset,
+            rotation=vgroup_label_rotation, linewidth=linewidth, linecolor=linecolor,
+            fontsize=group_fontsize, fontweight=group_fontweight, _debug=_debug
+        )
 
     # TODO precompute constrained layout here, and check that no group / xticklabel text
     # overlaps (or that group text doesn't go out of bounds?). and/or provide fn for
@@ -1340,6 +1368,17 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         )
         # TODO allow ylabel_kws to override bigtext_fontsize (w/ 'fontsize' key)?
         ax.set_ylabel(ylabel, fontsize=bigtext_fontsize, **ylabel_kws)
+
+
+    if not xticks_also_on_bottom:
+        # didn't seem to do what i was expecting
+        #ax.spines['bottom'].set_visible(False)
+        # TODO this implicitly make them shown at top?
+        ax.tick_params(bottom=False)
+    else:
+        # TODO difference between top and labeltop? former always required for latter?
+        # https://stackoverflow.com/questions/55289921
+        ax.tick_params(axis='x', bottom=True, top=True, labelbottom=True, labeltop=True)
 
     # TODO test w/ input that is not symmetric
     # (thought this same code caused issues in one of the al_analysis N-plotting fns.
@@ -2252,6 +2291,22 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     #    layout='compressed'
     #)
 
+    # TODO TODO fix: (handle some other way for 3.4.3 [or anything <3.7.3]? or just
+    # require >=3.7.3 and fix the seaborn negative-input-to-errorbar issue which is why
+    # i downgraded to 3.4.3? or is there a version between that works w/ both this and
+    # the errorbar code?
+    # (currently decided to revert to 3.7.3 because of this)
+    # ...
+    #   File "/home/tom/src/hong2p/hong2p/viz.py", line 2256, in image_grid
+    #     fig = plt.figure(figsize=figsize, dpi=dpi, layout='compressed')
+    #   File "/home/tom/src/al_analysis/venv/lib/python3.8/site-packages/matplotlib/pyplot.py", line 797, in figure
+    #     manager = new_figure_manager(
+    #   File "/home/tom/src/al_analysis/venv/lib/python3.8/site-packages/matplotlib/pyplot.py", line 316, in new_figure_manager
+    #     return _backend_mod.new_figure_manager(*args, **kwargs)
+    #   File "/home/tom/src/al_analysis/venv/lib/python3.8/site-packages/matplotlib/backend_bases.py", line 3544, in new_figure_manager
+    #     fig = fig_cls(*args, **kwargs)
+    # TypeError: __init__() got an unexpected keyword argument 'layout'
+    #
     # TODO still use 'compressed'? maybe regular constrained?
     fig = plt.figure(figsize=figsize, dpi=dpi, layout='compressed')
 

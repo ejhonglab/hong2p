@@ -221,9 +221,10 @@ def test_diff_dataframes_arr_naneq():
 
 
 def test_const_ranges():
-    # TODO what should happen in case where [] is input? raise an error in const_ranges?
-    # return empty list?
     rs = util.const_ranges([])
+    assert rs == []
+
+    rs = util.const_ranges([], include_val=True)
     assert rs == []
 
     rs = util.const_ranges([0])
@@ -244,5 +245,8 @@ def test_const_ranges():
     rs = util.const_ranges(['a', 'a', 'b'], include_val=True)
     assert rs == [('a', 0, 1), ('b', 2, 2)]
 
-    # TODO test include_val=True in empty input case
-
+    vs = ['a', 'a', 'b', 'b', 'a', 'a']
+    rs = util.const_ranges(vs, include_val=True)
+    assert rs == [('a', 0, 1), ('b', 2, 3), ('a', 4, 5)]
+    rs = util.const_ranges(vs)
+    assert rs == [(0, 1), (2, 3), (4, 5)]

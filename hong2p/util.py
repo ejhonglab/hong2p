@@ -378,12 +378,12 @@ def analysis_fly_dir(date, fly) -> Path:
 
 # TODO maybe this should stay returning a str? i'm assuming a lot of what i do with this
 # is print it / format it? or change to Path to be consistent w/ other path fns now?
-def shorten_path(full_path: Pathlike, n_parts=3) -> str:
-    """Returns a string containing just the last n_parts (default=3) of input path.
+def shorten_path(full_path: Pathlike, n: int = 3) -> str:
+    """Returns a string containing just the last `n` parts of input path.
 
     For making IDs / easier-to-read paths, when the full path isn't required.
     """
-    return '/'.join(Path(full_path).parts[-n_parts:])
+    return '/'.join(Path(full_path).parts[-n:])
 
 
 def print_thor_paths(image_dir: Pathlike, sync_dir: Pathlike, print_full_paths=True
@@ -966,15 +966,23 @@ def md5(fname: Pathlike) -> str:
     return hash_md5.hexdigest()
 
 
-# TODO transition everytion to as if include_val==True?
-def const_ranges(xs: Sequence, include_val: bool = False) -> Union[
+# TODO transition everything to as if include_val==True?
+# TODO parameterize Sequence elemtents and (what is currently Any) value type in
+# include_val=True branch into one value?
+def const_ranges(xs: Sequence, *, include_val: bool = False) -> Union[
     List[Tuple[int, int]], List[Tuple[Any, int, int]]
     ]:
     """Returns tuples of indices for largest contiguous constant-value ranges in input.
 
+    All elements in input sequence should be included in exactly one (start, stop) index
+    tuple. Range tuples should all be in order, and stop indices are inclusive, so the
+    end of one range should be one less than the start of the next range.
+
     Args:
         include_val: if True, each tuple in output will be length 3, with the first
-            element the value for the range specified by rest of tuple.
+            element the value for the range specified by (start, stop) indices in the
+            remaining elements of the tuple. If False, each tuple will be length 2, just
+            containing these (start, stop) indices.
 
     >>> const_ranges(['MCH', 'MCH', 'OCT', 'OCT'])
     [(0, 1), (2, 3)]
@@ -990,6 +998,8 @@ def const_ranges(xs: Sequence, include_val: bool = False) -> Union[
     ranges = []
     curr_start = 0
     for i, x in enumerate(xs):
+        # TODO want to support NaN? would prob need to special case in `x != x_prev`
+        # check then... (cause NaN != NaN is True)
         if x_prev is not sentinel and x != x_prev:
             if i > 0:
                 if not include_val:
@@ -4488,6 +4498,11 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 # for printing differences between dtypes / etc? (use new dtypes_equal fn below for
 # this?)
 # TODO test
+# TODO option to ignore values that are NaN in one and defined in the other? (or
+# similar fn for that?)? maybe still (optionally?) warning about how many NaN values are
+# only in one or the other? (and also for pd_isclose below, if so)
+# TODO TODO default to equal_nan=True (maybe warning if there are NaN unless explicitly
+# set True?)?
 def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     if_index_mismatch: Optional[str] = None, **kwargs) -> bool:
     """
@@ -4502,6 +4517,34 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
         return False
 
     return np.allclose(a, b, **kwargs)
+
+
+def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
+    """Like `np.isclose`, but preserves input indices.
+
+    Args:
+        a|b: inputs to compare. must both be either DataFrames or Series.
+
+        **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)
+
+    Raises ValueError if indices do not match.
+    """
+    # not sure what isclose behavior is if shapes mismatch, but only really imagine
+    # using this fn for like-indexed stuff anyway
+    try:
+        pd_indices_equal(a, b, if_index_mismatch='err')
+    except ValueError:
+        raise
+
+    isclose = np.isclose(a, b, **kwargs)
+
+    # can just use metadata from `a`, since we already know `b` has the same index data
+    # from above
+    if isinstance(a, pd.DataFrame):
+        return pd.DataFrame(index=a.index, columns=a.columns, data=isclose)
+
+    assert isinstance(a, pd.Series)
+    return pd.Series(index=a.index, data=isclose)
 
 
 def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
@@ -4538,9 +4581,36 @@ def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
 # TODO use (/delete)
 def subset_levels(index: pd.MultiIndex, subset: List[str]) -> pd.Index:
     # does pandas really still not have a function like this? am i missing something?
-    # TODO work w/ one level index? change type hint to `-> pd.MultiIndex` if so.
+    # TODO work w/ one level index? change type hint to `-> pd.MultiIndex` if so?
     # if not, fix
     return pd.MultiIndex.from_frame(index.to_frame(index=True)[subset])
+
+
+# TODO add unit tests w/ inputs that are both MultiIndex / not
+def index2dict_list(index: pd.Index) -> List[Dict[str, Any]]:
+    """Returns list of dicts, each with `index.names` keys and index values.
+
+    Raises ValueError if `index.names` elements are not all of type `str`.
+    """
+    names = index.names
+    if {type(x) for x in index.names} != {str}:
+        # TODO also say what types we currently have
+        raise ValueError('index.names must all be of type `str`')
+
+    def _index_entry_dict(index: pd.Index, index_entry: Any) -> Dict[str, Any]:
+        # If the index is a MultiIndex, iterating over it should yield tuples of the
+        # level values, otherwise we'll convert to a tuple so zipping is the same.
+        if type(index_entry) is not tuple:
+            # only non-MultiIndex index should have non-tuple index_entry (otherwise
+            # wrong index may have been passed in)
+            # https://stackoverflow.com/questions/21081042
+            assert not isinstance(index, pd.MultiIndex)
+            index_entry = (index_entry,)
+
+        assert len(names) == len(index_entry), f'{names=}\n{index_entry=}'
+        return dict(zip(names, index_entry))
+
+    return [_index_entry_dict(index, x) for x in index]
 
 
 def frame_pdist(df: pd.DataFrame, *, metric='euclidean') -> pd.DataFrame:
