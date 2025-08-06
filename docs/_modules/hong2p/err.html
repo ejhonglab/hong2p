@@ -7,40 +7,37 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Search &mdash; hong2p 0.0.0 documentation</title>
+  <title>hong2p.err &mdash; hong2p 0.0.0 documentation</title>
   
 
   
-  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-
-  
-  
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
 
   
   
 
   
+  
 
   
-    
+
+  
   <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
+    <script src="../../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
     
-      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/doctools.js"></script>
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
     
-    <script type="text/javascript" src="_static/js/theme.js"></script>
+    <script type="text/javascript" src="../../_static/js/theme.js"></script>
 
     
-    <script type="text/javascript" src="_static/searchtools.js"></script>
-    <script type="text/javascript" src="_static/language_data.js"></script>
-    <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="#" /> 
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -54,7 +51,7 @@
           
 
           
-            <a href="index.html" class="icon icon-home"> hong2p
+            <a href="../../index.html" class="icon icon-home"> hong2p
           
 
           
@@ -67,7 +64,7 @@
 
           
 <div role="search">
-  <form id="rtd-search-form" class="wy-form" action="#" method="get">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
@@ -87,7 +84,7 @@
             
               <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="apidoc/modules.html">hong2p</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
 </ul>
 
             
@@ -103,7 +100,7 @@
       <nav class="wy-nav-top" aria-label="top navigation">
         
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">hong2p</a>
+          <a href="../../index.html">hong2p</a>
         
       </nav>
 
@@ -134,9 +131,11 @@
 
   <ul class="wy-breadcrumbs">
     
-      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
         
-      <li>Search</li>
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>hong2p.err</li>
     
     
       <li class="wy-breadcrumbs-aside">
@@ -151,18 +150,18 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <noscript>
-  <div id="fallback" class="admonition warning">
-    <p class="last">
-      Please activate JavaScript to enable the search functionality.
-    </p>
-  </div>
-  </noscript>
+  <h1>Source code for hong2p.err</h1><div class="highlight"><pre>
+<span></span>
+<span class="c1"># TODO maybe move to errors-only module / thor?</span>
+<div class="viewcode-block" id="TooManyStimulusFiles"><a class="viewcode-back" href="../../apidoc/hong2p.err.html#hong2p.err.TooManyStimulusFiles">[docs]</a><span class="k">class</span> <span class="nc">TooManyStimulusFiles</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
 
-  
-  <div id="search-results">
-  
-  </div>
+<span class="c1"># Not specified. Different from specified-but-not-existing-on-disk, which should be an</span>
+<span class="c1"># IOError</span>
+<div class="viewcode-block" id="NoStimulusFile"><a class="viewcode-back" href="../../apidoc/hong2p.err.html#hong2p.err.NoStimulusFile">[docs]</a><span class="k">class</span> <span class="nc">NoStimulusFile</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+</pre></div>
 
            </div>
            
@@ -204,14 +203,7 @@
   
   
     
-  
-  <script type="text/javascript">
-    jQuery(function() { Search.loadIndex("searchindex.js"); });
-  </script>
-  
-  <script type="text/javascript" id="searchindexloader"></script>
    
-
 
 </body>
 </html>

@@ -3,13 +3,15 @@
 # extras_require={'docs': <list here>}, but i'm not sure if that's the only place they
 # have it or what the install process looks like
 
-sphinx
-sphinx-rtd-theme
+# TODO try un-pinning and fixing process for more modern sphinx (/ other deps)?
 
-sphinxcontrib-apidoc
+sphinx==3.5.4
+sphinx-rtd-theme==0.5.2
 
-sphinx-prompt
-sphinx-autodoc-typehints
+sphinxcontrib-apidoc==0.3.0
+
+sphinx-prompt==1.4.0
+sphinx-autodoc-typehints==1.12.0
 
 # See comments in conf.py "Path setup" section
 -e ..

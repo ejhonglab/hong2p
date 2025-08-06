@@ -30,7 +30,11 @@ setup(
         #'sqlalchemy',
         'h5py',
         'numpy',
-        'scipy',
+
+        # technically just need >=1.8 for scipy.sparse.coo_array, but installed 1.10.1
+        # in al_analysis, and may need some features added after 1.8 in there
+        'scipy>=1.8',
+
         'tifffile',
 
         'pandas',

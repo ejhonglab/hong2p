@@ -158,26 +158,47 @@
 
 <span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">listdir</span>
 <span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">split</span><span class="p">,</span> <span class="n">sep</span><span class="p">,</span> <span class="n">exists</span><span class="p">,</span> <span class="n">isdir</span><span class="p">,</span> <span class="n">normpath</span><span class="p">,</span> <span class="n">getmtime</span><span class="p">,</span> <span class="n">abspath</span>
+<span class="c1"># TODO replace w/ stock ElementTree name? no good justification for this renaming</span>
 <span class="kn">import</span> <span class="nn">xml.etree.ElementTree</span> <span class="k">as</span> <span class="nn">etree</span>
-<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">xml.etree.ElementTree</span> <span class="kn">import</span> <span class="n">Element</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timedelta</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
 <span class="kn">from</span> <span class="nn">pprint</span> <span class="kn">import</span> <span class="n">pprint</span><span class="p">,</span> <span class="n">pformat</span>
 <span class="kn">import</span> <span class="nn">glob</span>
 <span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">zip_longest</span>
 <span class="kn">import</span> <span class="nn">functools</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Optional</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
 
-<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="kn">import</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">PathPair</span>
+<span class="kn">from</span> <span class="nn">hong2p.types</span> <span class="kn">import</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">PathPair</span>
 
 
+<span class="c1"># Note: these other names may get converted to these via hdf5_dataset_rename_dict/etc</span>
 <span class="n">_acquisition_trigger_names</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;scope_pin&#39;</span><span class="p">,)</span>
 <span class="n">_odor_timing_names</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;olf_disp_pin&#39;</span><span class="p">,)</span>
 
+<span class="n">DIGITAL_THRESHOLD</span> <span class="o">=</span> <span class="mf">0.5</span>
 
-<div class="viewcode-block" id="xmlroot"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.xmlroot">[docs]</a><span class="k">def</span> <span class="nf">xmlroot</span><span class="p">(</span><span class="n">xml_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">etree</span><span class="o">.</span><span class="n">Element</span><span class="p">:</span>
+<span class="c1"># Since some electrical bug (?) on downstairs scope has led to ~4v pulses before and</span>
+<span class="c1"># after recording. Used to use 2.5 before that.</span>
+<span class="c1">#</span>
+<span class="c1"># This change didn&#39;t fix handling of the 2022-10-07/1/megamat0_part2 data I was</span>
+<span class="c1"># expecting it to fix though...</span>
+<span class="n">ANALOG_0_TO_5V_THRESHOLD</span> <span class="o">=</span> <span class="mf">4.5</span>
+
+
+<div class="viewcode-block" id="OnsetOffsetNumMismatch"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.OnsetOffsetNumMismatch">[docs]</a><span class="k">class</span> <span class="nc">OnsetOffsetNumMismatch</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+<div class="viewcode-block" id="NotAllFramesAssigned"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.NotAllFramesAssigned">[docs]</a><span class="k">class</span> <span class="nc">NotAllFramesAssigned</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="xmlroot"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.xmlroot">[docs]</a><span class="k">def</span> <span class="nf">xmlroot</span><span class="p">(</span><span class="n">xml_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Element</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Loads contents of xml_path into xml.etree.ElementTree and returns root.</span>
 
 <span class="sd">    Use calls to &lt;node&gt;.find(&lt;child name&gt;) to traverse down tree and at leaves,</span>
@@ -208,13 +229,14 @@
 
 
 <span class="c1"># TODO does this work?</span>
-<span class="n">PathOrXML</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">etree</span><span class="o">.</span><span class="n">Element</span><span class="p">]</span>
+<span class="n">PathOrXML</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Element</span><span class="p">]</span>
 
 
 <span class="c1"># TODO TODO now that this behaves as identity if given xml object, actually use that to</span>
 <span class="c1"># collapse some of the functions w/ and w/o _xml suffix and allow those of only one type</span>
 <span class="c1"># to work with both types of input</span>
-<div class="viewcode-block" id="get_thorimage_xmlroot"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_xmlroot">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_xmlroot</span><span class="p">(</span><span class="n">thorimage_dir_or_xmlroot</span><span class="p">:</span> <span class="n">PathOrXML</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">etree</span><span class="o">.</span><span class="n">Element</span><span class="p">:</span>
+<span class="c1"># TODO should i relax typehing to something like PathlikeOrXML or nah?</span>
+<div class="viewcode-block" id="get_thorimage_xmlroot"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_xmlroot">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_xmlroot</span><span class="p">(</span><span class="n">thorimage_dir_or_xmlroot</span><span class="p">:</span> <span class="n">PathOrXML</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Element</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Takes ThorImage output dir to object w/ XML data.</span>
 
 <span class="sd">    Returns the input without doing anything if it is already the same type of XML</span>
@@ -222,7 +244,7 @@
 <span class="sd">    paths to ThorImage directories or re-use an already loaded representation of its</span>
 <span class="sd">    XML.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">thorimage_dir_or_xmlroot</span><span class="p">,</span> <span class="n">etree</span><span class="o">.</span><span class="n">Element</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">thorimage_dir_or_xmlroot</span><span class="p">,</span> <span class="n">Element</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">thorimage_dir_or_xmlroot</span>
 
     <span class="n">thorimage_dir</span> <span class="o">=</span> <span class="n">thorimage_dir_or_xmlroot</span>
@@ -231,7 +253,10 @@
     <span class="k">return</span> <span class="n">xmlroot</span><span class="p">(</span><span class="n">xml_path</span><span class="p">)</span></div>
 
 
+<span class="c1"># TODO doc</span>
 <div class="viewcode-block" id="thorimage_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.thorimage_xml">[docs]</a><span class="k">def</span> <span class="nf">thorimage_xml</span><span class="p">(</span><span class="n">fn_taking_xml</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Converts an attribute lookup fn taking XML to allow ThorImage directory input.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">fn_taking_xml</span><span class="p">)</span>
     <span class="k">def</span> <span class="nf">fn_taking_path_or_xml</span><span class="p">(</span><span class="n">thorimage_dir_or_xmlroot</span><span class="p">:</span> <span class="n">PathOrXML</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
@@ -242,7 +267,8 @@
     <span class="k">return</span> <span class="n">fn_taking_path_or_xml</span></div>
 
 
-<div class="viewcode-block" id="get_thorimage_time_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_time_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_time_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">datetime</span><span class="p">:</span>
+<div class="viewcode-block" id="get_thorimage_time"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_time">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_time</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">datetime</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Takes etree XML root object to recording start time.</span>
 
 <span class="sd">    XML object should be as returned by `get_thorimage_xmlroot`.</span>
@@ -252,21 +278,6 @@
     <span class="n">from_utime</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">date_ele</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;uTime&#39;</span><span class="p">]))</span>
     <span class="k">assert</span> <span class="p">(</span><span class="n">from_date</span> <span class="o">-</span> <span class="n">from_utime</span><span class="p">)</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mi">1</span>
     <span class="k">return</span> <span class="n">from_utime</span></div>
-
-
-<span class="c1"># TODO consider deleting use_mtime. only potentially useful if a time ~end of experiment</span>
-<span class="c1"># is more useful for matching things up, assuming mtime of XML file meets that criteria</span>
-<span class="c1"># (and assuming it never gets changed accidentally / by needing to edit the file...)</span>
-<div class="viewcode-block" id="get_thorimage_time"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_time">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_time</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">use_mtime</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">datetime</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;Takes ThorImage directory to recording start time (from XML).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">xml_path</span> <span class="o">=</span> <span class="n">get_thorimage_xml_path</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
-
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">use_mtime</span><span class="p">:</span>
-        <span class="n">xml</span> <span class="o">=</span> <span class="n">xmlroot</span><span class="p">(</span><span class="n">xml_path</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">get_thorimage_time_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="n">getmtime</span><span class="p">(</span><span class="n">xml_path</span><span class="p">))</span></div>
 
 
 <div class="viewcode-block" id="get_thorimage_n_frames"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_n_frames">[docs]</a><span class="nd">@thorimage_xml</span>
@@ -308,31 +319,66 @@
         <span class="k">return</span> <span class="n">n_raw_xy_frames</span> <span class="o">-</span> <span class="p">(</span><span class="n">n_flyback</span> <span class="o">*</span> <span class="n">n_volumes</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="is_fast_z_enabled_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.is_fast_z_enabled_xml">[docs]</a><span class="k">def</span> <span class="nf">is_fast_z_enabled_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+<div class="viewcode-block" id="is_fast_z_enabled_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.is_fast_z_enabled_xml">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">is_fast_z_enabled_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
     <span class="n">streaming</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;Streaming&#39;</span><span class="p">)</span>
-    <span class="c1"># TODO may want to only do this check under certain other conditions / not</span>
-    <span class="c1"># at all (in case someone were to try to call this / a function that calls</span>
-    <span class="c1"># this on non-streaming data)</span>
-    <span class="k">assert</span> <span class="n">streaming</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;enable&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span>
+    <span class="k">if</span> <span class="n">streaming</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;enable&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;1&#39;</span><span class="p">:</span>
+        <span class="c1"># zFastEnable can still be 1 when we aren&#39;t doing fast Z (e.g. in some</span>
+        <span class="c1"># anatomical stack data)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
     <span class="k">return</span> <span class="n">streaming</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;zFastEnable&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span></div>
 
 
-<div class="viewcode-block" id="get_thorimage_z_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_z_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_z_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">_get_zstage</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+    <span class="c1"># TODO assert there is only one ZStage object? is it always only primary (assumed</span>
+    <span class="c1"># piezo) saved into xml, even if there is a stepper secondary z-axis too?</span>
+    <span class="n">zstage</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;ZStage&#39;</span><span class="p">)</span>
+
+    <span class="c1"># TODO replace .find w/ findall(...)[0]?</span>
+    <span class="c1">#</span>
+    <span class="c1"># yang&#39;s test XML she sent has multiple ZStage elements, but only one with name</span>
+    <span class="c1"># defined (=&#39;ThorZPiezo&#39;)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">([</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xml</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s1">&#39;ZStage&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="s1">&#39;name&#39;</span> <span class="ow">in</span> <span class="n">x</span><span class="o">.</span><span class="n">attrib</span><span class="p">])</span> <span class="o">==</span> <span class="mi">1</span>
+
+    <span class="c1"># TODO and if fastZ is enabled, is that sufficient evidence it is piezo?</span>
+    <span class="c1"># NO! (at least it&#39;s possible to misconfigure downstairs system so that non-piezo</span>
+    <span class="c1"># stage is selected for both primary/secondary, and it will still let you collect a</span>
+    <span class="c1"># recording with fast Z apparently enabled)</span>
+
+    <span class="k">return</span> <span class="n">zstage</span>
+
+
+<div class="viewcode-block" id="get_thorimage_z_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_z_xml">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_z_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Returns number of different Z depths measured in ThorImage recording.</span>
 
 <span class="sd">    Does NOT include any flyback frames there may be.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">z</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;ZStage&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;steps&#39;</span><span class="p">])</span>
+    <span class="n">zstage</span> <span class="o">=</span> <span class="n">_get_zstage</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">zstage</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;steps&#39;</span><span class="p">])</span>
     <span class="k">assert</span> <span class="n">z</span> <span class="o">&gt;</span> <span class="mi">0</span>
-
-    <span class="k">if</span> <span class="n">z</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_fast_z_enabled_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;z &gt; 1 (</span><span class="si">{</span><span class="n">z</span><span class="si">}</span><span class="s1">) despite fast z seeming disabled&#39;</span><span class="p">)</span>
-        <span class="c1"># TODO TODO presumably this fails in non-streamiong case. extend support to that</span>
-        <span class="c1"># case (handling z correctly, w/o warning. could still warn if we detect</span>
-        <span class="c1"># streaming / something else appropriate was enabled)</span>
-        <span class="c1">#z = 1</span>
-
     <span class="k">return</span> <span class="n">z</span></div>
+
+
+<div class="viewcode-block" id="get_thorimage_z_stream_frames"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_z_stream_frames">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_z_stream_frames</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Returns number of different Z depths measured in ThorImage recording.</span>
+
+<span class="sd">    Does NOT include any flyback frames there may be.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">zstage</span> <span class="o">=</span> <span class="n">_get_zstage</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">zstage</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;zStreamFrames&#39;</span><span class="p">])</span>
+    <span class="c1"># TODO warn if streaming acqusition mode (or something else to rule out anatomical</span>
+    <span class="c1"># recordings) AND is_fast_z_enabled_xml(xml) is False?</span>
+    <span class="k">assert</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">n</span></div>
+
+
+<div class="viewcode-block" id="get_thorimage_zstep_um"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_zstep_um">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_zstep_um</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="n">zstage</span> <span class="o">=</span> <span class="n">_get_zstage</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">zstage</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;stepSizeUM&#39;</span><span class="p">])</span></div>
 
 
 <span class="c1"># TODO maybe add a function to get expected movie.size from thorimage .raw</span>
@@ -348,7 +394,8 @@
 <span class="c1"># have, from what i remember using `du`)</span>
 
 
-<div class="viewcode-block" id="get_thorimage_n_channels_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_n_channels_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_n_channels_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+<div class="viewcode-block" id="get_thorimage_n_channels_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_n_channels_xml">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_n_channels_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
     <span class="n">pmt</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;PMT&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span>
 
     <span class="c1"># It does seem that for channel B (perhaps also A but not C/D), you can have it</span>
@@ -373,11 +420,15 @@
 <span class="c1"># (though would need to take into account flyback as well as potentially</span>
 <span class="c1"># averaging in order to have this dimension reflect shape of movie (as if the</span>
 <span class="c1"># output of this function were `movie.shape` for the corresponding movie))</span>
-<div class="viewcode-block" id="get_thorimage_dims_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_dims_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_dims_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+<div class="viewcode-block" id="get_thorimage_dims"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_dims">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_dims</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Takes etree XML root object to (xy, z, c) dimensions of movie.</span>
 
 <span class="sd">    XML object should be as returned by `get_thorimage_xmlroot`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO exclude ~empty LSM tags, when multiple (finding first *should* still work),</span>
+    <span class="c1"># like in test data yang sent. attrib[&#39;name&#39;] should only be defined for one tag?</span>
+    <span class="c1"># TODO factor out LSM tag getting to do this (-&gt; share w/ other fns getting it)</span>
     <span class="n">lsm_attribs</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;LSM&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span>
     <span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lsm_attribs</span><span class="p">[</span><span class="s1">&#39;pixelX&#39;</span><span class="p">])</span>
     <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lsm_attribs</span><span class="p">[</span><span class="s1">&#39;pixelY&#39;</span><span class="p">])</span>
@@ -394,25 +445,36 @@
     <span class="k">return</span> <span class="n">xy</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span></div>
 
 
-<span class="c1"># TODO replace all instances of above w/ calls to this</span>
-<div class="viewcode-block" id="get_thorimage_dims"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_dims">[docs]</a><span class="nd">@thorimage_xml</span>
-<span class="k">def</span> <span class="nf">get_thorimage_dims</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
-    <span class="c1"># TODO replace this w/ body of above when replace calls to the above</span>
-    <span class="k">return</span> <span class="n">get_thorimage_dims_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="get_thorimage_pixelsize_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_pixelsize_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_pixelsize_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+<div class="viewcode-block" id="get_thorimage_pixelsize_um"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_pixelsize_um">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_pixelsize_um</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Takes etree XML root object to XY pixel size in um.</span>
 
 <span class="sd">    Pixel size in X is the same as pixel size in Y.</span>
 
 <span class="sd">    XML object should be as returned by `get_thorimage_xmlroot`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># TODO does thorimage (and their xml) even support unequal x and y?</span>
-    <span class="c1"># TODO support z here?</span>
-    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;LSM&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;pixelSizeUM&#39;</span><span class="p">])</span></div>
+    <span class="n">lsm</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;LSM&#39;</span><span class="p">)</span>
+
+    <span class="c1"># TODO put behind a checks= bool kwarg?</span>
+    <span class="c1"># TODO does thorimage (and their xml) ever support unequal x and y resolution?</span>
+    <span class="n">pixelsize_x</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lsm</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;widthUM&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">lsm</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;pixelX&#39;</span><span class="p">])</span>
+    <span class="n">pixelsize_y</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lsm</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;heightUM&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">lsm</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;pixelY&#39;</span><span class="p">])</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">pixelsize_x</span><span class="p">,</span> <span class="n">pixelsize_y</span><span class="p">),</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">pixelsize_x</span><span class="si">=}</span><span class="s1"> != </span><span class="si">{</span><span class="n">pixelsize_y</span><span class="si">}</span><span class="s1">&#39;</span>
+
+    <span class="n">pixelsize_xy</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lsm</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;pixelSizeUM&#39;</span><span class="p">])</span>
+
+    <span class="c1"># pixelSizeUM is entered with 3 digits after decimal place in XML</span>
+    <span class="c1"># [width|height]UM both have 5 sig figs in XML, with pixel[X|Y] generally having 3.</span>
+    <span class="c1">#</span>
+    <span class="c1"># atol=6e-4 should ignore anything different beyond pixelSizeUM&#39;s 3 digits after</span>
+    <span class="c1"># decimal (and assuming rounding going into that)</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">pixelsize_xy</span><span class="p">,</span> <span class="n">pixelsize_x</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">6e-4</span><span class="p">),</span> \
+        <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">pixelsize_xy</span><span class="si">=}</span><span class="s1"> != </span><span class="si">{</span><span class="n">pixelsize_x</span><span class="si">=}</span><span class="s1">&#39;</span>
+
+    <span class="k">return</span> <span class="n">pixelsize_xy</span></div>
 
 
+<span class="c1"># TODO replace w/ wrapped version + remove _xml suffix (and replace all calls similarly)</span>
 <div class="viewcode-block" id="get_thorimage_n_averaged_frames_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_n_averaged_frames_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_n_averaged_frames_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns how many frames ThorImage averaged for a single output frame.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -424,7 +486,21 @@
     <span class="k">if</span> <span class="n">average_mode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="n">n_averaged_frames</span> <span class="o">=</span> <span class="mi">1</span>
     <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># TODO this sufficient check that frame averaging broken, or also/only check</span>
+        <span class="c1"># z&gt;1?</span>
+        <span class="c1"># TODO is there some cutoff version beyond which volumetric frame averaging is</span>
+        <span class="c1"># supported for real?</span>
+        <span class="c1"># NOTE: i think all thorimage versions we are using don&#39;t actually support frame</span>
+        <span class="c1"># averaging if recording volumetrically. raw output will have all frames despite</span>
+        <span class="c1"># value of this.</span>
         <span class="k">if</span> <span class="n">is_fast_z_enabled_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+            <span class="c1"># TODO flag to disable warning?</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">get_thorimage_name</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">: XML indicates frame averaging was configured, &#39;</span>
+                <span class="s1">&#39;but our ThorImage versions do not actually support this when fastZ &#39;</span>
+                <span class="s1">&#39;is enabled. setting n_averaged_frames=1.&#39;</span>
+            <span class="p">)</span>
+
             <span class="n">n_averaged_frames</span> <span class="o">=</span> <span class="mi">1</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">n_averaged_frames</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lsm_attribs</span><span class="p">[</span><span class="s1">&#39;averageNum&#39;</span><span class="p">])</span>
@@ -432,6 +508,7 @@
     <span class="k">return</span> <span class="n">n_averaged_frames</span></div>
 
 
+<span class="c1"># TODO replace w/ wrapped version + remove _xml suffix (and replace all calls similarly)</span>
 <div class="viewcode-block" id="get_thorimage_fps_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_fps_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_fps_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">,</span> <span class="n">before_averaging</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="c1"># TODO TODO clarify in doc whether this is volumes-per-second or</span>
     <span class="c1"># xy-planes-per-second in the volumetric case (latter, i believe, though</span>
@@ -449,7 +526,6 @@
 
     <span class="k">if</span> <span class="n">before_averaging</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">raw_fps</span>
-
     <span class="n">n_averaged_frames</span> <span class="o">=</span> <span class="n">get_thorimage_n_averaged_frames_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
 
     <span class="n">saved_fps</span> <span class="o">=</span> <span class="n">raw_fps</span> <span class="o">/</span> <span class="n">n_averaged_frames</span>
@@ -472,7 +548,8 @@
     <span class="k">return</span> <span class="n">get_thorimage_fps_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="get_thorimage_n_flyback_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_n_flyback_xml">[docs]</a><span class="k">def</span> <span class="nf">get_thorimage_n_flyback_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+<div class="viewcode-block" id="get_thorimage_n_flyback_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_n_flyback_xml">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_n_flyback_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
     <span class="k">if</span> <span class="n">is_fast_z_enabled_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
         <span class="n">streaming</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;Streaming&#39;</span><span class="p">)</span>
         <span class="n">n_flyback_frames</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">streaming</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;flybackFrames&#39;</span><span class="p">])</span>
@@ -492,11 +569,379 @@
     <span class="k">return</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;Name&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span></div>
 
 
-<div class="viewcode-block" id="load_thorimage_metadata"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.load_thorimage_metadata">[docs]</a><span class="k">def</span> <span class="nf">load_thorimage_metadata</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">return_xml</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="get_thorimage_version"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_version">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_version</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+    <span class="c1"># e.g. &#39;3.0.2016.10131&#39;. no other attribs under Software tag (on this older</span>
+    <span class="c1"># ThorImage version, at least)</span>
+    <span class="k">return</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;Software&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;version&#39;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="get_thorimage_scannertype"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_scannertype">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_scannertype</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+    <span class="n">lp</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;LightPath&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span>
+    <span class="c1"># TODO can there ever be multiple LightPath tags (yes, but first should probably</span>
+    <span class="c1"># still work. exclude elements with nothing or only cam enabled. share logic w/</span>
+    <span class="c1"># other places i want to get a unique tag)? (test on output from systems w/</span>
+    <span class="c1"># camera enabled too?)</span>
+
+    <span class="n">lsm_name</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;LSM&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">lp</span><span class="p">[</span><span class="s1">&#39;GalvoGalvo&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span><span class="p">:</span>
+        <span class="n">scanner</span> <span class="o">=</span> <span class="s1">&#39;GalvoGalvo&#39;</span>
+        <span class="k">assert</span> <span class="n">lsm_name</span> <span class="o">==</span> <span class="s1">&#39;GalvoGalvo&#39;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">lp</span><span class="p">[</span><span class="s1">&#39;GalvoResonance&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span>
+        <span class="n">scanner</span> <span class="o">=</span> <span class="s1">&#39;GalvoResonance&#39;</span>
+        <span class="c1"># NOTE: different str from above. this is the case in at least output from</span>
+        <span class="c1"># 4.3.2023.6261 Yang sent me</span>
+        <span class="k">assert</span> <span class="n">lsm_name</span> <span class="o">==</span> <span class="s1">&#39;ResonanceGalvo&#39;</span>
+
+    <span class="k">return</span> <span class="n">scanner</span></div>
+
+
+<span class="c1"># TODO TODO delete this fn / fix. ThorStage does (hopefully) not seem at all to imply we</span>
+<span class="c1"># are not using a piezo. probably need to check fast z.</span>
+<span class="c1"># TODO TODO what happens if you try to do fast z downstairs w/ just non-piezo zstage? or</span>
+<span class="c1"># w/ it as primary? does it work? data issues? slower? ideally, we could tell from xml</span>
+<span class="c1"># output, or it wouldn&#39;t allow recording...</span>
+<div class="viewcode-block" id="get_thorimage_zstage_type"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_zstage_type">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">get_thorimage_zstage_type</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
+    <span class="c1"># TODO TODO fastZ enabled imply that a ThorStage is actually piezo?</span>
+    <span class="c1"># NO! (at least it&#39;s possible to misconfigure downstairs system so that non-piezo</span>
+    <span class="c1"># stage is selected for both primary/secondary, and it will still let you collect a</span>
+    <span class="c1"># recording with fast Z apparently enabled)</span>
+
+    <span class="c1"># NOTE: enable=1 set in yang&#39;s newer test data, but not referenced in one of mine.</span>
+    <span class="n">zstage</span> <span class="o">=</span> <span class="n">_get_zstage</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span>
+    <span class="n">regtype</span> <span class="o">=</span> <span class="n">zstage</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="n">regtype</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;ThorStage&#39;</span><span class="p">,</span> <span class="s1">&#39;ThorZPiezo&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">regtype</span></div>
+
+
+<div class="viewcode-block" id="get_thorimage_power_regtype_and_level"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorimage_power_regtype_and_level">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="c1"># TODO modify to return a third item, a dict w/ any remaining settings relevant to the</span>
+<span class="c1"># particular power regulator (e.g. w/ &#39;offset&#39; for &#39;non-pockel&#39;, or &#39;minV&#39;/&#39;maxV&#39;/etc</span>
+<span class="c1"># for pockel)?</span>
+<span class="k">def</span> <span class="nf">get_thorimage_power_regtype_and_level</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;Returns `regtype`, `power_level` where `regtype` is either &#39;pockel&#39;|&#39;non_pockel&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># looks like if there is any &lt;Pockels&gt; tag w/ start=&quot;&lt;nonzero&gt;&quot; (presumably ==</span>
+    <span class="c1"># stop), then it&#39;s a pockel?</span>
+    <span class="c1">#</span>
+    <span class="c1"># there can still be &lt;PowerRegulator[2]&gt; elements w/ enable=&quot;1&quot;, just start/stop</span>
+    <span class="c1"># should be 0</span>
+
+    <span class="c1"># first element should be fine. seems to be only one that has non-zero start/stop</span>
+    <span class="c1"># ever, at least in 3 test outputs from diff systems.</span>
+    <span class="n">pockels</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;Pockels&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span>
+    <span class="n">pockel_start</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">pockels</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">])</span>
+    <span class="n">pockel_stop</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">pockels</span><span class="p">[</span><span class="s1">&#39;stop&#39;</span><span class="p">])</span>
+    <span class="c1"># would need to support (and don&#39;t think we ever use)</span>
+    <span class="k">assert</span> <span class="n">pockel_start</span> <span class="o">==</span> <span class="n">pockel_stop</span>
+
+    <span class="n">reg</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;PowerRegulator&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">attrib</span>
+    <span class="n">reg_start</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">reg</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">])</span>
+    <span class="n">reg_stop</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">reg</span><span class="p">[</span><span class="s1">&#39;stop&#39;</span><span class="p">])</span>
+    <span class="c1"># would need to support (and don&#39;t think we ever use)</span>
+    <span class="k">assert</span> <span class="n">reg_start</span> <span class="o">==</span> <span class="n">reg_stop</span>
+
+    <span class="k">if</span> <span class="n">pockel_start</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">reg_start</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="c1"># TODO blank percentage? min/maxV? always return these other settings in 3rd</span>
+        <span class="c1"># return arg as dict (and use for offset above?)?</span>
+        <span class="k">return</span> <span class="s1">&#39;pockel&#39;</span><span class="p">,</span> <span class="n">pockel_start</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">reg_start</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="c1"># TODO better str here (&#39;waveplate&#39;? accurate?)?</span>
+        <span class="c1"># TODO also return offset?</span>
+        <span class="k">return</span> <span class="s1">&#39;non-pockel&#39;</span><span class="p">,</span> <span class="n">reg_start</span></div>
+
+
+<div class="viewcode-block" id="print_xml"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.print_xml">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">print_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">:</span> <span class="n">Element</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">encoding</span> <span class="o">=</span> <span class="s1">&#39;utf-8&#39;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">etree</span><span class="o">.</span><span class="n">tostring</span><span class="p">(</span><span class="n">xml</span><span class="p">,</span> <span class="n">encoding</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">))</span></div>
+
+
+<span class="c1"># TODO unit test</span>
+<span class="k">def</span> <span class="nf">_parse_driver_and_indicator</span><span class="p">(</span><span class="n">fly_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">debug</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+
+    <span class="c1"># TODO move a \b from indicator to uas regex? have at start of both? make</span>
+    <span class="c1"># optional in one/both?</span>
+    <span class="c1"># works, at least for all but negative lookahead within driver</span>
+    <span class="c1">#uas_regex = &#39;u?(?:as)?&#39;</span>
+    <span class="n">uas_regex</span> <span class="o">=</span> <span class="s1">&#39;(?:u(?:as)?)&#39;</span>
+    <span class="c1"># TODO explicitly exclude u[as] match in driver_regex?</span>
+    <span class="c1"># (e.g. so that &#39;uas-6f&#39; doesn&#39;t parse as driver=&#39;uas&#39; indicator=&#39;6f&#39;)</span>
+    <span class="n">driver_regex</span> <span class="o">=</span> <span class="sa">r</span><span class="s1">&#39;\b(?P&lt;driver&gt;\w+)\s?-\s?g?(?:al)?4?&#39;</span>
+    <span class="c1"># TODO fix? was trying to get &quot;negative lookahead assertion&quot; to work to exclude</span>
+    <span class="c1"># uas from matching in driver portion</span>
+    <span class="c1"># https://stackoverflow.com/questions/5030041</span>
+    <span class="c1"># (but can&#39;t get this one to match anything)</span>
+    <span class="c1">#driver_regex = f&#39;\\b(?P&lt;driver&gt;^(?!{uas_regex})\\w+)\\s?-\\s?g?(?:al)?4?&#39;</span>
+
+    <span class="c1"># TODO fix how we aren&#39;t matching e.g. &#39;6f&#39; alone</span>
+    <span class="c1"># (or add a hack to try matching w/ just indicator_regex?)</span>
+    <span class="c1">#</span>
+    <span class="c1"># worked w/ commented uas_regex above</span>
+    <span class="c1">#indicator_regex = f&#39;\\b{uas_regex}-?g?(?:camp)?(?P&lt;indicator&gt;[6-9][fms])\\b&#39;</span>
+    <span class="n">indicator_regex</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">uas_regex</span><span class="si">}</span><span class="s1">?-?g?(?:camp)?(?P&lt;indicator&gt;[6-9][fms])</span><span class="se">\\</span><span class="s1">b&#39;</span>
+
+    <span class="c1"># making driver_regex optional this way seems to break it... not sure why</span>
+    <span class="c1"># fly_str=&#39;5 day old pb-Gal4/+;+;UAS-G6f/+ from prat&#39;</span>
+    <span class="c1"># ipdb&gt; re.findall(f&#39;{driver_regex}.*{indicator_regex}&#39;, fly_str, flags=re.IGNORECASE)</span>
+    <span class="c1"># [(&#39;pb&#39;, &#39;6f&#39;)]</span>
+    <span class="c1"># ipdb&gt; re.findall(f&#39;(?:{driver_regex}).*{indicator_regex}&#39;, fly_str, flags=re.IGNORECASE)</span>
+    <span class="c1"># [(&#39;pb&#39;, &#39;6f&#39;)]</span>
+    <span class="c1"># ipdb&gt; re.findall(f&#39;(?:{driver_regex})?.*{indicator_regex}&#39;, fly_str, flags=re.IGNORECASE)</span>
+    <span class="c1"># [(&#39;&#39;, &#39;6f&#39;)]</span>
+
+    <span class="c1"># e.g. &#39;5 day old pb-Gal4/+;+;UAS-G6f/+ from prat&#39; -&gt; (&#39;pb&#39;, &#39;6f&#39;)</span>
+    <span class="c1"># &#39;;&#39; and &#39;/&#39; seem to count as a word boundaries (\b)</span>
+    <span class="c1"># TODO can i make driver_regex optional? can i do that be wrapping it w/ another</span>
+    <span class="c1"># non-matching group here, or can&#39;t nest?</span>
+    <span class="n">matches</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">driver_regex</span><span class="si">}</span><span class="s1">.*</span><span class="si">{</span><span class="n">indicator_regex</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">fly_str</span><span class="p">,</span>
+        <span class="n">flags</span><span class="o">=</span><span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span>
+    <span class="p">)</span>
+    <span class="n">driver</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">indicator</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+        <span class="n">driver</span><span class="p">,</span> <span class="n">indicator</span> <span class="o">=</span> <span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">driver</span> <span class="o">=</span> <span class="n">driver</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="c1"># hack since i couldn&#39;t figure out how to exclude uas_regex match from</span>
+        <span class="c1"># &lt;driver&gt; group in driver_regex above</span>
+        <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;^</span><span class="si">{</span><span class="n">uas_regex</span><span class="si">}</span><span class="s1">$&#39;</span><span class="p">,</span> <span class="n">driver</span><span class="p">):</span>
+            <span class="n">driver</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># hack since i couldn&#39;t figure out how to get the one large regex to match</span>
+        <span class="c1"># indicator strs by themselves</span>
+        <span class="n">matches</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\\</span><span class="s1">b</span><span class="si">{</span><span class="n">indicator_regex</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">fly_str</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)</span>
+        <span class="c1"># TODO test this branch</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+            <span class="n">indicator</span> <span class="o">=</span> <span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">indicator</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span>
+
+    <span class="k">if</span> <span class="n">indicator</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">indicator</span> <span class="o">=</span> <span class="n">indicator</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">driver</span><span class="p">,</span> <span class="n">indicator</span>
+
+
+<div class="viewcode-block" id="parse_thorimage_notes"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.parse_thorimage_notes">[docs]</a><span class="nd">@thorimage_xml</span>
+<span class="k">def</span> <span class="nf">parse_thorimage_notes</span><span class="p">(</span><span class="n">xml</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">debug</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Returns dict of metadata, with `&lt;key&gt;: &lt;val&gt;` lines and rest parsed separately.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        thorimage_dir_or_xml: path to ThorImage output directory or XML Element</span>
+<span class="sd">            containing parsed contents of the corresponding Experiment.xml file.</span>
+
+<span class="sd">    Lines not matching the `&lt;key&gt;: &lt;val&gt;` format will be appended together under the</span>
+<span class="sd">    &#39;prose&#39; key in the returned dict.</span>
+
+<span class="sd">    It is assumed there will be a single line with the YAML path from `olf`, and this</span>
+<span class="sd">    line is not included in output (should be handled separately, via</span>
+<span class="sd">    `util.stimulus_yaml_from_thorimage`, and would only add noise in dealing with what</span>
+<span class="sd">    remains here).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">notes</span> <span class="o">=</span> <span class="n">get_thorimage_notes</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
+    <span class="n">recording_start_time</span> <span class="o">=</span> <span class="n">get_thorimage_time</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;notes:&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">notes</span><span class="p">)</span>
+
+    <span class="c1"># TODO unit test?</span>
+    <span class="c1"># TODO rename (_parse_power?)</span>
+    <span class="k">def</span> <span class="nf">_match_power</span><span class="p">(</span><span class="n">power_str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;~?(?P&lt;power_mw&gt;\d+(\.\d*)?)\s?m[wW]\s*(?P&lt;power_note&gt;.*)\s*&#39;</span><span class="p">,</span>
+            <span class="n">power_str</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">m</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">m</span>
+
+        <span class="n">power_dict</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">groupdict</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="p">(</span><span class="s1">&#39;power_mw&#39;</span> <span class="ow">in</span> <span class="n">power_dict</span> <span class="ow">and</span> <span class="s1">&#39;power_note&#39;</span> <span class="ow">in</span> <span class="n">power_dict</span>
+            <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">power_dict</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+        <span class="p">)</span>
+        <span class="k">assert</span> <span class="n">power_dict</span><span class="p">[</span><span class="s1">&#39;power_mw&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="n">power_dict</span><span class="p">[</span><span class="s1">&#39;power_mw&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">power_dict</span><span class="p">[</span><span class="s1">&#39;power_mw&#39;</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">power_dict</span>
+
+    <span class="n">data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="n">non_dict_lines</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">n_yaml_parts</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">n_power_lines</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="c1"># stimulus_yaml_from_thorimage uses .split() instead of .splitlines(), so just want</span>
+    <span class="c1"># to check that I never actually had any experiments where a line has a YAML path</span>
+    <span class="c1"># AND any other non-whitespace chars. would be simpler to just use .splitlines() in</span>
+    <span class="c1"># both places, if checks below never fail.</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">notes</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.yaml&#39;</span><span class="p">):</span>
+            <span class="n">n_yaml_parts</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1"># should be the single line containing yaml_path (the path parsed by</span>
+            <span class="c1"># hong2p.util.stimulus_yaml_from_thorimage)</span>
+            <span class="k">continue</span>
+
+        <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="c1"># see comment above if this ever fails</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.yaml&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">)</span>
+
+        <span class="n">p0</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># seems this should be behavior of &lt;str&gt;.strip() no matter the amount of</span>
+        <span class="c1"># whitespace</span>
+        <span class="k">assert</span> <span class="n">p0</span> <span class="o">==</span> <span class="n">p0</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">p0</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">):</span>
+            <span class="c1"># TODO may need to make parseing more complex (or just use a regex that</span>
+            <span class="c1"># allows whitespace between key and &#39;:&#39; or something?), if this fails</span>
+            <span class="k">assert</span> <span class="s1">&#39;:&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">line</span>
+
+            <span class="n">power_dict</span> <span class="o">=</span> <span class="n">_match_power</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">power_dict</span><span class="p">:</span>
+                <span class="c1"># TODO refactor to share?</span>
+                <span class="k">assert</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">k</span> <span class="ow">in</span> <span class="n">data</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">power_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="n">data</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">power_dict</span><span class="p">)</span>
+                <span class="n">n_power_lines</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="c1">#</span>
+                <span class="k">continue</span>
+
+            <span class="n">non_dict_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">p0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">p0</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+
+        <span class="k">assert</span> <span class="n">key</span> <span class="o">!=</span> <span class="s1">&#39;prose&#39;</span>
+
+        <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;power&#39;</span><span class="p">:</span>
+            <span class="n">power_dict</span> <span class="o">=</span> <span class="n">_match_power</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="c1"># TODO refactor to share?</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">power_dict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">value</span><span class="si">=}</span><span class="s1">&#39;</span>
+            <span class="k">except</span> <span class="ne">AssertionError</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;could not parse power from &#39;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+                <span class="c1"># TODO or put this whole line into power_note instead?</span>
+                <span class="n">non_dict_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+            <span class="k">assert</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">k</span> <span class="ow">in</span> <span class="n">data</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">power_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+            <span class="n">data</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">power_dict</span><span class="p">)</span>
+            <span class="n">n_power_lines</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1">#</span>
+            <span class="k">continue</span>
+
+        <span class="k">assert</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span>
+        <span class="n">data</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+
+    <span class="n">data</span><span class="p">[</span><span class="s1">&#39;prose&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">non_dict_lines</span><span class="p">)</span>
+
+    <span class="c1"># TODO or maybe &lt;= 1 (if some recordings don&#39;t have this path, which should be true</span>
+    <span class="c1"># for anatomical recording)</span>
+    <span class="k">assert</span> <span class="n">n_yaml_parts</span> <span class="o">==</span> <span class="mi">1</span>
+
+    <span class="c1"># not guaranteed. should ffill from previous recordings on same fly.</span>
+    <span class="k">assert</span> <span class="n">n_power_lines</span> <span class="o">&lt;=</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="s1">&#39;fly&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+        <span class="c1"># TODO also support strings like this:</span>
+        <span class="c1"># &#39;pb&gt;6f (same lines/genetics as all recent experiments), ecclosed 11/14. from</span>
+        <span class="c1"># sam.&#39;</span>
+        <span class="c1"># TODO TODO why current date parsing not working w/ ecclosed 11/14?</span>
+
+        <span class="c1"># example strings to match:</span>
+        <span class="c1"># &#39;5 day old pb-Gal4/+;+;UAS-G6f/+ from prat&#39;</span>
+        <span class="n">fly_str</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;fly&#39;</span><span class="p">]</span>
+
+        <span class="c1"># TODO is this guaranteed to match largest number of chars for n_days_old that</span>
+        <span class="c1"># would satisfy \d+? using search (vs match) in case i didn&#39;t always say this at</span>
+        <span class="c1"># start of fly line value</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\b(?P&lt;n_days_old&gt;\d+)\s*days?(?:\sold)?\b&#39;</span><span class="p">,</span> <span class="n">fly_str</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">m</span><span class="p">[</span><span class="s1">&#39;n_days_old&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="n">n_days_old</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="s1">&#39;n_days_old&#39;</span><span class="p">])</span>
+            <span class="c1"># see comment below on why i&#39;m assuming it starts from 1</span>
+            <span class="k">assert</span> <span class="n">n_days_old</span> <span class="o">&gt;=</span> <span class="mi">1</span>
+            <span class="c1"># TODO delete</span>
+            <span class="c1">#assert n_days_old &gt;= 0</span>
+            <span class="k">assert</span> <span class="s1">&#39;n_days_old&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span>
+            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;n_days_old&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">n_days_old</span>
+            <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">n_days_old</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;no match for n_days_old!&#39;</span><span class="p">)</span>
+
+            <span class="c1"># TODO similar post-processing of &#39;odors&#39; value (look for date)?</span>
+            <span class="c1"># example odor strings to match:</span>
+            <span class="c1"># (actually do i want to match this? can i always rely on just getting first</span>
+            <span class="c1"># date?)</span>
+            <span class="c1"># &#39;3/27 except few diagnostics changed on 4/11&#39;</span>
+
+            <span class="c1"># TODO should there need to be an &#39;ec[c]losed &#39; prefix? is there always tho?</span>
+            <span class="c1"># &#39;pb-Gal/x;;U-G6f/+ eclosed 4/23&#39;</span>
+            <span class="n">matches</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\b(?P&lt;month&gt;\d\d?)/(?P&lt;day&gt;\d\d?)\b&#39;</span><span class="p">,</span> <span class="n">fly_str</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">matches</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">matches</span><span class="p">)</span>
+
+                <span class="c1"># only one date should be in line</span>
+                <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+                <span class="n">month</span><span class="p">,</span> <span class="n">day</span> <span class="o">=</span> <span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+                <span class="c1"># TODO warn if recording_start_time is in first few weeks of year?</span>
+                <span class="n">eclosion_date</span> <span class="o">=</span> <span class="n">datetime</span><span class="p">(</span><span class="n">year</span><span class="o">=</span><span class="n">recording_start_time</span><span class="o">.</span><span class="n">year</span><span class="p">,</span>
+                    <span class="n">month</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">month</span><span class="p">),</span> <span class="n">day</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">day</span><span class="p">)</span>
+                <span class="p">)</span>
+
+                <span class="c1"># TODO TODO are flies considered 1 or 0 days old on eclosion day?</span>
+                <span class="c1"># (let&#39;s operate under assumption it&#39;s 1 for now)</span>
+                <span class="c1"># what have i been doing before? what does prat think? what&#39;s min of</span>
+                <span class="c1"># n_days_old values parsed directly in branch above?</span>
+                <span class="n">curr</span> <span class="o">=</span> <span class="n">recording_start_time</span> <span class="o">-</span> <span class="n">timedelta</span><span class="p">(</span><span class="n">hours</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+
+                <span class="c1"># this seems to be essentially taking floor, since seconds/etc fields</span>
+                <span class="c1"># can be &gt;=0, but are ignored by using .days (e.g. so any time on 4/26</span>
+                <span class="c1"># is still 3 days after eclosion_date=4/23)</span>
+                <span class="n">n_days_old</span> <span class="o">=</span> <span class="p">(</span><span class="n">curr</span> <span class="o">-</span> <span class="n">eclosion_date</span><span class="p">)</span><span class="o">.</span><span class="n">days</span>
+                <span class="n">data</span><span class="p">[</span><span class="s1">&#39;n_days_old&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">n_days_old</span>
+                <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">eclosion_date</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">curr</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">n_days_old</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;no match for eclosion_date!&#39;</span><span class="p">)</span>
+
+        <span class="n">driver</span><span class="p">,</span> <span class="n">indicator</span> <span class="o">=</span> <span class="n">_parse_driver_and_indicator</span><span class="p">(</span><span class="n">fly_str</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="n">debug</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="s1">&#39;driver&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span>
+        <span class="n">data</span><span class="p">[</span><span class="s1">&#39;driver&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">driver</span>
+        <span class="k">assert</span> <span class="s1">&#39;indicator&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span>
+        <span class="n">data</span><span class="p">[</span><span class="s1">&#39;indicator&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">indicator</span>
+
+    <span class="c1"># there should also not be any whitespace-only string values at this point</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">if</span> <span class="n">v</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span> <span class="k">else</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+    <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;data:&#39;</span><span class="p">)</span>
+        <span class="n">pprint</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">data</span></div>
+
+
+<div class="viewcode-block" id="load_thorimage_metadata"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.load_thorimage_metadata">[docs]</a><span class="k">def</span> <span class="nf">load_thorimage_metadata</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">return_xml</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns (fps, xy, z, c, n_flyback, raw_output_path) for ThorImage dir.</span>
 
 <span class="sd">    Returns xml as an additional final return value if `return_xml` is True.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">thorimage_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
     <span class="n">xml</span> <span class="o">=</span> <span class="n">get_thorimage_xmlroot</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
 
     <span class="c1"># TODO TODO in volumetric streaming case (at least w/ input from thorimage</span>
@@ -505,7 +950,7 @@
     <span class="c1"># volumes-per-second in that case here, and return that for fps. just need</span>
     <span class="c1"># to check it doesn&#39;t break other stuff.</span>
     <span class="n">fps</span> <span class="o">=</span> <span class="n">get_thorimage_fps_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
-    <span class="n">xy</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">get_thorimage_dims_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
+    <span class="n">xy</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">get_thorimage_dims</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
 
     <span class="n">n_flyback_frames</span> <span class="o">=</span> <span class="n">get_thorimage_n_flyback_xml</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">z</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
@@ -515,7 +960,7 @@
     <span class="c1"># - Image_0001_0001.raw</span>
     <span class="c1"># - Image_001_001.raw</span>
     <span class="c1"># ...but not sure if there any meaning behind the differences.</span>
-    <span class="n">imaging_files</span> <span class="o">=</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">join</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="s1">&#39;Image_*.raw&#39;</span><span class="p">))</span>
+    <span class="n">imaging_files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s1">&#39;Image_*.raw&#39;</span><span class="p">))</span>
 
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">imaging_files</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;no .raw files in ThorImage directory </span><span class="si">{</span><span class="n">thorimage_dir</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
@@ -527,6 +972,8 @@
 
     <span class="n">imaging_file</span> <span class="o">=</span> <span class="n">imaging_files</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
+    <span class="c1"># TODO probably return as some kind of dict / dataclass, and always return xml while</span>
+    <span class="c1"># we are at it</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">return_xml</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">fps</span><span class="p">,</span> <span class="n">xy</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n_flyback_frames</span><span class="p">,</span> <span class="n">imaging_file</span>
     <span class="k">else</span><span class="p">:</span>
@@ -548,6 +995,7 @@
 <span class="sd">    Not perfect, but it doesn&#39;t seem any ThorSync outputs have timestamps.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">syncxml</span> <span class="o">=</span> <span class="n">get_thorsync_xml_path</span><span class="p">(</span><span class="n">thorsync_dir</span><span class="p">)</span>
+    <span class="c1"># TODO is there not a timestamp embedded?</span>
     <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="n">getmtime</span><span class="p">(</span><span class="n">syncxml</span><span class="p">))</span></div>
 
 
@@ -612,7 +1060,7 @@
     <span class="k">return</span> <span class="n">samplerate_hz</span></div>
 
 
-<div class="viewcode-block" id="get_thorsync_h5"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorsync_h5">[docs]</a><span class="k">def</span> <span class="nf">get_thorsync_h5</span><span class="p">(</span><span class="n">thorsync_dir</span><span class="p">):</span>
+<div class="viewcode-block" id="get_thorsync_h5"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_thorsync_h5">[docs]</a><span class="k">def</span> <span class="nf">get_thorsync_h5</span><span class="p">(</span><span class="n">thorsync_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns path to ThorSync .h5 output given a directory created by ThorSync</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># NOTE: if in the future this filename varies, could instead iterate over</span>
@@ -627,12 +1075,14 @@
 <span class="c1"># &#39;[load/read]_movie&#39; call either this or appropriate tifffile calls to load any</span>
 <span class="c1"># TIFF outputs thorimage might have saved (check that dimension orders are the</span>
 <span class="c1"># same!)?</span>
-<div class="viewcode-block" id="read_movie"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.read_movie">[docs]</a><span class="k">def</span> <span class="nf">read_movie</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">discard_flyback</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">discard_channel_b</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-    <span class="n">checks</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">_debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="read_movie"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.read_movie">[docs]</a><span class="k">def</span> <span class="nf">read_movie</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">discard_flyback</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">discard_channel_b</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">checks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">_debug</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns (t,[z,]y,x) indexed timeseries as a numpy array.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">fps</span><span class="p">,</span> <span class="n">xy</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n_flyback</span><span class="p">,</span> <span class="n">imaging_file</span><span class="p">,</span> <span class="n">xml</span> <span class="o">=</span> \
-        <span class="n">load_thorimage_metadata</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">return_xml</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">thorimage_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
+    <span class="n">fps</span><span class="p">,</span> <span class="n">xy</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n_flyback</span><span class="p">,</span> <span class="n">imaging_file</span><span class="p">,</span> <span class="n">xml</span> <span class="o">=</span> <span class="n">load_thorimage_metadata</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span>
+        <span class="n">return_xml</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
 
     <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">xy</span>
 
@@ -671,9 +1121,15 @@
     <span class="c1"># refers to XY frames there too.</span>
     <span class="c1"># TODO test this assertion on all data, though perhaps via a new function</span>
     <span class="c1"># get get expected n_frames from size of .raw file + other metadata</span>
-    <span class="c1"># (mentioned in comments above get_thorimage_dims_xml)</span>
+    <span class="c1"># (mentioned in comments above get_thorimage_dims)</span>
     <span class="k">assert</span> <span class="n">n_frames</span> <span class="o">==</span> <span class="n">get_thorimage_n_frames</span><span class="p">(</span><span class="n">xml</span><span class="p">),</span> \
         <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">n_frames</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="n">get_thorimage_n_frames</span><span class="p">(</span><span class="n">xml</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
+
+    <span class="c1"># TODO delete?</span>
+    <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;read_movie: initial </span><span class="si">{</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;read_movie: </span><span class="si">{</span><span class="n">x</span><span class="si">=}</span><span class="s1"> </span><span class="si">{</span><span class="n">y</span><span class="si">=}</span><span class="s1"> </span><span class="si">{</span><span class="n">z</span><span class="si">=}</span><span class="s1"> </span><span class="si">{</span><span class="n">n_frames</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="c1">#</span>
 
     <span class="c1"># TODO how to reshape if there are also multiple channels?</span>
 
@@ -687,8 +1143,8 @@
         <span class="c1"># just so i can hardcode some fixes based on part of path (assuming</span>
         <span class="c1"># certain structure under mb_team, at least for the inputs i need to</span>
         <span class="c1"># fix)</span>
-        <span class="n">thorimage_dir</span> <span class="o">=</span> <span class="n">abspath</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
-        <span class="n">date_part</span> <span class="o">=</span> <span class="n">thorimage_dir</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">sep</span><span class="p">)[</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span>
+        <span class="n">thorimage_dir</span> <span class="o">=</span> <span class="n">thorimage_dir</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+        <span class="n">date_part</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">sep</span><span class="p">)[</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span>
         <span class="n">try_to_fix_flyback</span> <span class="o">=</span> <span class="kc">False</span>
 
         <span class="c1"># TODO do more testing to determine 1) if this really was a flyback issue and</span>
@@ -740,36 +1196,53 @@
         <span class="c1"># TODO test multi-channel handling in this case</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">(</span><span class="n">n_frames</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">))</span>
 
+    <span class="c1"># TODO delete</span>
+    <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;read_movie: after reshaping </span><span class="si">{</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="c1">#</span>
+
     <span class="k">if</span> <span class="n">discard_channel_b</span><span class="p">:</span>
-        <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
-            <span class="kn">from</span> <span class="nn">hong2p.viz</span> <span class="kn">import</span> <span class="n">image_grid</span>
-            <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+        <span class="c1"># TODO delete?</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        if _debug:</span>
+<span class="sd">            from hong2p.viz import image_grid</span>
+<span class="sd">            import matplotlib.pyplot as plt</span>
 
-            <span class="n">mean</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="sd">            mean = data.mean(axis=0)</span>
 
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mean</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
-                <span class="n">ch1_images</span> <span class="o">=</span> <span class="n">mean</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
-                <span class="n">ch2_images</span> <span class="o">=</span> <span class="n">mean</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="sd">            if len(mean.shape) == 4:</span>
+<span class="sd">                ch1_images = mean[:, 0]</span>
+<span class="sd">                ch2_images = mean[:, 1]</span>
 
-            <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">mean</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
-                <span class="n">ch1_images</span> <span class="o">=</span> <span class="p">[</span><span class="n">mean</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
-                <span class="n">ch2_images</span> <span class="o">=</span> <span class="p">[</span><span class="n">mean</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+<span class="sd">            elif len(mean.shape) == 3:</span>
+<span class="sd">                ch1_images = [mean[0]]</span>
+<span class="sd">                ch2_images = [mean[1]]</span>
 
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">assert</span> <span class="kc">False</span>
+<span class="sd">            else:</span>
+<span class="sd">                assert False</span>
 
-            <span class="c1"># To visually verify that the data in this channel (when gain is zero) is</span>
-            <span class="c1"># not meaningful and can be discarded</span>
-            <span class="n">image_grid</span><span class="p">(</span><span class="n">ch1_images</span><span class="p">)</span>
-            <span class="n">image_grid</span><span class="p">(</span><span class="n">ch2_images</span><span class="p">)</span>
-            <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<span class="sd">            # To visually verify that the data in this channel (when gain is zero) is</span>
+<span class="sd">            # not meaningful and can be discarded</span>
+<span class="sd">            image_grid(ch1_images)</span>
+<span class="sd">            image_grid(ch2_images)</span>
+<span class="sd">            plt.show()</span>
+<span class="sd">        &#39;&#39;&#39;</span>
 
         <span class="n">slices</span> <span class="o">=</span> <span class="p">[</span><span class="nb">slice</span><span class="p">(</span><span class="kc">None</span><span class="p">)]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="c1"># TODO delete</span>
+        <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;read_movie: </span><span class="si">{</span><span class="n">slices</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;read_movie: assuming </span><span class="si">{</span><span class="n">slices</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span><span class="si">=}</span><span class="s1"> corresponds to color channel dim&#39;</span><span class="p">)</span>
+        <span class="c1">#</span>
 
         <span class="c1"># (the channel dimension)</span>
         <span class="n">slices</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
 
         <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">slices</span><span class="p">)]</span>
+        <span class="c1"># TODO delete</span>
+        <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;read_movie: after slicing to exclude color channel </span><span class="si">{</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="c1">#</span>
         <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">slices</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="s1">&#39;channel dimension should no longer&#39;</span>
             <span class="s1">&#39;be in shape&#39;</span>
         <span class="p">)</span>
@@ -848,10 +1321,11 @@
 <span class="p">}</span>
 <span class="c1"># TODO maybe refactor this a bit and add a function to list datasets, just so</span>
 <span class="c1"># people can figure out their own data post hoc w/o needing other tools</span>
+<span class="c1"># TODO account for return_dataset_names_only=True path in return typehint</span>
 <div class="viewcode-block" id="load_thorsync_hdf5"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.load_thorsync_hdf5">[docs]</a><span class="k">def</span> <span class="nf">load_thorsync_hdf5</span><span class="p">(</span><span class="n">thorsync_dir</span><span class="p">,</span> <span class="n">datasets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exclude_datasets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">drop_gctr</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">return_dataset_names_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">skip_dict_rename</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
     <span class="n">skip_normalization</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">rename_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">use_tqdm</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-    <span class="n">_debug</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">_debug</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Loads ThorSync .h5 output within `thorsync_dir` into a `pd.DataFrame`</span>
 
 <span class="sd">    A column &#39;time_s&#39; will be added, which is derived from &#39;GCtr&#39;, and</span>
@@ -1049,6 +1523,7 @@
         <span class="n">f</span><span class="o">.</span><span class="n">visititems</span><span class="p">(</span><span class="n">load_datasets</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">return_dataset_names_only</span><span class="p">:</span>
+        <span class="c1"># TODO account for this in return typehint</span>
         <span class="k">return</span> <span class="n">full_dataset_names</span>
 
     <span class="c1"># TODO maybe compare performance w/ w/o conversion to Dataframe?</span>
@@ -1107,11 +1582,9 @@
 
 <span class="sd">    Cases where it at one index equals the threshold are ignored. Shouldn&#39;t</span>
 <span class="sd">    happen and may indicate electrical problems for our application.</span>
-
-<span class="sd">    Uses a threshold of 2.5 by default. Use 0.5 for digital signals in {0, 1}.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">threshold</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">threshold</span> <span class="o">=</span> <span class="mf">2.5</span>
+        <span class="n">threshold</span> <span class="o">=</span> <span class="n">ANALOG_0_TO_5V_THRESHOLD</span>
 
     <span class="c1"># TODO could redefine in terms of np.diff</span>
     <span class="c1"># might be off by one?</span>
@@ -1200,20 +1673,26 @@
     <span class="k">return</span> <span class="n">onsets</span></div>
 
 
-<div class="viewcode-block" id="get_col_onset_offset_indices"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_col_onset_offset_indices">[docs]</a><span class="k">def</span> <span class="nf">get_col_onset_offset_indices</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">possible_col_names</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="c1"># TODO how to type hint arbitrary length tuple (/iterable) of str (in a union)?</span>
+<div class="viewcode-block" id="get_col_onset_offset_indices"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_col_onset_offset_indices">[docs]</a><span class="k">def</span> <span class="nf">get_col_onset_offset_indices</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">possible_col_names</span><span class="p">,</span>
+    <span class="n">checks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">threshold</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns arrays onsets, offsets with appropriate indices in `df`.</span>
 
-<span class="sd">    possible_col_names (str or tuple): can be either exact column name in</span>
-<span class="sd">        `df` or an iterable of column names, where the first matching a column</span>
-<span class="sd">        in `df` will be used.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        possible_col_names (str or tuple): can be either exact column name in</span>
+<span class="sd">            `df` or an iterable of column names, where the first matching a column</span>
+<span class="sd">            in `df` will be used.</span>
 
-<span class="sd">    threshold (float): passed to `threshold_crossings` under the same name.</span>
+<span class="sd">        threshold (float): passed to `threshold_crossings` under the same name.</span>
+
+<span class="sd">    Raises OnsetOffsetNumMismatch if `checks=True` and the number of onsets and offsets</span>
+<span class="sd">    differ.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">col</span> <span class="o">=</span> <span class="n">_get_column</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">possible_col_names</span><span class="p">)</span>
 
     <span class="c1"># TODO TODO refactor to delete this hack (fixes change to scope_pin)</span>
     <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="s1">&#39;bool&#39;</span><span class="p">):</span>
-        <span class="n">threshold</span> <span class="o">=</span> <span class="mf">0.5</span>
+        <span class="n">threshold</span> <span class="o">=</span> <span class="n">DIGITAL_THRESHOLD</span>
     <span class="c1">#</span>
 
     <span class="c1"># TODO have this (inside) probably warn if there are no threshold crossings</span>
@@ -1222,15 +1701,18 @@
     <span class="c1"># must...)</span>
     <span class="n">onsets</span><span class="p">,</span> <span class="n">offsets</span> <span class="o">=</span> <span class="n">threshold_crossings</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">)</span>
 
-    <span class="c1"># TODO maybe just have threshold_crossings make these checks by default, w/ a</span>
-    <span class="c1"># kwarg to override (which gets threaded through here)?</span>
-    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">onsets</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">offsets</span><span class="p">),</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">onsets</span><span class="p">)</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
-    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">onsets</span> <span class="o">&lt;</span> <span class="n">offsets</span><span class="p">),</span> <span class="s1">&#39;at least one offset before onset&#39;</span>
+    <span class="k">if</span> <span class="n">checks</span><span class="p">:</span>
+        <span class="c1"># TODO maybe just have threshold_crossings make these checks by default, w/ a</span>
+        <span class="c1"># kwarg to override (which gets threaded through here)?</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">onsets</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">offsets</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">OnsetOffsetNumMismatch</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">onsets</span><span class="p">)</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">onsets</span> <span class="o">&lt;</span> <span class="n">offsets</span><span class="p">),</span> <span class="s1">&#39;at least one offset before onset&#39;</span>
 
     <span class="k">return</span> <span class="n">onsets</span><span class="p">,</span> <span class="n">offsets</span></div>
 
 
-<div class="viewcode-block" id="get_col_onset_offset_times"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_col_onset_offset_times">[docs]</a><span class="k">def</span> <span class="nf">get_col_onset_offset_times</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">possible_col_names</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="get_col_onset_offset_times"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_col_onset_offset_times">[docs]</a><span class="k">def</span> <span class="nf">get_col_onset_offset_times</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">possible_col_names</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns arrays onsets, offsets with appropriate values from `df.time_s`.</span>
 
 <span class="sd">    Args:</span>
@@ -1271,14 +1753,15 @@
 <span class="c1"># loaded in the background can be shared across these calls?</span>
 <span class="c1"># TODO delete frame out name handling after forcing it to be a constant name in</span>
 <span class="c1"># load_thorsync_hdf5</span>
-<div class="viewcode-block" id="get_frame_times"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_frame_times">[docs]</a><span class="k">def</span> <span class="nf">get_frame_times</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">time_ref</span><span class="o">=</span><span class="s1">&#39;mid&#39;</span><span class="p">,</span> <span class="n">min_block_duration_s</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
-    <span class="n">acquisition_trigger_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">warn</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">_debug</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">_wont_use_df_after</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="get_frame_times"><a class="viewcode-back" href="../../apidoc/hong2p.thor.html#hong2p.thor.get_frame_times">[docs]</a><span class="k">def</span> <span class="nf">get_frame_times</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">time_ref</span><span class="o">=</span><span class="s1">&#39;mid&#39;</span><span class="p">,</span>
+    <span class="n">min_block_duration_s</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">acquisition_trigger_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">warn</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">_debug</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">_wont_use_df_after</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Returns seconds from start of ThorSync recording for each frame.</span>
 
 <span class="sd">    Arguments:</span>
-<span class="sd">        df (`DataFrame`): as returned by `load_thorsync_hdf5`</span>
+<span class="sd">        df: as returned by `load_thorsync_hdf5`</span>
 
-<span class="sd">        thorimage_dir (str): path to ThorImage directory to load metadata from</span>
+<span class="sd">        thorimage_dir: path to ThorImage directory to load metadata from</span>
 
 <span class="sd">        time_ref (&#39;mid&#39; | &#39;end&#39;)</span>
 
@@ -1326,7 +1809,7 @@
 
     <span class="c1"># ~28% of time (kernprof on one test input)</span>
     <span class="n">acq_onsets</span><span class="p">,</span> <span class="n">acq_offsets</span> <span class="o">=</span> <span class="n">get_col_onset_offset_indices</span><span class="p">(</span><span class="n">df</span><span class="p">,</span>
-        <span class="n">acquisition_trigger_names</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">2.5</span>
+        <span class="n">acquisition_trigger_names</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">ANALOG_0_TO_5V_THRESHOLD</span>
     <span class="p">)</span>
 
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">acq_onsets</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
@@ -1395,7 +1878,7 @@
     <span class="c1"># (user renameable) ones</span>
     <span class="c1"># ~24% of time (kernprof on one test input)</span>
     <span class="n">frame_out_onsets</span><span class="p">,</span> <span class="n">frame_out_offsets</span> <span class="o">=</span> <span class="n">get_col_onset_offset_indices</span><span class="p">(</span><span class="n">df</span><span class="p">,</span>
-        <span class="s1">&#39;frame_out&#39;</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.5</span>
+        <span class="s1">&#39;frame_out&#39;</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">DIGITAL_THRESHOLD</span>
     <span class="p">)</span>
 
     <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
@@ -1639,6 +2122,8 @@
         <span class="c1"># (though it shouldn&#39;t unless I made a mistake)</span>
         <span class="n">frame_times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">frame_times</span><span class="p">,</span> <span class="n">flyback_indices</span><span class="p">)</span>
 
+        <span class="c1"># TODO change these two AssertionErrors into a custom error</span>
+
         <span class="c1"># (we basically already know, but just for the sake of it...)</span>
         <span class="n">n_volumes</span><span class="p">,</span> <span class="n">remainder</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">frame_times</span><span class="p">),</span> <span class="n">z</span><span class="p">)</span>
         <span class="k">assert</span> <span class="n">remainder</span> <span class="o">==</span> <span class="mi">0</span>
@@ -1657,7 +2142,7 @@
 <span class="sd">            should have a `shape` of `(movie.shape[0],)`.</span>
 
 <span class="sd">        rtol (float): (optional, default=1.5) time differences between frames must</span>
-<span class="sd">            be at least this multiplied by the median time difference in order for </span>
+<span class="sd">            be at least this multiplied by the median time difference in order for</span>
 <span class="sd">            a block to be called there.</span>
 
 <span class="sd">    Notes:</span>
@@ -1693,11 +2178,11 @@
     <span class="sd">&quot;&quot;&quot;Takes ThorSync+Image data to (start, stop) indices for each block.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">    df (DataFrame): as output by `load_thorsync_hdf5`</span>
+<span class="sd">    df: as output by `load_thorsync_hdf5`</span>
 
-<span class="sd">    thorimage_dir (str): path to a directory created by ThorImage</span>
+<span class="sd">    thorimage_dir: path to a directory created by ThorImage</span>
 
-<span class="sd">    kwargs (dict): passed through to `get_frame_times`</span>
+<span class="sd">    **kwargs: passed through to `get_frame_times`</span>
 
 <span class="sd">    See documentation of `assign_frame_times_to_blocks` for more details on the</span>
 <span class="sd">    definition of blocks and the properties of the output.</span>
@@ -1762,7 +2247,7 @@
         <span class="n">odor_timing_names</span> <span class="o">=</span> <span class="n">_odor_timing_names</span>
 
     <span class="c1"># This also actually works w/ stuff of type np.str_, which old comparison did not.</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">thorsync_input</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">thorsync_input</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">)):</span>
         <span class="c1"># Just assuming it&#39;s an appropriate DataFrame input in this case.</span>
         <span class="n">df</span> <span class="o">=</span> <span class="n">thorsync_input</span>
         <span class="n">df_was_passed_in</span> <span class="o">=</span> <span class="kc">True</span>
@@ -1788,10 +2273,9 @@
 
 
     <span class="c1"># (when the valve(s) are given the signal to open)</span>
-    <span class="n">odor_onsets</span> <span class="o">=</span> <span class="n">get_col_onset_indices</span><span class="p">(</span><span class="n">df</span><span class="p">,</span>
-        <span class="n">odor_timing_names</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">2.5</span>
+    <span class="n">odor_onsets</span> <span class="o">=</span> <span class="n">get_col_onset_indices</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">odor_timing_names</span><span class="p">,</span>
+        <span class="n">threshold</span><span class="o">=</span><span class="n">ANALOG_0_TO_5V_THRESHOLD</span>
     <span class="p">)</span>
-
     <span class="n">odor_onset_times</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">time_col</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="n">odor_onsets</span><span class="p">]</span>
 
     <span class="c1"># unsafe if caller has a reference to `df`, but can save a small amount of time if</span>
@@ -1886,14 +2370,35 @@
     <span class="n">end_frames</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">end_frames</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">check_all_frames_assigned</span><span class="p">:</span>
+        <span class="c1"># TODO better name</span>
         <span class="n">indices</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">start_frames</span><span class="p">,</span> <span class="n">end_frames</span><span class="p">):</span>
             <span class="n">indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">e</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
 
         <span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
 
-        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">frame_times</span><span class="p">[</span><span class="n">indices</span><span class="p">])</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">frame_times</span><span class="p">),</span> \
-            <span class="s1">&#39;not all frames were assigned&#39;</span>
+        <span class="c1"># TODO TODO TODO which of the 2022-10-07 data was triggering this again?</span>
+        <span class="c1"># 1/megamat0_part2? what is correct handling there?</span>
+        <span class="c1"># TODO TODO TODO replace assertion w/ raising NotAllFramesAssigned</span>
+        <span class="c1"># (+ adapt any calling code that currently catches AssertionError)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">frame_times</span><span class="p">[</span><span class="n">indices</span><span class="p">])</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">frame_times</span><span class="p">),</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">thorimage_dir</span><span class="si">}</span><span class="s1">: not &#39;</span>
+            <span class="sa">f</span><span class="s1">&#39;all frames were assigned (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">frame_times</span><span class="p">[</span><span class="n">indices</span><span class="p">])</span><span class="si">=}</span><span class="s1"> != &#39;</span>
+            <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">frame_times</span><span class="p">)</span><span class="si">=}</span><span class="s1">)&#39;</span>
+        <span class="p">)</span>
+
+        <span class="c1"># TODO delete try/except</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        try:</span>
+<span class="sd">            assert len(frame_times[indices]) == len(frame_times), \</span>
+<span class="sd">                f&#39;{thorimage_dir}: not all frames were assigned&#39;</span>
+
+<span class="sd">        except AssertionError:</span>
+<span class="sd">            print(f&#39;{thorimage_dir=}&#39;)</span>
+<span class="sd">            print(f&#39;{len(frame_times[indices])=}&#39;)</span>
+<span class="sd">            print(f&#39;{len(frame_times)=}&#39;)</span>
+<span class="sd">            import ipdb; ipdb.set_trace()</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#</span>
 
         <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">indices</span><span class="p">))</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">indices</span><span class="p">),</span> \
             <span class="s1">&#39;nonunique (probably overlapping ranges of) indices&#39;</span>
@@ -2129,27 +2634,27 @@
 <span class="sd">    lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">    check_against_naming_conv (bool): (default=False) If True, check ordering</span>
-<span class="sd">        from pairing is consistent with ordering derived from our naming</span>
-<span class="sd">        conventions for Thor software output.</span>
+<span class="sd">        check_against_naming_conv (bool): (default=False) If True, check ordering</span>
+<span class="sd">            from pairing is consistent with ordering derived from our naming</span>
+<span class="sd">            conventions for Thor software output.</span>
 
-<span class="sd">    check_unique_thorimage_nums (bool): If True, check numbers parsed from</span>
-<span class="sd">        ThorImage directory names, as-per convention, are unique.</span>
-<span class="sd">        Requires check_against_naming_conv to be True. Defaults to True if</span>
-<span class="sd">        check_against_naming_conv is True, else defaults to False.</span>
+<span class="sd">        check_unique_thorimage_nums (bool): If True, check numbers parsed from</span>
+<span class="sd">            ThorImage directory names, as-per convention, are unique.</span>
+<span class="sd">            Requires check_against_naming_conv to be True. Defaults to True if</span>
+<span class="sd">            check_against_naming_conv is True, else defaults to False.</span>
 
-<span class="sd">    ignore_prepairing (None | iterable of str): An optional iterable of substrings. If</span>
-<span class="sd">        any are present in the name of a Thor directory, that directory will be excluded</span>
-<span class="sd">        from consideration in pairing. This is mainly to keep the (fragile)</span>
-<span class="sd">        implementation that requires equal numbers of ThorImage and ThorSync directories</span>
-<span class="sd">        for pairing working if some particular experiments named a certain way only have</span>
-<span class="sd">        data from one. Will also be try appending these to `ignore` if uneven numbers of</span>
-<span class="sd">        directories and `use_ranking=True`.</span>
+<span class="sd">        ignore_prepairing (None | iterable of str): An optional iterable of substrings.</span>
+<span class="sd">            If any are present in the name of a Thor directory, that directory will be</span>
+<span class="sd">            excluded from consideration in pairing. This is mainly to keep the (fragile)</span>
+<span class="sd">            implementation that requires equal numbers of ThorImage and ThorSync</span>
+<span class="sd">            directories for pairing working if some particular experiments named a</span>
+<span class="sd">            certain way only have data from one. Will also be try appending these to</span>
+<span class="sd">            `ignore` if uneven numbers of directories and `use_ranking=True`.</span>
 
-<span class="sd">    ignore (None | iterable of str): As `ignore_prepairing`, but ignore will happen</span>
-<span class="sd">        after pairing. Both the ThorImage and ThorSync directories of a pair will be</span>
-<span class="sd">        checked for these substrings and if any match the pair is not returned. This is</span>
-<span class="sd">        mainly intended to ignore known-bad data.</span>
+<span class="sd">        ignore (None | iterable of str): As `ignore_prepairing`, but ignore will happen</span>
+<span class="sd">            after pairing. Both the ThorImage and ThorSync directories of a pair will be</span>
+<span class="sd">            checked for these substrings and if any match the pair is not returned. This</span>
+<span class="sd">            is mainly intended to ignore known-bad data.</span>
 
 <span class="sd">    Raises ValueError if two dirs of one type match to the same one of the</span>
 <span class="sd">    other, but just returns shorter list of pairs if some matches can not be</span>
@@ -2203,9 +2708,8 @@
     <span class="k">if</span> <span class="n">check_unique_thorimage_nums</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">check_against_naming_conv</span><span class="p">:</span>
         <span class="n">check_unique_thorimage_nums</span> <span class="o">=</span> <span class="kc">True</span>
 
-    <span class="n">thorimage_times</span> <span class="o">=</span> <span class="p">{</span><span class="n">d</span><span class="p">:</span> <span class="n">get_thorimage_time</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">use_mtime</span><span class="o">=</span><span class="n">use_mtime</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">thorimage_dirs</span>
-    <span class="p">}</span>
+    <span class="n">thorimage_times</span> <span class="o">=</span> <span class="p">{</span><span class="n">d</span><span class="p">:</span> <span class="n">get_thorimage_time</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">thorimage_dirs</span><span class="p">}</span>
+
     <span class="c1"># TODO should get_thorsync_time not implement/take the same use_mtime kwarg?</span>
     <span class="n">thorsync_times</span> <span class="o">=</span> <span class="p">{</span><span class="n">d</span><span class="p">:</span> <span class="n">get_thorsync_time</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">thorsync_dirs</span><span class="p">}</span>
 
@@ -2474,7 +2978,7 @@
     <span class="n">fps</span> <span class="o">=</span> <span class="n">get_thorimage_fps_xml</span><span class="p">(</span><span class="n">xml_root</span><span class="p">)</span>
     <span class="c1"># &quot;spatial resolution of FOV in pixels per um&quot; &quot;(float, float)&quot;</span>
     <span class="c1"># TODO do they really mean pixel/um, not um/pixel?</span>
-    <span class="n">pixels_per_um</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">get_thorimage_pixelsize_xml</span><span class="p">(</span><span class="n">xml_root</span><span class="p">)</span>
+    <span class="n">pixels_per_um</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">get_thorimage_pixelsize_um</span><span class="p">(</span><span class="n">xml_root</span><span class="p">)</span>
     <span class="n">dxy</span> <span class="o">=</span> <span class="p">(</span><span class="n">pixels_per_um</span><span class="p">,</span> <span class="n">pixels_per_um</span><span class="p">)</span>
     <span class="c1"># TODO maybe load dims anyway?</span>
     <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;fr&#39;</span><span class="p">:</span> <span class="n">fps</span><span class="p">,</span> <span class="s1">&#39;dxy&#39;</span><span class="p">:</span> <span class="n">dxy</span><span class="p">}</span></div>
@@ -2490,7 +2994,7 @@
 
   <div role="contentinfo">
     <p>
-        &#169; Copyright 2021, Tom O&#39;Connell.
+        &#169; Copyright 2022, Tom O&#39;Connell.
 
     </p>
   </div>

@@ -1,0 +1,344 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>hong2p.latex &mdash; hong2p 0.0.0 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+    
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> hong2p
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">hong2p</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>hong2p.latex</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for hong2p.latex</h1><div class="highlight"><pre>
+<span></span><span class="c1"># TODO TODO figure out how to get dependencies for this (template.tex, figureSeries.sty)</span>
+<span class="c1"># distributed with hong2p via setuptools (and try not to need either in this directory</span>
+<span class="c1"># with the python modules)</span>
+<span class="c1"># TODO add conda deps for system latex requirements?</span>
+
+<span class="c1"># TODO convert to pathlib</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">abspath</span><span class="p">,</span> <span class="n">dirname</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+
+<span class="kn">from</span> <span class="nn">jinja2.loaders</span> <span class="kn">import</span> <span class="n">PackageLoader</span><span class="p">,</span> <span class="n">FileSystemLoader</span>
+<span class="kn">from</span> <span class="nn">latex</span> <span class="kn">import</span> <span class="n">build_pdf</span><span class="p">,</span> <span class="n">escape</span><span class="p">,</span> <span class="n">LatexBuildError</span>
+<span class="kn">from</span> <span class="nn">latex.jinja2</span> <span class="kn">import</span> <span class="n">make_env</span>
+
+
+<div class="viewcode-block" id="get_latex_dir"><a class="viewcode-back" href="../../apidoc/hong2p.latex.html#hong2p.latex.get_latex_dir">[docs]</a><span class="k">def</span> <span class="nf">get_latex_dir</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="c1"># TODO change to have latex dir under module dir if PackageLoader doesn&#39;t work w/</span>
+    <span class="c1"># latex dir where it currently is (at root of repo)</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s1">&#39;latex&#39;</span></div>
+
+
+<div class="viewcode-block" id="clean_generated_latex"><a class="viewcode-back" href="../../apidoc/hong2p.latex.html#hong2p.latex.clean_generated_latex">[docs]</a><span class="k">def</span> <span class="nf">clean_generated_latex</span><span class="p">(</span><span class="n">latex_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Returns str w/ any consecutive empty lines removed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="n">latex_str</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span>
+    <span class="n">cleaned_lines</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">first</span><span class="p">,</span> <span class="n">second</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">lines</span><span class="p">,</span> <span class="n">lines</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">first</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span> <span class="ow">and</span> <span class="n">second</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">):</span>
+            <span class="n">cleaned_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>
+    <span class="n">cleaned_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lines</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+    <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cleaned_lines</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="compile_tex_to_pdf"><a class="viewcode-back" href="../../apidoc/hong2p.latex.html#hong2p.latex.compile_tex_to_pdf">[docs]</a><span class="k">def</span> <span class="nf">compile_tex_to_pdf</span><span class="p">(</span><span class="n">latex_str</span><span class="p">,</span> <span class="n">pdf_fname</span><span class="p">,</span> <span class="n">failed_latex_msg</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+
+    <span class="n">latex_dir</span> <span class="o">=</span> <span class="n">get_latex_dir</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># TODO update comment. don&#39;t actually need template.tex right? since processed</span>
+        <span class="c1"># contents of that should have since been put in latex_str?</span>
+        <span class="c1">#</span>
+        <span class="c1"># latex_dir needs to be passed so that &#39;template.tex&#39;, and any other</span>
+        <span class="c1"># dependencies in current directory, can be accessed in the temporary build dir</span>
+        <span class="c1"># created by the latex package.</span>
+        <span class="c1">#</span>
+        <span class="c1"># The empty string as the last element retains any default search paths TeX</span>
+        <span class="c1"># builder would have.</span>
+        <span class="n">pdf</span> <span class="o">=</span> <span class="n">build_pdf</span><span class="p">(</span><span class="n">latex_str</span><span class="p">,</span> <span class="n">texinputs</span><span class="o">=</span><span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">latex_dir</span><span class="p">),</span> <span class="s1">&#39;&#39;</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Writing output to </span><span class="si">{</span><span class="n">pdf_fname</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="n">pdf</span><span class="o">.</span><span class="n">save_to</span><span class="p">(</span><span class="n">pdf_fname</span><span class="p">)</span>
+
+    <span class="k">except</span> <span class="n">LatexBuildError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+        <span class="c1"># TODO shouldn&#39;t i print err too?</span>
+        <span class="k">if</span> <span class="n">failed_latex_msg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">failed_latex_msg</span><span class="p">)</span>
+        <span class="k">raise</span></div>
+
+
+<span class="c1"># TODO maybe delete fig_dir (and compute here from fig paths in section_names2figs?)</span>
+<span class="c1"># TODO doc</span>
+<span class="c1"># TODO print_tex_on_err output to stderr?</span>
+<div class="viewcode-block" id="make_pdf"><a class="viewcode-back" href="../../apidoc/hong2p.latex.html#hong2p.latex.make_pdf">[docs]</a><span class="k">def</span> <span class="nf">make_pdf</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">,</span> <span class="n">fig_dir</span><span class="p">,</span> <span class="n">section_names2figs</span><span class="p">,</span> <span class="n">header</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">template_path</span><span class="o">=</span><span class="s1">&#39;template.tex&#39;</span><span class="p">,</span> <span class="n">write_latex_like_pdf</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">write_latex_for_testing</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">test_tex_path</span><span class="o">=</span><span class="s1">&#39;test.tex&#39;</span><span class="p">,</span>
+    <span class="n">only_print_latex</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">print_tex_on_err</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+
+    <span class="n">fig_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fig_dir</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+
+    <span class="c1"># TODO test this works w/ hong2p installed in a more proper way (like directly from</span>
+    <span class="c1"># github, but non-editable)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">env</span> <span class="o">=</span> <span class="n">make_env</span><span class="p">(</span><span class="n">loader</span><span class="o">=</span><span class="n">PackageLoader</span><span class="p">(</span><span class="s1">&#39;hong2p&#39;</span><span class="p">,</span> <span class="s1">&#39;latex&#39;</span><span class="p">))</span>
+
+    <span class="c1"># ValueError: The &#39;hong2p&#39; package was not installed in a way that PackageLoader</span>
+    <span class="c1"># understands</span>
+    <span class="c1"># (when installed in editable mode, which is typically how I use it)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="n">latex_dir</span> <span class="o">=</span> <span class="n">get_latex_dir</span><span class="p">()</span>
+        <span class="c1"># TODO can FileSystemLoader take Path input?</span>
+        <span class="n">env</span> <span class="o">=</span> <span class="n">make_env</span><span class="p">(</span><span class="n">loader</span><span class="o">=</span><span class="n">FileSystemLoader</span><span class="p">(</span><span class="n">latex_dir</span><span class="p">))</span>
+
+    <span class="n">template</span> <span class="o">=</span> <span class="n">env</span><span class="o">.</span><span class="n">get_template</span><span class="p">(</span><span class="s1">&#39;template.tex&#39;</span><span class="p">)</span>
+
+    <span class="c1"># TODO try to just use a dict if jinja can support that</span>
+    <span class="n">section_names_and_figs</span> <span class="o">=</span> <span class="p">[(</span><span class="n">name</span><span class="p">,</span> <span class="n">figs</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">figs</span> <span class="ow">in</span> <span class="n">section_names2figs</span><span class="o">.</span><span class="n">items</span><span class="p">()]</span>
+
+    <span class="c1"># Converting any inputs with figure paths specified as Path objects to str</span>
+    <span class="c1">#</span>
+    <span class="c1"># TODO might need to convert to paths relative to fig_dir? currently only testing w/</span>
+    <span class="c1"># relative path inputs...</span>
+    <span class="c1"># could i make all figure paths absolute and not specify fig dir?</span>
+    <span class="n">section_names_and_figs</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">figs</span><span class="p">])</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">figs</span> <span class="ow">in</span> <span class="n">section_names_and_figs</span>
+    <span class="p">]</span>
+
+    <span class="n">section_names_and_figs</span> <span class="o">=</span> <span class="p">[(</span><span class="n">name</span><span class="p">,</span> <span class="n">figs</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">figs</span> <span class="ow">in</span> <span class="n">section_names_and_figs</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">figs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="p">]</span>
+
+    <span class="c1"># TODO if header is None, will jinja + latex do the right thing and not show a</span>
+    <span class="c1"># header (i.e. does it end up evaluating falsey?) may need to just not pass in</span>
+    <span class="c1"># kwargs if not?</span>
+    <span class="n">latex_str</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">fig_dir</span><span class="o">=</span><span class="n">fig_dir</span><span class="p">,</span> <span class="n">sections</span><span class="o">=</span><span class="n">section_names_and_figs</span><span class="p">,</span>
+        <span class="c1">#pagebreak_after=pagebreak_after, filename_captions=filename_captions,</span>
+        <span class="n">header</span><span class="o">=</span><span class="n">header</span>
+    <span class="p">)</span>
+    <span class="n">latex_str</span> <span class="o">=</span> <span class="n">clean_generated_latex</span><span class="p">(</span><span class="n">latex_str</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">write_latex_for_testing</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Writing LaTeX to </span><span class="si">{</span><span class="n">test_tex_path</span><span class="si">}</span><span class="s1"> (for testing)&#39;</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">test_tex_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">latex_str</span><span class="p">)</span>
+
+    <span class="n">latex_msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rendered TeX:</span><span class="se">\n</span><span class="si">{</span><span class="n">latex_str</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
+    <span class="k">if</span> <span class="n">only_print_latex</span> <span class="ow">or</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">latex_msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">only_print_latex</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="c1"># TODO delete?</span>
+    <span class="k">if</span> <span class="n">write_latex_like_pdf</span><span class="p">:</span>
+        <span class="n">tex_fname</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)[:</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="s1">&#39;.pdf&#39;</span><span class="p">)]</span> <span class="o">+</span> <span class="s1">&#39;.tex&#39;</span>
+
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Writing LaTeX to </span><span class="si">{</span><span class="n">tex_fname</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">tex_fname</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">latex_str</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">print_tex_on_err</span><span class="p">:</span>
+        <span class="n">failed_latex_msg</span> <span class="o">=</span> <span class="n">latex_msg</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">failed_latex_msg</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">compile_tex_to_pdf</span><span class="p">(</span><span class="n">latex_str</span><span class="p">,</span> <span class="n">pdf_path</span><span class="p">,</span> <span class="n">failed_latex_msg</span><span class="o">=</span><span class="n">failed_latex_msg</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span>
+    <span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2022, Tom O&#39;Connell.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
