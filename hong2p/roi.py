@@ -5,6 +5,7 @@ from pathlib import Path
 import pickle
 from pprint import pprint
 import re
+import time
 from typing import Optional, Union, List
 # TODO replace w/ logging.warning
 import warnings
@@ -19,6 +20,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 # This must be my fork at https://github.com/tom-f-oconnell/ijroi
 import ijroi
 from hong2p import thor, util, viz
+# TODO make (/find) an Arraylike (to include NumpyOrXArray as well as Series/DataFrame)?
+# TODO want one that excludes Series (but how to also exclude 1D numpy arrays? so prob
+# not)
 from hong2p.types import Pathlike, NumpyOrXArray
 
 
@@ -866,21 +870,29 @@ def footprints_to_flat_cnmf_dims(footprints):
     return np.reshape(footprints, (frame_pixels, n_footprints), order='F')
 
 
-# TODO change this + how plot_roi_util.py calls it, so that we can only calculate mean
-# for the relevant subset of frames (e.g. only for baseline frames + within odor
-# response window)? would that even save much time? (could make mean same length, but
-# NaN, and fill in calculated timepoints, so indexing output would be the same)
+# TODO type hint arraylike
 #
 # 90% of time was from the np.mean line
-def extract_traces_bool_masks(movie, footprints, verbose=False):
-    # TODO doc shape/type expectations on movie / footprints
+def extract_traces_bool_masks(movie, footprints, *, verbose: bool = False):
     """
     Averages the movie within each boolean mask in footprints
     to make a matrix of traces (n_frames x n_footprints).
+
+    Args:
+        movie: should be of shape (T, [Z,] Y, X).
+        footprints: should be of shape ([Z,] Y, X, #-ROIs)
     """
+    # need to support either of these? probably not
+    assert not np.isnan(movie).any()
+    assert not np.isnan(footprints).any()
+
+    # TODO TODO what would i need to change below to support float masks tho?
+    # (like the suite2p ones, where they seem to be non-negative, but each not
+    # necessarily summing to the same value [typically ~1-15 or so, from a quick look])
     assert footprints.dtype.kind != 'f', 'float footprints are not boolean'
     assert footprints.max() == 1, 'footprints not boolean'
     assert footprints.min() == 0, 'footprints not boolean'
+    #
     n_spatial_dims = len(footprints.shape) - 1
     spatial_dims = tuple(range(n_spatial_dims))
     assert np.any(footprints, axis=spatial_dims).all(), 'some zero footprints'
@@ -898,14 +910,108 @@ def extract_traces_bool_masks(movie, footprints, verbose=False):
         # TODO compare time of this to sparse matrix dot product?
         # + time of MaskedArray->mean w/ mask expanded by n_frames?
 
-        # TODO TODO is this correct? check
         # axis=1 because movie[:, mask] only has two dims (frames x pixels)
         trace = np.mean(movie[:, mask], axis=1)
         assert len(trace.shape) == 1 and len(trace) == n_frames
         traces[:, i] = trace
 
+    assert not np.isnan(traces).any()
+
     if verbose:
         print(' done')
+
+    return traces
+
+
+# TODO try to make extract_traces_bool_masks (only fn that had been used for a long
+# time) a reference to this fn (want to keep former name active so yang doesn't need to
+# change any code). need to test behavior same.
+#
+# TODO TODO delete _sum= kwarg after using to test suite2p stuff? or actually want that
+# behavior?
+# TODO TODO TODO actually, no. it is required to match s2p output, w/ normalized
+# footprints. it should be the new default behavior, at least after input is normalized
+# or checked to be normalized.
+def extract_traces(movie, footprints, *, _sum=False, verbose: bool = False):
+    """
+    Averages the movie within each mask in footprints
+    to make a matrix of traces (n_frames x n_footprints).
+
+    Args:
+        movie: should be of shape (T, [Z,] Y, X).
+        footprints: should be of shape ([Z,] Y, X, #-ROIs)
+    """
+    # need to support either of these? probably not
+    assert not np.isnan(movie).any()
+    assert not np.isnan(footprints).any()
+
+    assert footprints.min() == 0
+
+    n_spatial_dims = len(footprints.shape) - 1
+    mask_spatial_dims = tuple(range(n_spatial_dims))
+    assert np.any(footprints, axis=mask_spatial_dims).all(), 'some zero footprints'
+    slices = (slice(None),) * n_spatial_dims
+    n_frames = movie.shape[0]
+    n_footprints = footprints.shape[-1]
+    traces = np.empty((n_frames, n_footprints)) * np.nan
+
+    # first movie dim is time, everything else should be a spatial dim
+    movie_spatial_dims = tuple(range(1, len(movie.shape)))
+
+    if verbose:
+        before_s = time.time()
+        print('extracting traces from masks...', end='', flush=True)
+
+    # TODO vectorized way to do this?
+    for i in range(n_footprints):
+        mask = footprints[slices + (i,)]
+
+        # TODO delete / move to test
+        # bmask = mask > 0
+        # ipdb> np.array_equal(movie[:, bmask] * mask[bmask], (movie*mask)[:,bmask])
+        # True
+        #
+        # ipdb> (movie*mask)[:,bmask].shape
+        # (9076, 27)
+        #
+        # ipdb> (movie*mask).shape
+        # (9076, 256, 256)
+
+        # TODO TODO use sum instead of mean? suite2p docs seemed to suggest that, but
+        # not sure it makes sense. may not matter, apart from preserving old behavior of
+        # bool fn?
+        # TODO delete _sum=True branch if doesn't actually make more sense on suite2p
+        # outputs?
+        if _sum:
+            trace = np.sum(movie * mask, axis=movie_spatial_dims)
+        #
+        else:
+            # TODO TODO test this against my bool one, at least for input to this fn
+            # that is boolean
+            trace = np.mean(movie * mask, axis=movie_spatial_dims)
+
+        # TODO TODO try np.average w/ weights= either normalized or not mask?
+        # any advantage? output the same (as either of above branches, for suite2p
+        # mask inputs)?
+        #
+        # np.average's calculation is: avg = sum(a * weights) / sum(weights)
+        #import ipdb; ipdb.set_trace()
+        # TODO TODO or .dot, like s2p seems to do? see notes in
+        # al_analysis/scripts/recompute_traces...
+
+        # TODO actually yea can this be made any faster (e.g. by using list of sparse
+        # array inputs? scipy sparse arrays are only 2d, hence it couldn't just be 1)
+        # TODO try something like the `@njit(parallel=True) suite2p seems to use for
+        # this?
+
+        assert len(trace.shape) == 1 and len(trace) == n_frames
+        traces[:, i] = trace
+
+    assert not np.isnan(traces).any()
+
+    if verbose:
+        extract_time_s = time.time() - before_s
+        print(f' done ({extract_time_s:.1f}s)')
 
     return traces
 

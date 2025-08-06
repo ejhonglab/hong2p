@@ -11,11 +11,227 @@ from typing import Dict, Any
 
 import numpy as np
 import pandas as pd
+from scipy.sparse import coo_array
 import matplotlib.pyplot as plt
 
 from hong2p import thor, util
 from hong2p.roi import crop_to_nonzero, numpy2xarray_rois
 from hong2p.types import Pathlike
+
+
+# TODO dedupe new vs old load fns (prob preferring new ones)
+
+# TODO any constraints of type this can return? either dict or np array? always latter?
+def load(path: Path):
+    # all suite2p .npy outputs will probably need to be loaded this way
+    # (ops certainly does)
+    return np.load(path, allow_pickle=True)
+
+
+# TODO type hint return (np array? dict?)
+def load_ops(s2p_dir: Path) -> Dict[str, Any]:
+    # seems ops is a shape/len-less numpy array with seemingly one dict element?
+    # and seems this works to get it.
+    return load(s2p_dir / 'ops.npy').item()
+
+
+def load_stat(s2p_dir: Path) -> np.ndarray:
+    """Returns array of dicts, each describing one ROI.
+    """
+    stat = load(s2p_dir / 'stat.npy')
+    assert isinstance(stat, np.ndarray)
+    assert len(stat) > 0
+
+    s0 = stat[0]
+    # TODO actually assert specific keys of these (or all) are there?
+    # ipdb> s0.keys()
+    # dict_keys(['ypix', 'xpix', 'lam', 'footprint', 'med', 'mrs', 'mrs0', 'compact',
+    #   'solidity', 'npix', 'npix_soma', 'soma_crop', 'overlap', 'radius',
+    #   'aspect_ratio', 'npix_norm_no_crop', 'npix_norm', 'skew', 'std',
+    #   'neuropil_mask', 'iplane'
+    # ])
+    # seems to be an array of dicts, probably one per ROI
+    assert all(x.keys() == s0.keys() for x in stat)
+
+    return stat
+
+
+# TODO rename to load_F or something?
+# TODO TODO cast output to float64 (from float32)?
+def load_traces(s2p_dir: Path) -> np.ndarray:
+    # TODO clarify "traces" meaning (raw F [think so]? Fc? what?)
+    """Returns traces in shape (#-cells, #-timepoints)
+    """
+    F = np.load(s2p_dir / 'F.npy')
+    assert len(F.shape) == 2 and all(x > 1 for x in F.shape)
+
+    # (== float) returns False, presumably b/c that means default float64?
+    assert F.dtype == np.float32
+    assert not np.isnan(F).any()
+
+    # TODO TODO remy also do this? it matter for my calculation vs her?
+    F = F.astype(np.float64)
+
+    # TODO TODO did remy also clip like this?
+    # TODO TODO how can this be negative? seeing it on some of remy's kiwi/control data,
+    # (2022-04-09/2/kiwi) but didn't see on any of test data in
+    # al_analysis/scripts/recompute_traces_from_remy_s2p_rois.py (2022-10-10/1/megamat0)
+    #assert F.min() >= 0, f'{F.min()=}\n{(F < 0).sum()=}\n{F.size=}'
+    #lt0 = (F < 0)
+    #if lt0.any():
+    #    warnings.warn(f'clipping {lt0.sum()}/{F.size} F values <0 to 0')
+    #    F[lt0] = 0
+
+    eq0 = F == 0
+    if eq0.any():
+        # no ROIs or timepoints should all contain 0
+        assert not eq0.all(axis=0).any()
+        assert not eq0.all(axis=1).any()
+
+        # TODO TODO where do the == 0 elements actually come from? how many are there?
+        # (regions of blank space motion correction might have added around edge?)
+        # (in first test, 239/34688472, so not many)
+        warnings.warn(
+            f'{eq0.sum()}/{F.size} F entries are 0 (no entire cells / timepoints)'
+        )
+
+    return F
+
+
+# TODO add option to return as list of sparse matrices (-> use for prob faster
+# extraction fn path, similar to what s2p does)?
+def load_s2p_masks(s2p_dir: Path) -> np.ndarray:
+    # TODO doc shape this returns (should be (rois, y, x))
+    """Returns normalized (each sums to 1) cell footprints
+    """
+    ops = load_ops(s2p_dir)
+
+    # TODO assert this matches movie dim? prob not in here tho
+    # ipdb> ops['nframes']
+    # 9076
+
+    # TODO are remy's movies really 1024x1024 IN EACH PLANE? (no)
+    # (or is this the combined thing tiling again? probably)
+    # Experiment.xml says 256 x 256 (as does tiff)
+    nx = ops['Lx']
+    ny = ops['Ly']
+    print(f'{nx=} {ny=}')
+
+    # remy seems to use default lam_percentile=50.0, which is used by suite2p to process
+    # stat data into masks (don't think this is actually used for extraction tho? just
+    # "pix"?)
+    #
+    # she also seems to use default allow_overlap=False
+
+    # 16
+    nplanes = ops['nplanes']
+
+    stat = load_stat(s2p_dir)
+
+    # from suite2p docs on outputs:
+    # lam: pixel mask (sum(lam * frames[ypix,xpix,:]) = fluorescence)
+
+    # what are these exactly? (seems like they might all be =1, and just a single int,
+    # not a vector like xpix/ypix/lam)
+    # footprint: spatial extent of an ROI’s functional signal, including pixels not
+    #   assigned to the ROI; a threshold of 1/5 of the max is used as a threshold, and
+    #   the average distance of these pixels from the center is defined as the footprint
+    #
+    # so i guess these are meaningless (at least in combined dir outputs):
+    assert all(x['footprint'] == 1 for x in stat)
+
+    assert ops['allow_overlap'] == False
+
+    masks = []
+    for s in stat:
+        assert len(s) > 0
+
+        no_overlap = ~s['overlap']
+        # how to handle if check footprint isn't empty (after removing overlap) fails?
+        # (hasn't so far...)
+        assert no_overlap.any()
+
+        # check this order of y and x coords is correct. i believe this is what seemed
+        # correct in the past. (output calc matches, so it's fine)
+        coords = [(y, x) for y, x in zip(s['ypix'][no_overlap], s['xpix'][no_overlap])]
+
+        lam = s['lam'][no_overlap]
+        lam_normed = lam / lam.sum()
+        #assert lam_normed.sum() == 1
+        assert np.isclose(lam_normed.sum(), 1)
+
+        # NOTE: it seems scipy.sparse doesn't support >2D arrays, so can't stack/concat
+        # to along a new dimension. each mask (of 135 in first plane) is 256x256, and
+        # hstack/vstack [the two fns along these lines available in scipy.sparse] give
+        # shapes of:
+        # ipdb> vstack(masks).shape
+        # ((34560, 256)
+        # ipdb> hstack(masks).shape
+        # (256, 34560)
+        # ...hence the .todense() call.
+        mask = coo_array((lam_normed, np.array(coords).T), shape=(ny, nx)).todense()
+
+        masks.append(mask)
+
+    # for first plane:
+    # ipdb> np.stack(masks).shape
+    # (135, 256, 256)
+    masks = np.stack(masks)
+
+    # TODO delete?
+    #
+    # replace mine with their create_masks? (...why? faster to not include all 0s in
+    # calc prob...)
+    #
+    # don't want to use neuropil_masks
+    #masks2, neuropil_masks = create_masks(ops, stats)
+    #
+    # create_masks defines amsks like:
+    # ```
+    # cell_masks = [
+    #    create_cell_mask(stat, Ly=ops['Ly'], Lx=ops['Lx'],
+    #        allow_overlap=ops['allow_overlap']
+    #    )
+    #    for stat in stats
+    # ]
+    # ```
+    #
+
+    # TODO delete
+    #
+    # TODO just call extract_traces myself? starting to seem more complicated than
+    # it's worth to reimplement...
+    #
+    # each element of masks2 seems like it's a tuple of (cell_mask, lam_normed).
+    # not sure why they have 2 vars. each cell mask is created by this code:
+    # (from create_cell_mask call above in create_masks)
+    # ```
+    # mask = ... if allow_overlap else ~stat['overlap']
+    # cell_mask = np.ravel_multi_index((stat['ypix'], stat['xpix']), (Ly, Lx))
+    # cell_mask = cell_mask[mask]
+    # lam = stat['lam'][mask]
+    # lam_normed = lam / lam.sum() if lam.size > 0 else np.empty(0)
+    # return cell_mask, lam_normed
+    # ```
+    #
+    # then in extract_traces_from_masks(ops, cell_masks, neuropil_masks):
+    # F, Fneu, ops = extract_traces(ops, cell_masks, neuropil_masks, f)
+    #
+    # setup before loop:
+    # cell_ipix, cell_lam = List(), List()
+    # [cell_ipix.append(cell_mask[0].astype(np.int64)) for cell_mask in cell_masks]
+    # [cell_lam.append(cell_mask[1].astype(np.float32)) for cell_mask in cell_masks]
+    #
+    # in loop:
+    # inds = ix+np.arange(0,nimg,1,int)
+    # data = np.reshape(data, (nimg,-1)).astype(np.float32)
+    #
+    # via call to matmul_traces (setting output into F[:,inds]):
+    # Fi[n] = np.dot(data[:, cell_ipix[n]], cell_lam[n])
+    # (and Fi should just be F. cell_lam should still be normalized, as above)
+    #
+
+    return masks
 
 
 # TODO should this be in types.py?
