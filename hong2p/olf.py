@@ -257,7 +257,7 @@ def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]
     return log10_conc
 
 
-def parse_odor_name(odor_str: str) -> Optional[str]:
+def parse_odor_name(odor_str: str, *, require_conc: bool = True) -> Optional[str]:
     # TODO some way to get the generated docs to refer to the value for the constant
     # rather than having to hardcode it for reference? a plugin maybe?
     # TODO does the parse_odor_name(solvent_str) doctest run/work as a test, or need to
@@ -272,6 +272,9 @@ def parse_odor_name(odor_str: str) -> Optional[str]:
             name and concentration must be separated by `olf.conc_delimiter` ('@'), with
             whitespace on either side of it.
 
+        require_conc: if False, will return `odor_str` if it contains no
+            `olf.conc_delimiter`
+
     >>> parse_odor_name('ethyl acetate @ -2')
     'ethyl acetate'
 
@@ -282,8 +285,16 @@ def parse_odor_name(odor_str: str) -> Optional[str]:
         return None
 
     # TODO take this as kwarg?
+    # TODO raise different errors for these two cases, so i can selectively catch just
+    # first one (delimiter not in str), to support sorting all-w/o-conc
     if conc_delimiter not in odor_str:
-        raise ValueError(f'{conc_delimiter=} not in {odor_str}')
+        # TODO TODO always raise ValueError if odor_str isn't even a str.
+        # made a mistake where index was a MultiIndex (so element was a tuple).
+        # would silently fail otherwise.
+        if require_conc:
+            raise ValueError(f'{conc_delimiter=} not in {odor_str}')
+        else:
+            return odor_str
 
     parts = odor_str.split(conc_delimiter)
     if len(parts) != 2:
@@ -292,11 +303,9 @@ def parse_odor_name(odor_str: str) -> Optional[str]:
     return parts[0].strip()
 
 
-# TODO is require_conc=True actually supported? cause currently parse_odor_name will err
-# w/o that conc_delimiter... change it so that's not the case?
 def parse_odor(odor_str: str, *, require_conc: bool = False) -> dict:
     return {
-        'name': parse_odor_name(odor_str),
+        'name': parse_odor_name(odor_str, require_conc=require_conc),
         'log10_conc': parse_log10_conc(odor_str, require=require_conc),
     }
 
@@ -394,23 +403,37 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
     conc_keys = np.empty(len(odor_strs)) * np.nan
 
     solvent_elements = odor_strs == solvent_str
+
+    # TODO commented to support case where input has all odor strs w/o conc
+    # (e.g. like in megamat stuff, or in hallem main-text odors, where they are all at
+    # same conc)
+    # (may want to restore a limited version)
+    #
     # TODO relax, so i can support '5% cleaning ammonia in water' type stuff? at least
     # a flag to relax? warn only option? (for now, decided to just change all the
     # relevant stimulus files, and try to avoid doing this in the future)
-    assert all([conc_delimiter in x for x in odor_strs[~ solvent_elements]])
+    #
+    #assert all([conc_delimiter in x for x in odor_strs[~ solvent_elements]])
 
     if not all(solvent_elements):
         nonsolvent_conc_keys = [
-            parse_log10_conc(x) for x in odor_strs[~ solvent_elements]
+            # TODO want to thread require_conc thru sort_odors and this fn, to be able
+            # to pass here? care? parse_odor_name (but not parse_odor) still defaulting
+            # to True on it.
+            parse_log10_conc(x, require=False) for x in odor_strs[~ solvent_elements]
         ]
         conc_keys[~ solvent_elements] = nonsolvent_conc_keys
         conc_keys[solvent_elements] = float('-inf')
-        assert not pd.isnull(conc_keys).any()
+        # TODO would NaN values interfere with sorting in a way another placeholder
+        # might not?
+        # TODO commented to support case where input has all odor strs w/o conc
+        # (may want to restore a limited version)
+        #assert not pd.isnull(conc_keys).any()
 
         if sort_names:
             min_name_key = float('-inf')
-            name_keys = [
-                parse_odor_name(x) if x != solvent_str else min_name_key for x in level
+            name_keys = [parse_odor_name(x, require_conc=False) if x != solvent_str
+                else min_name_key for x in level
             ]
             names = [n for n in name_keys if n != min_name_key]
 
@@ -495,6 +518,9 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 # groupby, rather find existing consecutive groups and sort within...)
 # TODO also implement something for getting name order from one of the YAML configs?
 # (do the loading in here? prob take either dict or YAML path)
+# TODO add unit test that missing panels work (at least w/ if_panel_missing != 'err'.
+# al_analysis.al_util.sort_odors currently seems to have if_panel_missing=None, but
+# still failing w/ a missing panel, but before that branch i think)
 def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
     panel2name_order: Optional[Dict[str, List[str]]] = None,
     panel: Optional[str] = None, if_panel_missing='warn',

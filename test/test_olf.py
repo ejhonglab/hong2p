@@ -126,6 +126,10 @@ def test_sort_odors_with_panel(rng):
     # TODO add test w/ panel=<x> instead of index-level / column specifying <x>
 
 
+# TODO add test case for all odor strings having no conc_delimiter (just odor name)
+# TODO and do i want to support a mix of strings w/ and w/o conc_delimiter? test for
+# that case, either way. assuming for now that i do (and made changes in olf.py along
+# those lines)
 def test_sort_odors(rng):
     # TODO should these all just be separate tests? or grouped into a few?
     # use pytest parameterize?
