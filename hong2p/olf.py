@@ -487,6 +487,7 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
 component_level_prefix = 'odor'
 
 def is_odor_var(var_name: Optional[str]) -> bool:
+    # TODO doctest example
     """Returns True if column/level name or Series-key is named to store odor metadata
 
     Values for matching keys should store strings representing *one*, of potentially
@@ -1016,22 +1017,36 @@ def format_odor(odor_dict, conc: bool = True, name_conc_delim: Optional[str] = N
     return ostr
 
 
-# TODO TODO decorator or some other place to store minimum set of keys (and types?) for
+# TODO decorator or some other place to store minimum set of keys (and types?) for
 # these formatting functions (at least those that take a Series as one option)?
 # (so that hong2p.viz.callable_ticklabels can automatically convert / make good error
 # messages if they are missing)
 # TODO factor out this union type (+ probably add np.ndarray), and use in
 # remove_consecutive_repeats as well (or maybe in this particular fn, i actually want
 # Iterable[str] in the Union? not striding here..
+# TODO test
 def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series, Dict[str, Any]], *,
     delim: str = component_delim, warn_unused_levels: bool = False):
+    # TODO doctest example
+    """Formats strings for multiple odors (presented together) into one mixture string.
 
+    Raises ValueError if input is Series/Dict, but no elements in `odor_strs.keys()`
+    are named indicating they contain odor component information (i.e. no keys where
+    `is_odor_var(k)` is True)A.
+    """
     # TODO what's an example of Series input? why using same fn name for this?
     # doc at least... (can make some handling of iterating over index values easier,
     # when we get tuples that we can then zip with index names. can then be easier to
     # drop repeats / other info, without worrying about lengths and things like that)
     if hasattr(odor_strs, 'keys'):
         odor_keys = [x for x in odor_strs.keys() if is_odor_var(x)]
+        if len(odor_keys) == 0:
+            raise ValueError('no keys where is_odor_var(k) was True '
+                '(no odor component info)'
+            )
+
+        # TODO warn/err if one odor var is 'odor' and there are any others (presumably
+        # w/ numeric suffix, e.g. 'odor1')? prob other places too
 
         if warn_unused_levels and len(odor_keys) < len(odor_strs):
             nonodor_keys = [x for x in odor_strs.keys() if x not in odor_keys]
@@ -1050,15 +1065,29 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series, Dict[str, An
 
 
 mix_col = 'odor'
+# TODO test
 def add_mix_str_index_level(df: pd.DataFrame, mix_col: str = mix_col) -> pd.DataFrame:
+    """Adds formatted string odor/mix to `mix_col` (default: 'odor') index level.
+
+    Calls `format_mix_from_strs` with dict from each row's index information, where
+    there should be one level for each (in-air) mixture component (levels like 'odor1',
+    'odor2', etc).
+
+    Raises ValueError if `mix_col` already in `df.index.names`, or if
+    `format_mix_from_strs` would raise its ValueError.
+    """
+    if mix_col in df.index.names:
+        raise ValueError(f'{mix_col=} was already in df.index.names')
+
     mix_strs = []
     for index_row_tuple in df.index:
         index_row_dict = dict(zip(df.index.names, index_row_tuple))
+        # TODO what happens if there are no levels where is_odor_var(x) returns True?
+        # doc both here and in format_mix_from_strs. should probably raise a ValueError
         mix_str = format_mix_from_strs(index_row_dict)
         mix_strs.append(mix_str)
 
     for_odor_index = df.index.to_frame(index=False)
-    assert mix_col not in for_odor_index.columns
     for_odor_index[mix_col] = mix_strs
     odor_index = pd.MultiIndex.from_frame(for_odor_index)
 
