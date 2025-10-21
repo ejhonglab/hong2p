@@ -1,7 +1,7 @@
 
-from typing import Tuple, NewType, Union, Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, NewType, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,11 @@ import xarray as xr
 # In general, want to use *like types (e.g. Pathlike) at *input* to functions, and use
 # the corresponding type without the 'like' suffix for returned values, in accordance
 # with the "robustness principle"
+
+# TODO use this in more places
+KwargDict = Dict[str, Any]
+# TODO use this (/delete. may like the more explicit Optional[KwargDict]...)
+OptKwargDict = Optional[Dict[str, Any]]
 
 Date = pd.Timestamp
 # TODO a date-like type, for anything that would be suitable input for pd.Timestamp

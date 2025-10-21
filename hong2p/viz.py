@@ -21,9 +21,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from scipy.cluster.hierarchy import linkage
+import matplotlib as mpl
+from matplotlib.axes import Axes
 from matplotlib.colors import Normalize, CenteredNorm, TwoSlopeNorm
 import matplotlib.patches as patches
-import matplotlib as mpl
 import matplotlib.patheffects as PathEffects
 import matplotlib.transforms as transforms
 import matplotlib.pyplot as plt
@@ -31,9 +32,9 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.axes_grid1 import ImageGrid
 import seaborn as sns
 # Only for type hinting
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
 from matplotlib.colorbar import Colorbar
+from matplotlib.figure import Figure
+from matplotlib.image import AxesImage
 from matplotlib_scalebar.scalebar import ScaleBar
 
 from hong2p import util, thor
@@ -44,7 +45,7 @@ from hong2p import roi as hong_roi
 #from hong2p.roi import is_ijroi_certain
 #
 from hong2p.olf import remove_consecutive_repeats
-from hong2p.types import DataFrameOrDataArray
+from hong2p.types import DataFrameOrDataArray, KwargDict
 
 
 # TODO consider making a style sheet as in:
@@ -811,6 +812,7 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
 
 
 # TODO appropriate type hints for x and y? Sequence[str]?
+# TODO type hint x & y
 def add_group_labels_and_lines(ax: Axes, x=None, *, y=None, lines: bool = True,
     labels: bool = True, formatter: Optional[Callable] = None,
     label_offset: Optional[float] = None, label_name: Optional[str] = None,
@@ -973,9 +975,11 @@ def add_group_labels_and_lines(ax: Axes, x=None, *, y=None, lines: bool = True,
 @callable_ticklabels
 # TODO TODO should be raising a warning by default if [h|v]line_level_fn not producing
 # any divisions
-def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
-    xtickrotation=None, xlabel=None, ylabel=None, ylabel_rotation=None, ylabel_kws=None,
-    cbar_label=None, group_ticklabels=False, vline_level_fn=None,
+def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
+    yticklabels=None, xtickrotation=None, xlabel: Optional[str] = None,
+    ylabel: Optional[str] = None, ylabel_rotation=None,
+    ylabel_kws: Optional[KwargDict] = None,
+    cbar_label: Optional[str] = None, group_ticklabels=False, vline_level_fn=None,
     hline_level_fn=None, vline_group_text: bool = False, hline_group_text: bool = False,
     # TODO combine [h|v]line_group_text into these, using True for no formatting?
     # (or these into former...)
@@ -989,17 +993,19 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
     # these values seemed ok for 9x9 sensitivity analysis input
     # (but causing issues w/ plot_n_per_odor_and_glom plot, and probably also similar
     # old top-level al_analysis ijroi plots)
-    vgroup_label_offset=0.08, hgroup_label_offset=0.12,
+    vgroup_label_offset: float = 0.08, hgroup_label_offset: float = 0.12,
     vgroup_label_rotation: Union[float, str] = 'horizontal',
     hgroup_label_rotation: Union[float, str] = 'horizontal',
-    group_fontsize=None,
-    group_fontweight=None, linewidth=0.5, linecolor='w', ax=None, fontsize=None,
-    bigtext_fontsize_scaler=1.5, fontweight=None, figsize=None, dpi=None,
-    inches_per_cell=None, extra_figsize=None, transpose_sort_key=None, colorbar=True,
-    cbar_shrink=1.0, cbar_kws=None, levels_from_labels: bool = True,
+    group_fontsize: Optional[float] = None, group_fontweight=None, linewidth=0.5,
+    linecolor='w', ax: Optional[Axes] = None, fontsize: Optional[float] = None,
+    bigtext_fontsize_scaler: float = 1.5, fontweight=None, figsize=None, dpi=None,
+    inches_per_cell=None, extra_figsize=None, transpose_sort_key=None,
+    colorbar: bool = True, cbar_shrink: float = 1.0,
+    cbar_kws: Optional[KwargDict] = None, levels_from_labels: bool = True,
     allow_duplicate_labels: bool = False, xticks_also_on_bottom: bool = False,
     overlay_values: bool = False, overlay_fmt: str = '.2f',
-    overlay_kws: Optional[Dict[str, Any]] = None, _debug=_debug, **kwargs):
+    overlay_kws: Optional[KwargDict] = None, _debug=_debug, **kwargs
+    ) -> Tuple[Figure, AxesImage]:
     # TODO doc [v|h]line_group_text
     # TODO check that levels_from_labels means *_level_fn get a single dict as input,
     # not an iterable of dicts (or update doc)
@@ -1049,6 +1055,10 @@ def matshow(df, title=None, ticklabels=None, xticklabels=None, yticklabels=None,
         overlay_fmt: float format str, used to format `overlay_values` text
 
         overlay_kws: optional dict of kwargs to pass to overlay `ax.text` calls
+
+        fontsize: directly used for ticklabels, and scaled by `bigtext_fontsize_scaler`
+            for xlabel/ylabel fontsize. also used for group label font, unless
+            `group_fontsize` is passed a float.
 
         **kwargs: passed thru to `matplotlib.pyplot.matshow`
     """
@@ -2134,7 +2144,7 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     inches_per_pixel=0.014, imagegrid_rect=None, dpi=None,
     scale_per_plane: bool = False, minmax_clip_frac: float = 0.0, vmin=None, vmax=None,
     cbar: bool = True, cmap=DEFAULT_ANATOMICAL_CMAP, cbar_label: Optional[str] = None,
-    cbar_kws: Optional[Dict[str, Any]] = None, **kwargs):
+    cbar_kws: Optional[KwargDict] = None, **kwargs):
     # TODO also allow specifying either height_inches/width_inches instead of
     # inches_per_pixel (would only save specifying one component of figsize...)?
     """
@@ -2616,7 +2626,6 @@ def add_scalebar(ax: Axes, pixelsize_um: float, *, color=None, **kwargs) -> None
 # TODO also try just coloring focus_roi and not showing name for anything
 # (tried it. OK, but now kinda wanting thicker lines on focus one?)
 #
-# TODO type alias for Dict[str, Any] (maybe KWArgs?)?
 # TODO unit test (that at least it produces a figure without failing for
 # correctly-formatted DataArray input)
 # TODO support similarly-indexed DataArray for background (+ maybe remove ndarray code)
@@ -2640,7 +2649,7 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     focus_roi_linewidth: Optional[float] = None, palette_desat: Optional[float] = 0.4,
     scalebar: bool = False, cbar=True, cbar_label=None, cbar_kws=None,
     pixelsize_um: Optional[float] = None, scalebar_kws: Optional[dict] = None,
-    image_kws: Optional[Dict[str, Any]] = None, zstep_um: Optional[float] = None,
+    image_kws: Optional[KwargDict] = None, zstep_um: Optional[float] = None,
     depth_text_kws: Optional[dict] = None, title: Optional[str] = None,
     title_kws: Optional[dict] = None, linewidth=1.2, _pad: bool = False,
     zero_outside_plane_outlines: bool = False, plane_outline_line_kws=None, **kwargs

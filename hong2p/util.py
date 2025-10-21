@@ -98,11 +98,9 @@ np.set_printoptions(precision=2)
 # TODO maybe move all of these to __init__.py, or at least expose them there?
 # or maybe to a hong2p.py module (maybe importing all of its contents in
 # __init__.py ?)
-# TODO migrate all 'prep_date' -> 'date'? (seems i already use 'date' in a lot
-# of places...)
+# TODO migrate all 'prep_date' -> 'date' (would mostly be in old unused code now...)?
+# (seems i already use 'date' in a lot of places...)
 recording_cols = [
-    # TODO delete after refactoring all code that used this / add_fly_id
-    #'prep_date',
     'date',
     'fly_num',
     'thorimage_id'
@@ -4265,7 +4263,6 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
 # day)
 def add_fly_id(df, **kwargs):
     name = 'fly_id'
-    # TODO TODO replace prep_date w/ date in recording cols.
     return add_group_id(df, recording_cols[:2], name=name, **kwargs)
 
 
@@ -4503,6 +4500,14 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 # only in one or the other? (and also for pd_isclose below, if so)
 # TODO TODO default to equal_nan=True (maybe warning if there are NaN unless explicitly
 # set True?)?
+# TODO TODO add option to ignore index types (or cast one the other) (+ test)
+#
+# TODO TODO fix/handle: (...how to repro?)
+# ```
+# TypeError: ufunc 'isfinite' not supported for the input types, and the inputs could
+# not be safely coerced to any supported types according to the casting rule ''safe''
+# ```
+# i'm now getting w/ pd 1.5.0 (when a column has dtype object) and np 1.24.4
 def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     if_index_mismatch: Optional[str] = None, **kwargs) -> bool:
     """
@@ -4607,7 +4612,19 @@ def index2dict_list(index: pd.Index) -> List[Dict[str, Any]]:
             assert not isinstance(index, pd.MultiIndex)
             index_entry = (index_entry,)
 
+        elif not isinstance(index, pd.MultiIndex):
+            # for case where index has only one level with tuple values
+            # (e.g. key -> (False, 1, ...) in natmix_data/analysis.py
+            # sort_rois_by_response_classes)
+            index_entry = [index_entry]
+            # TODO also test single level multiindex w/ tuple values? possible? it
+            # already have length-1 values (b/c of some outer iterable containing them)?
+
+        # TODO also test case where multiindex has one level w/ tuple values. i assume
+        # all this should still work there?
+
         assert len(names) == len(index_entry), f'{names=}\n{index_entry=}'
+
         return dict(zip(names, index_entry))
 
     return [_index_entry_dict(index, x) for x in index]
