@@ -816,7 +816,9 @@ def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
     return yaml_path, yaml_data, odor_lists
 
 
-def most_recent_contained_file_mtime(path: Pathlike, recurse: bool = True,
+# TODO add mechanism for excluding (/whitelisting?) certain patterns (e.g. file
+# extension types)?
+def most_recent_contained_file_mtime(path: Pathlike, *, recurse: bool = True,
     verbose: bool = False) -> Optional[float]:
     """Recursively find the `os.path.getmtime` of the most recently modified file
 

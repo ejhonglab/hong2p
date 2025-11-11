@@ -7,12 +7,11 @@ from os.path import join, exists
 import time
 import functools
 import sys
-from typing import Dict, List, Tuple, Optional, Any, Union, Type, Callable
-# TODO delete pprint import
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 from pprint import pformat, pprint
 # TODO replace w/ logging.warning?
 import warnings
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from colorsys import rgb_to_hsv
 from random import Random
@@ -21,10 +20,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from scipy.cluster.hierarchy import linkage
+import colorcet as cc
 import matplotlib as mpl
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize, CenteredNorm, TwoSlopeNorm
 import matplotlib.patches as patches
+from matplotlib.patches import Patch
 import matplotlib.patheffects as PathEffects
 import matplotlib.transforms as transforms
 import matplotlib.pyplot as plt
@@ -61,6 +62,588 @@ _debug = False
 # TODO machinery to register combinations of level names -> how they should be formatted
 # into str labels for matshow (e.g. ('odor1','odor2') -> olf.format_mix_from_strs)?
 # TODO and like to set default cmap(s)?
+
+
+def is_categorical(values: pd.Series) -> bool:
+    """Returns whether input seems categorical (vs continuous), based mainly on dtype.
+
+    Values with `int` dtype are considered continuous if they have any negative values,
+    otherwise categorical.
+    """
+    # TODO only count int as categorical if min is 0? or if there are no negative
+    # values?
+    # TODO maybe also require a sufficiently small number of unique ints?
+    # (< ~20-30?)
+    #
+    # assume we just have continuous/categorical now, and that if not continuous
+    # it's categorical
+    dtype = values.dtype
+    if dtype == float or (dtype == int and values.min() < 0):
+        categorical = False
+    else:
+        categorical = True
+
+    return categorical
+
+
+# TODO type specifically for 0/1 and 'index'[+'rows'?]/'columns' instead of current
+# `axis` type annotation
+#
+# TODO allow passing in premade sns.color_palette output (could also take
+# ListedColormap, and have caller define that as
+# `ListedColormap(sns.color_palette(...))`?)? in addition to palette names, for my fn to
+# generate row_colors from row_values? (in case i did want to share kc_type_palette /
+# type2color as a module-level variable, and for similar cases)
+#
+# TODO does a 1-column DataFrame work just as well (as a Series) for input to
+# sns.clustermap [row|col]_colors (i.e. can my fn always return a DataFrame?)?
+#
+# TODO also return palettes (w/ min/max? unique values? callables derived from palettes
+# + [min/max]/unique_values?), for use w/ future calls? how?
+# TODO optional argument for min/max / (ordered) unique_values per variable?
+def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
+    name2palette: Optional[Dict[str, Union[str, mpl.colors.LinearSegmentedColormap,
+    Dict]]] = None, share_palettes_with_same_name: bool = True, _debug: bool = False
+    ) -> Tuple[pd.DataFrame, List, List]:
+    """Maps frame values to RGB tuples, from per-column/row colormaps.
+
+    Args:
+        df: dataframe with values to map to colors. If `axis=0`/`axis='index'`, each
+            column will have its own palette, and each row will if `axis=1` /
+            `axis='columns'`.
+
+        name2palette: if a variable (column/row name from `df`, depending on `axis=`.
+            see above.) name is a key in this, the corresponding palette value will be
+            used, rather than chosen within this function.
+
+        share_palettes_with_same_name: if True, variables who share a `str`
+            `name2palette` value will all share a common value -> color mapping, and
+            thus also share an entry in either `for_legends` or `for_cbars`.
+            If `add_legends_and_colorbars` is used to draw the legends and colorbars,
+            this will also mean they will share a legend or colorbar.
+
+    Returns:
+        color_df: frame of same shape as `df`, with all values RGB 3-tuple colors.
+
+        for_legends: list of dicts, each with keyword arguments for a call to
+            `fig.legend`. Can be passed to `add_legends_and_colorbars` argument of the
+            same name.
+
+        for_cbars: list of dicts, each with keyword arguments for a call to
+            `fig.colorbar`. Can be passed to `add_legends_and_colorbars` argument of the
+            same name.
+    """
+    if axis in (0, 'index', 'rows'):
+        names = df.columns
+    else:
+        assert axis in (1, 'columns')
+        names = df.index
+        # TODO implement + test this case
+        raise NotImplementedError('may just need to update df indexing below')
+
+    assert not names.duplicated().any()
+    assert all(type(x) is str for x in names)
+
+    assert all(x in names for x in name2palette.keys())
+    if name2palette is None:
+        name2palette = dict()
+    else:
+        # so we can add k/v pairs below, w/o changing input
+        name2palette = dict(name2palette)
+
+    # TODO care to do anything to avoid dict inputs overlapping w/ named palettes
+    # (either strs in input name2palette values, or str palettes chosen in here)?
+    # (check values? or depend too much on spacing? prob not for some of the cyclic
+    # colormaps?)
+    taken_palettes: Set[str] = {x if isinstance(x, str) else x.name
+        for x in name2palette.values() if not isinstance(x, dict)
+    }
+
+    # TODO replace these w/ some maplotlib/seaborn/other-3rd-party-library (colorcet?)
+    # based enumeration of palettes of different kinds? already have anything like this
+    # in hong2p?
+    # TODO allow user to pass their own lists of palettes (in preferred order) in?
+    # TODO some way to programmatically get name of current default seaborn colormap?
+    # (and use for first element of categorical_cmaps)
+    # sns.color_palette (despite what docs say) does not *always* return a
+    # mpl.colors.ListedColormap object, e.g. if called with no `name` (1st positional
+    # arg), like `sns.color_palette(as_cmap=True)`
+    categorical_cmaps: List[str] = ['tab10', 'Accent', 'hls']
+
+    # TODO automatically pick a diverging one if values are both negative and positive?
+    # (separate list for those?) ('vlag' and 'icefire' are two perceptually linear
+    # options)
+    #
+    # other perceptually uniform cmaps listed on current:
+    # https://matplotlib.org/stable/users/explain/colors/colormaps.html look too similar
+    # to one of the other ones
+    #
+    # NOTE: access colorcet cmaps as matplotlib cmaps by referencing them like:
+    # `cc.m_<name>` (of type mpl.colors.LinearSegmentedColormap)
+    continuous_cmaps: List[Union[str, mpl.colors.LinearSegmentedColormap]] = [
+        'magma', 'cividis', cc.m_fire, cc.m_gray, cc.m_bmw
+    ]
+
+    # TODO move this to module level? get_palette_id too?
+    def get_palette_name(p: Union[str, mpl.colors.LinearSegmentedColormap]) -> str:
+        if isinstance(p, str):
+            name = p
+        else:
+            assert isinstance(p, mpl.colors.LinearSegmentedColormap)
+            # not super worried about possibility of two cmaps (accidentally) having
+            # same name but diff colors, or same colors but diff name
+            name = p.name
+            assert isinstance(name, str)
+
+        return name
+
+    def get_palette_id(p: Union[str, mpl.colors.LinearSegmentedColormap, Dict]
+        ) -> Union[int, str]:
+        if isinstance(p, dict):
+            return id(p)
+        return get_palette_name(p)
+
+    def _next_palette(order: List[Union[str, mpl.colors.LinearSegmentedColormap]],
+        prefix: str) -> str:
+
+        palette = None
+        for p in order:
+            name = get_palette_name(p)
+            if name in taken_palettes:
+                continue
+
+            palette = p
+            break
+
+        if palette is None:
+            raise RuntimeError(f'ran out of palettes! set {prefix}_cmaps longer '
+                'than {order=} ({len(order)=})'
+            )
+
+        if _debug:
+            print(f'chose {name=}')
+
+        taken_palettes.add(name)
+        return palette
+
+    palette2vars: Dict[Union[str, int], List[str]] = defaultdict(list)
+    # since mpl.colors.LinearSegmentedColormaps not hashable, will use their .name in
+    # palette_name2vars, then look up here when needed
+    mpl_palette_lookup: Dict[str, mpl.colors.LinearSegmentedColormap] = dict()
+    dict_palette_lookup: Dict[int, Dict] = dict()
+    for n in names:
+        # TODO update indexing to support axis=1|'columns'
+        values = df[n]
+        dtype = values.dtype
+        if _debug:
+            print()
+            print(f'{n=}')
+            print(f'{dtype=}')
+
+        # TODO allow user to pass in which vars should be treated as
+        # categorical[/continuous[/diverging]]?
+        categorical = is_categorical(values)
+        if _debug:
+            print(f'{categorical=}')
+
+        if n in name2palette:
+            palette = name2palette[n]
+        else:
+            if categorical:
+                order = categorical_cmaps
+                desc = 'categorical'
+            else:
+                order = continuous_cmaps
+                desc = 'continuous'
+
+            palette = _next_palette(order, desc)
+            name2palette[n] = palette
+
+        # will be palette name for all but dict palettes, and int ID for those
+        palette_id = get_palette_id(palette)
+
+        if isinstance(palette, mpl.colors.LinearSegmentedColormap):
+            # TODO assert palette_id is a str here?
+            mpl_palette_lookup[palette_id] = palette
+
+        elif isinstance(palette, dict):
+            # TODO assert palette_id is an int here?
+            dict_palette_lookup[palette_id] = palette
+
+        palette2vars[palette_id].append(n)
+
+        # TODO assert no two manually-passed-in dict values in name2palette are the
+        # same? don't want the extra hassle of supporting vars sharing palettes that
+        # way.
+
+    # TODO delete
+    if _debug:
+        print()
+        print('palette2vars:')
+        pprint(palette2vars)
+        print('mpl_palette_lookup:')
+        pprint(mpl_palette_lookup)
+        print('dict_palette_lookup:')
+        pprint(dict_palette_lookup)
+    #
+
+    color_list = []
+    for_legends = []
+    for_cbars = []
+    def _map_vars_to_colors(values: pd.Series, palette: Union[str,
+        mpl.colors.LinearSegmentedColormap, dict], dtype, categorical: bool) -> None:
+        """Appends one entry to `colors`, and one to either `for_legends` or
+        `for_cbars`.
+        """
+        # TODO change to support axis=1/'columns'?
+        var_names = values.columns
+
+        # mostly assuming we won't be wanting to have mpl.colors.LinearSegmentedColormap
+        # in the categorical case, for now
+        if categorical:
+            # strs could either have been manually passed in, or chosen in this fn
+            if isinstance(palette, str):
+                if dtype == int:
+                    vmin = 0
+                    vmax = values.max().max()
+                    # assuming we need separate color for 0, as well as every int
+                    # between 0 and max (inclusive)
+                    unique_values = range(vmin, vmax + 1)
+                else:
+                    assert dtype == np.dtype('O'), f'unrecognized {dtype=}'
+                    unique_values = set()
+                    for c in values.columns:
+                        # TODO assert values are str? (maybe w/ some None/NaN allowed?)
+                        unique_values |= set(values[c].unique())
+
+                    # NOTE: can no longer rely on order-of-first-appearance output
+                    # ordering of <Series>.unique(), though can pass manual dict palette
+                    # for a particular association with colors
+                    unique_values = sorted(unique_values)
+
+                n_unique = len(unique_values)
+                palette = sns.color_palette(palette, n_colors=n_unique)
+                assert len(palette) == n_unique
+
+                # assuming we will pass in palette, if we care for a particular
+                # value->color map (i.e. if we would have wanted a particular order
+                # on values here, e.g. by sorting)
+                value2color = dict(zip(unique_values, palette))
+
+            # dicts must have been manually passed in via name2palette
+            else:
+                assert isinstance(palette, dict), ('only str or dict palette allowed '
+                    'for categorical variables'
+                )
+                value2color = palette
+                assert values.isin(value2color.keys()).all().all()
+
+            # colors (whether str or RGB tuples) should all be hashable, so making a
+            # set from them should work
+            if len(set(value2color.values())) < len(value2color):
+                # sns.color_palette docs say that, for certain other parameters,
+                # potentially all where as_cmap=False, colors will cycle. potetially
+                # often cycling at 6 colors?)
+
+                # TODO add flag to allow duplicate colors (or maybe warn instead?)
+                raise ValueError(f'{var_names=}: duplicate colors in {palette=}')
+
+            colors = values.applymap(lambda x: value2color[x])
+            # TODO condense into one call, rather than looping?
+            for c in colors.columns:
+                assert all(len(x) == 3 for x in colors[c])
+        else:
+            vmin = values.min().min()
+            vmax = values.max().max()
+            if vmax == vmin:
+                # TODO add flag that (if True) drops these variables instead?
+                # TODO if not, maybe err instead here (requiring they are dropped in
+                # advance)?
+                warnings.warn(f'{var_names}: min and max are the same (={vmax:.2f})!'
+                    ' mapping all to center of cmap!'
+                )
+                # 0.5 should be argument that produces center of cmap below
+                normed = pd.DataFrame(index=values.index, columns=values.columns,
+                    data=0.5
+                )
+            else:
+                normed = (values - vmin) / (vmax - vmin)
+                assert np.allclose([normed.min().min(), normed.max().max()], [0, 1])
+
+            # TODO or still assume user knows what they were doing if they pass this
+            # w/ float values. maybe there really is just a small number of distinct
+            # ones? have a dict there imply categorical?
+            if isinstance(palette, dict):
+                raise ValueError('continuous data incompatible with dict palette')
+
+            # TODO err if one of these continuous variables has palette that is a
+            # categorical colormap? (prob more trouble than worth to define which
+            # those are...)
+
+            if isinstance(palette, str):
+                # sns.color_palette does NOT allow a
+                # mpl.colors.LinearSegmentedColormap as argument
+                # TODO though mabye i could get list of colors, pass that, and get
+                # equivalent output? would have to test
+                palette = sns.color_palette(palette, as_cmap=True)
+            else:
+                assert isinstance(palette, mpl.colors.LinearSegmentedColormap)
+
+            # TODO assert behavior of cmap? can i set indicator values into
+            # set_[over|under] and check we get those if i  call w/ 1+eps or 0-eps,
+            # but colors at 1 / 0?
+
+            colors = normed.applymap(palette)
+
+            for c in colors.columns:
+                # NOTE: these as_cmap=True outputs seem to return RGBA 4-tuples instead
+                # of RGB 3-tuples
+                # TODO can we just throw away the alpha for all of them? or maybe add
+                # alpha of 1 for all the 3-tuples otherwise (renaming fn rgb->rgba
+                # then)? (seems all alpha is 1.0 so far, so we can toss)
+                assert all(len(x) == 4 for x in colors[c])
+                assert all(np.isclose(x[-1], 1) for x in colors[c])
+                colors[c] = [x[:-1] for x in colors[c]]
+
+        assert not colors.isna().any().any()
+        # TODO .extend instead (w/ `colors` being a list now), or expect DataFrame
+        # inputs now?
+        color_list.append(colors)
+
+        make_legend = False
+        make_cbar = False
+
+        # intended to cover strings, perhaps w/ None/NaN as well
+        if dtype == np.dtype('O'):
+            make_legend = True
+
+        elif dtype == int or dtype == float:
+            # TODO still treat (some?) int types as diff from float, perhaps drawing
+            # colorbar with discrete steps (at least for cases where above would treat
+            # as categorical, which may in the future only be for certain subsets of
+            # dtype int data)?
+            make_cbar = True
+        else:
+            # TODO delete (/move earlier)? dupe w/ above?
+            raise NotImplementedError(f'{dtype=} unexpected')
+
+        # TODO take input for these titles? don't specify?
+        # (dict of var name -> title, and assert that vars sharing palette also share
+        # title [at least unless separate flag indicates we shouldn't share any
+        # palettes])
+        title = '/'.join(var_names)
+
+        if make_legend:
+            # TODO allow some separate specification of formatter fn for each
+            # column (other than (str(v))?
+            handles = [
+                Patch(facecolor=c, label=str(v)) for v, c in value2color.items()
+            ]
+            for_legends.append(dict(handles=handles, title=title))
+
+        if make_cbar:
+            norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+            if isinstance(palette, sns.palettes._ColorPalette):
+                # TODO test by passing current output to imshow, and inspecting
+                # ScalarMappable from output of that? (to check we are getting same
+                # value->color mapping as would be displayed w/o manually making
+                # ScalarMappable from this)
+                cmap = mpl.colors.ListedColormap(palette)
+            else:
+                assert not isinstance(palette, dict)
+                cmap = palette
+
+            # TODO check labels are centered on value, for discrete cmaps
+            # (discrete now seems to be default behavior for int dtype, but not sure
+            # labels are centered how i might want?)
+
+            sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+            for_cbars.append(dict(mappable=sm, label=title))
+
+
+    for palette_id, var_names in palette2vars.items():
+        if isinstance(palette_id, int):
+            palette = dict_palette_lookup[palette_id]
+        else:
+            assert isinstance(palette_id, str)
+            if palette_id in mpl_palette_lookup:
+                palette = mpl_palette_lookup[palette_id]
+            else:
+                palette = palette_id
+
+        first_categorical = None
+        first_dtype = None
+        for n in var_names:
+            # TODO update indexing to support axis=1|'columns'
+            values = df[n]
+            dtype = values.dtype
+            categorical = is_categorical(values)
+            if first_categorical is None:
+                first_categorical = categorical
+                first_dtype = dtype
+            else:
+                assert categorical == first_categorical
+                assert dtype == first_dtype
+        del values, n
+
+        # TODO delete
+        if _debug:
+            print()
+            print(f'{palette_id=}')
+            print(f'{var_names=}')
+            print(f'{palette=}')
+            print(f'{categorical=}')
+            print(f'{dtype=}')
+        #
+
+        if not share_palettes_with_same_name and len(var_names) > 1:
+            for n in var_names:
+                # TODO update indexing to support axis=1|'columns'
+                values = df[n].to_frame()
+                _map_vars_to_colors(values, palette, dtype, categorical)
+        else:
+            # TODO update indexing to support axis=1|'columns'
+            values = df[var_names]
+            # this appends one element to colors and (for_legends or for_cbars), per
+            # call.
+            _map_vars_to_colors(values, palette, dtype, categorical)
+
+    color_df = pd.concat(color_list, axis='columns')
+    assert color_df.index.equals(df.index)
+    assert color_df.columns.equals(df.columns)
+
+    # TODO or if i'm going to allow input in NaN, also allow (only those same NaNs!)
+    # in output (or want a parameter for a color NaN should be assigned to? specific to
+    # cmaps? if i take mpl cmaps as input, which have set_bad() done, use that?)
+    assert not color_df.isna().any().any()
+
+    return color_df, for_legends, for_cbars
+
+
+# TODO test all of these are valid and put things where i expect
+# TODO delete if i can programmatically layout based on bbox of previous legend
+# (or otherwise automatically layout the legends, maybe w/ constrained layout, or
+# some kind of Axes grid just for these [w/ one legend fully filling each axes in
+# grid]?)
+# TODO share for colorbars too (these named locations even work for those calls?)?
+# rename? (/ remove 'center right' as option? currently that's where i'm putting
+# colorbars, though referencing that location via fig coordinates, not as a named
+# location)
+# TODO update type hint for legend_locations to allow for non-str locations? what are
+# other options mpl call takes (4-tuples of floats? anything else?)?
+#
+# picking title/xlabel/ylabel positions last, as I often include lots of information
+# there.
+all_legend_locations = ['upper right', 'lower right', 'lower left', 'upper left',
+    'center right', 'lower center', 'center left', 'upper center'
+]
+def add_legends_and_colorbars(fig: Figure, for_legends: List[Dict[str, Any]],
+    for_cbars: List[Dict[str, Any]], *,
+    legend_locations: Sequence[str] = tuple(all_legend_locations), left: float = 0.85,
+    width: float = 0.02, hmargin: float = 0.06, bottom: float = 0.3,
+    height: float = 0.25, cbar_fontsize: Optional[float] = None,
+    cbar_label_fontsize: Optional[float] = None,
+    cbar_ticklabel_fontsize: Optional[float] = None) -> None:
+    """
+    Args:
+        fig: figure to add legends and colorbars too
+
+        for_legends: as returned by `map_each_series_to_rgb`. List of dicts, with each
+            dict containing keyword arguments for a `fig.legend` call. This function
+            adds a unique `loc=` argument to each call, chosen in order from
+            `legend_locations`.
+
+        for_cbars: as returned by `map_each_series_to_rgb`. List of dicts, with each
+            dict containing keyword arguments for a `fig.colorbar` call. This function
+            adds `cax=<Axes>` argument to each call.
+
+        legend_locations: unique sequence of locations for `loc=` argument to each
+            `fig.legend` call. Will use in order, up to length of `for_legends`. Must
+            currently be >= length of `for_legends`.
+
+        left|width|hmargin|bottom|height: used to place colorbars. All floats [0,1] in
+            fractions of figure size, with [0, 0] at bottom left of figure. `hmargin` is
+            space between colorbars, which is needed for labels and ticklabels.
+            Colorbars start at `left`, and then each subsequent colorbar is placed to
+            the right (with `width` and `hmargin` controlling spacing).
+
+        cbar_fontsize: if passed, will be used to define both `cbar_label_fontsize` and
+            `cbar_ticklabel_fontsize`
+
+        cbar_label_fontsize: font size of colorbar label
+        cbar_ticklabel_fontsize: font size of colorbar ticklabels
+    """
+    if len(for_legends) > len(legend_locations):
+        # TODO choose loc for one based on loc of current? or layout not
+        # done yet? (prob more complicated than it's worth anyway,
+        # unless i need it)
+        raise NotImplementedError('need to come up with new strategy '
+            f'to pick legend locations, for >{len(legend_locations)} '
+            'legends'
+        )
+
+    for legend_kws, loc in zip(for_legends, legend_locations):
+        assert 'loc' not in legend_kws
+        fig.legend(**legend_kws, loc=loc)
+
+    if cbar_fontsize is not None:
+        assert cbar_label_fontsize is None
+        assert cbar_ticklabel_fontsize is None
+        cbar_label_fontsize = cbar_fontsize
+        cbar_ticklabel_fontsize = cbar_fontsize
+
+    # TODO also need param for cbar fontsize (for label and ticklabels)?
+    # width=0.05 was a bit too much, at least in context of first test
+    # hmargin needed for labels on each axes, which aren't fit within width
+    for i, cbar_kws in enumerate(for_cbars):
+        curr_left = left + i * (width + hmargin)
+        # left, bottom, width, height (all in fractions of fig size)
+        ax = fig.add_axes([curr_left, bottom, width, height])
+        # TODO check we don't exceed 1.0 with curr_left (or make some adjust call if we
+        # do?)? matter (even if saved w/ bbox_inches='tight' to savefig call?)
+        # TODO check curr_left doesn't overlap w/ anything already in figure? matter?
+        # TODO check these axes are in layout (or separately add?)? matter?
+        cbar = fig.colorbar(cax=ax, **cbar_kws)
+
+        for t in cbar.ax.get_yticklabels():
+            # TODO delete
+            # default currently 10.0
+            #print(f'cbar tick fontsize: {t.get_fontsize()}')
+            if cbar_ticklabel_fontsize is not None:
+                t.set_fontsize(cbar_ticklabel_fontsize)
+
+        # TODO delete
+        # default currently 10.0
+        #print('{cbar.ax.yaxis.label.get_size()=}')
+        if cbar_label_fontsize is not None:
+            cbar.ax.yaxis.label.set_fontsize(cbar_label_fontsize)
+
+
+# TODO also work w/ 4-tuple RGBA inputs? (allow mixed 3 and 4 tuples too?)
+def rgb_tuple_df_to_3d_array(color_df: pd.DataFrame) -> np.ndarray:
+    """Converts (M, N) shape dataframe w/ RGB tuple values to (M, N, 3) array.
+
+    `map_each_series_to_rgb` can produce RGB tuple dataframe suitable for input to this
+    function.
+    """
+    # TODO how does seaborn clustermap row_colors code handle the same problem, for
+    # input w/ RGB tuples?
+    n_channels = 3
+    assert (color_df.apply(lambda x: x.str.len()) == n_channels).all().all()
+    channels = []
+    for i in range(n_channels):
+        channels.append(color_df.applymap(lambda x: x[i]))
+
+    arr = np.stack(channels, axis=-1)
+    assert arr.shape == color_df.shape + (n_channels,)
+
+    assert arr.dtype == float
+    assert arr.min() >= 0
+    assert arr.max() <= 1
+
+    return arr
+
 
 def remove_axes_ticks(ax: Axes) -> None:
     # (was) trying to recreate ax.axis('off'), but in a way where i can still see
@@ -818,7 +1401,8 @@ def add_group_labels_and_lines(ax: Axes, x=None, *, y=None, lines: bool = True,
     label_offset: Optional[float] = None, label_name: Optional[str] = None,
     label_name_offset: float = 3, linewidth=0.5, linecolor='k', _debug=False, **kwargs
     ) -> None:
-    """
+    """Adds labels to (and lines between) groups of common x/y labels.
+
     Args:
         **kwargs: passed thru to `ax.text` calls for group text labels
     """
@@ -3176,6 +3760,10 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
 # TODO get x / y from whether they were declared share<x/y> in facetgrid
 # creation?
 # TODO TODO rename to something like "hide_all_but_first_axes_label" -> accept fig input
+# TODO replace w/ ax.label_outer() based approach, like
+# https://stackoverflow.com/questions/4209467? (added in 3.8, which i can't seem to
+# install w/ my current pip + python at least... may be stuck on 3.7 [specifically
+# on 3.7.3)
 # TODO also support hiding all but first xticklabels/similar? or make similar fns for
 # that?
 def fix_facetgrid_axis_labels(facet_grid, shared_in_center: bool = False,
