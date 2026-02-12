@@ -18,8 +18,8 @@ import re
 import hashlib
 import functools
 from itertools import product
-from typing import (Optional, Tuple, List, Generator, Sequence, Union, Any, Dict,
-    Collection
+from typing import (Any, Collection, Dict, Generator, List, Optional, Sequence, Tuple,
+    Union
 )
 import xml.etree.ElementTree as etree
 from urllib.error import URLError
@@ -4439,6 +4439,74 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     return movie
 
 
+# NOTE: currently main usage replaced by a copy in al_analysis (currently mb_model), so
+# that my hacky pytest warning handling still passes those messages through
+# TODO use elsewhere too (prob already duped)! also want assert_equals wrapper or no?
+# TODO wrapper that also allows checking parts with allclose (/pd_allclose?)?
+def equals(x: Any, y: Any, *, allow_complex_type_seqs: bool = False, _warn: bool = True
+    ) -> bool:
+    """
+    Args:
+        x,y: check equality, with the follow methods (if available, in order):
+            1. `x.equals(y)`
+            2. `np.array_equal(x, y)`
+            3. `x == y`
+
+        allow_complex_type_seqs: if False, will raise `ValueError` if `x` or `y` are
+            lists or tuples of numpy (non-scalar) arrays / pandas Series/DataFrames (and
+            probably also other things which may extend those). No other collections of
+            these objects, other than lists/tuples, are supported (and `ValueError`
+            could be raised for inputs like that).
+
+        _warn: if `allow_complex_type_seqs=True`, will still warn if there are these
+            "complex" types in the input, though will not raise. Does nothing if
+            `allow_complex_type_seqs=False`.
+    """
+    if hasattr(x, 'equals'):
+        return x.equals(y)
+    elif isinstance(x, np.ndarray):
+        return np.array_equal(x, y)
+    else:
+        try:
+            return x == y
+
+        # to catch errors like:
+        # ValueError: The truth value of a Series is ambiguous. Use a.empty,
+        # a.bool(), a.item(), a.any()
+        # ValueError: The truth value of an array with more than one element is
+        # ambiguous. Use a.any() or a.all()
+        except ValueError as verr:
+            msg = str(verr)
+            assert msg.startswith('The truth value of') and 'is ambiguous.' in msg, \
+                f'unrecognized ValueError! {msg=}'
+
+            if allow_complex_type_seqs:
+                if isinstance(x, (tuple, list)) and isinstance(y, (tuple, list)):
+                    if _warn:
+                        # NOTE: using FutureWarning instead of default UserWarning, to
+                        # have visible (though not in-line w/ other outputs) by default
+                        # in al_analysis pytest outputs (where I'm currently disabling
+                        # UserWarnings up top, considering how liberally I use them
+                        # elsewhere)
+                        #
+                        # should be enough that we got the error above
+                        warnings.warn('had list/tuple of array/pandas/etc types! may '
+                            'want to change handling of these nested types (hard to '
+                            'serialize in an easy and portable manner). set _warn=False'
+                            ' to silence or allow_complex_type_seqs=True to err instead'
+                            '.', FutureWarning
+                        )
+
+                    if len(x) != len(y):
+                        return False
+
+                    return all(equals(x, y) for x, y in zip(x, y))
+
+                # raising here, since we don't support non-list/tuple cases here, and we
+                # don't mention what to do in this case in warning above
+                raise verr
+
+
 # TODO test
 # TODO use in al_analysis.py (and other places i'm checking indices equal w/o checking
 # data equal)
@@ -4492,6 +4560,17 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     return True
 
 
+def is_scalar(x: Any) -> bool:
+    """Returns whether input is a float or int.
+    """
+    # TODO also work w/ numpy / xarray types that have length-0 shape (or similar)?
+    # or does those already work here?
+    return isinstance(x, (int, float))
+
+
+# TODO define type w/ scalar (that also works w/ xarray/numpy length-0 shape stuff? or
+# is that too much to ask?)
+
 # TODO add support for dtype mismatch (but where one can be cast to the other)?  maybe
 # also support for cols in diff orders? utility fns (maybe exposed behind verbose kwarg)
 # for printing differences between dtypes / etc? (use new dtypes_equal fn below for
@@ -4520,6 +4599,18 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 
         **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)
     """
+    a_scalar = is_scalar(a)
+    b_scalar = is_scalar(b)
+    # TODO or still want to consider equal if DataFrame/Series has one element with
+    # matching value? bit of a stretch...
+    if (a_scalar and not b_scalar) or (not a_scalar and b_scalar):
+        return False
+
+    if a_scalar and b_scalar:
+        # seems i could also use allclose here, and not sure output would ever be
+        # different? allclose and isclose seem to have same kwarg options too.
+        return np.isclose(a, b, **kwargs)
+
     if not pd_indices_equal(a, b, if_index_mismatch=if_index_mismatch):
         return False
 
@@ -4556,6 +4647,7 @@ def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
 
 def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
     cast: bool = True, verbose: bool = False) -> bool:
+    # TODO doc
 
     # NOTE: Series do not seem to have dtypes available on a per-key basis anymore. just
     # has one dtype (and a .dtypes attribute, but still just a scalar, not per-column).
@@ -4591,6 +4683,48 @@ def subset_levels(index: pd.MultiIndex, subset: List[str]) -> pd.Index:
     # TODO work w/ one level index? change type hint to `-> pd.MultiIndex` if so?
     # if not, fix
     return pd.MultiIndex.from_frame(index.to_frame(index=True)[subset])
+
+
+# TODO type hint in way to indicate if input will have same type as output? some
+# pythonic way to do that?
+# TODO also replace usage of reindex in natmix (and anything else important. drosolf?
+# odor analysis stuff?) with this.
+def reindex(x: DataFrameOrSeries, index: pd.Index, **kwargs) -> DataFrameOrSeries:
+    """
+    Args:
+        x: data to reindex
+
+        index: index to conform data to. The output index (or output column index,
+            if `x` is a DataFrame and `axis='columns'`) will equal this index.
+
+            Will raise AssertionError if this index contains any duplicates.
+
+        **kwargs: passed thru to `<x>.reindex(...)`
+    """
+    # TODO also support being called w/ columns= / index= (w/ dataframe input), rather
+    # than labels= + axis=? (and assert neither is in kwargs for now? and/or that
+    # 'labels' is also not?)
+    assert all(x not in kwargs for x in ('columns', 'labels', 'index')), \
+        'these args currently unsupported by wrapper. would not be hard to add.'
+
+    # TODO allow anything other than index type for this? maybe Series/DataFrame?
+    #
+    # maybe the "scalar, list-like, dict-like or functions transformations to apply to
+    # that axis’ values" that current Series.reindex talk about?
+    #
+    # or an array-like that labels= (/index/columns) arg for DataFrame.reindex talk
+    # about (but those docs do say Index type preferred, so probably don't care to
+    # support anything else there)?
+    assert isinstance(index, pd.Index), f'{type(index)=} was not Index/MultiIndex'
+
+    # TODO maybe only do this if level= not passed? and do some separate check there?
+    # see if that arg is useful to me in al_analysis.mb_model.reindex_to_wPNKC (for
+    # `one_row_per_claw and not prat_claws` case)
+    assert not index.duplicated().any(), ('index had duplicates! reindex output might '
+        'not be as expected!'
+    )
+
+    return x.reindex(index, **kwargs)
 
 
 # TODO add unit tests w/ inputs that are both MultiIndex / not

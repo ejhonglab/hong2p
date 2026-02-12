@@ -144,13 +144,14 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
     assert not names.duplicated().any()
     assert all(type(x) is str for x in names)
 
-    assert all(x in names for x in name2palette.keys())
     if name2palette is None:
         name2palette = dict()
     else:
         # so we can add k/v pairs below, w/o changing input
         name2palette = dict(name2palette)
 
+    # NOTE: will also be considered taken if a name2palette key does not exist in df
+    # index names
     # TODO care to do anything to avoid dict inputs overlapping w/ named palettes
     # (either strs in input name2palette values, or str palettes chosen in here)?
     # (check values? or depend too much on spacing? prob not for some of the cyclic
@@ -346,6 +347,8 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
                 # often cycling at 6 colors?)
 
                 # TODO add flag to allow duplicate colors (or maybe warn instead?)
+                # TODO also show # of distinct colors needed (+ # distinct current
+                # palette has), and recommend palettes like hsl/husl?
                 raise ValueError(f'{var_names=}: duplicate colors in {palette=}')
 
             colors = values.applymap(lambda x: value2color[x])
