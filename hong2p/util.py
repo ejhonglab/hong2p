@@ -4439,19 +4439,44 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     return movie
 
 
+def is_all_float(xs: Any) -> bool:
+    """Returns whether input array/DataFrame/Series/float/etc is all floats.
+
+    Returns False for anything not in types listed above.
+    """
+    all_floats = False
+    if isinstance(xs, pd.DataFrame):
+        all_floats = all(np.issubdtype(x, float) for x in set(xs.dtypes))
+
+    elif isinstance(xs, pd.Series):
+        all_floats = np.issubdtype(xs.dtype, float)
+
+    elif isinstance(xs, np.ndarray):
+        all_floats = np.issubdtype(xs.dtype, float)
+
+    # TODO or still use issubdtype here?
+    elif isinstance(xs, float):
+        all_floats = True
+
+    return all_floats
+
+
 # NOTE: currently main usage replaced by a copy in al_analysis (currently mb_model), so
 # that my hacky pytest warning handling still passes those messages through
 # TODO use elsewhere too (prob already duped)! also want assert_equals wrapper or no?
 # TODO wrapper that also allows checking parts with allclose (/pd_allclose?)?
 # (just call it isclose? allclose?)
-def equals(x: Any, y: Any, *, allow_complex_type_seqs: bool = False, _warn: bool = True
-    ) -> bool:
+def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
+    allow_complex_type_seqs: bool = False, _warn: bool = True, **kwargs) -> bool:
     """
     Args:
         x,y: check equality, with the follow methods (if available, in order):
             1. `x.equals(y)`
             2. `np.array_equal(x, y)`
             3. `x == y`
+
+        check_float_with_allclose: if True, if `is_all_float` evaluates True on both
+            inputs, will try `pd_allclose` before other equality checks
 
         allow_complex_type_seqs: if False, will raise `ValueError` if `x` or `y` are
             lists or tuples of numpy (non-scalar) arrays / pandas Series/DataFrames (and
@@ -4462,7 +4487,23 @@ def equals(x: Any, y: Any, *, allow_complex_type_seqs: bool = False, _warn: bool
         _warn: if `allow_complex_type_seqs=True`, will still warn if there are these
             "complex" types in the input, though will not raise. Does nothing if
             `allow_complex_type_seqs=False`.
+
+        **kwargs: passed to `pd_allclose`, if that is called.
+            see `check_float_with_allclose`.
     """
+    if check_float_with_allclose:
+        # TODO check if any floats instead (rather than all of both)? this is just more
+        # conservative. will also err if there is float<>int dtype conversion (at least,
+        # if it fails equals check below), which might want
+        x_all_float = is_all_float(x)
+        y_all_float = is_all_float(y)
+        # TODO TODO warn here (if !_warn?)? (maybe only if not equals, only ever doing this
+        # check second?)
+        if x_all_float and y_all_float:
+            # TODO fallback to below if this errs? (assuming i keep this before other
+            # check, and always do it first)
+            return pd_allclose(x, y, **kwargs)
+
     if hasattr(x, 'equals'):
         return x.equals(y)
     elif isinstance(x, np.ndarray):
