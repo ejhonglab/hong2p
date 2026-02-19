@@ -6,6 +6,7 @@ from typing import Any, Dict, NewType, Optional, Sequence, Tuple, Union
 import numpy as np
 import pandas as pd
 import xarray as xr
+from matplotlib.colors import Colormap
 
 
 # In general, want to use *like types (e.g. Pathlike) at *input* to functions, and use
@@ -49,3 +50,6 @@ DataFrameOrSeries = Union[pd.DataFrame, pd.Series]
 # TODO i once was wrapper the args to Union with Type[...]. did that serve a purpose?
 DataFrameOrDataArray = Union[pd.DataFrame, xr.DataArray]
 NumpyOrXArray = Union[np.ndarray, xr.DataArray]
+
+# TODO use in viz?
+CMap = Union[str, Colormap]

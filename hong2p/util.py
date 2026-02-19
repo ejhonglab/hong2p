@@ -4443,6 +4443,7 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
 # that my hacky pytest warning handling still passes those messages through
 # TODO use elsewhere too (prob already duped)! also want assert_equals wrapper or no?
 # TODO wrapper that also allows checking parts with allclose (/pd_allclose?)?
+# (just call it isclose? allclose?)
 def equals(x: Any, y: Any, *, allow_complex_type_seqs: bool = False, _warn: bool = True
     ) -> bool:
     """
@@ -4507,6 +4508,69 @@ def equals(x: Any, y: Any, *, allow_complex_type_seqs: bool = False, _warn: bool
                 raise verr
 
 
+def pd_index_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *, axis: str = 'index',
+    only_check_shared_levels: bool  = False,
+    assert_no_dupes_in_shared_levels: bool = True,
+    if_index_mismatch: Optional[str] = None) -> bool:
+    # TODO doc
+    """
+    Args:
+        only_check_shared_levels: if True, will only check level names shared
+            between both indices, but requires that they share at least one level.
+            see `assert_no_dupes_in_shared_levels`.
+
+        assert_no_dupes_in_shared_levels: if True, will assert shared levels do not have
+            duplicates in either input index (so that they could be a valid index on
+            their own, otherwise, the equality may not mean as much). only relevant if
+            `only_check_shared_levels=True`
+    """
+    # TODO factor this axis checking into fn [decorator?]?
+    assert axis in ('index', 'columns')
+
+    index1 = getattr(a, axis)
+    index2 = getattr(b, axis)
+
+    # TODO need/want to check [index|columns].name[s] ever? Series case?
+    # TODO TODO option to use pd_allclose here (after converting each to DataFrame)?
+    if index1.equals(index2):
+        return True
+
+    if only_check_shared_levels:
+        shared_names = list(set(index1.names) & set(index2.names))
+        assert len(shared_names) > 0, ('need overlapping names in indices!\n'
+            f'{index1.names=}\n{index2.names=}'
+        )
+        df1 = index1.to_frame(index=False)
+        df2 = index2.to_frame(index=False)
+
+        if assert_no_dupes_in_shared_levels:
+            assert not df1[shared_names].duplicated().any(), (f'a {axis} had duplicates'
+                f' when restricted to just {shared_names=}'
+            )
+            assert not df2[shared_names].duplicated().any(), (f'b {axis} had duplicates'
+                f' when restricted to just {shared_names=}'
+            )
+
+        # TODO TODO option to use allclose here? (or in general?) sometimes necessary if
+        # float values...
+        if df1[shared_names].equals(df2[shared_names]):
+            return True
+
+    if axis == 'index':
+        msg = 'row index mismatch'
+    elif axis == 'columns':
+        msg = 'columns mismatch'
+
+    if if_index_mismatch == 'warn':
+        warnings.warn(msg)
+    elif if_index_mismatch == 'err':
+        raise ValueError(msg)
+    else:
+        assert if_index_mismatch is None
+
+    return False
+
+
 # TODO test
 # TODO use in al_analysis.py (and other places i'm checking indices equal w/o checking
 # data equal)
@@ -4520,30 +4584,7 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
         if_index_mismatch: whether to return False (None), warn (and return False), or
             raise ValueError if either row/column indices do not match
     """
-    def _indices_equal(a, b, axis):
-        # TODO factor this axis checking into fn [decorator?]?
-        assert axis in ('index', 'columns')
-
-        index1 = getattr(a, axis)
-        index2 = getattr(b, axis)
-
-        # TODO need/want to check [index|columns].name[s] ever? Series case?
-        if index1.equals(index2):
-            return True
-
-        if axis == 'index':
-            msg = 'row index mismatch'
-        elif axis == 'columns':
-            msg = 'columns mismatch'
-
-        if if_index_mismatch == 'warn':
-            warnings.warn(msg)
-        elif if_index_mismatch == 'err':
-            raise ValueError(msg)
-
-        return False
-
-    if not _indices_equal(a, b, 'index'):
+    if not pd_index_equal(a, b, axis='index'):
         return False
 
     if isinstance(a, pd.DataFrame):
@@ -4551,7 +4592,7 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
         # ValueError?)?
         assert isinstance(b, pd.DataFrame)
 
-        if not _indices_equal(a, b, 'columns'):
+        if not pd_index_equal(a, b, axis='columns'):
             return False
     else:
         # TODO don't?
@@ -4581,9 +4622,7 @@ def is_scalar(x: Any) -> bool:
 # only in one or the other? (and also for pd_isclose below, if so)
 # TODO TODO default to equal_nan=True (maybe warning if there are NaN unless explicitly
 # set True?)?
-# TODO TODO add option to ignore index types (or cast one the other) (+ test)
-#
-# TODO TODO fix/handle: (...how to repro?)
+# TODO at test w/ a str column (mixed w/ other numeric cols)
 # ```
 # TypeError: ufunc 'isfinite' not supported for the input types, and the inputs could
 # not be safely coerced to any supported types according to the casting rule ''safe''
@@ -4613,6 +4652,19 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 
     if not pd_indices_equal(a, b, if_index_mismatch=if_index_mismatch):
         return False
+
+    # Series don't have select_dtypes
+    if isinstance(a, pd.DataFrame):
+        a_obj = a.select_dtypes(include='object')
+        if len(a_obj.columns) > 0:
+            b_obj = b.select_dtypes(include='object')
+            if not a_obj.equals(b_obj):
+                return False
+
+            # since np.allclose below can throw TypeError if there are 'object' dtype
+            # columns (like str) in input
+            a = a.select_dtypes(exclude='object')
+            b = b.select_dtypes(exclude='object')
 
     return np.allclose(a, b, **kwargs)
 
