@@ -4497,8 +4497,8 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
         # if it fails equals check below), which might want
         x_all_float = is_all_float(x)
         y_all_float = is_all_float(y)
-        # TODO TODO warn here (if !_warn?)? (maybe only if not equals, only ever doing this
-        # check second?)
+        # TODO TODO warn here (if !_warn?)? (maybe only if not equals, only ever doing
+        # this check second?)
         if x_all_float and y_all_float:
             # TODO fallback to below if this errs? (assuming i keep this before other
             # check, and always do it first)
@@ -4690,6 +4690,9 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
         # seems i could also use allclose here, and not sure output would ever be
         # different? allclose and isclose seem to have same kwarg options too.
         return np.isclose(a, b, **kwargs)
+
+    elif isinstance(a, np.ndarray) and isinstance(b, np.ndarray):
+        return np.allclose(a, b, **kwargs)
 
     if not pd_indices_equal(a, b, if_index_mismatch=if_index_mismatch):
         return False
