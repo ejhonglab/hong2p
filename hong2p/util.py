@@ -91,7 +91,9 @@ _fast_data_root: Optional[Path] = (Path(os.environ.get(FAST_DATA_ROOT_ENV_VAR))
     if FAST_DATA_ROOT_ENV_VAR in os.environ else None
 )
 if _fast_data_root is not None and not _fast_data_root.is_dir():
-    raise IOError(f'{FAST_DATA_ROOT_ENV_VAR} set but is not a directory')
+    warnings.warn(f'{FAST_DATA_ROOT_ENV_VAR}={_fast_data_root} set but is not a '
+        'directory'
+    )
 
 np.set_printoptions(precision=2)
 
