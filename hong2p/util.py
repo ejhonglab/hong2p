@@ -4892,7 +4892,8 @@ def subset_levels(index: pd.MultiIndex, subset: List[str]) -> pd.Index:
 # pythonic way to do that?
 # TODO also replace usage of reindex in natmix (and anything else important. drosolf?
 # odor analysis stuff?) with this.
-def reindex(x: DataFrameOrSeries, index: pd.Index, **kwargs) -> DataFrameOrSeries:
+def reindex(x: DataFrameOrSeries, index: pd.Index, checks: bool = True, **kwargs
+    ) -> DataFrameOrSeries:
     """
     Args:
         x: data to reindex
@@ -4926,8 +4927,10 @@ def reindex(x: DataFrameOrSeries, index: pd.Index, **kwargs) -> DataFrameOrSerie
     assert not index.duplicated().any(), ('index had duplicates! reindex output might '
         'not be as expected!'
     )
-
-    return x.reindex(index, **kwargs)
+    reindexed = x.reindex(index, **kwargs)
+    if checks:
+        assert reindexed.index.equals(index)
+    return reindexed
 
 
 # TODO add unit tests w/ inputs that are both MultiIndex / not
