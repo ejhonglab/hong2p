@@ -11,7 +11,6 @@ from typing import Dict, Any
 
 import numpy as np
 import pandas as pd
-from scipy.sparse import coo_array
 import matplotlib.pyplot as plt
 
 from hong2p import thor, util
@@ -104,6 +103,8 @@ def load_s2p_masks(s2p_dir: Path) -> np.ndarray:
     # TODO doc shape this returns (should be (rois, y, x))
     """Returns normalized (each sums to 1) cell footprints
     """
+    from scipy.sparse import coo_array
+
     ops = load_ops(s2p_dir)
 
     # TODO assert this matches movie dim? prob not in here tho

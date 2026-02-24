@@ -19,7 +19,6 @@ from random import Random
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.cluster.hierarchy import linkage
 import colorcet as cc
 import matplotlib as mpl
 from matplotlib.axes import Axes
@@ -31,7 +30,6 @@ import matplotlib.transforms as transforms
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.axes_grid1 import ImageGrid
-import seaborn as sns
 # Only for type hinting
 from matplotlib.colorbar import Colorbar
 from matplotlib.figure import Figure
@@ -133,6 +131,8 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
             `fig.colorbar`. Can be passed to `add_legends_and_colorbars` argument of the
             same name.
     """
+    import seaborn as sns
+
     if axis in (0, 'index', 'rows'):
         names = df.columns
     else:
@@ -1299,6 +1299,8 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
         method: default 'average' is same as `sns.clustermap`
         metric: default 'euclidean' is same as `sns.clustermap`
     """
+    import seaborn as sns
+
     if row_linkage is not None:
         # TODO or does seaborn already have passed row_linkage imply row_cluster=True?
         row_cluster = True
@@ -1353,6 +1355,7 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
     # (so it actually affects linkage, as it would w/ seaborn version)
     # (currently just disabling optimal ordering in these cases)
     def _linkage(df):
+        from scipy.cluster.hierarchy import linkage
         # TODO way to get this to work w/ some NaNs? worth it?
         return linkage(df.values, optimal_ordering=optimal_ordering, method=method,
             metric=metric
@@ -3319,6 +3322,8 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
 
         **kwargs: passed thru to `plot_closed_contours`
     """
+    import seaborn as sns
+
     is_plane_outline = np.array(
         [hong_roi.is_ijroi_plane_outline(x) for x in rois.roi_name]
     )

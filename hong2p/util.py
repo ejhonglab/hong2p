@@ -30,7 +30,6 @@ import yaml
 import matplotlib.pyplot as plt
 import tifffile
 from tifffile import TiffFile
-from scipy.spatial.distance import pdist, squareform
 from tqdm import tqdm
 
 from hong2p import matlab, db, thor, olf
@@ -214,6 +213,112 @@ def check_dir_exists(fn_returning_dir):
         return directory
 
     return optionally_checked_fn_returning_dir
+
+
+def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
+    checks: bool = True, replace: bool = False) -> None:
+    """Create symlink link pointing to target, doing nothing if link exists.
+    """
+    # TODO err if link exists and was created *in this same run* (indicating trying to
+    # point to multiple different outputs from the same link; a bug)
+    target = Path(target)
+    link = Path(link)
+
+    # Will slightly simplify cleanup logic by mostly ensuring broken links only come
+    # from deleted directories.
+    if not target.exists():
+        raise FileNotFoundError
+
+    # TODO delete (/expose)
+    verbose = False
+    if verbose:
+        print('input:')
+        print(f'target={target}')
+        print(f'link={link}')
+        print(f'{target.is_dir()=}')
+        print(f'{link.is_dir()=}')
+    #
+    if relative:
+        if link.is_dir() and not link.is_symlink():
+            raise IOError(f'{link=} already existed (and was a directory). manually '
+                'delete it before calling this!'
+            )
+
+        link_dir = link.parent
+        # TODO delete
+        if verbose:
+            print(f'{link_dir=}')
+            print(f'{os.path.relpath(target, link_dir)=}')
+        #
+
+        # From pathlib docs: "PurePath.relative_to() requires self to be the subpath of
+        # the argument, but os.path.relpath() does not."
+        # ...so probably can't use it as a direct replacement here.
+        # TODO test this behaves correctly. depend on whether target is a dir/not?
+        target = Path(os.path.relpath(target, link_dir))
+    else:
+        # Because relative paths are resolved wrt current working directory, not wrt
+        # directory of target (or link) (same w/ os.path.abspath)
+        assert target.is_absolute()
+
+        # TODO do i even want to do this? isn't it just modifying relative components
+        # inside of an absolute path OR paths containing symlinks at this point? i don't
+        # think i have the former and i don't know if i would want symlinks resolved...
+        #
+        # From pathlib docs: "os.path.abspath() does not resolve symbolic links while
+        # Path.resolve() does."
+        # Not sure if relevant to any of my use cases.
+        target = target.resolve()
+
+    # TODO delete
+    if verbose:
+        print('final:')
+        print(f'target={target}')
+        print(f'link={link}')
+    #
+
+    def check_written_link():
+        resolved_link = link.resolve()
+
+        if target.is_absolute():
+            resolved_target = target.resolve()
+        else:
+            resolved_target = (link.parent / target).resolve()
+
+        assert resolved_link == resolved_target, (f'link: {link}\n'
+            f'target: {target}\n{resolved_link} != {resolved_target}'
+        )
+
+    # TODO delete?
+    # TODO maybe this should just be the default? why not? maybe warn if replacing?
+    #replace = True
+
+    # NOTE: link.exists() will return False for broken symlinks, but link.is_symlink()
+    # will return True.
+    if link.is_symlink():
+        if replace or not link.exists():
+            link.unlink()
+        else:
+            if checks:
+                check_written_link()
+
+            return
+
+    link.symlink_to(target)
+    if checks:
+        # This should fail if the link is broken right after creation
+        assert link.is_symlink()
+        assert link.resolve().exists(), f'link broken! ({link} -> {target})'
+
+    # TODO delete?
+    if checks:
+        check_written_link()
+    #
+
+    # TODO delete
+    if verbose:
+        print()
+    #
 
 
 # TODO (for both below) support a local and a remote one ([optional] local copy
@@ -4871,6 +4976,7 @@ def frame_pdist(df: pd.DataFrame, *, metric='euclidean') -> pd.DataFrame:
     all pairs of input *rows*), so output rows and columns will be same as input
     columns.
     """
+    from scipy.spatial.distance import pdist, squareform
     return pd.DataFrame(squareform(pdist(df.T, metric=metric)), index=df.columns,
         columns=df.columns
     )
