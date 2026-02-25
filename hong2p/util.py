@@ -4894,7 +4894,8 @@ def subset_levels(index: pd.MultiIndex, subset: List[str]) -> pd.Index:
 # odor analysis stuff?) with this.
 def reindex(x: DataFrameOrSeries, index: pd.Index, checks: bool = True, **kwargs
     ) -> DataFrameOrSeries:
-    """
+    """Reindexes data to index, after checking index is unique (to avoid surprises).
+
     Args:
         x: data to reindex
 
@@ -4927,9 +4928,26 @@ def reindex(x: DataFrameOrSeries, index: pd.Index, checks: bool = True, **kwargs
     assert not index.duplicated().any(), ('index had duplicates! reindex output might '
         'not be as expected!'
     )
+    if checks:
+        axis = kwargs.get('axis', 'index')
+        if axis == 'columns' or axis == 1:
+            other_index = x.index.copy()
+        else:
+            assert axis == 'index' or axis == 0
+            if isinstance(x, pd.DataFrame):
+                other_index = x.columns.copy()
+
     reindexed = x.reindex(index, **kwargs)
     if checks:
-        assert reindexed.index.equals(index)
+        if axis == 'columns' or axis == 1:
+            assert reindexed.columns.equals(index)
+            # check we haven't changed other index in process
+            assert other_index.equals(reindexed.index)
+        else:
+            assert reindexed.index.equals(index)
+            if isinstance(x, pd.DataFrame):
+                assert other_index.equals(reindexed.columns)
+
     return reindexed
 
 
