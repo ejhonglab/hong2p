@@ -774,6 +774,7 @@ def _all_paired_thor_dirs(skip_errors=True, **kwargs) -> List[PathPair]:
 
 
 def _stimfile_dir(stimfile_dir: Optional[Pathlike] = None) -> Path:
+    # TODO doc
     if stimfile_dir is None:
         stimfile_dir = stimfile_root()
     else:
@@ -784,12 +785,15 @@ def _stimfile_dir(stimfile_dir: Optional[Pathlike] = None) -> Path:
     return stimfile_dir
 
 
+# TODO stimfile_path Path or Pathlike?
 def shorten_stimfile_path(stimfile_path, stimfile_dir: Optional[Pathlike] = None):
     """Shortens absolute stimulus YAML path to one relative to stimfile_dir.
     """
     stimfile_dir = _stimfile_dir(stimfile_dir)
+    stimfile_path = str(stimfile_path)
+
     # TODO convert to a pathlib call
-    assert str(stimfile_path).startswith(str(stimfile_dir))
+    assert stimfile_path.startswith(str(stimfile_dir))
 
     # + 1 to also exclude the os.sep character separating parent dir and relative
     # stimfile path.
@@ -823,7 +827,6 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
     running the olfactometer program, to facilitate this.
     """
     stimfile_dir = _stimfile_dir(stimfile_dir)
-
     notes = thor.get_thorimage_notes(thorimage_dir_or_xml)
 
     if isinstance(thorimage_dir_or_xml, etree.Element):
@@ -855,40 +858,39 @@ def stimulus_yaml_from_thorimage(thorimage_dir_or_xml, stimfile_dir=None):
     # separator character.
     yaml_path = yaml_path.replace('\\', '/')
 
-    # TODO change data that has this to expand paths + delete this hack
+    # TODO provide example of how i would use this in comment
+    # TODO was it really just the date[+time] str that should be replaced? not whole
+    # dir name (/something else?)? check old data, and see if any of this is still
+    # working as expected? delete?
     if '""' in yaml_path:
+        # '20231129_122038_stimuli_0.yaml' -> '20231129_122038'
         date_str = '_'.join(yaml_path.split('_')[:2])
         old_yaml_path = yaml_path
         yaml_path = yaml_path.replace('""', date_str)
-
         warnings.warn(f'{name}: replacing stimulus YAML path of {old_yaml_path} '
             f'with {yaml_path}'
         )
-    #
 
-    # TODO delete? what's reason for this branch? at least doc
-    if not exists(join(stimfile_dir, yaml_path)):
+    # In case x_<n>.yaml is specified, without the x/ directory prefix. Since yaml name
+    # should contain all the information to recreate the directory name (just with an
+    # extra suffix), we can check if it exists under that directory name.
+    if not (stimfile_dir / yaml_path).exists():
+        # e.g. '20231129_122038_stimuli_0.yaml' -> '20231129_122038_stimuli_0', '.yaml'
         prefix, ext = splitext(yaml_path)
-        # TODO why :3? include reason in comment / rewrite. depend on a particular yaml
-        # filename format i assume (that might sometimes be broken for manual ones tho,
-        # right?)?
-        yaml_dir = '_'.join(prefix.split('_')[:3])
-        subdir_path = join(stimfile_dir, yaml_dir, yaml_path)
-        # TODO delete
-        print()
-        print(f'{stimfile_dir=}')
-        print(f'{yaml_path=}')
-        print(f'{prefix=}')
-        print(f'{yaml_dir=}')
-        print(f'{subdir_path=}')
-        print('doc reason for this branch')
-        #import ipdb; ipdb.set_trace()
-        #
-        if exists(subdir_path):
-            yaml_path = subdir_path
-    #
+        parts = prefix.split('_')
+        # could also assert last part is parseable as int
+        assert len(parts) == 4, f'{len(parts)=}\n{parts=}'
+        # olf names multiple names (for a sequence of recordings), as same name as
+        # directory it creates, with each YAML also having an '_<n>.yaml' suffix at end,
+        # where <n> (0-indexed) is the sequence of the YAML in the overall experiment.
+        # e.g. '20231129_122038_stimuli_0' -> '20231129_122038_stimuli'
+        yaml_dir = '_'.join(parts[:3])
 
-    yaml_abspath = join(stimfile_dir, yaml_path)
+        subdir_path = stimfile_dir / yaml_dir / yaml_path
+        if subdir_path.exists():
+            yaml_path = subdir_path
+
+    yaml_abspath = stimfile_dir / yaml_path
     if not exists(yaml_abspath):
         raise IOError(f'{name} references {yaml_path}, but it did not '
             f'exist under stimfile_dir={stimfile_dir}'
