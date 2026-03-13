@@ -899,7 +899,10 @@ def extract_traces_bool_masks(movie, footprints, *, verbose: bool = False):
     slices = (slice(None),) * n_spatial_dims
     n_frames = movie.shape[0]
     n_footprints = footprints.shape[-1]
-    traces = np.empty((n_frames, n_footprints)) * np.nan
+    traces = np.empty((n_frames, n_footprints))
+    # TODO stop initializing w/ NaN (and remove check there is no NaN after)?
+    # does it actually ever take a meaningful amount of time?
+    traces.fill(np.nan)
 
     if verbose:
         print('extracting traces from boolean masks...', end='', flush=True)
@@ -953,7 +956,10 @@ def extract_traces(movie, footprints, *, _sum=False, verbose: bool = False):
     slices = (slice(None),) * n_spatial_dims
     n_frames = movie.shape[0]
     n_footprints = footprints.shape[-1]
-    traces = np.empty((n_frames, n_footprints)) * np.nan
+    # TODO stop initializing w/ NaN (and remove check there is no NaN after)?
+    # does it actually ever take a meaningful amount of time?
+    traces = np.empty((n_frames, n_footprints))
+    traces.fill(np.nan)
 
     # first movie dim is time, everything else should be a spatial dim
     movie_spatial_dims = tuple(range(1, len(movie.shape)))
@@ -2573,10 +2579,8 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=None,
         # TODO TODO use pdist / something else under scipy.spatial.distance?
         # TODO other / better ways to generate cost matrix?
         # pairwise jacard (would have to not take centers then)?
-        # TODO why was there a "RuntimeWarning: invalid valid encounterd in
-        # multiply" here ocassionally? it still seems like we had some left and
-        # right centers, so idk
-        costs = np.empty((len(left_centers), len(right_centers))) * np.nan
+        costs = np.empty((len(left_centers), len(right_centers)))
+        costs.fill(np.nan)
         for i, cl in enumerate(left_centers):
             for j, cr in enumerate(right_centers):
                 # TODO short circuit as appropriate? better way to loop over
@@ -3042,8 +3046,8 @@ def renumber_rois2(matches_list, centers_list):
             next_id += 1
 
     assert set(id2frame_bounds.keys()) == set(id2indices.keys())
-    centers_array = np.empty((len(centers_list), next_id,
-        centers_list[0].shape[1])) * np.nan
+    centers_array = np.empty((len(centers_list), next_id, centers_list[0].shape[1]))
+    centers_array.fill(np.nan)
 
     for roi_id in id2frame_bounds.keys():
         start, end = id2frame_bounds[roi_id]
@@ -3321,8 +3325,8 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
     for i, (ids, cs) in enumerate(zip(ids_list, centers_list)):
         assert len(ids) == len(cs), f'(i={i}) {len(ids)} != {len(cs)}'
 
-    centers_array = np.empty((len(centers_list), next_new_id,
-        centers_list[0].shape[1])) * np.nan
+    centers_array = np.empty((len(centers_list), next_new_id, centers_list[0].shape[1]))
+    centers_array.fill(np.nan)
 
     for i, (ids, centers) in enumerate(zip(ids_list, centers_list)):
         centers_array[i, ids, :] = centers
@@ -3456,7 +3460,8 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     xy_steps = np.random.randn(nt - 1, max_n, 2) * sigma
 
     next_trajectory_idx = initial_n
-    centers = np.empty((nt, max_n, 2)) * np.nan
+    centers = np.empty((nt, max_n, 2))
+    centers.fill(np.nan)
     centers[0, :initial_n] = initial_centers[:initial_n]
     # TODO should i be generating the noise differently, so that the x and y
     # components are not independent (so that if deviation is high in one,
