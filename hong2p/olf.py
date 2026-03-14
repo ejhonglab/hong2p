@@ -484,7 +484,7 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
     return pd.Index(conc_keys, name=level.name)
 
 
-component_level_prefix = 'odor'
+component_level_prefix: str = 'odor'
 
 def is_odor_var(var_name: Optional[str]) -> bool:
     # TODO doctest example
@@ -504,6 +504,49 @@ def is_odor_var(var_name: Optional[str]) -> bool:
     # (those are basically only 2 reasons this fn still exists, rather than having
     # replaced it w/ is_odor_component_level)
     return var_name.startswith(component_level_prefix)
+
+
+# TODO use more places
+# TODO accept df/Series (too?) and get .index?
+def first_odor_level(index: pd.Index) -> str:
+    """Returns first odor component level in index, whether 'odor' / 'odor1'.
+
+    Raises ValueError if no odor levels in index.
+
+    Raises AssertionError if 'odor' as well as some 'odor<n>' levels, or if there are
+    multiple odor levels with the same name.
+    """
+    odor_levels = []
+    for x in index.names:
+        assert x not in odor_levels, 'duplicate odor levels'
+        if is_odor_var(x):
+            odor_levels.append(x)
+
+    if component_level_prefix in odor_levels:
+        assert odor_levels == [component_level_prefix], ('can not mix odor levels with '
+            'and without int suffixes'
+        )
+        first_level = odor_levels[0]
+    else:
+        levels_and_keys = []
+        for x in odor_levels:
+            # 'odor1' -> '1'
+            int_suffix = x[len(component_level_prefix):]
+            try:
+                n = int(int_suffix)
+                levels_and_keys.append((x, n))
+            # ValueError: invalid literal for int() with base 10: ...
+            except ValueError:
+                assert False, ('all odor levels must either be '
+                    f'{repr(component_level_prefix)} or same with int suffix'
+                )
+
+        # could probably also assume it's first...
+        first_level, first_n = sorted(levels_and_keys, key=lambda x: x[1])[0]
+        # TODO remove? not sure i care, as long as it's either 0 or 1
+        assert first_n == 1, 'odor components numbering should start at 1'
+
+    return first_level
 
 
 # TODO add some kind of lookup for odor panels (might just need to get the set of all
@@ -1032,7 +1075,7 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series, Dict[str, An
 
     Raises ValueError if input is Series/Dict, but no elements in `odor_strs.keys()`
     are named indicating they contain odor component information (i.e. no keys where
-    `is_odor_var(k)` is True)A.
+    `is_odor_var(k)` is True).
     """
     # TODO what's an example of Series input? why using same fn name for this?
     # doc at least... (can make some handling of iterating over index values easier,
@@ -1198,6 +1241,8 @@ def odor_lists_to_multiindex(odor_lists: ExperimentOdors, *,
 # actually using w/ any inputs like that? just leaving both this and is_odor_var for
 # now...
 def is_odor_component_level(level_name: Optional[str]) -> bool:
+    # TODO doc clarifying how this is diff from is_odor_var (or delete this in favor of
+    # that?). seems that only diff if this requires a number on end, but other doesn't?
     """Returns True if column/level name or Series-key is named to store odor metadata
 
     Values for matching keys should store strings representing *one*, of potentially
@@ -1220,6 +1265,9 @@ def is_odor_component_level(level_name: Optional[str]) -> bool:
 def n_odor_component_levels(df: pd.DataFrame) -> int:
     # TODO do i want this to drop levels w/ all solvent_str? flag? prob doesn't matter
     # for current usage.
+    # TODO use is_odor_var instead (which also works w/ 'odor' instead of 'odor1')?
+    # (may want to somewhere assert we never have both 'odor' and one with a number
+    # suffix tho)
     odor_level_names = [x for x in df.index.names if is_odor_component_level(x)]
     # TODO relax? may need to modify assertion below, if so
     assert len(odor_level_names) > 0
@@ -1274,4 +1322,46 @@ def pad_odor_indices_to_max_components(dfs: Sequence[pd.DataFrame]
     return [pad_odor_index_to_n_components(df, max_n_odor_component_levels)
         for df in dfs
     ]
+
+
+def drop_solvent_odors(df: pd.DataFrame, *, warn: bool = True) -> pd.DataFrame:
+    """Drops where 'odor1' index level name is 'pfo'/'water'/`solvent_str`.
+
+    Currently expects concentration to be '@ 0' for all of these odor strings, e.g. 'pfo
+    @ 0' / 'pfo @ 0.0'.
+
+    Copies input data, whether or not data is subset.
+
+    Args:
+        df: data with 'odor' / 'odor1' index level to drop solvents from
+
+        warn: if True (and any data dropped), will warn about how many rows are dropped
+    """
+    odor_level = first_odor_level(df.index)
+
+    odor_names = df.index.get_level_values(odor_level).map(parse_odor_name)
+    odor_concs = df.index.get_level_values(odor_level).map(parse_log10_conc)
+    solvent_names = ('pfo', 'water', solvent_str)
+    solvent_mask = odor_names.isin(solvent_names)
+    if solvent_mask.any():
+        if warn:
+            n_solvent_rows = solvent_mask.sum()
+            warnings.warn(f'dropping {n_solvent_rows}/{len(df)} solvent rows')
+
+        solvent_conc_set = set(odor_concs[solvent_mask])
+        # TODO if this gets triggered by None/NaN, adapt to also include None/NaN
+        # (if there are any negative float concs, that would indicate a bug)
+        # TODO also accept null (None/NaN) conc for these? or no?
+        #
+        # NOTE: {0.0} == {0} is True
+        assert solvent_conc_set == {0}, f'{solvent_conc_set=}'
+
+        # TODO warn that we are dropping (if any actually dropped)
+        df = df.loc[~solvent_mask].copy()
+    else:
+        # copying whether or not we are subsetting, to we can always expect changing
+        # output to not change input
+        df = df.copy()
+
+    return df
 
