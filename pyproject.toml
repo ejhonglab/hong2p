@@ -1,0 +1,153 @@
+
+[build-system]
+# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+# example had 61.0, but I had 56.0 installed, so replaced w/ that
+# (at least 61.0.0 worked to install everything for al_analysis on hal, but not sure
+# about anything more recent)
+#
+# TODO maybe i should upgrade to 62 (or 64?)? this post seems to say one of those
+# required for editable installs to work correctly (seemed ok so far though... not sure
+# what is missing...)
+# https://stackoverflow.com/questions/69711606
+# my current pip version seems to be 22.3.1, so maybe thats why it's working (somewhat)?
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["hong2p"]
+
+[project]
+name = "hong2p"
+# TODO worth using `dynamic = ["version"]` instead? work w/ git (w/o explicit tags)?
+# required, and not sure if i can set up dynamically from git
+# make this exactly 3.8 (i've been using 3.8.12)?
+# (want to expand support to newer versions tho)
+requires-python = ">= 3.8"
+dependencies = [
+    # TODO should this one be in build deps? even required? delete?
+    # This one might not be strictly necessary. The errs that seemed to
+    # happen during pip install w/o it might not be fatal, assuming other
+    # installation options exist besides the .whl format (like sdists).
+    "wheel",
+
+    "h5py",
+    "numpy",
+
+    # technically just need >=1.8 for scipy.sparse.coo_array, but installed 1.10.1
+    # in al_analysis, and may need some features added after 1.8 in there
+    "scipy>=1.8",
+
+    "tifffile",
+
+    "pandas",
+    "xarray",
+
+    "PyQt5",
+    "pyqtgraph",
+
+    "matplotlib",
+    "seaborn",
+    # https://github.com/ppinard/matplotlib-scalebar
+    "matplotlib-scalebar",
+
+    "scikit-learn",
+    "gitpython",
+
+    "PyYAML",
+
+    "jinja2",
+    # How does what PyLaTeX offers compare? As of 2023, PyLaTeX last updated 2021,
+    # while [mbr/]latex was last updated 2019.
+    "latex",
+
+    "platformdirs",
+    "tqdm",
+
+    "ipdb",
+
+    # https://stackoverflow.com/questions/32688688
+    # TODO move all imports of this to top-level, since i dont think it is heavy
+    # enough to warrant conditional imports
+    "ijroi @ git+https://github.com/tom-f-oconnell/ijroi",
+
+    # TODO delete
+    # TODO put in [project.optional-dependencies], under some tag?
+    # (only gui.py/extract_template.py and some other test scripts import
+    # it on module import, but maybe still nice to have by default?)
+    # Provides `cv2`. Used in a few particular functions and imported early in
+    # the definitions of those functions. Tests of any of those functions would
+    # need it installed though.
+    #"opencv-python",
+]
+# TODO add optional deps for documentation generation? other integration w/ [/config of]
+# that stuff in here?
+# TODO TODO see what happens with this
+dynamic = ["version"]
+#version = "0.0.0"
+#
+authors = [
+  {name = "Tom O'Connell", email = "tom.oconn3ll@gmail.com"},
+]
+# TODO update to this newer way at some point
+#license = "GPLv3"
+#license-files = [
+#    "LICENSE",
+#]
+# seems i need this older way to specify license w/ my current setuptools 56/61
+license = {file = "LICENSE"}
+keywords = ["imaging", "neuroscience", "olfaction", "drosophila"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
+description = "Functions for working with data from Hong olfaction imaging data"
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/ejhonglab/hong2p"
+
+[project.scripts]
+savedeps = "hong2p:save_requirements"
+# still required to add to __init__.py, now that i'm defining via pyproject.toml,
+# instead of old setup.py? (yup, at least as currently configured)
+# I define all of these in hong2p/cli_entry_points.py, and then modify
+# hong2p/__init__.py to import each of them explicitly.
+thor2tiff = "hong2p:thor2tiff_cli"
+showsync = "hong2p:showsync_cli"
+suite2p-params = "hong2p:suite2p_params_cli"
+thor-pairs = "hong2p:print_paired_thor_subdirs"
+thor-notes = "hong2p:print_thorimage_subdir_notes"
+# Mainly to support shell functions that cd to these directories, e.g
+# 2p() {
+#     cd "$(hong2p-data)"
+# }
+hong2p-data = "hong2p:print_data_root"
+hong2p-raw = "hong2p:print_raw_data_root"
+hong2p-analysis = "hong2p:print_analysis_intermediates_root"
+
+[tool.pytest.ini_options]
+# NOTE: seems we must use :TerminalPdb instead of :Pdb, in order for tab complete to
+# work
+# -s is short for --capture=no
+addopts = "--doctest-modules --doctest-continue-on-failure --doctest-report udiff --pdbcls=IPython.terminal.debugger:TerminalPdb --ignore=test/test_template_matching.py --no-header -q --tb=short -s -vv"
+testpaths = [
+    "test",
+    "hong2p",
+]
+# TODO other options that would make them easier to write?
+# TODO something like NORMALIZE_WHITESPACE, but so stuff like [1,2,3] and [1, 2, 3] are
+# considered equal?
+doctest_optionflags = "NORMALIZE_WHITESPACE"
+
+# pytest's builtin tmp_path fixture will create temp dirs under /tmp/pytest-of-<user>,
+# and default retention policy ("all") does not clear their contents. The "none"
+# retention policy will remove all of these temp dirs after test completion, regardless
+# of test failure/success.
+# NOTE: override by adding `-o tmp_path_retention_policy=all` to pytest CLI args.
+tmp_path_retention_policy = "none"
+# TODO try adding pytest-checkipdb? (seems like it's basically a linter to remind you of
+# straggling breakpoints? just use a linter for that instead?)
+
+# TODO possible to add a marker to select only doctest tests? is there already some
+# mechanism i could use to select them? `pytest --markers` didn't reveal any...
+markers = "slow: deselect with (`-m 'not slow'`)"

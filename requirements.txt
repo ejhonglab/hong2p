@@ -1,7 +1,0 @@
-
-# Consider using something like: https://stackoverflow.com/questions/17803829
-# to organize my requirements perhaps by what needs them, which URLs to use for
-# the custom libraries, or both.
-# Maybe just simpler to always install everything though...
-
-.
