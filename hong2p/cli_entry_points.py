@@ -378,6 +378,7 @@ def save_requirements() -> None:
                         '(from egg=<repo>)'
                     )
                     egg_suffix = f'{egg_str}{repo}'
+                    # TODO want to strip egg_suffix? option to?
 
                 commit_suffix = f'@{commit}'
             else:
@@ -463,8 +464,8 @@ def save_requirements() -> None:
         msg = ('will not be able to automatically install the following manually'
             ' installed packages:\n'
         )
-        for x in file_lines:
-            msg += x
+        msg += '\n'.join(file_lines)
+        msg += '\n'
         warnings.warn(msg)
 
     # TODO possible to get URLs for file:// ones? care to ? need to look at remote in
