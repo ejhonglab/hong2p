@@ -372,10 +372,12 @@ class IOPerformanceWarning(Warning):
     """
 
 
+# TODO have date by optional, and use current date?
 def format_date(date: Datelike) -> str:
-    """
-    Takes a pandas Timestamp or something that can be used to construct one
-    and returns a str with the formatted date.
+    """Returns str date in YYYY-MM-DD format. Pads month/day with leading 0s, if needed.
+
+    Takes a pandas Timestamp or something that can be used to construct one and returns
+    a str with the formatted date.
 
     Used to name directories by date, etc.
     """
@@ -1073,6 +1075,31 @@ def md5(fname: Pathlike) -> str:
             hash_md5.update(chunk)
 
     return hash_md5.hexdigest()
+
+
+def subset_same_in_all_dicts(dicts: Sequence[Dict]) -> Dict:
+    """Returns a dict with all key->value pairs that are equal in all input dicts.
+
+    Equality (on both keys and values) is just tested with `==`.
+    Key order is taken from first dict.
+
+    Raises ValueError if input is empty.
+    """
+    if len(dicts) == 0:
+        raise ValueError('input must contain at least one dict')
+
+    d0 = dicts[0]
+    common_keys = [k for k in d0.keys() if all(k in d for d in dicts[1:])]
+
+    same = dict()
+    for k in common_keys:
+        v0 = d0[k]
+        # TODO add optional kwarg for dict of key->equality checking fn? or always use
+        # my equals fn, which typically does what i want?
+        if all(d[k] == v0 for d in dicts[1:]):
+            same[k] = v0
+
+    return same
 
 
 # TODO transition everything to as if include_val==True?

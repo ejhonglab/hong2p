@@ -5,8 +5,22 @@ import numpy as np
 import pandas as pd
 
 from hong2p import util
+from hong2p.util import subset_same_in_all_dicts
 
 from hong2p.olf import solvent_str
+
+
+def test_subset_same_in_all_dicts():
+    common = {'a': 1}
+    ds = [
+        common,
+        {'b': 0, **common},
+        {'b': 2, **common},
+    ]
+    for xs in [ds, [ds[0]], ds[1:]]:
+        assert subset_same_in_all_dicts(xs) == common
+
+    assert subset_same_in_all_dicts([common, {'b': 1}]) == dict()
 
 
 # TODO refactor to share w/ test_olf.py (where i copied this from)
