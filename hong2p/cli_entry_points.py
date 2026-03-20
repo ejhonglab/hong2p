@@ -433,10 +433,11 @@ def save_requirements() -> None:
 
     # TODO also include [some part of?] path to venv? / conda env, if set?
 
+    lines = ['# generated with savedeps CLI installed with hong2p']
+
     # e.g. '3.8.12'
     python_version = '.'.join(map(str, sys.version_info[:3]))
-
-    lines = [f'# requires-python = "{python_version}"']
+    lines.append(f'# requires-python = "{python_version}"')
 
     # TODO add CLI flag to exclude build deps? or just comment those lines? (alone w/
     # python version?) not sure it would be helpful in dynamic requirements specified in
