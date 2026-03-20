@@ -41,6 +41,10 @@ dependencies = [
 
     "pandas",
     "xarray",
+    # so I can always use this backend for writing xarray files, rather than potentially
+    # falling back to scipy, which only supports version 3
+    # TODO or is there reason to want to use h5netcdf?
+    "netCDF4",
 
     "PyQt5",
     "pyqtgraph",
@@ -62,6 +66,10 @@ dependencies = [
 
     "platformdirs",
     "tqdm",
+    "colorcet",
+
+    # TODO could add to optional CLI deps. only used by savedeps CLI
+    "requests",
 
     "ipdb",
 
@@ -103,6 +111,12 @@ classifiers = [
 description = "Functions for working with data from Hong olfaction imaging data"
 readme = "README.md"
 
+[project.optional-dependencies]
+dev = [
+    # TODO some way to not need to repeat this (across here and minversion below)?
+    "pytest >= 8.3.5"
+]
+
 [project.urls]
 Repository = "https://github.com/ejhonglab/hong2p"
 
@@ -126,6 +140,7 @@ hong2p-raw = "hong2p:print_raw_data_root"
 hong2p-analysis = "hong2p:print_analysis_intermediates_root"
 
 [tool.pytest.ini_options]
+minversion = "8.3.5"
 # NOTE: seems we must use :TerminalPdb instead of :Pdb, in order for tab complete to
 # work
 # -s is short for --capture=no
