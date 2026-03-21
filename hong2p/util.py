@@ -8,6 +8,7 @@ from os.path import join, split, exists, sep, isdir, getmtime, splitext
 from pathlib import Path
 import pickle
 import platform
+import subprocess
 import sys
 from types import ModuleType
 from datetime import datetime
@@ -213,6 +214,127 @@ def check_dir_exists(fn_returning_dir):
         return directory
 
     return optionally_checked_fn_returning_dir
+
+
+def run_cmd(cmd: str) -> str:
+    # TODO use shlex splitting instead? where else did i do that?
+    """Returns stdout from running command in subprocess.
+
+    Raises RuntimeError if returncode != 0 or if there is stderr output.
+
+    Assumes `cmd` can be split on whitespace, to form command list as expected by
+    `subprocess.run`.
+    """
+    out = subprocess.run(cmd.split(), capture_output=True, text=True)
+    if out.returncode != 0:
+        raise RuntimeError(f'{cmd=} failed with {out.returncode=}')
+
+    if out.stderr != '':
+        raise RuntimeError(f'{cmd=} had the following stderr output:\n{out.stderr}')
+
+    return out.stdout
+
+
+# TODO use to warn if data_root / etc are not on SSDs? fast data root at least?
+def is_path_on_hdd(path: Path, *, verbose: bool = True) -> bool:
+    """Returns whether path exists on a HDD (vs e.g. SSD). Only work on Linux/similar.
+    """
+    # TODO want special handling (or another fn) to detect memory vs ssd?
+    assert len(f'{path}'.split()) == 1, ('would need to escape whitespace in path. '
+        'current cmd handling below would fail'
+    )
+    # would not expect to work on windows. not sure what besides linux has `df`
+    # --output=source makes it so df only outputs one column, which contains filesystem
+    # device path, like:
+    # ```
+    # Filesystem
+    # /dev/nvme0n1p2
+    # ```
+    # TODO also get + parse free space?
+    cmd = f'df --output=source {path}'
+    out = run_cmd(cmd)
+    lines = out.splitlines()
+    assert len(lines) == 2
+    assert lines[0] == 'Filesystem'
+    device = lines[1]
+
+    parts = device.split('/')
+    assert len(parts) == 3, f'{parts=}'
+    assert parts[0] == '', f'{parts=}'
+    assert parts[1] == 'dev', f'{parts=}'
+    partition = parts[-1]
+    if verbose:
+        print(f'{path.resolve()} is on {device=} ({partition=})')
+
+    block_device = None
+    # also would only expect to work on linux/derivatives
+    block_root = Path('/sys/block')
+    for f in block_root.glob('*'):
+        # e.g. block_device.name='nvme0n1' and partition='nvme0n1p2'
+        if partition.startswith(f.name):
+            assert block_device is None, (f'{block_device=} already matched '
+                f'{partition=}, but now {f.name} matches too!'
+            )
+            block_device = f.name
+
+    assert block_device is not None, (f'did not find device under {block_root} '
+        f'whose name matched start of {partition=}'
+    )
+
+    hdd_indicator = block_root / block_device / 'queue/rotational'
+    assert hdd_indicator.is_file()
+    # should contain 0 if device is not a HDD or 1 otherwise
+    is_hdd = int(hdd_indicator.read_text().strip())
+    assert is_hdd in {0, 1}
+    is_hdd = bool(is_hdd)
+
+    if verbose:
+        print(f'{block_device=} {is_hdd=}')
+
+    # TODO return block_device / partition too?
+    return is_hdd
+
+
+byte_units2ndivs: Dict[str, int] = {'K' : 1, 'M': 2, 'G' : 3, 'T' : 4, 'P' : 5, 'E' : 6}
+def n_bytes_in_unit(nbytes: int, *, unit: str = 'G', bsize: int = 1024) -> float:
+    """Convert nbytes to gigabytes (with default `unit='G'``), megabytes, etc.
+
+       sample code:
+           print('mb= ' + str(n_bytes_in_unit(314575262000000, 'M')))
+       sample output:
+           mb= 300002347.946
+    """
+    assert unit in byte_units2ndivs, f'{unit=} must be in {byte_units2ndivs=}'
+    # https://gist.github.com/shawnbutts/3906915
+    r = float(nbytes)
+    for i in range(byte_units2ndivs[unit]):
+        r = r / bsize
+    return r
+
+
+def format_nbytes(nbytes: int, *, unit: str = 'G', float_fmt: str = '.1f') -> str:
+    """Formats # bytes to GB/MB/etc (e.g. nbytes=3354780000 -> '3.1GB')
+    """
+    size = n_bytes_in_unit(nbytes, unit=unit)
+    return f'{size:{float_fmt}}{unit}B'
+
+
+def format_file_size(path: Pathlike, **kwargs) -> str:
+    """Returns str with filesize of `path`, like '3.1GB'
+
+    Args:
+        path: file to get and format size of
+
+        **kwargs: passed to `format_nbytes`
+
+    Probably will only work on Linux. Does `path.stat().st_size` work on Windows?
+    Alternative, if not?
+    """
+    path = Path(path)
+    # TODO and this is apparent size right? any way to get actual disk space taken up
+    # (e.g. if there is filesystem compression?) run_cmd('du ...') at that point?
+    nbytes = path.stat().st_size
+    return format_nbytes(nbytes, **kwargs)
 
 
 def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
@@ -1776,9 +1898,9 @@ def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
     # TODO want to allow str url for file_with_edit_link too (allowed in called fn)?
     """
     Args:
-        file_with_edit_link: 
+        file_with_edit_link:
 
-        gid: 
+        gid:
 
         bool_fillna_false: whether to replace missing values in columns that otherwise
             only contain True/False with False. will convert column dtype to 'bool' as

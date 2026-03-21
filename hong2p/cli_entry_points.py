@@ -17,7 +17,7 @@ import pandas as pd
 
 from hong2p import util, thor
 from hong2p.suite2p import print_suite2p_params
-from hong2p.util import format_date
+from hong2p.util import format_date, run_cmd
 from hong2p.viz import showsync
 
 
@@ -199,7 +199,9 @@ def save_requirements() -> None:
     Args:
         path: if not passed, will save to `requirements.txt` in current directory
     """
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=save_requirements.__doc__.split('Args:')[0].strip()
+    )
     parser.add_argument('output_path', nargs='?', default=None,
         help='path output requirements.txt style dependencies will be written to. '
         'if this already exists, it will be backed up to YYYY-MM-DD_<curr-name>. '
@@ -252,22 +254,6 @@ def save_requirements() -> None:
             'delete it, or pass different path.'
         )
 
-    def get_cmd_stdout(cmd: str) -> str:
-        cmd_list = cmd.split(' ')
-        out = subprocess.run(cmd_list, capture_output=True, text=True)
-        if out.returncode != 0:
-            # TODO test
-            msg = ' '.join(cmd) + ' failed with returncode={out.returncode} and:\n'
-            # TODO or would this fail if it's empty?
-            stderr = out.stderr
-            assert stderr is not None
-            msg += stderr
-            raise RuntimeError(msg)
-
-        stdout = out.stdout
-        assert stdout is not None
-        return stdout
-
     def splitlines(text: str) -> List[str]:
         lines = text.strip().splitlines()
         # TODO or process output lines to strip elements, if this ever failss
@@ -279,7 +265,7 @@ def save_requirements() -> None:
     # TODO if writing to conda yaml (from named conda env), some way to get name of
     # current env?
 
-    freeze_lines = splitlines(get_cmd_stdout('pip freeze'))
+    freeze_lines = splitlines(run_cmd('pip freeze'))
     freeze_line_set = set(freeze_lines)
     assert len(freeze_line_set) == len(freeze_lines)
 
@@ -288,7 +274,7 @@ def save_requirements() -> None:
     # have it installed, or it may be a newer/older thing.
     # can check what should be unique to these in CLI easily via:
     # comm -13 <(pip freeze | sort) <(pip freeze --all | sort)
-    freeze_all_lines = splitlines(get_cmd_stdout('pip freeze --all'))
+    freeze_all_lines = splitlines(run_cmd('pip freeze --all'))
     assert len(set(freeze_all_lines)) == len(freeze_all_lines)
 
     build_deps = [x for x in freeze_all_lines if x not in freeze_line_set]
