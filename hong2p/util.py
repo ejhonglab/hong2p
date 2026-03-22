@@ -319,13 +319,11 @@ def format_nbytes(nbytes: int, *, unit: str = 'G', float_fmt: str = '.1f') -> st
     return f'{size:{float_fmt}}{unit}B'
 
 
-def format_file_size(path: Pathlike, **kwargs) -> str:
-    """Returns str with filesize of `path`, like '3.1GB'
+def file_size_bytes(path: Pathlike, **kwargs) -> int:
+    """Returns # bytes in file at `path`
 
     Args:
-        path: file to get and format size of
-
-        **kwargs: passed to `format_nbytes`
+        path: file to get size of
 
     Probably will only work on Linux. Does `path.stat().st_size` work on Windows?
     Alternative, if not?
@@ -334,6 +332,18 @@ def format_file_size(path: Pathlike, **kwargs) -> str:
     # TODO and this is apparent size right? any way to get actual disk space taken up
     # (e.g. if there is filesystem compression?) run_cmd('du ...') at that point?
     nbytes = path.stat().st_size
+    return nbytes
+
+
+def format_file_size(path: Pathlike, **kwargs) -> str:
+    """Returns str with filesize of `path`, like '3.1GB'
+
+    Args:
+        path: file to get and format size of
+
+        **kwargs: passed to `format_nbytes`
+    """
+    nbytes = file_size_bytes(path)
     return format_nbytes(nbytes, **kwargs)
 
 
