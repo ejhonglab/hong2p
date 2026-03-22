@@ -14,6 +14,7 @@ import warnings
 
 import requests
 import pandas as pd
+from git import Repo
 
 from hong2p import util, thor
 from hong2p.suite2p import print_suite2p_params
@@ -193,7 +194,7 @@ def save_requirements() -> None:
     # "build" deps)
     """Saves pip requirements to a file, backup up old files at same path.
 
-    Processes git repo auto to https, and including setuptools / pip / Python versions
+    Processes git repo auth to https, and including setuptools / pip / Python versions
     in comments at top.
 
     Args:
@@ -207,19 +208,43 @@ def save_requirements() -> None:
         'if this already exists, it will be backed up to YYYY-MM-DD_<curr-name>. '
         'if not passed, will be written to exact-requirements.txt in current directory.'
     )
-    parser.add_argument('-n', '--no-switch-auth', action='store_true', help='if NOT '
+    no_switch_auth_flags = ('-n', '--no-switch-auth')
+    parser.add_argument(*no_switch_auth_flags, action='store_true', help='if NOT '
         'passed, all auth (e.g. ssh://) will be changed to https://, at least for '
         'public repositories. repositories are assumed private if we get a 404 at their'
         ' URL.'
     )
-    parser.add_argument('-a', '--assume-all-public', action='store_true', help='skips '
+    assume_public_flags = ('-a', '--assume-all-public')
+    parser.add_argument(*assume_public_flags, action='store_true', help='skips '
         'requesting repo URLs, and instead assumes all repos are public (for purpose of'
         ' deciding whether to switch the auth to HTTPS)'
     )
-    parser.add_argument('-s', '--no-strip-editable', action='store_true',
+    no_strip_editable_flags = ('-s', '--no-strip-editable')
+    parser.add_argument(*no_strip_editable_flags, action='store_true',
         help="if NOT passed, strips '-e ' prefix from lines indicating installed "
         'version is editable'
     )
+    git_only_flags = ('-g', '--git-only')
+    parser.add_argument(*git_only_flags, action='store_true',
+        help='ONLY outputs requirements that are installed via git and a URL. If '
+        'output_path is not passed, default output name changes to git-requirements.txt'
+    )
+    strip_commit_flags = ('-c', '--strip-commit')
+    parser.add_argument(*strip_commit_flags, action='store_true',
+        help='strip @<commit-hash> suffix (and everything after), for all lines that '
+        'include it'
+    )
+    git_for_file_flags = ('-u', '--git-url-for-file')
+    parser.add_argument(*git_for_file_flags, action='store_true',
+        # TODO or will i end up just using whatever auth is provided in repo?
+        help='whether to try to find repo URLs for file:// lines, and replace with a '
+        'suitable line to install from that URL via git and https'
+    )
+    exclude_flags = ('-x', '--exclude')
+    parser.add_argument(*exclude_flags, action='store', type=str, default='',
+        help='comma separated list of package (/repo) names to exclude from output'
+    )
+    # don't need to include either of these last two in summary of flags used
     parser.add_argument('-d', '--dry-run', action='store_true',
         help='if passed, no files will be written, but -v/--verbose is implied'
     )
@@ -229,14 +254,54 @@ def save_requirements() -> None:
     switch_auth_to_https = not args.no_switch_auth
     assume_all_public = args.assume_all_public
     strip_editable = not args.no_strip_editable
+    git_only = args.git_only
+    strip_commit = args.strip_commit
+    git_for_file = args.git_url_for_file
+    exclude = args.exclude
     dry_run = args.dry_run
     verbose = args.verbose
 
     if dry_run:
         verbose = True
 
+    exclude = exclude.strip()
+
+    args_used = []
+    if not switch_auth_to_https:
+        args_used.append('/'.join(no_switch_auth_flags))
+
+    if assume_all_public:
+        args_used.append('/'.join(assume_public_flags))
+
+    if not strip_editable:
+        args_used.append('/'.join(no_strip_editable_flags))
+
+    if git_only:
+        args_used.append('/'.join(git_only_flags))
+
+    if strip_commit:
+        args_used.append('/'.join(strip_commit_flags))
+
+    if git_for_file:
+        args_used.append('/'.join(git_for_file_flags))
+
+    if exclude:
+        args_used.append('/'.join(exclude_flags) + f' {exclude}')
+
+    args_used_str = ' '.join(args_used)
+
+    # TODO warn if any of these not seen below?
+    packages_to_exclude = {x.strip() for x in exclude.split(',')}
+
     if path is None:
-        name = 'exact-requirements.txt'
+        if not git_only:
+            name = 'exact-requirements.txt'
+        else:
+            name = 'git-requirements.txt'
+            print(f'changing default output name to {name} because -g/--git-only. pass'
+                ' output path to override'
+            )
+
         parent = Path('.')
         path = parent / name
     else:
@@ -327,9 +392,11 @@ def save_requirements() -> None:
                 '{repr(editable_git_prefix)}'
             )
 
-            assert ssh_auth_str in x, (f'{repr(x)} did not have expected SSH auth str '
-                f'{repr(ssh_auth_str)}'
-            )
+            assert (
+                x[len(editable_git_prefix):len(editable_git_prefix)+len(ssh_auth_str)]
+                == ssh_auth_str
+            ), f'{repr(x)} did not have expected SSH auth str {repr(ssh_auth_str)}'
+            assert x.count(ssh_auth_str) == 1
 
             # TODO why do these ones tend to have '#egg=<repo>' suffix, but non-editable
             # 'ijroi @ git+https://github.com/tom-f-oconnell/ijroi@65f249b...' doesn't?
@@ -364,7 +431,6 @@ def save_requirements() -> None:
                         '(from egg=<repo>)'
                     )
                     egg_suffix = f'{egg_str}{repo}'
-                    # TODO want to strip egg_suffix? option to?
 
                 commit_suffix = f'@{commit}'
             else:
@@ -372,9 +438,12 @@ def save_requirements() -> None:
                 if repo.endswith(git_suffix):
                     repo = repo[:-len(git_suffix)]
 
+            if repo in packages_to_exclude:
+                continue
+
+            site_to_repo = f'{site}/{account}/{repo}'
             if switch_auth_to_https:
-                url = f'{https_auth_str}{site}/{account}/{repo}'
-                new = f'{editable_git_prefix}{url}{commit_suffix}{egg_suffix}'
+                url = f'{https_auth_str}{site_to_repo}'
 
                 private_repo = False
                 if not assume_all_public:
@@ -393,12 +462,16 @@ def save_requirements() -> None:
                     private_repo = r.status_code == 404
 
                 if not private_repo:
-                    x = new
+                    x = f'{editable_git_prefix}{url}'
                 else:
                     print('not replacing SSH auth with HTTPS for:\n{x}\n...because '
                         f'repo seems to be private. getting 404 at {url}',
                         file=sys.stderr
                     )
+
+            if not strip_commit:
+                # TODO want to strip egg_suffix? separate option to just strip that?
+                x += f'{commit_suffix}{egg_suffix}'
 
             if strip_editable:
                 x = x[len(editable_prefix):]
@@ -406,61 +479,148 @@ def save_requirements() -> None:
             editable.append(x)
 
         elif noneditable_git_substr in x:
+            # TODO support other auth here?
             assert f'{noneditable_git_substr}{https_auth_str}' in x, \
-                f'auth was not already https: {x}'
+                f'auth was not already https: {x}. add support for this?'
 
+            parts = x.split('@')
+            assert len(parts) == 3, f'{parts=}'
+            # TODO could check this matches end of url too?
+            package = parts[0].strip()
+            if package in packages_to_exclude:
+                continue
+
+            if strip_commit:
+                x = '@'.join(parts[:-1])
+
+            # TODO do i actually want to keep the '<package> @ ' prefix?
+            # it would definitely work without that, right?
+            # also not sure if i want that prefix in the file_lines case
             noneditable_git.append(x)
 
         elif file_substr in x:
+            parts = x.split(' @ ')
+            assert len(parts) == 2, f'{parts=}'
+            package = parts[0]
+            if package in packages_to_exclude:
+                continue
+
+            if git_for_file:
+                file_uri_prefix = file_substr.strip('@ ')
+                assert parts[1].startswith(file_uri_prefix)
+
+                repo_path = Path(parts[1][len(file_uri_prefix):])
+                assert repo_path.is_dir(), f'{repo_path=} was not a directory'
+
+                repo = Repo(repo_path)
+
+                remote = None
+                if len(repo.remotes) == 1:
+                    remote = repo.remotes[0]
+                else:
+                    for r in repo.remotes:
+                        # TODO or always get first remote? other default names to check?
+                        if r.name == 'origin':
+                            remote = r
+                            break
+                assert remote is not None, f'could not find remote for {repo_path=}'
+
+                # could be something like 'git@github.com:ejhonglab/olfsysm', or
+                # probably any arbitrary auth str prefix
+                url = remote.url
+                if ':' in url:
+                    assert url.count(':') == 1, f'{url=} had multiple ":"'
+                    prefix, account_and_repo = url.split(':')
+                    if '@' in prefix:
+                        # just seen 'git' so far for p0
+                        p0, site = prefix.split('@')
+                    else:
+                        raise NotImplementedError('need to figure out how to get site '
+                            f'from {repr(prefix)}, stripping auth prefix'
+                        )
+                else:
+                    raise NotImplementedError(f'{url=} probably already using SSH/'
+                        'HTTPS auth. change parsing to handle.'
+                    )
+
+                # TODO do i want the '<package> @ ' prefix here or not?
+                # assuming we are fine always using https auth here
+                #x = (f'{package}{noneditable_git_substr}{https_auth_str}{site}/'
+                x = (f'{noneditable_git_substr.strip("@ ")}{https_auth_str}{site}/'
+                    f'{account_and_repo}'
+                )
+                # adding commit if we wouldn't strip them in other places, for
+                # consistency
+                if not strip_commit:
+                    # TODO any reason to add the egg suffix too?
+                    x += f'@{repo.head.commit.hexsha}'
+
+            # TODO still want to process file_lines in git_only case? they are
+            # technically associated w/ git repos typically... (olfsysm is only one that
+            # should be there, and there should be a way to find the repo and the url)
             file_lines.append(x)
 
         else:
+            parts = [x for x in x.split('=') if len(x) > 0]
+            assert len(parts) == 2, f'{parts=}'
+            package = parts[0].strip('<> ')
+            if package in packages_to_exclude:
+                continue
+
             regular.append(x)
 
-    # TODO also include [some part of?] path to venv? / conda env, if set?
-
     lines = ['# generated with savedeps CLI installed with hong2p']
+    lines.append(f'# using args: {args_used_str}')
 
-    # e.g. '3.8.12'
-    python_version = '.'.join(map(str, sys.version_info[:3]))
-    lines.append(f'# requires-python = "{python_version}"')
+    # TODO does conda env also set this? or how to handle that?
+    venv_path = os.getenv('VIRTUAL_ENV')
+    if venv_path is not None:
+        venv_path = venv_path.strip()
+        assert len(venv_path) > 1, f'{venv_path=}'
+        venv_path = Path(venv_path)
+        home = Path('~').expanduser()
+        if home in venv_path.parents:
+            venv_path = Path('/'.join(['~'] + list(venv_path.parts[len(home.parts):])))
+            assert venv_path.expanduser().is_dir()
 
-    # TODO add CLI flag to exclude build deps? or just comment those lines? (alone w/
-    # python version?) not sure it would be helpful in dynamic requirements specified in
-    # setuptools section of pyproject.toml (not sure build deps used there. prob need to
-    # be prespecified?)
-    # TODO TODO add flag to control whether editable things also have '-e ' prefix in
-    # output (prob need to default to excluding that)
-    lines.append('# build-system.requires:')
-    # TODO format in pyproject.toml way? like:
-    # [build-system]
-    # requires = ["setuptools >= 56.0"]
-    lines.extend([f'# {x}' for x in build_deps])
+        lines.append(f'# venv path: {venv_path}')
 
-    # TODO add flag to not comment the file_lines entries? not sure when i could install
-    # them
+    if not git_only:
+        # e.g. '3.8.12'
+        python_version = '.'.join(map(str, sys.version_info[:3]))
+        lines.append(f'# requires-python = "{python_version}"')
 
-    lines.extend(regular)
+        # TODO add CLI flag to exclude build deps? or just comment those lines? (alone
+        # w/ python version?) not sure it would be helpful in dynamic requirements
+        # specified in setuptools section of pyproject.toml (not sure build deps used
+        # there. prob need to be prespecified?)
+        lines.append('# build-system.requires:')
+        # TODO format in pyproject.toml way? like:
+        # [build-system]
+        # requires = ["setuptools >= 56.0"]
+        lines.extend([f'# {x}' for x in build_deps])
+
+        lines.extend(regular)
 
     # NOTE: some non-editable lines can still be like:
     # ijroi @ git+https://github.com/tom-f-oconnell/ijroi@65f249ba...
     # but probably ok to leave those handled as they are?
     lines.extend(noneditable_git)
 
-    if len(file_lines) > 0:
-        msg = ('will not be able to automatically install the following manually'
-            ' installed packages:\n'
-        )
-        msg += '\n'.join(file_lines)
-        msg += '\n'
-        warnings.warn(msg)
+    if not git_for_file:
+        if len(file_lines) > 0:
+            msg = ('will not be able to automatically install the following manually'
+                ' installed packages:\n'
+            )
+            msg += '\n'.join(file_lines)
+            msg += '\n'
+            warnings.warn(msg)
 
-    # TODO possible to get URLs for file:// ones? care to ? need to look at remote in
-    # each git repo?
-    #
-    # commenting because we will not be able to install these on a new system, without
-    # manually doing so (e.g. olfsysm)
-    lines.extend([f'# {x}' for x in file_lines])
+        # commenting because we will not be able to install these on a new system,
+        # without manually doing so (e.g. olfsysm)
+        file_lines = [f'# {x}' for x in file_lines]
+
+    lines.extend(file_lines)
 
     # TODO editable to local paths? (w/ one CLI flag?)
     # TODO automatically process paths to source dirs for editable installed packages

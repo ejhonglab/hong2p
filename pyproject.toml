@@ -10,7 +10,7 @@
 # what is missing...)
 # https://stackoverflow.com/questions/69711606
 # my current pip version seems to be 22.3.1, so maybe thats why it's working (somewhat)?
-requires = ["setuptools >= 61.0"]
+requires = ["setuptools >= 64.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -76,6 +76,20 @@ dependencies = [
     # https://stackoverflow.com/questions/32688688
     # TODO move all imports of this to top-level, since i dont think it is heavy
     # enough to warrant conditional imports
+    # TODO any way to get this to not conflict w/ al_analysis, if it's also
+    # specified in a requirements.txt generated in al_analysis venv? version appears the
+    # same, but it still conflicts...
+    # ```
+    # ERROR: Cannot install -r git-requirements.txt (line 8) and hong2p 0.0.0 (from
+    # git+https://github.com/ejhonglab/hong2p@a7968919d3bf...#egg=hong2p)
+    # because these package versions have conflicting dependencies.
+    #
+    # The conflict is caused by:
+    # The user requested hong2p 0.0.0 (from
+    # git+https://github.com/ejhonglab/hong2p@a7968919d3bf...#egg=hong2p)
+    # natmix 0.0.0 depends on hong2p 0.0.0 (from
+    # git+https://github.com/ejhonglab/hong2p)
+    # ```
     "ijroi @ git+https://github.com/tom-f-oconnell/ijroi",
 
     # TODO delete
@@ -90,6 +104,8 @@ dependencies = [
 # TODO add optional deps for documentation generation? other integration w/ [/config of]
 # that stuff in here?
 # TODO TODO see what happens with this
+# (it probably isn't doing anything by itself. prob need to also refer to it in separte
+# setuptools dynamic section...)
 dynamic = ["version"]
 #version = "0.0.0"
 #
