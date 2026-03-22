@@ -12,14 +12,26 @@ import xarray as xr
 from hong2p.util import suffix_index_names
 
 
+# TODO switch to h5netcdf? docs say it can sometimes be faster. is it, for me?
+# h5netcdf (according to latest xarray docs) also supports more compression options
+# behind the to_netcdf encoding=<dict> kwarg. from 2026 docs:
+# "The h5netcdf engine supports both the NetCDF4-style compression encoding parameters
+# {"zlib": True, "complevel": 9} and the h5py ones {"compression": "gzip",
+# "compression_opts": 9}. This allows using any compression plugin installed in the HDF5
+# library, e.g. LZF."
+# TODO add script to benchmark size / load / write times for diff engines and
+# compression levels? use claw_sims?
 NETCDF_ENGINE: str = 'netcdf4'
 
 def load_dataarray(path: Path) -> xr.DataArray:
-    # TODO delete. warnings not even emitted here, right? on import?
-    #with warnings.catch_warnings():
-    #    warnings.filterwarnings('ignore', category=RuntimeWarning)
-    arr = xr.open_dataarray(path, engine=NETCDF_ENGINE)
+    """Loads DataArray saved via `save_datarray`, and restores any MultiIndex coords.
 
+    Makes same assumptions that `save_dataarray` does; namely that we should call
+    `move_all_coords_to_index(arr)` on the loaded data, to recreate input to
+    `save_datarray`. This may not be true for some NetCDF files saved with `to_netcdf`
+    directly, or anything other than `save_dataarray`.
+    """
+    arr = xr.open_dataarray(path, engine=NETCDF_ENGINE)
     arr = move_all_coords_to_index(arr)
     return arr
 
@@ -34,12 +46,50 @@ def load_dataarray(path: Path) -> xr.DataArray:
 # https://github.com/pydata/xarray/issues/1077
 # current IO docs don't mention MultiIndex:
 # https://docs.xarray.dev/en/stable/user-guide/io.html
-#
-def save_dataarray(arr: xr.DataArray, path: Path, *, check: bool = False) -> None:
+
+def save_dataarray(arr: xr.DataArray, path: Path, *, check: bool = True, **kwargs
+    ) -> None:
+    """Writes `arr` to NetCDF4 at `path`.
+
+    Currently requires that input does not change after being passed through:
+    `reset_all_multiindex(move_all_coords_to_index(arr))`, since we need to reset
+    MultiIndex coords for saving to netCDF to work, and if we can't assume we can move
+    them all back to MultiIndex (when possible) on load, we wouldn't currently know how
+    to recreate the saved data.
+
+    Args:
+        check: if True, check we get exactly the input `arr`, if we load the saved file
+
+        **kwargs: passed to `<DataArray>.to_netcdf`. can be used to set compression, via
+            `encoding=<dict>` kwarg. see xarray `to_netcdf` docs.
+    """
+    # TODO assert no attrs? can those be saved too? move to scalar coords (assuming even
+    # those work... but i can probably make those work?). test
     reset = reset_all_multiindex(arr)
 
-    # TODO or .equals, if this fails for some stupid reasons?
-    #
+    encoding_kws = dict()
+    if 'encoding' in kwargs:
+        # TODO try h5netcdf engine w/ compression=gzip, compression_opts=9 (not
+        # supported by netcdf4 engine)? and compare it's default performance?
+        #
+        # so far i've only tried encoding=dict(zlib=True, complevel=9), which i think is
+        # all that is supported by netcdf4 engine
+        encoding = kwargs.pop('encoding')
+        assert isinstance(encoding, dict), f'{encoding=}'
+        assert all(type(x) is str for x in encoding.keys()), f'{encoding=}'
+
+        DEFAULT_XARRAY_NETCDF_VAR_NAME: str = '__xarray_dataarray_variable__'
+        # from xarray docs: "Only xarray.Dataset objects can be written to netCDF files,
+        # so the xarray.DataArray is converted to a xarray.Dataset object containing a
+        # single variable.  If the DataArray has no name, or if the name is the same as
+        # a coordinate name, then it is given the name "__xarray_dataarray_variable__"."
+        if arr.name is None or arr.name in reset.coords:
+            var_name = DEFAULT_XARRAY_NETCDF_VAR_NAME
+        else:
+            var_name = arr.name
+
+        encoding_kws = dict(encoding={var_name: encoding})
+
     # need to check we can use the same approach to restore all MultiIndex coordinates
     # on load (or else, would need to look into using cf_xarray MultiIndex encoding
     # support, or some other alternatives)
@@ -47,8 +97,7 @@ def save_dataarray(arr: xr.DataArray, path: Path, *, check: bool = False) -> Non
         raise ValueError('can only use with input where move_all_coords_to_index does '
             'produces the same array+coords as its input'
         )
-
-    reset.to_netcdf(path, engine=NETCDF_ENGINE)
+    reset.to_netcdf(path, engine=NETCDF_ENGINE, **kwargs, **encoding_kws)
     del reset
 
     if check:
