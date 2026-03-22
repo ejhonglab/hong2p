@@ -22,14 +22,14 @@ from hong2p import util
 from hong2p.types import Pathlike, ExperimentOdors, SingleTrialOdors
 
 
-solvent_str = 'solvent'
-conc_delimiter = '@'
+solvent_str: str = 'solvent'
+conc_delimiter: str = '@'
 # NOTE: do need the whitespace here, if i want abbrev to be able to handle abritrary
 # input strs (whether single odors / mixes / whatever) (w/o having to specify which type
 # of input it is, at least), because of odors like '(1S)-(+)-carene'
 # (and also to deal with in-vial mixtures like 'ea+eb @ 0', which I'm going to stick to
 # formatting without the whitespace, so this can work)
-component_delim = ' + '
+component_delim: str = ' + '
 
 # should just be for when no valve is actuated on the corresponding manifold
 # TODO delete? not used anywhere... or replace (some?) usage of solvent_str w/ this
@@ -37,11 +37,11 @@ component_delim = ' + '
 # actually needed? at least clarify more here how it's use should actually differ from
 # solvent_str) (and why is this not the fill value for the pad_odor_* fns below?)
 # TODO TODO probably replace pad_odor_* fn use of solvent_str w/ this
-NO_ODOR = 'no_odor'
+NO_ODOR: str = 'no_odor'
 
 # TODO add something for mapping from the standard-hong-odor-names to the hallem names
 
-odor2abbrev = dict()
+odor2abbrev: Dict[str, str] = dict()
 
 # TODO get package + author name from setup.py / package metadata?
 # TODO log we are using this directory (at least at debug level)
@@ -507,7 +507,7 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 
 
 # TODO use more places
-# TODO accept df/Series (too?) and get .index?
+# TODO test
 def first_odor_level(index: pd.Index) -> str:
     """Returns first odor component level in index, whether 'odor' / 'odor1'.
 
@@ -522,6 +522,11 @@ def first_odor_level(index: pd.Index) -> str:
         if is_odor_var(x):
             odor_levels.append(x)
 
+    if len(odor_levels) == 0:
+        raise ValueError(f'none of {index.names} had is_odor_var(n)=True. odor levels '
+            'should be named {component_level_prefix} or {component_level_prefix}<n>.'
+        )
+
     if component_level_prefix in odor_levels:
         assert odor_levels == [component_level_prefix], ('can not mix odor levels with '
             'and without int suffixes'
@@ -529,6 +534,8 @@ def first_odor_level(index: pd.Index) -> str:
         first_level = odor_levels[0]
     else:
         levels_and_keys = []
+        # TODO actually require int suffix? want to also support stuff like
+        # 'odor_a'/etc?
         for x in odor_levels:
             # 'odor1' -> '1'
             int_suffix = x[len(component_level_prefix):]
@@ -547,6 +554,15 @@ def first_odor_level(index: pd.Index) -> str:
         assert first_n == 1, 'odor components numbering should start at 1'
 
     return first_level
+
+
+def odor_level_values(index: pd.Index) -> pd.Index:
+    """Returns values in index level from `first_odor_level(index)`
+
+    Can raise ValueError or AssertionError if `first_odor_level` does.
+    """
+    level = first_odor_level(index)
+    return index.get_level_values(level)
 
 
 # TODO add some kind of lookup for odor panels (might just need to get the set of all
