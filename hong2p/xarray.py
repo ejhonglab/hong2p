@@ -105,6 +105,17 @@ def save_dataarray(arr: xr.DataArray, path: Path, *, check: bool = True, **kwarg
         assert arr.identical(arr2)
 
 
+# TODO make available as importlib_resources resource w/ install specified in
+# pyproject.toml
+script_dir = Path(__file__).resolve().parent
+orn_test_data = script_dir / 'orn_dynamics_test.nc'
+def get_example_orn_dynamics() -> xr.DataArray:
+    """Returns an example DataArray (small subset of model ORN dynamics)
+    """
+    arr = load_dataarray(orn_test_data)
+    return arr
+
+
 # NOTE: lots of my current MultiIndex related woes should be tractable once development
 # on xarray's own "Explicit indexes" completes here:
 # https://github.com/pydata/xarray/projects/1

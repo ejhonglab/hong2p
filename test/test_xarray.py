@@ -10,19 +10,17 @@ import xarray as xr
 import pytest
 
 from hong2p.xarray import (move_all_coords_to_index, coords_equal, all_coord_names,
-    load_dataarray, save_dataarray
+    load_dataarray, save_dataarray, get_example_orn_dynamics
 )
 
 
-test_dir = Path(__file__).resolve().parent
-orn_test_data = test_dir / 'orn_dynamics_test.nc'
-
+# TODO provide this in some other module installed w/ hong2p, and not in test/ dir?
+# or the core of it? also want to import and use in al_analysis/test/test_al_util.py
 @pytest.fixture(scope='session')
 def orns() -> xr.DataArray:
     """Returns an example DataArray (small subset of model ORN dynamics)
     """
-    arr = load_dataarray(orn_test_data)
-    return arr
+    return get_example_orn_dynamics()
 
 
 def test_roundtrip(orns, tmp_path):

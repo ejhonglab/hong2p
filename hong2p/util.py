@@ -347,6 +347,8 @@ def format_file_size(path: Pathlike, **kwargs) -> str:
     return format_nbytes(nbytes, **kwargs)
 
 
+# TODO add verbose=True flag (less info than current interal flag has, which could be a
+# behind a debug=True flag)
 def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
     checks: bool = True, replace: bool = False) -> None:
     """Create symlink link pointing to target, doing nothing if link exists.
