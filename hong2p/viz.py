@@ -1452,8 +1452,8 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
     # check whatever transform is correct for drawing lines behind y= on imshow output
     # from mb_model.cluster_timeseries_and_plot (seems like it might be flipped wrt
     # data?) (i think it was, and flipping top & bottom in extent= arg seemed to fix it.
-    # originally it was (left, right, bottom, top), now it is (left, right, top,
-    # bottom))
+    # originally it was (left, right, bottom, top), now it is
+    # (left, right, top, bottom) = e.g. (-.02, 0.4, 9867.5, -0.5) )
     # TODO any way to detect when ax is set up incorrectly (as in comment above) and fix
     # it automatically here? (or flip line/text drawing automatically?) possible?
     if x is not None:
