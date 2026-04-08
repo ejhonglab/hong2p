@@ -1400,25 +1400,62 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
         return clustergrid, row_linkage, col_linkage
 
 
-# TODO appropriate type hints for x and y? Sequence[str]?
-# TODO type hint x & y
-def add_group_labels_and_lines(ax: Axes, x=None, *, y=None, lines: bool = True,
-    labels: bool = True, formatter: Optional[Callable] = None,
-    label_offset: Optional[float] = None, label_name: Optional[str] = None,
-    label_name_offset: float = 3, linewidth=0.5, linecolor='k', _debug=False, **kwargs
-    ) -> None:
+# TODO link type hint of Any in x/y Sequence to type formatter Callable is required to
+# take? possible?
+def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
+    y: Sequence[Any] = None, lines: bool = True, labels: bool = True,
+    formatter: Optional[Callable] = None, label_offset: Optional[float] = None,
+    label_name: Optional[str] = None, label_name_offset: float = 3, linewidth=0.5,
+    linecolor='k', _debug=False, **kwargs) -> None:
     """Adds labels to (and lines between) groups of common x/y labels.
 
     Args:
-        **kwargs: passed thru to `ax.text` calls for group text labels
+        x: sequence of same length as the columns of the data. If (as is default)
+            `labels=True`, indicating you want one text label drawn per-group (outside
+            of plot, similar to where ticklabels are), then either the sequence must
+            contain pre-formatted `str`, or you must pass `formatter=<fn>` where `<fn>`
+            takes elements of the sequence, and returns formatted strs. The formatting
+            is done after determining the consecutive ranges within the raw non-`str`
+            input elements.
+
+        y: as `x`, but of same length as the rows of the data.
+
+        lines: whether you want lines drawn between groups, to visually separate them.
+            drawn over the matrix.
+
+        labels: whether you want text descriptions of the groups placed centered on the
+            groups, outside of the matrix.
+
+        formatter: function to apply to elements of `x|y`, if they are not already
+            `str`, for generating group labels. only relevant if `labels=True`.
+
+        label_name: places this text description of the group labels off to the side of
+            (and inline with) the group labels
+
+        label_offset: controls positioning of `label_name`. only relevant if
+            `label_name=<str>`.
+
+        linecolor: default is black (='k'). 'w' for white is often useful.
+
+        **kwargs: passed thru to `ax.text` calls for group text labels. also applies to
+            `label_name`, if specified.
     """
     # TODO validation on length of x/y? what to check against? doc, if i come up
     # with something (check against [x|y]ticklabels, from Axes [assuming already set]?)
 
-    # TODO maybe allow specifying both in one call?
+    # TODO maybe allow specifying both in one call? probably not, b/c recursion would
+    # get complicated by things that currently only make sense for one dimension, like
+    # label_name
     if x is not None and y is not None:
         raise ValueError('must only specify x OR y')
 
+    # check whatever transform is correct for drawing lines behind y= on imshow output
+    # from mb_model.cluster_timeseries_and_plot (seems like it might be flipped wrt
+    # data?) (i think it was, and flipping top & bottom in extent= arg seemed to fix it.
+    # originally it was (left, right, bottom, top), now it is (left, right, top,
+    # bottom))
+    # TODO any way to detect when ax is set up incorrectly (as in comment above) and fix
+    # it automatically here? (or flip line/text drawing automatically?) possible?
     if x is not None:
         levels = x
         line_fn = ax.axvline

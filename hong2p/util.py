@@ -1236,17 +1236,24 @@ def subset_same_in_all_dicts(dicts: Sequence[Dict]) -> Dict:
     return same
 
 
+# TODO add test that this does indeed work with non-hashable types, so long as they
+# support == (and maybe also support .equals?) (when did i ever need that anyway? odor
+# dicts i guess?)
 # TODO transition everything to as if include_val==True?
 # TODO parameterize Sequence elemtents and (what is currently Any) value type in
 # include_val=True branch into one value?
-def const_ranges(xs: Sequence, *, include_val: bool = False) -> Union[
+def const_ranges(xs: Sequence[Any], *, include_val: bool = False) -> Union[
     List[Tuple[int, int]], List[Tuple[Any, int, int]]
     ]:
     """Returns tuples of indices for largest contiguous constant-value ranges in input.
 
-    All elements in input sequence should be included in exactly one (start, stop) index
-    tuple. Range tuples should all be in order, and stop indices are inclusive, so the
-    end of one range should be one less than the start of the next range.
+    Input elements must just support the `==` operator. Should not necessarily need to
+    be hashable.
+
+    All elements in input sequence should be included in exactly one output (start,
+    stop) index tuple. Range tuples should all be in order, and stop indices are
+    inclusive, so the end of one range should be one less than the start of the next
+    range.
 
     Args:
         include_val: if True, each tuple in output will be length 3, with the first
