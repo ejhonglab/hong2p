@@ -53,3 +53,11 @@ def test_coords_equal(orns):
     )
     assert not coords_equal(orns, orns.reset_index('stim').assign_coords({'x': 1}))
 
+
+# TODO TODO test move_all_coords_to_index inverts reset_all_multiindex
+# (even though it does call it at start... also check reset_all_multiindex is
+# idempotent?)
+
+
+# TODO test series2xarray_like by converting back to series? existing methods for that?
+

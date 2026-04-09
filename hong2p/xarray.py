@@ -11,6 +11,7 @@ import pandas as pd
 import xarray as xr
 
 from hong2p.util import suffix_index_names
+from hong2p.pandas import subset_index
 
 
 # TODO switch to h5netcdf? docs say it can sometimes be faster. is it, for me?
@@ -134,8 +135,6 @@ def is_scalar_coord(arr: xr.DataArray) -> bool:
     return len(arr.shape) == 0
 
 
-# TODO TODO test (see test cases already in test_dynamics_indexing, which this was
-# copied from) (just figure out how to save / generate test data)
 def coords_equal(x: xr.DataArray, y: xr.DataArray) -> bool:
     """Checks set of dims and all variables under coordinates are equal.
 
@@ -343,6 +342,7 @@ def all_coord_names(arr: xr.DataArray) -> List[str]:
 
 
 # TODO test
+# TODO add option to only reset a subset (or a particular one)?
 def reset_all_multiindex(arr: xr.DataArray) -> xr.DataArray:
     vars_before = all_coord_names(arr)
     dims = arr.dims
@@ -469,8 +469,85 @@ def odor_corr_frame_to_dataarray(df: pd.DataFrame,
     return corr
 
 
+# TODO how to type hint coordinates in current xr? (replace Any with that)
+def find_matching_coords(index: pd.Index, arr: xr.DataArray, *, warn: bool = True
+    ) -> Optional[Any]:
+    """Checks whether `data` and `arr` have compatible indices, returns matching coords.
+
+    Args:
+        index: pandas index to find matching coords for (from a single dim in `arr`)
+
+        arr: DataArray that should contain a single dimension with coordinates that
+            match index. Index levels names (and contents, currently including sort
+            order) should all match.
+
+            The set of levels that match must also be unique, so that they could
+            actually be used to reindex along this dimension. Only dimensions with
+            length matching `len(index)` are checked for matching.
+
+        warn: if True, will warn about any coords with same length but no overlapping
+            names, as well as any level names in one index but not the other
+    """
+    matching_coords = None
+    for name, coords in arr.coords.items():
+        if arr.sizes[name] != len(index):
+            continue
+
+        arr_index = coords.to_index()
+        if index.equals(arr_index):
+            matching_coords = coords
+            # TODO or check no other matching coords? very unarrly anything would match
+            # below for multiple, or that i'd care which was chosen (if they did)
+            break
+
+        index_names = list(index.names)
+        arr_names = list(arr_index.names)
+        shared_names = [n for n in index_names if n in arr_names]
+
+        # TODO update warning/assertion messages below to refer to the specific coord
+        # (/dim) name being checked, rather than just 'arr'
+
+        if len(shared_names) == 0:
+            if warn:
+                warnings.warn('{name=} size matches, but no matching index level names')
+            continue
+
+        if warn and index_names != arr_names:
+            index_only_names = [x for x in index_names if x not in arr_names]
+            if len(index_only_names) > 0:
+                warnings.warn(f'names only in index (not arr): {index_only_names}')
+
+            arr_only_names = [x for x in arr_names if x not in index_names]
+            if len(arr_only_names) > 0:
+                warnings.warn(f'names only in arr (not index): {arr_only_names}')
+
+        # otherwise would have to decide if it ever matters which order we go with
+        # (from the series or the DataArray? prob latter, if this ever trips)
+        assert shared_names == [n for n in arr_names if n in shared_names], \
+            'index and arr have index names in different orders!'
+
+        common = subset_index(arr_index, shared_names)
+        assert not common.duplicated().any(), (f'duplicates in {shared_names=} subset '
+            'of arr index'
+        )
+        index_common = subset_index(index, shared_names)
+        # this should imply nothing duplicated in index_common either
+        assert common.equals(index_common), ('index and arr indices did not match, even'
+            ' after subsetting both to only {shared_names=}. maybe different order?'
+        )
+        # TODO support stuff in wrong order too, if we can sort into right order?
+        # (also warning, if warn=True)
+
+        matching_coords = coords
+        break
+
+    return matching_coords
+
+
 # TODO also implement a version that is just `series2xarray`, and doesn't need to get
 # coords from other array
+# NOTE: don't seem to need a similar fn for dataframes. xr.DataArray(df) works fine,
+# and might just want to pass dims=<list-of-str>
 # TODO TODO update xarray? in recent versions, i could probably define coords from
 # xr.Coordinates, by passing series index. that constructor is not available in 0.19
 def series2xarray_like(ser: pd.Series, like: xr.DataArray, *, warn: bool = True
@@ -478,74 +555,17 @@ def series2xarray_like(ser: pd.Series, like: xr.DataArray, *, warn: bool = True
     """Checks `ser` and `like` have compatible indices, and converts `ser` to DataArray.
 
     Args:
-        warn: if True, will warn about any coords with same length but no overlapping
-            names, as well as any level names in one index but not the other
+        ser: Series to convert to 1D DataArray
+
+        like: DataArray that should contain one coordinate with index levels (and
+            contents, currently including sort order) that match `ser.index`.
+            See `find_matching_coords`.
+
+        warn: passed to `find_matching_coords`
     """
-    matching_name = None
-    matching_coords = None
-    for name, coords in like.coords.items():
-        if like.sizes[name] != len(ser):
-            continue
-
-        index = coords.to_index()
-        if ser.index.equals(index):
-            matching_name = name
-            matching_coords = coords
-            # TODO or check no other matching coords? very unlikely anything would match
-            # below for multiple, or that i'd care which was chosen (if they did)
-            break
-
-        ser_names = list(ser.index.names)
-        like_names = list(index.names)
-        shared_names = [n for n in ser_names if n in like_names]
-
-        if len(shared_names) == 0:
-            if warn:
-                warnings.warn('series2xarray_like: {name=} had same size as series, but no '
-                    'matching index level names'
-                )
-            continue
-
-        if warn and ser_names != like_names:
-            ser_only_names = [x for x in ser_names if x not in like_names]
-            if len(ser_only_names) > 0:
-                warnings.warn('series2xarray_like: names only in levels of ser (not like'
-                    f'): {ser_only_names}'
-                )
-
-            like_only_names = [x for x in like_names if x not in ser_names]
-            if len(like_only_names) > 0:
-                warnings.warn('series2xarray_like: names only in levels of like (not ser'
-                    f'): {like_only_names}'
-                )
-
-        # otherwise would have to decide if it ever matters which order we go with
-        # (from the series or the DataArray? prob latter, if this ever trips)
-        assert shared_names == [n for n in like_names if n in shared_names], \
-            'ser and like have index names in different orders!'
-
-        # TODO factor this MultiIndex subsetting approach to hong2p.util or a hong2p
-        # pandas module? i use it a lot
-        common = pd.MultiIndex.from_frame(index.to_frame(index=False)[shared_names])
-        assert not common.duplicated().any(), (f'duplicates in {shared_names=} subset '
-            'of like index'
-        )
-        ser_common = pd.MultiIndex.from_frame(
-            ser.index.to_frame(index=False)[shared_names]
-        )
-        # this should imply nothing duplicated in ser_common either
-        assert common.equals(ser_common), ('ser and like indices did not match, even '
-            'after subsetting both to only {shared_names=}. maybe different order?'
-        )
-        # TODO support stuff in wrong order too, if we can sort into right order?
-        # (also warning, if warn=True)
-
-        matching_name = name
-        matching_coords = coords
-        break
-
-    assert matching_name is not None, (f'found no matching coord between:\n{ser.index=}'
-        f'\n...and...\n{like.coords=}'
+    matching_coords = find_matching_coords(ser.index, like, warn=warn)
+    assert matching_coords is not None, (f'found no matching coord between:\n'
+        f'{ser.index=}\n...and...\n{like.coords=}'
     )
     arr = xr.DataArray(data=ser.values, coords=matching_coords.coords, name=ser.name)
     assert arr.shape == ser.shape
@@ -553,7 +573,8 @@ def series2xarray_like(ser: pd.Series, like: xr.DataArray, *, warn: bool = True
     return arr
 
 
-def outer_product(x: xr.DataArray, y: xr.DataArray) -> xr.DataArray:
+def outer_product(x: xr.DataArray, y: xr.DataArray, *, squeeze: bool = True,
+    drop: bool = True) -> xr.DataArray:
     """Returns outer product of two DataArrays.
 
     Output shape is the concatenation of input shapes (`x.shape + y.shape`).
@@ -563,14 +584,22 @@ def outer_product(x: xr.DataArray, y: xr.DataArray) -> xr.DataArray:
 
     Assumed that they will have non-overlapping dims, as otherwise what would be the
     point of an outer product.
+
+    Args:
+        x,y: DataArrays to multiply
+
+        squeeze: whether to `.squeeze()` inputs before multiplying
+
+        drop: if `squeeze=True`, passes this to `squeeze()`
     """
+    # TODO remove this restriction too? want to support other types of multiplication
+    # that are not outer products? would have to rename fn if so...
     overlapping_dims = set(x.dims) & set(y.dims)
     assert len(overlapping_dims) == 0, f'{overlapping_dims=}'
 
-    # TODO TODO maybe i should support non-1D stuff (output shape then just the two
-    # shapes concatenated together? work that way?)
-    x = x.squeeze(drop=True)
-    y = y.squeeze(drop=True)
+    if squeeze:
+        x = x.squeeze(drop=drop)
+        y = y.squeeze(drop=drop)
 
     # oh, actually it does work if both names are None. just didn't work when i was
     # trying to multiply against a Series.
@@ -584,7 +613,9 @@ def outer_product(x: xr.DataArray, y: xr.DataArray) -> xr.DataArray:
         )
 
     outer = x * y
+    # TODO remove this if i make this fn do more than just outer products
     concat_shape = x.shape + y.shape
     assert outer.shape == concat_shape, f'{outer.shape=} != {concat_shape=}'
+    #
     return outer
 
