@@ -554,18 +554,23 @@ def series2xarray_like(ser: pd.Series, like: xr.DataArray, *, warn: bool = True
 
 
 def outer_product(x: xr.DataArray, y: xr.DataArray) -> xr.DataArray:
-    """Returns 2D outer product of two 1D DataArrays.
+    """Returns outer product of two DataArrays.
+
+    Output shape is the concatenation of input shapes (`x.shape + y.shape`).
 
     One should be missing a name (`.name == None`) or both should have matching
     `.name`s.
 
-    Assumed that they will have different coordinates, as otherwise what would be the
+    Assumed that they will have non-overlapping dims, as otherwise what would be the
     point of an outer product.
     """
+    overlapping_dims = set(x.dims) & set(y.dims)
+    assert len(overlapping_dims) == 0, f'{overlapping_dims=}'
+
+    # TODO TODO maybe i should support non-1D stuff (output shape then just the two
+    # shapes concatenated together? work that way?)
     x = x.squeeze(drop=True)
     y = y.squeeze(drop=True)
-    assert len(x.shape) == 1, f'{x.shape=} was not 1D'
-    assert len(y.shape) == 1, f'{y.shape=} was not 1D'
 
     # oh, actually it does work if both names are None. just didn't work when i was
     # trying to multiply against a Series.
@@ -579,6 +584,7 @@ def outer_product(x: xr.DataArray, y: xr.DataArray) -> xr.DataArray:
         )
 
     outer = x * y
-    assert outer.shape == (len(x), len(y))
+    concat_shape = x.shape + y.shape
+    assert outer.shape == concat_shape, f'{outer.shape=} != {concat_shape=}'
     return outer
 
