@@ -533,7 +533,7 @@ def find_matching_coords(index: pd.Index, arr: xr.DataArray, *, warn: bool = Tru
         index_common = subset_index(index, shared_names)
         # this should imply nothing duplicated in index_common either
         assert common.equals(index_common), ('index and arr indices did not match, even'
-            ' after subsetting both to only {shared_names=}. maybe different order?'
+            f' after subsetting both to only {shared_names=}. maybe different order?'
         )
         # TODO support stuff in wrong order too, if we can sort into right order?
         # (also warning, if warn=True)
