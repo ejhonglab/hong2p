@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import warnings
 
+from importlib_resources import files
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -107,10 +108,9 @@ def save_dataarray(arr: xr.DataArray, path: Path, *, check: bool = True, **kwarg
         assert arr.identical(arr2)
 
 
-# TODO make available as importlib_resources resource w/ install specified in
-# pyproject.toml
-script_dir = Path(__file__).resolve().parent
-orn_test_data = script_dir / 'orn_dynamics_test.nc'
+# al_analysis tests that use this also work w/ this
+data_dir = files('hong2p')
+orn_test_data = data_dir / 'orn_dynamics_test.nc'
 def get_example_orn_dynamics() -> xr.DataArray:
     """Returns an example DataArray (small subset of model ORN dynamics)
     """

@@ -1,16 +1,6 @@
 
 [build-system]
-# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
-# example had 61.0, but I had 56.0 installed, so replaced w/ that
-# (at least 61.0.0 worked to install everything for al_analysis on hal, but not sure
-# about anything more recent)
-#
-# TODO maybe i should upgrade to 62 (or 64?)? this post seems to say one of those
-# required for editable installs to work correctly (seemed ok so far though... not sure
-# what is missing...)
-# https://stackoverflow.com/questions/69711606
-# my current pip version seems to be 22.3.1, so maybe thats why it's working (somewhat)?
-requires = ["setuptools >= 64.0"]
+requires = ["setuptools >= 75.3.4", "setuptools-scm>=9.2.2"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -29,6 +19,10 @@ dependencies = [
     # happen during pip install w/o it might not be fatal, assuming other
     # installation options exist besides the .whl format (like sdists).
     "wheel",
+
+    # or can i use stdlib one now (importlib.resources)? maybe not while i'm still on
+    # 3.8?
+    "importlib_resources",
 
     "h5py",
     "numpy",
