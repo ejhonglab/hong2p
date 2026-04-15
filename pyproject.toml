@@ -176,3 +176,11 @@ tmp_path_retention_policy = "none"
 # TODO possible to add a marker to select only doctest tests? is there already some
 # mechanism i could use to select them? `pytest --markers` didn't reveal any...
 markers = "slow: deselect with (`-m 'not slow'`)"
+
+filterwarnings = [
+    # xarray==0.19 with modern setuptools (probably anything more recent than about
+    # 60-64) will cause these warnings when pytest is collecting tests
+    'ignore:distutils Version classes are deprecated. Use packaging.version instead.:DeprecationWarning',
+    'ignore:pkg_resources is deprecated as an API.:DeprecationWarning',
+    'ignore:Deprecated call to `pkg_resources.declare_namespace:DeprecationWarning',
+]
