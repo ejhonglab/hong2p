@@ -1989,14 +1989,15 @@ def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
         assert type(curr_label) is str
         return curr_label
 
+    if title is not None and title != '':
+        # TODO also need labelpad here? do i even need below, now that i'm using
+        # constrained layout by default typically?
+        ax.set_title(title, fontsize=bigtext_fontsize)
 
     if xlabel is not None:
-        assert title is None, 'currently title also uses xlabel in this fn'
-        title = xlabel
-
-    if title is not None:
-        title = _names_to_label(title, df.columns)
-        ax.set_xlabel(title, fontsize=bigtext_fontsize, labelpad=12)
+        # TODO put in title instead now?
+        xlabel = _names_to_label(xlabel, df.columns)
+        ax.set_xlabel(xlabel, fontsize=bigtext_fontsize, labelpad=12)
 
     if ylabel is not None:
         ylabel = _names_to_label(ylabel, df.index)
@@ -2005,7 +2006,6 @@ def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
         )
         # TODO allow ylabel_kws to override bigtext_fontsize (w/ 'fontsize' key)?
         ax.set_ylabel(ylabel, fontsize=bigtext_fontsize, **ylabel_kws)
-
 
     if not xticks_also_on_bottom:
         # didn't seem to do what i was expecting
