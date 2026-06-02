@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from pprint import pprint, pformat
 import pickle
 import warnings
-from typing import Union, Sequence, Optional, Tuple, List, Dict, Hashable, Any
+from typing import Any, Dict, Hashable, List, Sequence, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -124,7 +124,8 @@ atexit.register(save_odor2abbrev_cache)
 
 
 def abbrev(odor_str: str, abbrevs: Optional[Dict[str, str]] = None, *,
-    component_delim: str = component_delim, conc_delim: str = conc_delimiter) -> str:
+    component_delim: str = component_delim, conc_delim: str = conc_delimiter,
+    cast_int: bool = False) -> str:
     """Abbreviates odor name in input, when an abbreviation is available.
 
     Args:
@@ -133,6 +134,8 @@ def abbrev(odor_str: str, abbrevs: Optional[Dict[str, str]] = None, *,
 
         abbrevs: dict mapping from input names to the names (abbreviations) you want. if
             not passed, the dict `olf.odor2abbrev` is used
+
+        cast_int: passed to `parse_odor` (if called)
     """
     # TODO add tests for each of the 3 cases (doctest?)
 
@@ -146,7 +149,9 @@ def abbrev(odor_str: str, abbrevs: Optional[Dict[str, str]] = None, *,
         return format_mix_from_strs(odor_strs, delim=component_delim)
 
     elif conc_delim in odor_str:
-        odor = parse_odor(odor_str, require_conc=True)
+        # TODO expose cast_int as kwarg? prob still want False by default, in contrast
+        # to other fns currently
+        odor = parse_odor(odor_str, require_conc=True, cast_int=cast_int)
         odor['name'] = abbrev(odor['name'], abbrevs=abbrevs)
         return format_odor(odor)
 
@@ -213,7 +218,8 @@ def add_abbrevs_from_odor_lists(odor_lists: ExperimentOdors,
                     print(msg)
 
 
-def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]:
+def parse_log10_conc(odor_str: str, *, require: bool = False, cast_int: bool = True
+    ) -> Optional[float]:
     """Takes formatted odor string to float log10 vol/vol concentration.
 
     Returns `None` if input does not contain `olf.conc_delimiter`.
@@ -222,6 +228,8 @@ def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]
         odor_str: contains odor name, and generally also concentration
 
         require: if `True`, raises `ValueError` if `olf.conc_delimiter` is not in input
+
+        cast_int: if `True`, will convert floats like '-3.0' to ints like '-3'
 
     >>> parse_log10_conc('ethyl acetate @ -2')
     -2
@@ -241,6 +249,7 @@ def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]
     # TODO replace this try-int(...)-first strategy w/ some float formatting that
     # formats stuff w/o stuff after '.' when that component is 0 (or close enough)?
     # is there such a formatting option?
+    # TODO add flag to force int (and then assert it's close within tolerance)
     try:
         # trying this first so that we can preserve formatting of input in round trip
         # cases, rather than adding '.0'
@@ -253,6 +262,8 @@ def parse_log10_conc(odor_str: str, *, require: bool = False) -> Optional[float]
     except ValueError:
         # if this parsing fails, we want that error to raise, so no try/except in here
         log10_conc = float(conc_part)
+        if cast_int and np.isclose(log10_conc, int(log10_conc)):
+            log10_conc = int(log10_conc)
 
     return log10_conc
 
@@ -303,15 +314,20 @@ def parse_odor_name(odor_str: str, *, require_conc: bool = True) -> Optional[str
     return parts[0].strip()
 
 
-def parse_odor(odor_str: str, *, require_conc: bool = False) -> dict:
+def parse_odor(odor_str: str, *, require_conc: bool = False, cast_int: bool = True
+    ) -> dict:
     return {
         'name': parse_odor_name(odor_str, require_conc=require_conc),
-        'log10_conc': parse_log10_conc(odor_str, require=require_conc),
+        'log10_conc': parse_log10_conc(odor_str, require=require_conc,
+            cast_int=cast_int
+        ),
     }
 
 
+# TODO add flag to sort_odor_list before returning? sort by default?
 def parse_odor_list(trial_odors_str: str, *, delim: str = component_delim,
     **parse_odor_kwargs) -> SingleTrialOdors:
+    # TODO doc (w/ example)
 
     # NOTE: actually, don't think i can do this, considering i have some odors like
     # '(1S)-(+)-carene' (and in-vial mixtures, that I'm currently representing as e.g.
@@ -1125,34 +1141,49 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series, Dict[str, An
 
 mix_col = 'odor'
 # TODO test
-def add_mix_str_index_level(df: pd.DataFrame, mix_col: str = mix_col) -> pd.DataFrame:
+# TODO type hint indicating we return same type (of the two union types) as input? how?
+def add_mix_str_index_level(df_or_index: Union[pd.MultiIndex, pd.DataFrame],
+    mix_col: str = mix_col) -> Union[pd.MultiIndex, pd.DataFrame]:
     """Adds formatted string odor/mix to `mix_col` (default: 'odor') index level.
 
     Calls `format_mix_from_strs` with dict from each row's index information, where
     there should be one level for each (in-air) mixture component (levels like 'odor1',
     'odor2', etc).
 
-    Raises ValueError if `mix_col` already in `df.index.names`, or if
+    Raises ValueError if `mix_col` already in `index.names`, or if
     `format_mix_from_strs` would raise its ValueError.
     """
-    if mix_col in df.index.names:
-        raise ValueError(f'{mix_col=} was already in df.index.names')
+    input_was_df = False
+    if isinstance(df_or_index, pd.MultiIndex):
+        index = df_or_index
+    else:
+        assert isinstance(df_or_index, pd.DataFrame)
+        index = df_or_index.index
+        input_was_df = True
+
+    if mix_col in index.names:
+        raise ValueError(f'{mix_col=} was already in index.names')
 
     mix_strs = []
-    for index_row_tuple in df.index:
-        index_row_dict = dict(zip(df.index.names, index_row_tuple))
+    for index_row_tuple in index:
+        index_row_dict = dict(zip(index.names, index_row_tuple))
         # TODO what happens if there are no levels where is_odor_var(x) returns True?
         # doc both here and in format_mix_from_strs. should probably raise a ValueError
         mix_str = format_mix_from_strs(index_row_dict)
         mix_strs.append(mix_str)
 
-    for_odor_index = df.index.to_frame(index=False)
+    for_odor_index = index.to_frame(index=False)
     for_odor_index[mix_col] = mix_strs
+    # TODO fn to just take input index and return this output index (then use that fn
+    # here)
     odor_index = pd.MultiIndex.from_frame(for_odor_index)
 
-    df = df.copy()
-    df.index = odor_index
-    return df
+    if input_was_df:
+        df = df_or_index.copy()
+        df.index = odor_index
+        return df
+    else:
+        return odor_index
 
 
 def format_odor_list(odor_list: SingleTrialOdors, *, delim: str = component_delim,
@@ -1220,6 +1251,8 @@ def odor_lists_to_multiindex(odor_lists: ExperimentOdors, *,
             curr_trial_odor_strs.append(odor_str)
 
         if sort_components:
+            # TODO TODO use sort_odor_lists instead? (add test checking it's same before
+            # / after tho?)
             curr_trial_odor_strs = sorted(curr_trial_odor_strs)
 
         curr_trial_odor_strs = (curr_trial_odor_strs +
@@ -1340,7 +1373,9 @@ def pad_odor_indices_to_max_components(dfs: Sequence[pd.DataFrame]
     ]
 
 
-def drop_solvent_odors(df: pd.DataFrame, *, warn: bool = True) -> pd.DataFrame:
+# TODO take axis kwarg, to work on columsns too?
+def drop_solvent_odors(df: pd.DataFrame, *, axis: str = 'index', warn: bool = True
+    ) -> pd.DataFrame:
     """Drops where 'odor1' index level name is 'pfo'/'water'/`solvent_str`.
 
     Currently expects concentration to be '@ 0' for all of these odor strings, e.g. 'pfo
@@ -1353,16 +1388,29 @@ def drop_solvent_odors(df: pd.DataFrame, *, warn: bool = True) -> pd.DataFrame:
 
         warn: if True (and any data dropped), will warn about how many rows are dropped
     """
-    odor_level = first_odor_level(df.index)
+    assert axis in ('index', 'columns')
+    if axis == 'index':
+        index = df.index
+    else:
+        assert axis == 'columns'
+        index = df.columns
 
-    odor_names = df.index.get_level_values(odor_level).map(parse_odor_name)
-    odor_concs = df.index.get_level_values(odor_level).map(parse_log10_conc)
+    odor_level = first_odor_level(index)
+
+    # TODO better error message if user passes in input with mix strs? odor index should
+    # still have components separate (or else we should modify this fn to prefer 'odor1'
+    # over 'odor', if both present, and more importantly to disregard stuff w/
+    # component_delim from consideration here [can set solvent_mask=False already for
+    # those]). currently get:
+    # ValueError: unexpected number of conc_delimiter='@' in 1o3ol @ -3 + 2h @ -5
+    odor_names = index.get_level_values(odor_level).map(parse_odor_name)
+    odor_concs = index.get_level_values(odor_level).map(parse_log10_conc)
     solvent_names = ('pfo', 'water', solvent_str)
     solvent_mask = odor_names.isin(solvent_names)
     if solvent_mask.any():
         if warn:
-            n_solvent_rows = solvent_mask.sum()
-            warnings.warn(f'dropping {n_solvent_rows}/{len(df)} solvent rows')
+            n_solvent = solvent_mask.sum()
+            warnings.warn(f'dropping {n_solvent}/{len(index)} solvent elements')
 
         solvent_conc_set = set(odor_concs[solvent_mask])
         # TODO if this gets triggered by None/NaN, adapt to also include None/NaN
@@ -1372,8 +1420,10 @@ def drop_solvent_odors(df: pd.DataFrame, *, warn: bool = True) -> pd.DataFrame:
         # NOTE: {0.0} == {0} is True
         assert solvent_conc_set == {0}, f'{solvent_conc_set=}'
 
-        # TODO warn that we are dropping (if any actually dropped)
-        df = df.loc[~solvent_mask].copy()
+        if axis == 'index':
+            df = df.loc[~solvent_mask].copy()
+        else:
+            df = df.loc[:, ~solvent_mask].copy()
     else:
         # copying whether or not we are subsetting, to we can always expect changing
         # output to not change input

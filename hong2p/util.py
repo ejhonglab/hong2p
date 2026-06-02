@@ -4466,7 +4466,7 @@ def latest_trace_pickles():
 # from (and thread through add_fly_id/add_recording_id)
 # TODO TODO axis kwarg?
 # TODO add option to drop existing levels/columns used to make this?
-def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
+def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, *, dim=None,
     letter: bool = False, start_at_one=True, sort=True, inplace=False):
     """Adds integer column to identify unique combinations of group_keys.
 
@@ -4542,6 +4542,7 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, dim=None,
 # day)
 def add_fly_id(df, **kwargs):
     name = 'fly_id'
+    # TODO switch to fly_cols instead
     return add_group_id(df, recording_cols[:2], name=name, **kwargs)
 
 
