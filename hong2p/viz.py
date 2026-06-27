@@ -22,7 +22,7 @@ import xarray as xr
 import colorcet as cc
 import matplotlib as mpl
 from matplotlib.axes import Axes
-from matplotlib.colors import Normalize, CenteredNorm, TwoSlopeNorm
+from matplotlib.colors import Normalize, CenteredNorm, TwoSlopeNorm, to_rgb
 import matplotlib.patches as patches
 from matplotlib.patches import Patch
 import matplotlib.patheffects as PathEffects
@@ -101,8 +101,8 @@ def is_categorical(values: pd.Series) -> bool:
 # TODO optional argument for min/max / (ordered) unique_values per variable?
 def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
     name2palette: Optional[Dict[str, Union[str, mpl.colors.LinearSegmentedColormap,
-    Dict]]] = None, share_palettes_with_same_name: bool = True, _debug: bool = False
-    ) -> Tuple[pd.DataFrame, List, List]:
+    Dict]]] = None, share_palettes_with_same_name: bool = True, na_color='gray',
+    _debug: bool = False) -> Tuple[pd.DataFrame, List, List]:
     """Maps frame values to RGB tuples, from per-column/row colormaps.
 
     Args:
@@ -119,6 +119,9 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
             thus also share an entry in either `for_legends` or `for_cbars`.
             If `add_legends_and_colorbars` is used to draw the legends and colorbars,
             this will also mean they will share a legend or colorbar.
+
+        na_color: used as NaN color for values using dict palettes (should be distinct
+            from colors in dict palettes, though this isn't checked)
 
     Returns:
         color_df: frame of same shape as `df`, with all values RGB 3-tuple colors.
@@ -218,7 +221,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
 
         if palette is None:
             raise RuntimeError(f'ran out of palettes! set {prefix}_cmaps longer '
-                'than {order=} ({len(order)=})'
+                f'than {order=} ({len(order)=})'
             )
 
         if _debug:
@@ -291,7 +294,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
     color_list = []
     for_legends = []
     for_cbars = []
-    def _map_vars_to_colors(values: pd.Series, palette: Union[str,
+    def _map_vars_to_colors(values: pd.DataFrame, palette: Union[str,
         mpl.colors.LinearSegmentedColormap, dict], dtype, categorical: bool) -> None:
         """Appends one entry to `colors`, and one to either `for_legends` or
         `for_cbars`.
@@ -304,7 +307,8 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
         if categorical:
             # strs could either have been manually passed in, or chosen in this fn
             if isinstance(palette, str):
-                if dtype == int:
+                # TODO TODO dropna and infer type before this?
+                if dtype == int or dtype == bool:
                     vmin = 0
                     vmax = values.max().max()
                     # assuming we need separate color for 0, as well as every int
@@ -337,7 +341,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
                     'for categorical variables'
                 )
                 value2color = palette
-                assert values.isin(value2color.keys()).all().all()
+                assert (values.isna() | values.isin(value2color.keys())).all().all()
 
             # colors (whether str or RGB tuples) should all be hashable, so making a
             # set from them should work
@@ -351,7 +355,11 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
                 # palette has), and recommend palettes like hsl/husl?
                 raise ValueError(f'{var_names=}: duplicate colors in {palette=}')
 
-            colors = values.applymap(lambda x: value2color[x])
+            colors = values.applymap(
+                # now we can use color strings for both dict values and na_color, b/c
+                # to_rgb. to_rgb will not change input that is already a RGB tuple
+                lambda x: to_rgb(value2color[x] if pd.notna(x) else na_color)
+            )
             # TODO condense into one call, rather than looping?
             for c in colors.columns:
                 assert all(len(x) == 3 for x in colors[c])
@@ -370,6 +378,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
                     data=0.5
                 )
             else:
+                # TODO TODO this calc work w/ all negative values? test!
                 normed = (values - vmin) / (vmax - vmin)
                 assert np.allclose([normed.min().min(), normed.max().max()], [0, 1])
 
@@ -417,7 +426,10 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
         make_cbar = False
 
         # intended to cover strings, perhaps w/ None/NaN as well
-        if dtype == np.dtype('O'):
+        # TODO handle bool differently depending on whether we are using a dict
+        # palette or not? (previously was only checking dtype('O') here)
+        # (have only tested bool dtype w/ dict palette so far)
+        if dtype == np.dtype('O') or dtype == bool:
             make_legend = True
 
         elif dtype == int or dtype == float:
@@ -442,6 +454,9 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
             handles = [
                 Patch(facecolor=c, label=str(v)) for v, c in value2color.items()
             ]
+            if values.isna().any().any():
+                handles.append(Patch(facecolor=na_color, label='NaN'))
+
             for_legends.append(dict(handles=handles, title=title))
 
         if make_cbar:
@@ -481,13 +496,25 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
             # TODO update indexing to support axis=1|'columns'
             values = df[n]
             dtype = values.dtype
+
+            if dtype == np.dtype('O'):
+                # fillna(<bool>), but not dropna(), will change dtype of an otherwise
+                # all bool series to dtype('bool')
+                dtype2 = values.fillna(False).dtype
+                # TODO any other circumances in which it can change dtype, when already
+                # O? prob not, but better not to risk
+                if dtype2 == np.dtype('bool'):
+                    dtype = dtype2
+                else:
+                    assert dtype == dtype2, f"unexpected dtype change 'O'->{dtype2=}"
+
             categorical = is_categorical(values)
             if first_categorical is None:
                 first_categorical = categorical
                 first_dtype = dtype
             else:
                 assert categorical == first_categorical
-                assert dtype == first_dtype
+                assert dtype == first_dtype, f'{dtype=} != {first_dtype=}'
         del values, n
 
         # TODO delete
@@ -512,14 +539,22 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
             # call.
             _map_vars_to_colors(values, palette, dtype, categorical)
 
-    color_df = pd.concat(color_list, axis='columns')
-    assert color_df.index.equals(df.index)
-    assert color_df.columns.equals(df.columns)
+    color_df = pd.concat(color_list, axis='columns', verify_integrity=True)
 
     # TODO or if i'm going to allow input in NaN, also allow (only those same NaNs!)
     # in output (or want a parameter for a color NaN should be assigned to? specific to
     # cmaps? if i take mpl cmaps as input, which have set_bad() done, use that?)
     assert not color_df.isna().any().any()
+
+    assert color_df.index.equals(df.index)
+
+    # TODO what is re-ordering some of the columns? figure out cause and make sure
+    # it's not an issue?
+    # assuming this re-ordering was not an issue (not sure what's causing it)
+    #assert color_df.columns.equals(df.columns)
+    # TODO delete if i can prevent columns from being re-ordered
+    assert color_df.columns.sort_values().equals(df.columns.sort_values())
+    color_df = color_df.loc[:, df.columns].copy()
 
     return color_df, for_legends, for_cbars
 
@@ -1406,7 +1441,7 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
     y: Sequence[Any] = None, lines: bool = True, labels: bool = True,
     formatter: Optional[Callable] = None, label_offset: Optional[float] = None,
     label_name: Optional[str] = None, label_name_offset: float = 3, linewidth=0.5,
-    linecolor='k', _debug=False, **kwargs) -> None:
+    linecolor='k', line_offset: float = 0.5, _debug=False, **kwargs) -> None:
     """Adds labels to (and lines between) groups of common x/y labels.
 
     Args:
@@ -1495,7 +1530,7 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
     # the lines would just add visual noise, rather than helping clarify boundaries
     # between groups.
     if lines and any([x[-1] > x[-2] for x in ranges]):
-        line_positions = [x[-1] + 0.5 for x in ranges[:-1]]
+        line_positions = [x[-1] + line_offset for x in ranges[:-1]]
         # TODO if we have a lot of matrix elements, may want to decrease size of
         # line a bit to not approach size of matrix elements...
         for v in line_positions:
