@@ -22,7 +22,9 @@ import xarray as xr
 import colorcet as cc
 import matplotlib as mpl
 from matplotlib.axes import Axes
-from matplotlib.colors import Normalize, CenteredNorm, TwoSlopeNorm, to_rgb
+from matplotlib.colors import (Normalize, CenteredNorm, TwoSlopeNorm, to_rgb,
+    ListedColormap, LinearSegmentedColormap
+)
 import matplotlib.patches as patches
 from matplotlib.patches import Patch
 import matplotlib.patheffects as PathEffects
@@ -100,8 +102,8 @@ def is_categorical(values: pd.Series) -> bool:
 # + [min/max]/unique_values?), for use w/ future calls? how?
 # TODO optional argument for min/max / (ordered) unique_values per variable?
 def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
-    name2palette: Optional[Dict[str, Union[str, mpl.colors.LinearSegmentedColormap,
-    Dict]]] = None, share_palettes_with_same_name: bool = True, na_color='gray',
+    name2palette: Optional[Dict[str, Union[str, LinearSegmentedColormap, ListedColormap,
+        Dict]]] = None, share_palettes_with_same_name: bool = True, na_color='gray',
     _debug: bool = False) -> Tuple[pd.DataFrame, List, List]:
     """Maps frame values to RGB tuples, from per-column/row colormaps.
 
@@ -183,17 +185,17 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
     # to one of the other ones
     #
     # NOTE: access colorcet cmaps as matplotlib cmaps by referencing them like:
-    # `cc.m_<name>` (of type mpl.colors.LinearSegmentedColormap)
-    continuous_cmaps: List[Union[str, mpl.colors.LinearSegmentedColormap]] = [
+    # `cc.m_<name>` (of type LinearSegmentedColormap)
+    continuous_cmaps: List[Union[str, LinearSegmentedColormap, ListedColormap]] = [
         'magma', 'cividis', cc.m_fire, cc.m_gray, cc.m_bmw
     ]
 
     # TODO move this to module level? get_palette_id too?
-    def get_palette_name(p: Union[str, mpl.colors.LinearSegmentedColormap]) -> str:
+    def get_palette_name(p: Union[str, LinearSegmentedColormap, ListedColormap]) -> str:
         if isinstance(p, str):
             name = p
         else:
-            assert isinstance(p, mpl.colors.LinearSegmentedColormap)
+            assert isinstance(p, (LinearSegmentedColormap, ListedColormap))
             # not super worried about possibility of two cmaps (accidentally) having
             # same name but diff colors, or same colors but diff name
             name = p.name
@@ -201,13 +203,13 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
 
         return name
 
-    def get_palette_id(p: Union[str, mpl.colors.LinearSegmentedColormap, Dict]
+    def get_palette_id(p: Union[str, LinearSegmentedColormap, ListedColormap, Dict]
         ) -> Union[int, str]:
         if isinstance(p, dict):
             return id(p)
         return get_palette_name(p)
 
-    def _next_palette(order: List[Union[str, mpl.colors.LinearSegmentedColormap]],
+    def _next_palette(order: List[Union[str, LinearSegmentedColormap, ListedColormap]],
         prefix: str) -> str:
 
         palette = None
@@ -231,9 +233,9 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
         return palette
 
     palette2vars: Dict[Union[str, int], List[str]] = defaultdict(list)
-    # since mpl.colors.LinearSegmentedColormaps not hashable, will use their .name in
+    # since LinearSegmentedColormaps not hashable, will use their .name in
     # palette_name2vars, then look up here when needed
-    mpl_palette_lookup: Dict[str, mpl.colors.LinearSegmentedColormap] = dict()
+    mpl_palette_lookup: Dict[str, LinearSegmentedColormap, ListedColormap] = dict()
     dict_palette_lookup: Dict[int, Dict] = dict()
     for n in names:
         # TODO update indexing to support axis=1|'columns'
@@ -266,7 +268,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
         # will be palette name for all but dict palettes, and int ID for those
         palette_id = get_palette_id(palette)
 
-        if isinstance(palette, mpl.colors.LinearSegmentedColormap):
+        if isinstance(palette, (LinearSegmentedColormap, ListedColormap)):
             # TODO assert palette_id is a str here?
             mpl_palette_lookup[palette_id] = palette
 
@@ -295,14 +297,35 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
     for_legends = []
     for_cbars = []
     def _map_vars_to_colors(values: pd.DataFrame, palette: Union[str,
-        mpl.colors.LinearSegmentedColormap, dict], dtype, categorical: bool) -> None:
+        LinearSegmentedColormap, ListedColormap, dict], dtype, categorical: bool
+        ) -> None:
         """Appends one entry to `colors`, and one to either `for_legends` or
         `for_cbars`.
         """
         # TODO change to support axis=1/'columns'?
         var_names = values.columns
 
-        # mostly assuming we won't be wanting to have mpl.colors.LinearSegmentedColormap
+        make_legend = False
+        make_cbar = False
+
+        # intended to cover strings, perhaps w/ None/NaN as well
+        # TODO handle bool differently depending on whether we are using a dict
+        # palette or not? (previously was only checking dtype('O') here)
+        # (have only tested bool dtype w/ dict palette so far)
+        if dtype == np.dtype('O') or dtype == bool:
+            make_legend = True
+
+        elif dtype == int or dtype == float:
+            # TODO still treat (some?) int types as diff from float, perhaps drawing
+            # colorbar with discrete steps (at least for cases where above would treat
+            # as categorical, which may in the future only be for certain subsets of
+            # dtype int data)?
+            make_cbar = True
+        else:
+            # TODO delete (/move earlier)? dupe w/ above?
+            raise NotImplementedError(f'{dtype=} unexpected')
+
+        # mostly assuming we won't be wanting to have LinearSegmentedColormap
         # in the categorical case, for now
         if categorical:
             # strs could either have been manually passed in, or chosen in this fn
@@ -384,7 +407,8 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
 
             # TODO or still assume user knows what they were doing if they pass this
             # w/ float values. maybe there really is just a small number of distinct
-            # ones? have a dict there imply categorical?
+            # ones? have a dict there imply categorical? (no, would require more code
+            # changes above to work around)
             if isinstance(palette, dict):
                 raise ValueError('continuous data incompatible with dict palette')
 
@@ -399,48 +423,42 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
                 # equivalent output? would have to test
                 palette = sns.color_palette(palette, as_cmap=True)
             else:
-                assert isinstance(palette, mpl.colors.LinearSegmentedColormap)
+                assert isinstance(palette, (LinearSegmentedColormap, ListedColormap))
+                # TODO delete. would also have to redefine to use raw data and not
+                # normed, or else applymap below will not have any keys actually in
+                # dict...
+                #assert isinstance(palette, (LinearSegmentedColormap, ListedColormap, dict))
+                #if isinstance(palette, dict):
+                #    make_cbar = False
+                #    make_legend = True
+                #    palette_dict = palette
+                #    palette = lambda x: to_rgb(palette_dict.get(x, na_color))
+                #    # TODO why AttributeError: 'function' object has no attribute 'get'
+                #    # (even w/ these two lines, right after i just confirmed palette is
+                #    # a dict) (above two lines works. delete this)
+                #    #palette_fn = lambda x: palette.get(x, na_color)
+                #    #palette = palette_fn
 
             # TODO assert behavior of cmap? can i set indicator values into
             # set_[over|under] and check we get those if i  call w/ 1+eps or 0-eps,
             # but colors at 1 / 0?
 
             colors = normed.applymap(palette)
+            if not make_cbar:
+                del palette
 
             for c in colors.columns:
                 # NOTE: these as_cmap=True outputs seem to return RGBA 4-tuples instead
                 # of RGB 3-tuples
-                # TODO can we just throw away the alpha for all of them? or maybe add
-                # alpha of 1 for all the 3-tuples otherwise (renaming fn rgb->rgba
-                # then)? (seems all alpha is 1.0 so far, so we can toss)
-                assert all(len(x) == 4 for x in colors[c])
-                assert all(np.isclose(x[-1], 1) for x in colors[c])
-                colors[c] = [x[:-1] for x in colors[c]]
+                assert all(len(x) in (3, 4) for x in colors[c])
+                assert all(type(c) is tuple for c in colors[c])
+                assert all(np.isclose(x[-1], 1) for x in colors[c] if len(x) == 4)
+                colors[c] = [x[:-1] if len(x) == 4 else x for x in colors[c]]
 
         assert not colors.isna().any().any()
         # TODO .extend instead (w/ `colors` being a list now), or expect DataFrame
         # inputs now?
         color_list.append(colors)
-
-        make_legend = False
-        make_cbar = False
-
-        # intended to cover strings, perhaps w/ None/NaN as well
-        # TODO handle bool differently depending on whether we are using a dict
-        # palette or not? (previously was only checking dtype('O') here)
-        # (have only tested bool dtype w/ dict palette so far)
-        if dtype == np.dtype('O') or dtype == bool:
-            make_legend = True
-
-        elif dtype == int or dtype == float:
-            # TODO still treat (some?) int types as diff from float, perhaps drawing
-            # colorbar with discrete steps (at least for cases where above would treat
-            # as categorical, which may in the future only be for certain subsets of
-            # dtype int data)?
-            make_cbar = True
-        else:
-            # TODO delete (/move earlier)? dupe w/ above?
-            raise NotImplementedError(f'{dtype=} unexpected')
 
         # TODO take input for these titles? don't specify?
         # (dict of var name -> title, and assert that vars sharing palette also share
@@ -455,6 +473,9 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
                 Patch(facecolor=c, label=str(v)) for v, c in value2color.items()
             ]
             if values.isna().any().any():
+                # TODO na_color from "continuous" case above also handled correctly
+                # here? test w/ stuff actually missing from dict palettes above?
+                # (maybe stuff that isn't NaN too... that should cause an error)
                 handles.append(Patch(facecolor=na_color, label='NaN'))
 
             for_legends.append(dict(handles=handles, title=title))
@@ -1309,6 +1330,134 @@ def with_panel_orders(plot_fn, panel2order=None, **fn_kwargs):
     return ordered_plot_fn
 
 
+# TODO move coarsen / coarsen_within_groups to util [/ some new clustering module]?
+# TODO TODO TODO maybe group the N most similar ROIs (i.e. with the goal of
+# "downsampling" # of ROIs by factor N, within each level of roi_colors values) in each
+# fly before clustering (by nearest neighbor / whatever), and then only cluster on those
+# averages (then split back out), just so it's easier to read the fly color part of the
+# plot (less chance of plot order mattering, and less resolution needed) (may want to
+# implement in cluster_rois or hong2p.viz.clustermap)
+# greedy [just going through ROIs and finding closest for each, then marking that pair
+# as seen]? or randomly split data in N parts, and then optimal assignment (seems like
+# it'd probably be better? something actually optimal?
+# (comment above duplicated from model_yang_mixtures.py:plot_hierarch_clustered_rois,
+# which calls this)
+COARSEN_CLUSTER_COL: str = 'coarsen_cluster'
+def coarsen(df: pd.DataFrame, downsampling_factor: int, *, random_state: int = 1,
+    # TODO remove n_init='auto' if updating sklearn. just to silence FutureWarning
+    n_init: Union[str, int] = 'auto', **kwargs) -> pd.DataFrame:
+    # current strategy from: https://stats.stackexchange.com/questions/8744
+    from sklearn.cluster import KMeans
+    from scipy.optimize import linear_sum_assignment
+    from scipy.spatial.distance import cdist
+
+    # TODO maybe use numpy dtype check instead, to work w/ np.int types?
+    assert type(downsampling_factor) is int, 'mainly trying to check it is not float'
+
+    # TODO or need < len(df)//2. shouldn't matter? add a test case hitting that
+    assert 1 < downsampling_factor < len(df) / 2, f'{downsampling_factor=}'
+
+    n_clusters = len(df) // downsampling_factor
+    # will need to pick a cluster to get this many extra data points
+    # (or otherwise handle the mismatch)
+    n_extra = len(df) % downsampling_factor
+    assert n_clusters * downsampling_factor + n_extra == len(df)
+
+    # in my current version (1.3.0) I need to add explicit n_init to avoid FutureWarning
+    # (about default change from =10 to ='auto' in 1.4) (natmix_data/analysis.py had
+    # made the other decision, and set it to =10. maybe want to change that? prob
+    # doesn't matter much)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=n_init,
+        **kwargs
+    )
+    est = kmeans.fit(df)
+
+    centers = est.cluster_centers_
+    assert centers.shape[-1] == len(df.columns)
+    assert len(centers) == n_clusters
+
+    repeats = np.array([downsampling_factor] * n_clusters)
+    if n_extra > 0:
+        # the actual cluster IDs: [0, n_clusters-1]
+        labels = est.labels_
+        assert len(labels.shape) == 1 and len(labels) == len(df)
+        biggest_cluster = pd.Series(labels).value_counts().idxmax()
+        # TODO warn about this? prob not worth
+        repeats[biggest_cluster] = downsampling_factor + n_extra
+
+    repeated_center_ids = np.repeat(np.arange(n_clusters), repeats)
+
+    # cdists(df, centers) is of shape (len(df), n_clusters)
+    # the repeat call makes it a square matrix, suitable for linear_sum_assignment
+    repeated_dists = np.repeat(cdist(df, centers), repeats, axis=1)
+
+    row_ind, col_ind = linear_sum_assignment(repeated_dists)
+    # so we really don't need this
+    assert np.array_equal(row_ind, np.arange(len(df)))
+    repeated_center_ids[col_ind]
+
+    index_df = df.index.to_frame(index=False)
+    assert COARSEN_CLUSTER_COL not in index_df.columns
+    index_df[COARSEN_CLUSTER_COL] = repeated_center_ids[col_ind]
+    new_index = pd.MultiIndex.from_frame(index_df)
+    df = df.copy()
+    df.index = new_index
+
+    # NOTE: mean within each cluster ID does not produce something that's (w/in
+    # numerical tolerance) equal to centers. i think that could make sense tho? probably
+    # not an issue?
+    #
+    # ipdb> pd.DataFrame(centers).rename_axis(index=new_col)
+    #                         0         1         2         3         4         5
+    # coarsen_cluster
+    # 0                0.471707 -0.211923 -0.242370  0.265404  2.008665  0.425416
+    # 1                0.023222  0.381993  2.072648 -0.135856 -0.397125 -0.196134
+    # 2                2.230154 -0.072574  0.009531 -0.047195  0.215838  0.869754
+    # 3                0.125042  2.466758  0.227697 -0.084268 -0.157319 -0.010861
+    # 4               -0.044279  0.639249  0.065580  2.396406  0.482883  1.891154
+    # ...                   ...       ...       ...       ...       ...       ...
+    # 685              0.984123  0.019072  0.677269  0.797639  4.639077  0.158293
+    # 686             -0.003765  0.060024  0.546287 -0.338203 -0.158252  1.730270
+    # 687              2.432524  0.074608  0.576174  0.002332  0.045038  0.256910
+    # 688              0.401165  0.061411  2.257179 -0.109084 -0.509141 -0.244604
+    # 689              1.720664 -0.168497 -0.290964  0.016408 -0.438082  0.087352
+    # [690 rows x 6 columns]
+    # ipdb> df.groupby('coarsen_cluster').mean()
+    # odor              ms @ -3   va @ -3  fur @ -4   2h @ -5  1o3ol @ -3  cmix0 @ 0
+    # coarsen_cluster
+    # 0                0.471707 -0.211923 -0.242370  0.265404    2.008665   0.425416
+    # 1                0.060302  0.415090  2.115610 -0.076685   -0.321673  -0.253315
+    # 2                2.344966 -0.064086 -0.092886 -0.299547   -0.168364   0.335760
+    # 3                0.096792  2.227017  0.326577  0.064312   -0.005996  -0.146088
+    # 4               -0.087937  0.684825  0.064188  2.279319    0.466387   1.998218
+    # ...                   ...       ...       ...       ...         ...        ...
+    # 685              0.689650  0.145304  0.330736  0.443506    4.653072   0.244783
+    # 686             -0.131938 -0.041438  1.141732 -0.397806   -0.168465   0.948564
+    # 687              2.432524  0.074608  0.576174  0.002332    0.045038   0.256910
+    # 688              0.385437  0.075672  2.339840 -0.234787   -0.504490  -0.181724
+    # 689              1.702685 -0.232787 -0.303222 -0.031341   -0.516648   0.124135
+
+    # TODO worth plotting this vs df? or summarizing magnitude of difference?
+    # centers[repeated_center_ids[col_ind]]
+
+    return df
+
+
+# TODO take axis too? or just assume row for now?
+# TODO pass kwargs to coarsen? for clustering alg?
+def coarsen_within_groups(df: pd.DataFrame, downsampling_factor: int, names: List[str]
+    ) -> pd.DataFrame:
+
+    assert all(x in df.index.names for x in names), \
+        f'{names=} not all in {df.index.names}'
+
+    level_order = list(df.index.names)
+
+    return df.groupby(level=names, sort=False, group_keys=False).apply(
+        lambda x: coarsen(x, downsampling_factor)
+    ).reorder_levels(level_order + [COARSEN_CLUSTER_COL])
+
+
 @add_norm_options
 @no_constrained_layout
 @callable_ticklabels
@@ -1321,7 +1470,8 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
     ylabel=None, ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
     row_cluster=True, col_cluster=True, row_linkage=None, col_linkage=None,
     method='average', metric='euclidean', z_score=None, standard_scale=None,
-    return_linkages: bool = False, **kwargs):
+    return_linkages: bool = False, row_coarsen_factor: Optional[int] = None,
+    row_coarsen_by: Optional[List[str]] = None, **kwargs):
     """Same as seaborn.clustermap but allows callable [x/y]ticklabels + adds opts.
 
     Adds `optimal_ordering` kwarg to `scipy.cluster.hierarchy.linkage` that is not
@@ -1386,6 +1536,68 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
         kwargs['z_score'] = z_score
         kwargs['standard_scale'] = standard_scale
 
+    # TODO TODO TODO do i need row_cluster=True to support coarsening within levels of
+    # those before clustering? (and same for columns) (see comments below)
+    row_colors = kwargs.pop('row_colors', None)
+    if row_coarsen_factor is not None:
+        # linkage passed in would have to be computed on something coarsened the same
+        # way, or else it wouldn't work
+        # TODO TODO TODO should we assume input is already coarsened here (maybe
+        # providing option to return it here?), or recompute? recomputing would be
+        # cleaner, but potentially compute heavy w/o caching (and how to even cache?)
+        # TODO TODO should i make return type a dict already, so i can support arbitrary
+        # return values without having to change as much code? (could remove
+        # return_linkages flag?)
+        assert row_cluster, 'NEED TO TEST / GET WORKING IN CASE ROW_LINKAGE PASSED IN'
+
+        if row_coarsen_factor is not None:
+            # TODO can we infer which (or avoid need to pass) levels to use based on
+            # row_colors values? prob more trouble than worth, even if could do it
+            # somehow
+            assert row_coarsen_by is not None, ('currently need '
+                'row_coarsen_by=<index-level-names> to use row_coarsen_factor'
+            )
+            if row_colors is not None:
+                assert row_colors.index.equals(df.index)
+                assert not row_colors.isna().any().any()
+
+                colors_per_group = row_colors.groupby(level=row_coarsen_by, sort=False
+                    ).apply(lambda x: x.unique())
+
+                # between these two assertions, should guarantee row_coarsen_by groups
+                # and row_colors values are 1:1 (thus representing the same groups)
+                assert (colors_per_group.str.len() == 1).all(), ('multiple colors for '
+                    f'one group within {row_coarsen_by=} levels'
+                )
+                # TODO TODO test if row_colors.unique() works w/ df row_colors (so far
+                # only testing w/ Series) (and all the rest of this code tbh)
+                assert len(colors_per_group) == len(row_colors.unique()), ('must be >=1'
+                    f' row_colors value with >1 {row_coarsen_by=} levels group. this is'
+                    ' not allowed.'
+                )
+        else:
+            assert row_coarsen_by is None, ('row_coarsen_by has no point without '
+                'appropriate row_coarsen_factor also passed'
+            )
+
+        df = coarsen_within_groups(df, row_coarsen_factor, row_coarsen_by)
+
+        assert 'roi' in df.index.names, f'{df.index.names=}'
+        # TODO otherwise, how to tell which to average over? last one?
+        nonroi_levels = [c for c in df.index.names if c != 'roi']
+
+        # TODO TODO apply same grouping to row_colors if we have that
+        # (prob shouldn't need a separate temp id for that. just use .loc?)
+        if row_colors is not None:
+            assert row_colors.index.equals(df.index.droplevel(COARSEN_CLUSTER_COL))
+            row_colors.index = df.index.copy()
+            row_colors = row_colors.groupby(level=nonroi_levels, sort=False).first()
+
+        # TODO TODO warn?
+        # TODO anything better than taking the mean? just re-ordering according to
+        # something?
+        df = df.groupby(level=nonroi_levels, sort=False).mean()
+
     # TODO if z-scoring / standard-scaling requested, calculate before in this case
     # (so it actually affects linkage, as it would w/ seaborn version)
     # (currently just disabling optimal ordering in these cases)
@@ -1411,7 +1623,7 @@ def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
 
     clustergrid = sns.clustermap(df, row_cluster=row_cluster, col_cluster=col_cluster,
         row_linkage=row_linkage, col_linkage=col_linkage, method=method, metric=metric,
-        cbar_kws=cbar_kws, **kwargs
+        cbar_kws=cbar_kws, row_colors=row_colors, **kwargs
     )
 
     if title is not None:

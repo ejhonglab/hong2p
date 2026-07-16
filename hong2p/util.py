@@ -363,7 +363,8 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
     if not target.exists():
         raise FileNotFoundError
 
-    # TODO delete (/expose)
+    # TODO delete (/expose) (or put this behind debug and have verbose just print the
+    # link being created)
     verbose = False
     if verbose:
         print('input:')

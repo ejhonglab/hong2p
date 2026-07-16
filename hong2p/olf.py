@@ -524,6 +524,7 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 
 # TODO use more places
 # TODO test
+# TODO add flag to assert it's the only one? or warn if it's not (by default?)?
 def first_odor_level(index: pd.Index) -> str:
     """Returns first odor component level in index, whether 'odor' / 'odor1'.
 
@@ -1195,6 +1196,8 @@ def format_odor_list(odor_list: SingleTrialOdors, *, delim: str = component_deli
 
 
 # TODO use to format odor[mixtures] in al_analysis
+# TODO add a fn using this to strip from all levels of index (don't i already do that
+# some places? could also use in old 2e al_analysis.mb_model code)
 def strip_concs_from_odor_str(odor_str: str, **kwargs) -> str:
     """
     Works with input representing either single components or air mixtures of multiple.
@@ -1202,6 +1205,11 @@ def strip_concs_from_odor_str(odor_str: str, **kwargs) -> str:
     Args:
         **kwargs: passed thru to `format_odor`
     """
+    # TODO flag to disable this? cause any problems in old usage? added to fix bug where
+    # 'cmix'->'solvent' in model_yang_mixtures.py
+    if conc_delimiter not in odor_str:
+        return odor_str
+
     # TODO thread thru component delim (delim= kwarg) here?
     odor_list = parse_odor_list(odor_str)
     return format_odor_list(odor_list, conc=False, **kwargs)
