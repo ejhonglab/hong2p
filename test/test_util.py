@@ -5,9 +5,53 @@ import numpy as np
 import pandas as pd
 
 from hong2p import util
-from hong2p.util import subset_same_in_all_dicts
+from hong2p.util import subset_same_in_all_dicts, is_scalar
 
 from hong2p.olf import solvent_str
+
+
+def test_is_scalar():
+    # showing that old approaches in is_scalar (just checking isinstance before)
+    # would not work
+    def check_python_checks_fails(xs, t):
+        for x in xs:
+            # NOTE: isinstance(<np-scalar-float>, float) is actually True
+            # but same does not work for bool/int (idk why)
+            if not (isinstance(x, np.float64) and (t == float or float in t)):
+                assert not isinstance(x, t)
+
+            if type(t) is tuple:
+                ts = t
+            else:
+                ts = (t,)
+
+            for t in ts:
+                assert type(x) != t
+                assert type(x) is not t
+                if not (isinstance(x, np.float64) and t == float):
+                    assert not isinstance(x, t)
+
+    arr = np.array([1.0, 0.0])
+    bool_list = [x for x in arr.astype(bool)]
+    check_python_checks_fails(bool_list, bool)
+
+    not_scalar = [False, True] + bool_list + ['a', None, arr, pd.Series(arr)]
+    for x in not_scalar:
+        assert not is_scalar(x)
+
+    float_list = list(arr)
+    # so that checks against np.float64 make sense in check_python_checks_fail
+    assert all(isinstance(x, np.float64) for x in float_list)
+    check_python_checks_fails(float_list, (int, float))
+    check_python_checks_fails(float_list, float)
+
+    int_list = list(arr.astype(int))
+    check_python_checks_fails(int_list, (int, float))
+    check_python_checks_fails(int_list, int)
+
+    should_be_scalar = [0, 1, 0.5] + float_list + int_list
+    for x in should_be_scalar:
+        assert is_scalar(x)
 
 
 def test_subset_same_in_all_dicts():

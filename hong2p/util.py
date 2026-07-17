@@ -2612,7 +2612,8 @@ def diff_dataframes(df1, df2) -> Optional[pd.DataFrame]:
             data=np.vectorize(np.allclose)(df1[arr_cols], df2[arr_cols])
         )
 
-        other_cols = set(df1.columns) - set(floats1.columns) - set(arr_cols)
+        # TODO sort?
+        other_cols = list(set(df1.columns) - set(floats1.columns) - set(arr_cols))
         other_diff_mask = df1[other_cols] != df2[other_cols]
 
         diff_mask = pd.concat([diff_mask_floats, diff_mask_arr, other_diff_mask],
@@ -4921,12 +4922,23 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     return True
 
 
+# TODO add flag to include bools too?
 def is_scalar(x: Any) -> bool:
-    """Returns whether input is a float or int.
+    """Returns whether input is a float or int, or a numpy scalar float/int.
+
+    Returns False for bools (including numpy scalar ones)
     """
-    # TODO also work w/ numpy / xarray types that have length-0 shape (or similar)?
-    # or does those already work here?
-    return isinstance(x, (int, float))
+    # TODO need to do anything separate for scalar xarray inputs? (e.g. .item(0)?)
+    # any other type conversion? test!
+    # NOTE: np.issubdtype doesn't accept tuple of types like isinstance does, but it
+    # does work with type(<np.[float|int]*>) and type(<int|float>)
+    dtype_matches = [np.issubdtype(type(x), t) for t in (int, float)]
+    ret = any(dtype_matches)
+    if ret:
+        assert sum(dtype_matches) == 1, ('not expecting either int/float to be subdtype'
+            ' of other'
+        )
+    return ret
 
 
 # TODO define type w/ scalar (that also works w/ xarray/numpy length-0 shape stuff? or
