@@ -32,10 +32,13 @@ def test_is_scalar():
                     assert not isinstance(x, t)
 
     arr = np.array([1.0, 0.0])
-    bool_list = [x for x in arr.astype(bool)]
+    bool_arr = arr.astype(bool)
+    bool_list = [x for x in bool_arr]
     check_python_checks_fails(bool_list, bool)
 
-    not_scalar = [False, True] + bool_list + ['a', None, arr, pd.Series(arr)]
+    not_scalar = [False, True] + bool_list + ['a', None, arr, pd.Series(arr),
+        bool_arr.dtype
+    ]
     for x in not_scalar:
         assert not is_scalar(x)
 
@@ -45,11 +48,12 @@ def test_is_scalar():
     check_python_checks_fails(float_list, (int, float))
     check_python_checks_fails(float_list, float)
 
-    int_list = list(arr.astype(int))
+    int_arr = arr.astype(int)
+    int_list = list(int_arr)
     check_python_checks_fails(int_list, (int, float))
     check_python_checks_fails(int_list, int)
 
-    should_be_scalar = [0, 1, 0.5] + float_list + int_list
+    should_be_scalar = [0, 1, 0.5] + float_list + int_list + [arr.dtype, int_arr.dtype]
     for x in should_be_scalar:
         assert is_scalar(x)
 

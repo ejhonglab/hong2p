@@ -4926,13 +4926,20 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 def is_scalar(x: Any) -> bool:
     """Returns whether input is a float or int, or a numpy scalar float/int.
 
+    Also works with `np.dtype` input (e.g. from `df.values.dtype`).
+
     Returns False for bools (including numpy scalar ones)
     """
     # TODO need to do anything separate for scalar xarray inputs? (e.g. .item(0)?)
     # any other type conversion? test!
     # NOTE: np.issubdtype doesn't accept tuple of types like isinstance does, but it
     # does work with type(<np.[float|int]*>) and type(<int|float>)
-    dtype_matches = [np.issubdtype(type(x), t) for t in (int, float)]
+    if isinstance(x, np.dtype):
+        x_type = x
+    else:
+        x_type = type(x)
+
+    dtype_matches = [np.issubdtype(x_type, t) for t in (int, float)]
     ret = any(dtype_matches)
     if ret:
         assert sum(dtype_matches) == 1, ('not expecting either int/float to be subdtype'
