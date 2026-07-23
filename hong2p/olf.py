@@ -303,7 +303,10 @@ def parse_odor_name(odor_str: str, *, require_conc: bool = True) -> Optional[str
         # made a mistake where index was a MultiIndex (so element was a tuple).
         # would silently fail otherwise.
         if require_conc:
-            raise ValueError(f'{conc_delimiter=} not in {odor_str}')
+            raise ValueError(f'{conc_delimiter=} not in {odor_str}. set '
+                'require_conc=False if not expecting all odors to have concentration '
+                'suffix.'
+            )
         else:
             return odor_str
 
@@ -1143,6 +1146,7 @@ def format_mix_from_strs(odor_strs: Union[Sequence[str], pd.Series, Dict[str, An
 mix_col = 'odor'
 # TODO test
 # TODO type hint indicating we return same type (of the two union types) as input? how?
+# TODO rename mix_col->name?
 def add_mix_str_index_level(df_or_index: Union[pd.MultiIndex, pd.DataFrame],
     mix_col: str = mix_col) -> Union[pd.MultiIndex, pd.DataFrame]:
     """Adds formatted string odor/mix to `mix_col` (default: 'odor') index level.

@@ -25,15 +25,23 @@ from matplotlib.axes import Axes
 from matplotlib.colors import (Normalize, CenteredNorm, TwoSlopeNorm, to_rgb,
     ListedColormap, LinearSegmentedColormap
 )
+from matplotlib.lines import Line2D
 import matplotlib.patches as patches
 from matplotlib.patches import Patch
 import matplotlib.patheffects as PathEffects
+from matplotlib.text import Text
 import matplotlib.transforms as transforms
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.axes_grid1 import ImageGrid
+
 # Only for type hinting
 from matplotlib.colorbar import Colorbar
+# this one is the base class for AxesImage I typically use as first argument to
+# ax.colorbar
+# TODO delete (find older mpl equivalent? don't seem to have in 3.7.3)
+#from matplotlib.colorizer import ColorizingArtist
+#
 from matplotlib.figure import Figure
 from matplotlib.image import AxesImage
 from matplotlib_scalebar.scalebar import ScaleBar
@@ -46,7 +54,10 @@ from hong2p import roi as hong_roi
 #from hong2p.roi import is_ijroi_certain
 #
 from hong2p.olf import remove_consecutive_repeats
-from hong2p.types import DataFrameOrDataArray, KwargDict
+# TODO use Color/CMap/Palette
+from hong2p.types import (DataFrameOrDataArray, ParamDict, CMap, Axis, Color, CMap,
+    Palette, Figsize
+)
 
 
 # TODO consider making a style sheet as in:
@@ -101,10 +112,11 @@ def is_categorical(values: pd.Series) -> bool:
 # TODO also return palettes (w/ min/max? unique values? callables derived from palettes
 # + [min/max]/unique_values?), for use w/ future calls? how?
 # TODO optional argument for min/max / (ordered) unique_values per variable?
-def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
+def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
     name2palette: Optional[Dict[str, Union[str, LinearSegmentedColormap, ListedColormap,
-        Dict]]] = None, share_palettes_with_same_name: bool = True, na_color='gray',
-    _debug: bool = False) -> Tuple[pd.DataFrame, List, List]:
+        Dict]]] = None, share_palettes_with_same_name: bool = True,
+    var_delim: str = '/', na_color: Color = 'gray', _debug: bool = False
+    ) -> Tuple[pd.DataFrame, List, List]:
     """Maps frame values to RGB tuples, from per-column/row colormaps.
 
     Args:
@@ -121,6 +133,8 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Union[int, str] = 'index',
             thus also share an entry in either `for_legends` or `for_cbars`.
             If `add_legends_and_colorbars` is used to draw the legends and colorbars,
             this will also mean they will share a legend or colorbar.
+
+        var_delim: used to join variable names to make legend/colorbar titles
 
         na_color: used as NaN color for values using dict palettes (should be distinct
             from colors in dict palettes, though this isn't checked)
@@ -717,13 +731,13 @@ def remove_axes_ticks(ax: Axes) -> None:
 
 # TODO change docstring to indicate rowlabel_fn should take a pd.Series, if that is
 # always correct (for multiindex / not input, etc)
-def matlabels(df, rowlabel_fn, axis='index'):
+def matlabels(df: DataFrameOrDataArray, rowlabel_fn: Callable, axis: Axis = 'index'):
     # TODO should i modify so it takes an Index/MultiIndex rather than a DataFrame row?
     # what would make these functions more natural to write?
     """
-    Takes DataFrame and function that takes one row of index to a label.
+    Takes DataFrame/DataArray and function that takes one row of index to a label.
 
-    `rowlabel_fn` should take a DataFrame row (w/ columns from index) to a str.
+    `rowlabel_fn` should take a one index value to a str
     """
     # TODO move to something like util._validate_axis?
     if axis == 'index':
@@ -738,11 +752,11 @@ def matlabels(df, rowlabel_fn, axis='index'):
 
 # TODO should i thread delim kwarg to default fn thru here (e.g. just threading all
 # kwargs through to label_fn)?
-def row_labels(df, label_fn):
+def row_labels(df: DataFrameOrDataArray, label_fn: Callable):
     return matlabels(df, label_fn, axis='index')
 
 
-def col_labels(df, label_fn):
+def col_labels(df: DataFrameOrDataArray, label_fn: Callable):
     return matlabels(df, label_fn, axis='columns')
 
 
@@ -774,7 +788,7 @@ def format_index_row(row: pd.Series, *, delim: str = ' / ',
 # indices set correctly before calling the wrapped fn
 # TODO also provide a means of specifying the dimension of input the fns expect (at
 # least squeezed dimension, maybe w/ a squeeze=True kwarg added by wrapper?)
-def callable_ticklabels(plot_fn):
+def callable_ticklabels(plot_fn: Callable):
     # TODO still true that fn must accept [x|y]ticklabels? change doc if not.
     """Allows [x/y]ticklabel functions evaluated on indices of `df` (`plot_fn(df, ...)`)
 
@@ -936,7 +950,7 @@ def _palettable_diverging_cmaps():
 '''
 
 
-def is_cmap_diverging(cmap) -> bool:
+def is_cmap_diverging(cmap: CMap) -> bool:
     """Returns guess as to whether input colormap is a diverging colormap.
 
     Args:
@@ -997,7 +1011,7 @@ def is_cmap_diverging(cmap) -> bool:
     return mid < 0.28 and (low > mid * 2 and high > mid * 2)
 
 
-def add_norm_options(plot_fn):
+def add_norm_options(plot_fn: Callable):
     # TODO edit doc. copied from back before this was a decorator
     # TODO prob rewrite doc + fn to use str 'centered' / 'two-slope' instead of (more
     # complicated for user) classes
@@ -1179,7 +1193,7 @@ def add_norm_options(plot_fn):
 # Was originally wanting to make enable a kwarg, but it seems the code to do that would
 # be excessively complicated. See norok2's answer here:
 # https://stackoverflow.com/questions/5929107
-def _mpl_constrained_layout(enable):
+def _mpl_constrained_layout(enable: bool):
     """
     To make decorators for fns that create Figure(s) and need contrained layout on/off.
 
@@ -1220,7 +1234,7 @@ no_constrained_layout = _mpl_constrained_layout(False)
 # TODO maybe combine w/ decorator to add title/xlabel/ylabel/etc kwargs + their
 # reformatting (+ setting? some differences in how i do this, and would need Axes to
 # call on...)
-def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws=None):
+def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws: Optional[ParamDict] =None):
     # Will no longer have same behavior as passing rotation=None explicitly to the
     # corresponding set_ylabel call, but would need another sentinel for unset
     # values than None to fix.
@@ -1248,7 +1262,9 @@ def set_panel2order(panel2order: Dict[str, List[str]]) -> None:
 
 _ax_id2order = dict()
 # TODO kwarg for specifying name of odor column?
-def with_panel_orders(plot_fn, panel2order=None, **fn_kwargs):
+    # TODO refactor to share this panel2order type?
+def with_panel_orders(plot_fn: Callable,
+    panel2order: Optional[Dict[str, List[str]]] = None, **fn_kwargs) -> Callable:
 
     @functools.wraps(plot_fn)
     def ordered_plot_fn(*args, **kwargs):
@@ -1466,11 +1482,15 @@ def coarsen_within_groups(df: pd.DataFrame, downsampling_factor: int, names: Lis
 # TODO modify to call matshow internally, rather than relying on seaborn much/at all?
 # (to get the convenience features i added to matshow...) (or at least make another
 # decorator like callable_ticklabels to deal w/ [h|v]line_level_fn matshow kwargs)
-def clustermap(df, *, optimal_ordering: bool = True, title=None, xlabel=None,
-    ylabel=None, ylabel_rotation=None, ylabel_kws=None, cbar_label=None, cbar_kws=None,
-    row_cluster=True, col_cluster=True, row_linkage=None, col_linkage=None,
-    method='average', metric='euclidean', z_score=None, standard_scale=None,
-    return_linkages: bool = False, row_coarsen_factor: Optional[int] = None,
+# TODO type hint for linkages and return type?
+def clustermap(df: pd.DataFrame, *, optimal_ordering: bool = True,
+    title: Optional[str] = None, xlabel: Optional[str] = None,
+    ylabel: Optional[str] = None, ylabel_rotation=None, ylabel_kws=None,
+    cbar_label: Optional[str] = None, cbar_kws: Optional[ParamDict] = None,
+    row_cluster: bool = True, col_cluster: bool = True, row_linkage=None,
+    col_linkage=None, method='average', metric='euclidean', z_score=None,
+    standard_scale=None, return_linkages: bool = False,
+    row_coarsen_factor: Optional[int] = None,
     row_coarsen_by: Optional[List[str]] = None, **kwargs):
     """Same as seaborn.clustermap but allows callable [x/y]ticklabels + adds opts.
 
@@ -1653,7 +1673,11 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
     y: Sequence[Any] = None, lines: bool = True, labels: bool = True,
     formatter: Optional[Callable] = None, label_offset: Optional[float] = None,
     label_name: Optional[str] = None, label_name_offset: float = 3, linewidth=0.5,
-    linecolor='k', line_offset: float = 0.5, _debug=False, **kwargs) -> None:
+    linecolor='k', line_offset: float = 0.5, _debug=False, **kwargs) -> Tuple[
+        List[Text], List[Line2D]
+    ]:
+    # TODO also have formatter work w/ lines=True too? rename level_fn? or have them as
+    # two separate fns?
     """Adds labels to (and lines between) groups of common x/y labels.
 
     Args:
@@ -1686,6 +1710,9 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
 
         **kwargs: passed thru to `ax.text` calls for group text labels. also applies to
             `label_name`, if specified.
+
+    Returns lists of the matplotlib elements created to make the labels / lines. Empty
+    list for either not requested.
     """
     # TODO validation on length of x/y? what to check against? doc, if i come up
     # with something (check against [x|y]ticklabels, from Axes [assuming already set]?)
@@ -1741,19 +1768,16 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
     # If all the ranges have the same start and stop, all groups are length 1, and
     # the lines would just add visual noise, rather than helping clarify boundaries
     # between groups.
+    line_artists = []
     if lines and any([x[-1] > x[-2] for x in ranges]):
         line_positions = [x[-1] + line_offset for x in ranges[:-1]]
         # TODO if we have a lot of matrix elements, may want to decrease size of
         # line a bit to not approach size of matrix elements...
         for v in line_positions:
-            # TODO delete try/except. not sure i can repro this error...
-            try:
-                # 'w'=white. https://matplotlib.org/stable/tutorials/colors/colors.html
-                line_fn(v, linewidth=linewidth, color=linecolor)
+            # 'w'=white. https://matplotlib.org/stable/tutorials/colors/colors.html
+            line_artists.append(line_fn(v, linewidth=linewidth, color=linecolor))
 
-            except np.linalg.LinAlgError as err:
-                import ipdb; ipdb.set_trace()
-
+    text_artists = []
     # TODO allow separating group text from levels? accept yet another fn mapping
     # from [v|h]line_levels (dict level name -> value form?) to formatted strs?
     if labels:
@@ -1761,7 +1785,7 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
 
         if x is not None:
             def text_fn(label, start, stop):
-                ax.text(np.mean((start, stop)), 1 + label_offset, label,
+                return ax.text(np.mean((start, stop)), 1 + label_offset, label,
                     ha='center', va='bottom', transform=trans, **kwargs
                 )
 
@@ -1774,7 +1798,7 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
                 # TODO what happens is label is not str? does nothing? why not erring?
                 # or is it not displaying for another reason? (converting via str didn't
                 # seem to change anything...)
-                ax.text(-label_offset, np.mean((start, stop)), label,
+                return ax.text(-label_offset, np.mean((start, stop)), label,
                     # Right might make consistent spacing wrt line indicating extent of
                     # group easier to see.
                     ha='right',
@@ -1811,7 +1835,7 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
             if formatter is not None:
                 label = formatter(label)
 
-            text_fn(label, start, stop)
+            text_artists.append(text_fn(label, start, stop))
 
             if _debug:
                 print(f'{label=} ({start=}, {stop=})')
@@ -1823,6 +1847,10 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
             # text_fns)
             text_fn(label_name, -label_name_offset, 1 - label_name_offset)
 
+    return text_artists, line_artists
+
+
+Ticklabels = Optional[Union[List[Any], Callable]]
 
 # TODO consider calling sns.heatmap internally? or replacing some uses of this w/ that?
 # TODO may want to add xlabel / ylabel kwargs to be consistent w/ my clustermap wrapper,
@@ -1849,15 +1877,19 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
 @callable_ticklabels
 # TODO TODO should be raising a warning by default if [h|v]line_level_fn not producing
 # any divisions
-def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
-    yticklabels=None, xtickrotation=None, xlabel: Optional[str] = None,
-    ylabel: Optional[str] = None, ylabel_rotation=None,
-    ylabel_kws: Optional[KwargDict] = None,
-    cbar_label: Optional[str] = None, group_ticklabels=False, vline_level_fn=None,
-    hline_level_fn=None, vline_group_text: bool = False, hline_group_text: bool = False,
+# TODO actually work w/ DataArray?
+def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
+    title_kws: Optional[ParamDict] = None, ticklabels: Ticklabels = None,
+    xticklabels: Ticklabels = None, yticklabels: Ticklabels = None, xtickrotation=None,
+    xlabel: Optional[str] = None, ylabel: Optional[str] = None, ylabel_rotation=None,
+    ylabel_kws: Optional[ParamDict] = None, cbar_label: Optional[str] = None,
+    group_ticklabels: bool = False, vline_level_fn: Optional[Callable] = None,
+    hline_level_fn: Optional[Callable] = None, vline_group_text: bool = False,
+    hline_group_text: bool = False,
     # TODO combine [h|v]line_group_text into these, using True for no formatting?
     # (or these into former...)
-    vgroup_formatter=None, hgroup_formatter=None,
+    vgroup_formatter: Optional[Callable] = None,
+    hgroup_formatter: Optional[Callable] = None,
     # TODO TODO can maybe specify in axes coords w/ new blended transform approach i'm
     # trying
     # TODO move fontsize default out too. too big for small matrices (e.g. 9x9)
@@ -1871,15 +1903,16 @@ def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
     vgroup_label_rotation: Union[float, str] = 'horizontal',
     hgroup_label_rotation: Union[float, str] = 'horizontal',
     group_fontsize: Optional[float] = None, group_fontweight=None, linewidth=0.5,
-    linecolor='w', ax: Optional[Axes] = None, fontsize: Optional[float] = None,
-    bigtext_fontsize_scaler: float = 1.5, fontweight=None, figsize=None, dpi=None,
-    inches_per_cell=None, extra_figsize=None, transpose_sort_key=None,
-    colorbar: bool = True, cbar_shrink: float = 1.0,
-    cbar_kws: Optional[KwargDict] = None, levels_from_labels: bool = True,
-    allow_duplicate_labels: bool = False, xticks_also_on_bottom: bool = False,
-    overlay_values: bool = False, overlay_fmt: str = '.2f',
-    overlay_kws: Optional[KwargDict] = None, _debug=_debug, **kwargs
-    ) -> Tuple[Figure, AxesImage]:
+    linecolor: Color = 'w', ax: Optional[Axes] = None, fontsize: Optional[float] = None,
+    bigtext_fontsize: Optional[float] = None, bigtext_fontsize_scaler: float = 1.5,
+    fontweight=None, figsize: Figsize = None, dpi: Optional[float] = None,
+    inches_per_cell: Optional[float] = None, extra_figsize: Figsize = None,
+    transpose_sort_key: Optional[Callable] = None, colorbar: bool = True,
+    cbar_shrink: float = 1.0, cbar_kws: Optional[ParamDict] = None,
+    levels_from_labels: bool = True, allow_duplicate_labels: bool = False,
+    xticks_also_on_bottom: bool = False, overlay_values: bool = False,
+    overlay_fmt: str = '.2f', overlay_kws: Optional[ParamDict] = None,
+    rasterized: bool = False, _debug=_debug, **kwargs) -> Tuple[Figure, AxesImage]:
     # TODO doc [v|h]line_group_text
     # TODO check that levels_from_labels means *_level_fn get a single dict as input,
     # not an iterable of dicts (or update doc)
@@ -1931,8 +1964,8 @@ def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
         overlay_kws: optional dict of kwargs to pass to overlay `ax.text` calls
 
         fontsize: directly used for ticklabels, and scaled by `bigtext_fontsize_scaler`
-            for xlabel/ylabel fontsize. also used for group label font, unless
-            `group_fontsize` is passed a float.
+            for xlabel/ylabel fontsize (if `bigtext_fontsize` not passed). also used for
+            group label font, unless `group_fontsize` is passed a float.
 
         **kwargs: passed thru to `matplotlib.pyplot.matshow`
     """
@@ -2024,9 +2057,10 @@ def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
         # TODO delete this... more trouble than it's worth these days
         fontsize = min(10.0, 240.0 / max(df.shape[0], df.shape[1]))
 
-    bigtext_fontsize = bigtext_fontsize_scaler * fontsize
+    if bigtext_fontsize is None:
+        bigtext_fontsize = bigtext_fontsize_scaler * fontsize
 
-    im = ax.matshow(df, **kwargs)
+    im = ax.matshow(df, rasterized=rasterized, **kwargs)
 
     if colorbar:
         if cbar_kws is None:
@@ -2239,7 +2273,10 @@ def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
     if title is not None and title != '':
         # TODO also need labelpad here? do i even need below, now that i'm using
         # constrained layout by default typically?
-        ax.set_title(title, fontsize=bigtext_fontsize)
+        if title_kws is None:
+            title_kws = dict()
+
+        ax.set_title(title, fontsize=bigtext_fontsize, **title_kws)
 
     if xlabel is not None:
         # TODO put in title instead now?
@@ -2289,7 +2326,8 @@ def matshow(df, title: Optional[str] = None, ticklabels=None, xticklabels=None,
 # this. al_analysis dff_imshow could maybe be replaced by this (or image_grid?))
 # TODO type hint img (arraylike?)
 @add_norm_options
-def imshow(img, ax=None, title=None, cmap=DEFAULT_ANATOMICAL_CMAP, **kwargs):
+def imshow(img, ax: Optional[Axes] = None, title: Optional[str] = None,
+    cmap: Optional[CMap] = DEFAULT_ANATOMICAL_CMAP, **kwargs):
     # TODO warn if ax not set? or at least in the case where plt.gca() (/gcf?) returns
     # something? (to make sure we aren't making figures that don't get populated/closed)
     # (factor this check into wrapper shared w/ matshow?)
@@ -2329,10 +2367,13 @@ def imshow(img, ax=None, title=None, cmap=DEFAULT_ANATOMICAL_CMAP, **kwargs):
 # something)
 # TODO TODO maybe search any AxesImages in fig and do same for all of them (if sharing a
 # colorbar... can i tell that in here tho?)
-def add_colorbar(fig: Figure, im, match_axes_size: bool = False, axes_index: int = -1,
-    # TODO delete if not useful. trying to add support for ImageGrid cax's
-    location: str = 'right', size=None, pad=None, cax: Optional[Axes] = None,
-    label: Optional[str] = None, fontsize=None, **kwargs) -> Colorbar:
+# TODO type hint im? is it AxesImage? ColorMappable? was using ColorizingArtist, but
+# only importable (at least, as i tried) in >3.8 (i'm on 3.7.3)
+def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
+    # TODO delete (what?) if not useful. trying to add support for ImageGrid cax's
+    axes_index: int = -1, location: str = 'right', size=None, pad=None,
+    cax: Optional[Axes] = None, label: Optional[str] = None,
+    fontsize: Optional[float] = None, **kwargs) -> Colorbar:
     # TODO TODO does size= steal that size from specified ax tho? answer change
     # depending on whether we are using constrained layout or not?
     #
@@ -3018,7 +3059,7 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     inches_per_pixel=0.014, imagegrid_rect=None, dpi=None,
     scale_per_plane: bool = False, minmax_clip_frac: float = 0.0, vmin=None, vmax=None,
     cbar: bool = True, cmap=DEFAULT_ANATOMICAL_CMAP, cbar_label: Optional[str] = None,
-    cbar_kws: Optional[KwargDict] = None, **kwargs):
+    cbar_kws: Optional[ParamDict] = None, **kwargs):
     # TODO also allow specifying either height_inches/width_inches instead of
     # inches_per_pixel (would only save specifying one component of figsize...)?
     """
@@ -3175,7 +3216,9 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     #    layout='compressed'
     #)
 
-    # TODO TODO fix: (handle some other way for 3.4.3 [or anything <3.7.3]? or just
+    # TODO delete as long as requirements currently specify >=3.7.3 (that's what i'm
+    # currently using, so should be fine)
+    # TODO fix: (handle some other way for 3.4.3 [or anything <3.7.3]? or just
     # require >=3.7.3 and fix the seaborn negative-input-to-errorbar issue which is why
     # i downgraded to 3.4.3? or is there a version between that works w/ both this and
     # the errorbar code?
@@ -3357,7 +3400,8 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
 
 
 def micrometer_depth_title(ax: Axes, zstep_um: float, z_index: int, *,
-    as_ylabel: bool = False, as_overlay: bool = False, fontsize=8, **kwargs) -> None:
+    as_ylabel: bool = False, as_overlay: bool = False, fontsize: Optional[float] = 8,
+    **kwargs) -> None:
     # TODO cleanup formatting of doc re: as_ylabel/as_overlay changes to which fn gets
     # args passed thru to it
     """
@@ -3459,7 +3503,8 @@ def get_default_overlay_color(ax: Axes) -> str:
     return default_color_over_image
 
 
-def add_scalebar(ax: Axes, pixelsize_um: float, *, color=None, **kwargs) -> None:
+def add_scalebar(ax: Axes, pixelsize_um: float, *, color: Optional[Color] = None,
+    **kwargs) -> None:
     # TODO move default_kwargs to actual default kwarg values in fn def? why not?
     #
     # I did check (in 2023-05-10/1, where FOV width/height are 100.[6?] uM,
@@ -3519,15 +3564,17 @@ def add_scalebar(ax: Axes, pixelsize_um: float, *, color=None, **kwargs) -> None
 # all...
 def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     certain_only: bool = False, best_planes_only: bool = False, show_names=True,
-    color=None, palette=None, seed=0, focus_roi=None, focus_roi_color='red',
+    color: Optional[Color] = None, palette: Optional[Palette] = None,
+    seed: Optional[int] = 0, focus_roi=None, focus_roi_color: Color = 'red',
     focus_roi_linewidth: Optional[float] = None, palette_desat: Optional[float] = 0.4,
-    scalebar: bool = False, cbar=True, cbar_label=None, cbar_kws=None,
-    pixelsize_um: Optional[float] = None, scalebar_kws: Optional[dict] = None,
-    image_kws: Optional[KwargDict] = None, zstep_um: Optional[float] = None,
-    depth_text_kws: Optional[dict] = None, title: Optional[str] = None,
-    title_kws: Optional[dict] = None, linewidth=1.2, _pad: bool = False,
-    zero_outside_plane_outlines: bool = False, plane_outline_line_kws=None, **kwargs
-    ) -> Figure:
+    scalebar: bool = False, cbar: bool = True, cbar_label: Optional[str] = None,
+    cbar_kws: Optional[ParamDict] = None, pixelsize_um: Optional[float] = None,
+    scalebar_kws: Optional[dict] = None, image_kws: Optional[ParamDict] = None,
+    zstep_um: Optional[float] = None, depth_text_kws: Optional[dict] = None,
+    title: Optional[str] = None, title_kws: Optional[dict] = None,
+    linewidth: float = 1.2, _pad: bool = False,
+    zero_outside_plane_outlines: bool = False,
+    plane_outline_line_kws: Optional[ParamDict] = None, **kwargs) -> Figure:
     # TODO doc whether palette can be a dict (str -> color) (yea, right?) anything else?
     # TODO use color= kwarg in making 'ijroi/with_focusroi' variant (/similar) in
     # al_analysis
@@ -3973,8 +4020,9 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
 # TODO should i actually compute correlations in here too? check input, and
 # compute if input wasn't correlations (/ symmetric?)?
 # if so, probably return them as well.
-def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
-    trial_stat='mean', title_suffix='', **kwargs):
+def plot_odor_corrs(corr_df: pd.DataFrame, *, odor_order: bool = False,
+    odors_in_order: Sequence[str] = None, trial_stat: str = 'mean',
+    title_suffix: str = '', **kwargs):
     """Takes a symmetric DataFrame with odor x odor correlations and plots it.
     """
     # TODO replace ordering stuff w/ new fns for that in olf.py (or maybe just delete
@@ -4058,7 +4106,7 @@ def plot_odor_corrs(corr_df, odor_order=False, odors_in_order=None,
 # on 3.7.3)
 # TODO also support hiding all but first xticklabels/similar? or make similar fns for
 # that?
-def fix_facetgrid_axis_labels(facet_grid, shared_in_center: bool = False,
+def fix_facetgrid_axis_labels(facet_grid, *, shared_in_center: bool = False,
     x: bool = True, y: bool = True) -> None:
     """Modifies a FacetGrid to not duplicate X and Y axis text labels.
     """

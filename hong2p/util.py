@@ -3,6 +3,7 @@ Common functions for dealing with Thorlabs software output / stimulus metadata /
 our databases / movies / CNMF output.
 """
 
+from argparse import ArgumentTypeError
 import os
 from os.path import join, split, exists, sep, isdir, getmtime, splitext
 from pathlib import Path
@@ -505,6 +506,44 @@ def analysis_output_root(**kwargs) -> Path:
 class IOPerformanceWarning(Warning):
     """Warning that data does not seem to be read/written from fast storage
     """
+
+
+def argparse_dir(path: Any, *, expected_subdirs: Optional[Sequence[str]] = None) -> Path:
+    """Returns path if can be converted to a Path directory.
+
+    Raises `argparse.ArgumentTypeError` if input can not be converted to a directory, or
+    if it does not contain the expected subdirectory names (if `expected_subdirs !=
+    None`)
+    """
+    if expected_subdirs is not None:
+        assert len(expected_subdirs) > 0, 'expected subdirs must be None or non-empty'
+
+    try:
+        path = Path(path)
+    # TODO any other errors possible? just catch all?
+    # TypeError: expected str, bytes or os.PathLike object, not <x>
+    except TypeError as err:
+        # TODO include part of err here?
+        raise ArgumentTypeError(f'{path} could not be converted to a Path')
+
+    # TODO .resolve() too? prob not
+    path = path.expanduser()
+
+    if not path.is_dir():
+        raise ArgumentTypeError(f'{path} was not a directory')
+
+    missing_subdirs = []
+    for subdir in expected_subdirs:
+        subdir_dir = path / subdir
+        if not subdir_dir.is_dir():
+            missing_subdirs.append(subdir)
+
+    if len(missing_subdirs) > 0:
+        raise ArgumentTypeError(f'{path} did not contain expected subdirectories! '
+            f'missing: {missing_subdirs}'
+        )
+
+    return path
 
 
 # TODO have date by optional, and use current date?
@@ -4923,6 +4962,8 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 
 
 # TODO add flag to include bools too?
+# TODO rename is_floatlike or something? it is also checking shape for everything but
+# np.dtype input... is_scalar_floatlike?
 def is_scalar(x: Any) -> bool:
     """Returns whether input is a float or int, or a numpy scalar float/int.
 
