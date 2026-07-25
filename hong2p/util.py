@@ -37,7 +37,7 @@ from tqdm import tqdm
 from hong2p import matlab, db, thor, olf
 from hong2p.err import NoStimulusFile, TooManyStimulusFiles
 from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
-    DataFrameOrDataArray, DataFrameOrSeries
+    DataFrameOrDataArray, DataFrameOrSeries, Axis
 )
 from hong2p.olf import NO_ODOR
 
@@ -1162,8 +1162,10 @@ def num_notnull(df: pd.DataFrame) -> int:
 # TODO TODO TODO add support for sequence of values (for a given name (/names entry)).
 # at the moment, seems only scalar values supported. or at least rename to indicate it
 # only supports scalars in values.
-def addlevel(df: pd.DataFrame, names, values, *, axis='index'):
-    """Add level(s) to pandas MultiIndex
+# TODO type of values?
+def addlevel(data: DataFrameOrSeries, names: Union[str, List[str]], values, *,
+    axis: Axis = 'index') -> DataFrameOrSeries:
+    """Add level(s) to pandas MultiIndex. Does not change input.
 
     Intended to be an inverse to pandas.DataFrame.droplevel. pandas.DataFrame.set_index
     with `append=True` would work *except* that there is no `axis` kwarg to that
@@ -1171,7 +1173,7 @@ def addlevel(df: pd.DataFrame, names, values, *, axis='index'):
     what I would want, but it can seemingly arbitrarily change order of rows.
 
     Args:
-        df: DataFrame to add MultiIndex levels to
+        data: DataFrame/Series to add MultiIndex levels to
         names: `str`/sequence-of-`str` name(s) for the new levels
         values: values for the new levels. If `names` is a sequence, this should be of
             the same length.
@@ -1180,15 +1182,14 @@ def addlevel(df: pd.DataFrame, names, values, *, axis='index'):
     Returns: DataFrame with MultiIndex containing names/levels from input
     """
     # https://stackoverflow.com/questions/14744068
-
     if isinstance(names, str):
         names = [names]
         values = [values]
 
     for name, value in list(zip(names, values))[::-1]:
-        df = pd.concat([df], names=[name], keys=[value], axis=axis)
+        data = pd.concat([data], names=[name], keys=[value], axis=axis)
 
-    return df
+    return data
 
 
 # TODO replace w/ np.array_equal w/ equal_nan=True? maybe adding checks on index/cols

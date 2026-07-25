@@ -3,18 +3,19 @@ Functions for visualizing movies / cells / extracted traces, some intended to
 provide context specfically useful for certain types of olfaction experiments.
 """
 
-from os.path import join, exists
-import time
-import functools
-import sys
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
-from pprint import pformat, pprint
-# TODO replace w/ logging.warning?
-import warnings
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from colorsys import rgb_to_hsv
+import contextlib
+import functools
+from os.path import join, exists
+from pprint import pformat, pprint
 from random import Random
+import sys
+import time
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+# TODO replace w/ logging.warning?
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -95,6 +96,29 @@ def is_categorical(values: pd.Series) -> bool:
         categorical = True
 
     return categorical
+
+
+# so i can seed seaborn stuff that does not otherwise take a seed. mainly for the
+# jitter=<True/float> kwarg to sns.stripplot. causes -c/--check-outputs-unchanged checks
+# to fail w/o a seed
+#
+# https://stackoverflow.com/questions/49555991/can-i-create-a-local-numpy-random-seed
+@contextlib.contextmanager
+def temp_seed(seed):
+    state = np.random.get_state()
+    np.random.seed(seed)
+    try:
+        yield
+    finally:
+        np.random.set_state(state)
+
+
+def stripplot(*args, seed: int = 1, **kwargs) -> Axes:
+    """Wraps `sns.stripplot` to add `seed=` kwarg for fixing random `jitter=`.
+    """
+    import seaborn as sns
+    with temp_seed(seed):
+        return sns.stripplot(*args, **kwargs)
 
 
 # TODO type specifically for 0/1 and 'index'[+'rows'?]/'columns' instead of current

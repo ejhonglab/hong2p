@@ -527,8 +527,7 @@ def is_odor_var(var_name: Optional[str]) -> bool:
 
 # TODO use more places
 # TODO test
-# TODO add flag to assert it's the only one? or warn if it's not (by default?)?
-def first_odor_level(index: pd.Index) -> str:
+def first_odor_level(index: pd.Index, *, allow_multiple: bool = True) -> str:
     """Returns first odor component level in index, whether 'odor' / 'odor1'.
 
     Raises ValueError if no odor levels in index.
@@ -537,14 +536,23 @@ def first_odor_level(index: pd.Index) -> str:
     multiple odor levels with the same name.
     """
     odor_levels = []
-    for x in index.names:
-        assert x not in odor_levels, 'duplicate odor levels'
+    names = index.names
+    for x in names:
+        assert x not in odor_levels, (f'odor level {x} appears multiple times in index '
+            f'{names=}'
+        )
         if is_odor_var(x):
             odor_levels.append(x)
 
     if len(odor_levels) == 0:
-        raise ValueError(f'none of {index.names} had is_odor_var(n)=True. odor levels '
+        raise ValueError(f'none of index {names=} had is_odor_var(n)=True. odor levels '
             'should be named {component_level_prefix} or {component_level_prefix}<n>.'
+        )
+
+    # TODO set allow_multiple=None by default, and warn if not explicitly True/False?
+    if not allow_multiple and len(odor_levels) > 1:
+        raise ValueError(f'index {names} had multiple with `is_odor_var(x)=True`, and '
+            'allow_multiple=False'
         )
 
     if component_level_prefix in odor_levels:
