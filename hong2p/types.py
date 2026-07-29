@@ -60,7 +60,9 @@ DataFrameOrSeries = Union[pd.DataFrame, pd.Series]
 # / better check for both?)? maybe in another type?
 # TODO i once was wrapper the args to Union with Type[...]. did that serve a purpose?
 DataFrameOrDataArray = Union[pd.DataFrame, xr.DataArray]
+# TODO use Arraylike instead of any of this?
 NumpyOrXArray = Union[np.ndarray, xr.DataArray]
+ArrayLike = npt.ArrayLike
 
 # TODO this Literal behaving as expected?
 # TODO pandas have some type for this already? mainly want to use this for axis= kwarg

@@ -350,8 +350,12 @@ def format_file_size(path: Pathlike, **kwargs) -> str:
 
 # TODO add verbose=True flag (less info than current interal flag has, which could be a
 # behind a debug=True flag)
+# TODO maintain list of paths with links written to, and (by default?) check we aren't
+# overwriting any already made this run (like my savefig wrapper does. should even share
+# set of paths with that, and other things wrapped by produces_output)
 def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
-    checks: bool = True, replace: bool = False) -> None:
+    checks: bool = True, replace: bool = False, verbose: bool = True,
+    _debug: bool = False) -> None:
     """Create symlink link pointing to target, doing nothing if link exists.
     """
     # TODO err if link exists and was created *in this same run* (indicating trying to
@@ -366,14 +370,50 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
 
     # TODO delete (/expose) (or put this behind debug and have verbose just print the
     # link being created)
-    verbose = False
-    if verbose:
+    _debug = False
+    if _debug:
         print('input:')
         print(f'target={target}')
         print(f'link={link}')
         print(f'{target.is_dir()=}')
         print(f'{link.is_dir()=}')
     #
+    if verbose:
+        target_to_print = target
+        link_to_print = link
+
+        # TODO TODO factor below into some general path shortening (+printing?) fn?
+
+        # TODO maybe want to resolve before doing this? or want to print either relative
+        # to Path.cwd() if cwd contained in either?
+        shared_parts = []
+        for p1, p2 in zip(link.parts, target.parts):
+            if p1 != p2:
+                break
+            shared_parts.append(p1)
+
+        print_target_relative_to = None
+        print_link_relative_to = None
+        if len(shared_parts) > 0:
+            print_target_relative_to = Path(*shared_parts)
+            print_link_relative_to = print_target_relative_to
+        else:
+            # TODO need to resolve target / link for these to always work?
+            cwd = Path.cwd()
+            if cwd in target.parents:
+                print_target_relative_to = cwd
+
+            if cwd in link.parents:
+                print_link_relative_to = cwd
+
+        if print_target_relative_to is not None:
+            target_to_print = target.relative_to(print_target_relative_to)
+
+        if print_link_relative_to is not None:
+            link_to_print = link.relative_to(print_link_relative_to)
+
+        print(f'linking\n{link_to_print} ->\n{target_to_print}')
+
     if relative:
         if link.is_dir() and not link.is_symlink():
             raise IOError(f'{link=} already existed (and was a directory). manually '
@@ -382,7 +422,7 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
 
         link_dir = link.parent
         # TODO delete
-        if verbose:
+        if _debug:
             print(f'{link_dir=}')
             print(f'{os.path.relpath(target, link_dir)=}')
         #
@@ -396,7 +436,6 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
         # Because relative paths are resolved wrt current working directory, not wrt
         # directory of target (or link) (same w/ os.path.abspath)
         assert target.is_absolute()
-
         # TODO do i even want to do this? isn't it just modifying relative components
         # inside of an absolute path OR paths containing symlinks at this point? i don't
         # think i have the former and i don't know if i would want symlinks resolved...
@@ -407,7 +446,7 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
         target = target.resolve()
 
     # TODO delete
-    if verbose:
+    if _debug:
         print('final:')
         print(f'target={target}')
         print(f'link={link}')
@@ -425,14 +464,13 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
             f'target: {target}\n{resolved_link} != {resolved_target}'
         )
 
-    # TODO delete?
-    # TODO maybe this should just be the default? why not? maybe warn if replacing?
-    #replace = True
 
     # NOTE: link.exists() will return False for broken symlinks, but link.is_symlink()
     # will return True.
     if link.is_symlink():
         if replace or not link.exists():
+            if verbose:
+                print('replaced existing link')
             link.unlink()
         else:
             if checks:
@@ -452,7 +490,7 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
     #
 
     # TODO delete
-    if verbose:
+    if _debug:
         print()
     #
 

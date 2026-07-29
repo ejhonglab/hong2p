@@ -1,10 +1,135 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 import seaborn as sns
+from matplotlib.colors import Normalize, TwoSlopeNorm, CenteredNorm, SymLogNorm
 
 from hong2p import viz
+from hong2p.viz import get_mpl_norm
 from hong2p.olf import format_mix_from_strs
+
+
+
+def test_is_centered_norm():
+    kws = dict(vmin=-1, vmax=1)
+    not_centered = [
+        Normalize,
+        Normalize(**kws),
+    ]
+    centered = [
+        CenteredNorm,
+        # TODO seems i can initialize this even without specifying any paramters. docs:
+        # "Defaults to the largest absolute difference to vcenter for the values in the
+        # dataset." (what exactly determines the "dataset"? must be deferred, but is it
+        # always what i would want? all other norm classes similar in not requiring e.g.
+        # vmin/vmax [i didn't think so, but maybe?]?)
+        CenteredNorm(halfrange=0.5),
+        TwoSlopeNorm,
+        TwoSlopeNorm(vcenter=0, **kws),
+        SymLogNorm,
+        # TODO can i specify linthresh as keyword, despite being positional? yes, right?
+        # (otherwise couldn't set via norm_kws in get_mpl_norm)
+        SymLogNorm(linthresh=0.2, **kws),
+    ]
+    for x in not_centered:
+        assert not viz.is_centered_norm(x)
+
+    for x in centered:
+        assert viz.is_centered_norm(x)
+
+
+def test_get_mpl_norm():
+    df = pd.DataFrame(data=[[1,2],[-1,0]])
+
+    n1 = get_mpl_norm(**dict(norm=Normalize, vmin=-1, vmax=1))
+    expect_success = [
+        dict(norm=Normalize, vmin=-1, vmax=1),
+        dict(norm=Normalize, vmin=-1, vmax=1),
+        dict(norm=Normalize, data=df),
+        dict(norm=Normalize, data=df, vmin=-1),
+        dict(norm=Normalize, data=df, vmax=2),
+        dict(norm=Normalize, data=df, vmin=-1),
+        dict(norm=TwoSlopeNorm, data=df),
+        dict(norm='two-slope', data=df),
+        dict(norm=TwoSlopeNorm, vmin=-1, vmax=1),
+        dict(norm=SymLogNorm, vmin=-1, vmax=1, linthresh=0.05),
+    ]
+    for kws in expect_success:
+        print(f'{kws=}')
+        get_mpl_norm(**kws)
+
+    expect_assertion_err = [
+        # TODO also test a fn wrapped with add_norm_options, to check it fails with n1
+        # if vmin/vmax also passed
+        #
+        # passing n1 (and instantiated Normalize subclass) is also against get_mpl_norm
+        # type hint
+        dict(norm=n1),
+        dict(norm=Normalize),
+        dict(norm=Normalize, vmin=-1),
+        dict(norm=Normalize, vmax=1),
+        dict(norm=Normalize, vmin=1, vmax=-1),
+        # this one will actually err becase not `vcenter < vmax`
+        dict(norm=CenteredNorm, vmin=-1, vmax=0),
+    ]
+    for kws in expect_assertion_err:
+        print(f'{kws=}')
+        with pytest.raises(AssertionError):
+            get_mpl_norm(**kws)
+
+    with pytest.warns(UserWarning) as record:
+        # TODO assert two warnings are emitted for this one? (and vmin of output
+        # slightly < 0)
+        # TODO TODO why no warnings emitted?
+        t1 = get_mpl_norm(**dict(norm=TwoSlopeNorm, vmin=0.1, vmax=1))
+        assert t1.vmin < 0
+        assert t1.vcenter == 0
+
+    assert len(record) == 2
+    # 'setting vmin=0 since {vmin=} > {vcenter=}'
+    w1 = record[0].message.args[0]
+    assert w1.startswith('setting vmin=0 since')
+    # 'setting vmin=({vcenter - epsion=}) (from {old_vmin}) to make vmin < {vcenter=}
+    # True'
+    w2 = record[1].message.args[0]
+    assert w2.startswith('setting vmin=(')
+
+    with pytest.warns(UserWarning) as record:
+        t2 = get_mpl_norm(**dict(norm=TwoSlopeNorm, vmin=0, vmax=1))
+        assert t2.vmin < 0
+        assert t2.vcenter == 0
+
+    w1 = record[0].message.args[0]
+    assert w1.startswith('setting vmin=(')
+
+    halfrange1_list = [
+        dict(norm=CenteredNorm, vmin=0, vmax=1),
+        dict(norm=CenteredNorm, vmin=-1, vmax=0.1),
+    ]
+    print('loop over halfrange1_list:')
+    for kws in halfrange1_list:
+        print(f'{kws=}')
+        cn = get_mpl_norm(**kws)
+        assert cn.vmin == -1 and cn.vmax == 1
+        assert cn.halfrange == 1
+
+    cn1 = get_mpl_norm(**dict(norm='centered', data=df))
+    assert cn1.halfrange == 2
+    cn2 = get_mpl_norm(**dict(norm='centered', data=-df))
+    assert cn2.halfrange == 2
+
+    with pytest.warns(UserWarning) as record:
+        get_mpl_norm(**dict(norm=Normalize, vmin=1, vmax=1))
+
+    w1 = record[0].message.args[0]
+    assert w1 == 'vmin=1 == vmax=1. mistake?'
+
+    # TODO assert about clipped fraction warning for this one? (and no warning w/
+    # clip_warn=False?) (oh, that's actually only an option in fns wrapped with
+    # add_norm_options, which makes sense [would want to warn whether norm initialized
+    # or not]
+    #dict(norm=Normalize, data=df, vmin=0, vmax=1),
 
 
 def test_is_cmap_diverging():

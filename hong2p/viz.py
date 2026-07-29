@@ -24,7 +24,7 @@ import colorcet as cc
 import matplotlib as mpl
 from matplotlib.axes import Axes
 from matplotlib.colors import (Normalize, CenteredNorm, TwoSlopeNorm, to_rgb,
-    ListedColormap, LinearSegmentedColormap
+    ListedColormap, LinearSegmentedColormap, SymLogNorm
 )
 from matplotlib.lines import Line2D
 import matplotlib.patches as patches
@@ -57,7 +57,7 @@ from hong2p import roi as hong_roi
 from hong2p.olf import remove_consecutive_repeats
 # TODO use Color/CMap/Palette
 from hong2p.types import (DataFrameOrDataArray, ParamDict, CMap, Axis, Color, CMap,
-    Palette, Figsize
+    Palette, Figsize, ArrayLike
 )
 
 
@@ -69,7 +69,7 @@ DEFAULT_ANATOMICAL_CMAP = 'gray'
 # TODO use this other places that redefine, now that it's module-level
 dff_latex = r'$\Delta F/F$'
 
-_debug = False
+_DEBUG = False
 
 # TODO machinery to register combinations of level names -> how they should be formatted
 # into str labels for matshow (e.g. ('odor1','odor2') -> olf.format_mix_from_strs)?
@@ -98,6 +98,8 @@ def is_categorical(values: pd.Series) -> bool:
     return categorical
 
 
+# TODO unit test
+#
 # so i can seed seaborn stuff that does not otherwise take a seed. mainly for the
 # jitter=<True/float> kwarg to sns.stripplot. causes -c/--check-outputs-unchanged checks
 # to fail w/o a seed
@@ -1035,6 +1037,186 @@ def is_cmap_diverging(cmap: CMap) -> bool:
     return mid < 0.28 and (low > mid * 2 and high > mid * 2)
 
 
+def is_centered_norm(norm: Union[type, Normalize]) -> bool:
+    # hasattr checks seem to (currently) work for both the uninitialized classes
+    # (type(x) is type) as well as instances (isinstance(x, Normalize), for any
+    # parameters in each specific norm constructor
+    if hasattr(norm, 'vcenter'):
+        return True
+
+    # NOTE: SymLogNorm is assumed to be centered about 0, and does not have a vcenter
+    # parameter
+    if ((isinstance(norm, type) and issubclass(norm, SymLogNorm)) or
+        isinstance(norm, SymLogNorm)):
+
+        return True
+
+    return False
+
+
+def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
+    vmin: Optional[float] = None, vmax: Optional[float] = None,
+    vcenter: Optional[float] = None, _debug: bool = False, **norm_kws) -> Normalize:
+
+    # TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False? True?)
+    if norm == 'two-slope':
+        norm = TwoSlopeNorm
+    elif norm == 'centered':
+        norm = CenteredNorm
+    # TODO support LogNorm and SymLogNorm too (via strs)?
+    # TODO rename all str norm options to be spelled exactly as classes?
+
+    # TODO did any plot_fns actually take norm=<str> directly (and would have to be
+    # other than the two above)? old code seemed like it would pass str other than
+    # those explicitly listed in conditionals (in what is now get_mpl_norm) to norm=
+    # kwarg here. are there any that i might want to use that do take str norm?
+    assert not isinstance(norm, str), (f'want to support this str {norm=} (pass thru to'
+        ' plot_fn directly, like old code did [intentionally or not]?'
+    )
+
+    # TODO or issubclass(norm, Norm) instead?
+    assert isinstance(norm, type) and issubclass(norm, Normalize), (
+        'expected norm to be one of the str listed above, or an uninstantiated '
+        'subclass of mpl.colors.Normalize'
+    )
+
+    halfrange = norm_kws.pop('halfrange', None)
+    if halfrange is not None:
+        # TODO do any other Normalize subclasses take halfrange?
+        assert issubclass(norm, CenteredNorm), (f'only expected to receive {halfrange=}'
+            f' for CenteredNorm. {norm=} {hasattr(norm, "halfrange")=}'
+        )
+        assert vmin is None, f'{vmin=} should not be specified if halfrange is'
+        assert vmax is None, f'{vmax=} should not be specified if halfrange is'
+
+        # TODO also assert data is None (meh), or leave that one, and err (as doing now)
+        # for explicit vmin/vmax?
+    else:
+        if data is not None:
+            dmin = data.min().min()
+            dmax = data.max().max()
+            if vmin is None:
+                vmin = dmin
+            if vmax is None:
+                vmax = dmax
+
+        assert vmin is not None, ('vmin=<float> required for all Normalize objects '
+            "(except if norm=CenteredNorm/'centered' and halfrange passed). must either"
+            ' pass data or vmin'
+        )
+        assert vmax is not None, ('vmax=<float> required for all Normalize objects '
+            "(except if norm=CenteredNorm/'centered' and halfrange passed). must either"
+            ' pass data or vmax'
+        )
+
+        # TODO should i assert vmax > vmin? (equality?)
+        assert vmax >= vmin, f'{vmax=} < {vmin=}'
+
+        if vmax == vmin:
+            warnings.warn(f'{vmin=} == {vmax=}. mistake?')
+
+    centered_norm = is_centered_norm(norm)
+
+    # SymLogNorm is a "centered" norm, but it's implicitly around 0, and does not take
+    # vcenter
+    if not centered_norm or issubclass(norm, SymLogNorm):
+        assert vcenter is None, 'explicit vcenter not supported in this case'
+
+    kws = dict()
+    if centered_norm:
+        if vcenter is None:
+            vcenter = 0.0
+
+        if halfrange is None:
+            # prob want these checks even for SymLogNorm, where vcenter isn't passed,
+            # but is implied to be 0
+            assert vcenter < vmax, f'{vmax=} <= {vcenter=}'
+
+            # TODO delete? or delete code below center vmin to 0 - epsilon if it starts
+            # > vcenter?
+            # allowing equality for vmin, to be consistent w/ handling below
+            #assert vmin <= vcenter, f'{vmin=} > {vcenter=}'
+            #
+
+            # TODO still do this? (would have to comment the assertion above that
+            # vmin <= vcenter
+            if vmin > vcenter:
+                warnings.warn(f'setting vmin=0 since {vmin=} > {vcenter=}')
+                vmin = 0
+
+            # NOTE: if (vmin < vcenter < vmax) is not strictly True
+            # (e.g. if vmin == vcenter), initializing TwoSlopeNorm would raise:
+            # ValueError: vmin, vcenter, and vmax must be in ascending order
+            if vmin == vcenter:
+                # TODO still do this? modifying vmin=0 for convenience when calling
+                # (when vcenter would also be 0), rather than hardcoding vmin=-epsilon a
+                # bunch of places
+                #
+                # NOTE: this would break CenteredNorm stuff below, but might want to
+                # delete that option anyway...
+                #
+                # needs to actually be slightly less than 0, as vmin=vcenter triggers
+                # same ValueError about vmin, vcenter, vmax not being in ascending order
+                # TODO comment above is referring to two slope norm? is it the same
+                # error w/ all centered norms? what about symlog norm?
+                old_vmin = vmin
+                # TODO make even smaller? 1e-9?
+                epsilon = 1e-6
+                vmin = vcenter - epsilon
+                warnings.warn(f'setting vmin=({vcenter - epsilon=}) (from {old_vmin}) '
+                    f'to make vmin < {vcenter=} True'
+                )
+
+            if issubclass(norm, CenteredNorm):
+                # NOTE: this has clip=False by default (UNLIKE two slope, which doesn't
+                # support clip kwarg)
+                #
+                # regarding halfrange "Defaults to the largest absolute difference to
+                # vcenter for the values in the dataset."
+                # TODO how does it do that? via what imshow does w/ norm input?
+
+                # TODO delete?
+                if vcenter != 0:
+                    # TODO may need to take difference from vcenter first -> add back?
+                    print()
+                    print('finish supporting vcenter in CenteredNorm case?')
+                    print(f'{vmin=}')
+                    print(f'{vcenter=}')
+                    breakpoint()
+                #
+                assert vmin < 0, (
+                    'assumes vmin < 0 for CenteredNorm, with current calculation'
+                )
+                assert vmax > 0, (
+                    'assumes vmax > 0 for CenteredNorm, with current calculation'
+                )
+                halfrange = max(-vmin, vmax)
+                kws = dict(halfrange=halfrange)
+
+        if not issubclass(norm, SymLogNorm):
+            kws.update(dict(vcenter=vcenter))
+        # TODO compute some default for SymLogNorm's required linthresh (from a
+        # percentage of vmin/vmax), if not set via norm_kws?
+
+    # centered norm does not take vmin/vmax. just vcenter/halfrange/clip
+    if not issubclass(norm, CenteredNorm):
+        kws.update(dict(vmin=vmin, vmax=vmax))
+
+    if _debug:
+        print()
+        print(f'{norm=}')
+        print(f'{type(norm)=}')
+        print(f'{centered_norm=}')
+        print(f'{kws=}')
+        print(f'{norm_kws=}')
+
+    norm = norm(**kws, **norm_kws)
+    assert isinstance(norm, Normalize), (f'expected instantiated {type(norm)=} to have '
+        'isinstance(norm, Normalize)=True'
+    )
+    return norm
+
+
 def add_norm_options(plot_fn: Callable):
     # TODO edit doc. copied from back before this was a decorator
     # TODO prob rewrite doc + fn to use str 'centered' / 'two-slope' instead of (more
@@ -1060,143 +1242,82 @@ def add_norm_options(plot_fn: Callable):
     # TODO possible to inspect whether wrapped fn already has defaults for vmin/vmax,
     # and use those if so (for dff_imshow in al_analysis)?
     @functools.wraps(plot_fn)
-    def wrapped_plot_fn(data, *args, norm=None, vmin=None, vmax=None, vcenter=None,
-        **kwargs):
+    def wrapped_plot_fn(data: ArrayLike, *args, clip_warn: bool = False,
+        norm: Optional[Union[str, type, Normalize]] = None,
+        vmin: Optional[float] = None, vmax: Optional[float] = None,
+        vcenter: Optional[float] = None, norm_kws: Optional[ParamDict] = None,
+        _debug: bool = False, **kwargs) -> Any:
 
-        if norm == 'two-slope':
-            norm = TwoSlopeNorm
-
-        elif norm == 'centered':
-            norm = CenteredNorm
-
-        # NOTE: TwoSlopeNorm/CenteredNorm (as defined in conditionals above) are classes
-        # and not instances of them, and so the isinstance call will be False
-        if norm is None or type(norm) is str or isinstance(norm, Normalize):
-            assert vcenter is None, 'explicit vcenter not supported in this case'
-            return plot_fn(data, *args, norm=norm, vmin=vmin, vmax=vmax, **kwargs)
-
-        assert issubclass(norm, Normalize)
-
-        # using None should give us consistent default behavior w/ plt.get_cmap
-        cmap = kwargs.get('cmap', None)
-        if not is_cmap_diverging(cmap):
-            warnings.warn(f'using seemingly non-diverging cmap ({cmap.name}) with '
-                f'{norm=}, where center has special meaning. probably a mistake!'
+        to_init_norm = [vmin, vmax, vcenter, norm_kws]
+        if not all(x is None for x in to_init_norm):
+            assert not isinstance(norm, Normalize), (f'{norm=} was already an '
+                'instantiated Normalize subclass, but one of vmin/vmax/vcenter/norm_kws'
+                ' was not None (all used to initialize a Normalize class, and probably '
+                'useless with existing Normalize instance)'
             )
 
-        # TODO also support discrete colormap here (instantiating from just str cmap
-        # name)? would be to replace stuff like in al_analysis.plot_n_per_odor_and_glom
-
-        dmin = data.min().min()
-        dmax = data.max().max()
-
-        if vmin is None:
-            vmin = dmin
-            if vcenter is not None:
-                assert vmin > vcenter
-
-        if vmax is None:
-            vmax = dmax
-            if vcenter is not None:
-                assert vcenter < vmax
-
-        # TODO could also try to instead check if norm takes vcenter kwarg?
-        # are there actually any (builtin to matplotlib, at least) norms that take
-        # vcenter besides these two?
-        centered_norm = False
-        if issubclass(norm, TwoSlopeNorm) or issubclass(norm, CenteredNorm):
-            centered_norm = True
-
-        if centered_norm and vcenter is None:
-            vcenter = 0
-            if vmin > vcenter:
-                # TODO maybe warn in this case?
-                vmin = 0
-
-        # modifying vmin=0 for convenience when calling (when vcenter would also be 0),
-        # rather than hardcoding vmin=-epsilon a bunch of places
-        if vmin == vcenter:
-            # NOTE: this would break CenteredNorm stuff below, but might want to
-            # delete that option anyway...
-            #
-            # needs to actually be slightly less than 0, as vmin=vcenter triggers
-            # same ValueError about vmin, vcenter, vmax not being in ascending order
-            old_vmin = vmin
-            epsilon = 1e-6
-            vmin = vcenter - epsilon
-            warnings.warn(
-                f'setting {vmin=} (was {old_vmin}) to make vmin < {vcenter=} True'
+        if not (norm is None or isinstance(norm, Normalize)):
+            if norm_kws is None:
+                norm_kws = dict()
+            norm = get_mpl_norm(norm, data=data, vmin=vmin, vmax=vmax, vcenter=vcenter,
+                _debug=_debug, **norm_kws
             )
-            del old_vmin
+            assert isinstance(norm, Normalize)
 
-        assert vmin is not None and vmax is not None
+        if norm is not None and is_centered_norm(norm):
+            # using None should give us consistent default behavior w/ plt.get_cmap
+            cmap = kwargs.get('cmap', None)
+            if not is_cmap_diverging(cmap):
+                warnings.warn(f'using seemingly non-diverging cmap ({cmap.name}) with '
+                    f'{norm=}, where center has special meaning. probably a mistake!'
+                )
 
-        # could pop('vcenter', 0) from kwargs, as both Centered/TwoSlope take it, but i
-        # think i prob always want it at 0 (the default for these)
-        # TODO actually, probably do want to pop it (why?)
+            # TODO also support discrete colormap here (instantiating from just str cmap
+            # name)? would be to replace stuff like in
+            # al_analysis.plot_n_per_odor_and_glom (see also usage of ListedColormap in
+            # map_each_series_to_rgb code. may be simpler?)
 
-        if issubclass(norm, TwoSlopeNorm):
-            # NOTE: if (vmin < vcenter < vmax) is not strictly True
-            # (e.g. if vmin == vcenter), the following line would raise:
-            # ValueError: vmin, vcenter, and vmax must be in ascending order
-            norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
+        if isinstance(norm, Normalize):
+            # even a CenteredNorm object (which is not initialized with vmin/vmax),
+            # still has these properties
+            if vmin is None:
+                vmin = norm.vmin
+            if vmax is None:
+                vmax = norm.vmax
 
-            # TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False? True?)
-
-        # TODO delete? even care about dynamically instantiated CenteredNorm in plotting
-        # fns (maybe if i warn, but allow+process vmin/vmax not symmetric about 0?)?
-        elif issubclass(norm, CenteredNorm):
-            if vcenter != 0 or vmin < 0:
-                # TODO TODO may need to take difference from vcenter first -> add back?
-                print()
-                print('finish supporting vcenter in CenteredNorm case')
-                print(f'{vmin=}')
-                print(f'{vcenter=}')
-                import ipdb; ipdb.set_trace()
-
-            # TODO require/accept a halfrange kwarg? (mutex w/ vmin/vmax)
-            assert vmin < 0, 'halfrange calculation below assumes vmin > 0 (center=0)'
-
-            halfrange = max(-vmin, vmax)
-            # NOTE: this has clip=False by default (UNLIKE two slope, which doesn't
-            # support clip kwarg)
-            #
-            # regarding halfrange "Defaults to the largest absolute difference to
-            # vcenter for the values in the dataset."
-            # TODO how does it do that? via what imshow does w/ norm input?
-            norm = CenteredNorm(vcenter=vcenter, halfrange=halfrange)
-
-        else:
-            raise NotImplementedError
-
+        # TODO test i can actually silence w/ clip_warn
+        # TODO should default value of clip_warn depend on value of clip=<bool> to norm
+        # object (or should message?)?
         # TODO threshold fraction before warning?
-        # TODO TODO only warn here if we can't show clipping in plot
+        # TODO only warn here if we can't show clipping in plot
         # (like w/ default TwoSlopeNorm [right?]) (and/or not configured to)
-
-        # .<op>().<op>() should work w/ at least ndarrays and DataFrames
-        # (e.g. for min/max/sum ops)
-        vmin_n_clipped = (data < vmin).sum().sum()
-        vmin_clipped_frac = vmin_n_clipped / data.size
         clip_msgs = []
-        if vmin_clipped_frac > 0:
-            clip_msgs.append(
-                f'{vmin_clipped_frac:.4f} of data ({vmin_n_clipped} points) < {vmin=}'
-            )
+        if clip_warn and vmin is not None:
+            # .<op>().<op>() should work w/ at least ndarrays and DataFrames
+            # (e.g. for min/max/sum ops)
+            vmin_n_clipped = (data < vmin).sum().sum()
+            vmin_clipped_frac = vmin_n_clipped / data.size
+            if vmin_clipped_frac > 0:
+                clip_msgs.append(f'{vmin_clipped_frac:.4f} of data ({vmin_n_clipped} '
+                    f'points) < {vmin=}'
+                )
 
-        vmax_n_clipped = (data > vmax).sum().sum()
-        vmax_clipped_frac = vmax_n_clipped / data.size
-        if vmax_clipped_frac > 0:
-            clip_msgs.append(
-                f'{vmax_clipped_frac:.4f} of data ({vmax_n_clipped} points) > {vmax=}'
-            )
+        if clip_warn and vmax is not None:
+            vmax_n_clipped = (data > vmax).sum().sum()
+            vmax_clipped_frac = vmax_n_clipped / data.size
+            if vmax_clipped_frac > 0:
+                clip_msgs.append(f'{vmax_clipped_frac:.4f} of data ({vmax_n_clipped} '
+                    f'points) > {vmax=}'
+                )
 
         if len(clip_msgs) > 0:
+            assert clip_warn
             # TODO have this be an error by default, allowing decorator (/decorated
             # fn) to be run w/ warning instead, so that it can err if any of matshow
-            # data is over/under (but more OK/expected to have imshow data over/under)
-            # (just watch for plot_fn.__name__ == 'matshow' in output...)
-            warnings.warn(f"{plot_fn.__name__} (add_norm_options wrapper): "
-                f"{', '.join(clip_msgs)}"
+            # data is over/under (but more OK/expected to have imshow data
+            # over/under) (just watch for plot_fn.__name__ == 'matshow' in output?)
+            warnings.warn(f'{plot_fn.__name__} (add_norm_options wrapper): '
+                f"{', '.join(clip_msgs)}\nset clip_warn=False to silence"
             )
 
         # TODO delete
@@ -1209,7 +1330,10 @@ def add_norm_options(plot_fn: Callable):
 
         # not passing vmin/vmax, as matplotlib would raise ValueError since norm also
         # passed
-        return plot_fn(data, *args, norm=norm, **kwargs)
+        if norm is not None:
+            return plot_fn(data, *args, norm=norm, **kwargs)
+        else:
+            return plot_fn(data, *args, vmin=vmin, vmax=vmax, **kwargs)
 
     return wrapped_plot_fn
 
@@ -1936,7 +2060,7 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
     levels_from_labels: bool = True, allow_duplicate_labels: bool = False,
     xticks_also_on_bottom: bool = False, overlay_values: bool = False,
     overlay_fmt: str = '.2f', overlay_kws: Optional[ParamDict] = None,
-    rasterized: bool = False, _debug=_debug, **kwargs) -> Tuple[Figure, AxesImage]:
+    rasterized: bool = False, _debug=_DEBUG, **kwargs) -> Tuple[Figure, AxesImage]:
     # TODO doc [v|h]line_group_text
     # TODO check that levels_from_labels means *_level_fn get a single dict as input,
     # not an iterable of dicts (or update doc)
@@ -2348,7 +2472,7 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
 # TODO TODO want to keep title/cmap handling? replace cmap w/ **kwargs?
 # (only hong2p/scripts/extract_template.py and hong2p/roi.py currently seem to use
 # this. al_analysis dff_imshow could maybe be replaced by this (or image_grid?))
-# TODO type hint img (arraylike?)
+# TODO type hint img (ArrayLike?)
 @add_norm_options
 def imshow(img, ax: Optional[Axes] = None, title: Optional[str] = None,
     cmap: Optional[CMap] = DEFAULT_ANATOMICAL_CMAP, **kwargs):
@@ -2586,7 +2710,7 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
             # TODO at least also print existing ticks if i still wanna find a better
             # solution for this?
             # TODO delete? OK w/ ticks not set, as-is?
-            if _debug:
+            if _DEBUG:
                 print('add_colorbar: not setting cbar ticks for twoslopenorm')
             #
 
@@ -2843,7 +2967,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
         # TODO define default color dynamically based on cmap (like elsewhere)
         #'''
         # TODO TODO was ~one call not using black + a diff lw? maybe thru defaults?
-        if _debug and label_outline_color != 'w':
+        if _DEBUG and label_outline_color != 'w':
             print(f'{label_outline_linewidth=} {label_outline_color=}')
 
         #import ipdb; ipdb.set_trace()
@@ -3215,9 +3339,9 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
             inches_per_pixel * (w * ncols) + extra_width,
             inches_per_pixel * (h * nrows) + extra_height
         )
-        # TODO delete? /uncomment after resolving other things i'm using _debug for
-        # (+ removing `viz._debug = True` in my al_analysis.py)
-        #if _debug:
+        # TODO delete? /uncomment after resolving other things i'm using _DEBUG for
+        # (+ removing `viz._DEBUG = True` in my al_analysis.py)
+        #if _DEBUG:
         #    print(f'{inches_per_pixel=}')
         #    print(f'{(inches_per_pixel * (w * ncols))=}')
         #    print(f'{(inches_per_pixel * (h * nrows))=}')
