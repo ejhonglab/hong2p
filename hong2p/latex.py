@@ -14,6 +14,8 @@ from latex.jinja2 import make_env
 
 
 def get_latex_dir() -> Path:
+    """Returns path to `latex` directory (at repo root) w/ template.tex + .sty deps.
+    """
     # TODO change to have latex dir under module dir if PackageLoader doesn't work w/
     # latex dir where it currently is (at root of repo)
     return Path(__file__).resolve().parent.parent / 'latex'
@@ -33,7 +35,21 @@ def clean_generated_latex(latex_str: str) -> str:
 
 def compile_tex_to_pdf(latex_str, pdf_fname, failed_latex_msg: Optional[str] = None,
     verbose: bool = False) -> None:
+    """Compiles LaTeX source in `latex_str` to a PDF, saved to `pdf_fname`.
 
+    Files in `get_latex_dir()` (e.g. figureSeries.sty) are made available to the TeX
+    build.
+
+    Args:
+        latex_str: full LaTeX document source
+
+        pdf_fname: path to save compiled PDF to
+
+        failed_latex_msg: if not None, printed before re-raising any
+            `latex.LatexBuildError`
+
+        verbose: if True, prints path the PDF is being written to
+    """
     latex_dir = get_latex_dir()
     try:
         # TODO update comment. don't actually need template.tex right? since processed
@@ -60,14 +76,42 @@ def compile_tex_to_pdf(latex_str, pdf_fname, failed_latex_msg: Optional[str] = N
 
 
 # TODO maybe delete fig_dir (and compute here from fig paths in section_names2figs?)
-# TODO doc
 # TODO print_tex_on_err output to stderr?
 def make_pdf(pdf_path, fig_dir, section_names2figs, header: Optional[str] = None,
     template_path='template.tex', write_latex_like_pdf: bool = False,
     write_latex_for_testing: bool = False, test_tex_path='test.tex',
     only_print_latex: bool = False, print_tex_on_err: bool = True,
     verbose: bool = False) -> None:
+    """Renders figures into a PDF, one section of figures per `section_names2figs` key.
 
+    Args:
+        pdf_path: path to write output PDF to
+
+        fig_dir: directory figure paths are relative to (set as LaTeX
+            `\\graphicspath`)
+
+        section_names2figs: dict mapping section names to lists of figure paths (str or
+            Path, relative to `fig_dir`). Sections with no figures are skipped.
+
+        header: if passed, rendered (verbatim) as a header on each page
+
+        template_path: currently ignored. 'template.tex' (from hong2p `latex` dir) is
+            always used.
+
+        write_latex_like_pdf: if True, also writes rendered LaTeX next to `pdf_path`,
+            w/ '.tex' replacing '.pdf' suffix
+
+        write_latex_for_testing: if True, also writes rendered LaTeX to `test_tex_path`
+
+        test_tex_path: see `write_latex_for_testing`
+
+        only_print_latex: if True, prints rendered LaTeX and returns without compiling
+            the PDF
+
+        print_tex_on_err: if True, prints rendered LaTeX if compilation fails
+
+        verbose: if True, prints rendered LaTeX and paths of files being written
+    """
     fig_dir = Path(fig_dir).resolve()
 
     # TODO test this works w/ hong2p installed in a more proper way (like directly from

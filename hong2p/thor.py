@@ -100,9 +100,12 @@ def get_thorimage_xmlroot(thorimage_dir_or_xmlroot: PathOrXML) -> Element:
     return xmlroot(xml_path)
 
 
-# TODO doc
 def thorimage_xml(fn_taking_xml):
     """Converts an attribute lookup fn taking XML to allow ThorImage directory input.
+
+    Wrapped function takes either a ThorImage output directory or XML root (as returned
+    by `get_thorimage_xmlroot`) as its first argument. Any other arguments must be
+    passed as keyword arguments.
     """
 
     @functools.wraps(fn_taking_xml)
@@ -116,7 +119,7 @@ def thorimage_xml(fn_taking_xml):
 
 @thorimage_xml
 def get_thorimage_time(xml) -> datetime:
-    """Takes etree XML root object to recording start time.
+    """Takes ThorImage directory or etree XML root object to recording start time.
 
     XML object should be as returned by `get_thorimage_xmlroot`.
     """
@@ -168,6 +171,8 @@ def get_thorimage_n_frames(xml, without_flyback=False, num_volumes=False):
 
 @thorimage_xml
 def is_fast_z_enabled_xml(xml) -> bool:
+    """Returns whether recording used streaming acquisition with fast Z enabled.
+    """
     streaming = xml.find('Streaming')
     if streaming.attrib['enable'] != '1':
         # zFastEnable can still be 1 when we aren't doing fast Z (e.g. in some
@@ -178,6 +183,8 @@ def is_fast_z_enabled_xml(xml) -> bool:
 
 
 def _get_zstage(xml):
+    """Returns first 'ZStage' XML element (asserting only one has a 'name' attribute).
+    """
     # TODO assert there is only one ZStage object? is it always only primary (assumed
     # piezo) saved into xml, even if there is a stepper secondary z-axis too?
     zstage = xml.find('ZStage')
@@ -210,9 +217,7 @@ def get_thorimage_z_xml(xml) -> int:
 
 @thorimage_xml
 def get_thorimage_z_stream_frames(xml) -> int:
-    """Returns number of different Z depths measured in ThorImage recording.
-
-    Does NOT include any flyback frames there may be.
+    """Returns 'zStreamFrames' attribute of ThorImage XML 'ZStage' element.
     """
     zstage = _get_zstage(xml)
     n = int(zstage.attrib['zStreamFrames'])
@@ -224,6 +229,8 @@ def get_thorimage_z_stream_frames(xml) -> int:
 
 @thorimage_xml
 def get_thorimage_zstep_um(xml) -> float:
+    """Returns Z step size (in um) between planes.
+    """
     zstage = _get_zstage(xml)
     return float(zstage.attrib['stepSizeUM'])
 
@@ -243,6 +250,10 @@ def get_thorimage_zstep_um(xml) -> float:
 
 @thorimage_xml
 def get_thorimage_n_channels_xml(xml) -> int:
+    """Returns number of enabled PMT channels (only checking channels A and B).
+
+    Channels are counted as enabled even if their gain is zero.
+    """
     pmt = xml.find('PMT').attrib
 
     # It does seem that for channel B (perhaps also A but not C/D), you can have it
@@ -357,10 +368,11 @@ def get_thorimage_n_averaged_frames_xml(xml):
 
 # TODO replace w/ wrapped version + remove _xml suffix (and replace all calls similarly)
 def get_thorimage_fps_xml(xml, before_averaging=False):
-    # TODO TODO clarify in doc whether this is volumes-per-second or
-    # xy-planes-per-second in the volumetric case (latter, i believe, though
-    # maybe add kwarg to get former?)
+    # TODO maybe add kwarg to get volumes-per-second?
     """Takes XML root object to fps of recording.
+
+    In the volumetric case, this is XY frames (planes) per second, not volumes per
+    second, and flyback frames are counted as frames.
 
     xml: etree XML root object as returned by `get_thorimage_xmlroot`.
 
@@ -380,10 +392,10 @@ def get_thorimage_fps_xml(xml, before_averaging=False):
 
 
 def get_thorimage_fps(thorimage_directory, **kwargs):
-    # TODO TODO clarify in doc whether this is volumes-per-second or
-    # xy-planes-per-second in the volumetric case (latter, i believe, though
-    # maybe add kwarg to get former?)
     """Takes ThorImage dir to fps of recording.
+
+    In the volumetric case, this is XY frames (planes) per second, not volumes per
+    second (see `get_thorimage_fps_xml`).
 
     before_averaging (bool): (default=False) pass True to return the fps before
         any averaging.
@@ -397,6 +409,8 @@ def get_thorimage_fps(thorimage_directory, **kwargs):
 
 @thorimage_xml
 def get_thorimage_n_flyback_xml(xml):
+    """Returns number of flyback frames per volume (0 if fast Z not enabled).
+    """
     if is_fast_z_enabled_xml(xml):
         streaming = xml.find('Streaming')
         n_flyback_frames = int(streaming.attrib['flybackFrames'])
@@ -425,6 +439,8 @@ def get_thorimage_version(xml):
 
 @thorimage_xml
 def get_thorimage_scannertype(xml):
+    """Returns 'GalvoGalvo' or 'GalvoResonance'.
+    """
     lp = xml.find('LightPath').attrib
     # TODO can there ever be multiple LightPath tags (yes, but first should probably
     # still work. exclude elements with nothing or only cam enabled. share logic w/
@@ -453,6 +469,10 @@ def get_thorimage_scannertype(xml):
 # output, or it wouldn't allow recording...
 @thorimage_xml
 def get_thorimage_zstage_type(xml):
+    """Returns 'name' of ZStage element ('ThorStage' or 'ThorZPiezo').
+
+    NOTE: 'ThorStage' does not necessarily mean a piezo was not used.
+    """
     # TODO TODO fastZ enabled imply that a ThorStage is actually piezo?
     # NO! (at least it's possible to misconfigure downstairs system so that non-piezo
     # stage is selected for both primary/secondary, and it will still let you collect a
@@ -506,6 +526,8 @@ def get_thorimage_power_regtype_and_level(xml) -> Tuple[str, float]:
 
 @thorimage_xml
 def print_xml(xml: Element) -> None:
+    """Prints full contents of ThorImage XML.
+    """
     encoding = 'utf-8'
     print(etree.tostring(xml, encoding).decode(encoding))
 
@@ -513,6 +535,12 @@ def print_xml(xml: Element) -> None:
 # TODO unit test
 def _parse_driver_and_indicator(fly_str: str, debug: bool = False
     ) -> Tuple[Optional[str], Optional[str]]:
+    """Parses lowercase (driver, indicator) from description of fly genotype.
+
+    Either can be None if not found.
+
+    e.g. '5 day old pb-Gal4/+;+;UAS-G6f/+ from prat' -> ('pb', '6f')
+    """
 
     # TODO move a \b from indicator to uas regex? have at start of both? make
     # optional in one/both?
@@ -583,11 +611,15 @@ def parse_thorimage_notes(xml, *, debug: bool = False) -> dict:
     """Returns dict of metadata, with `<key>: <val>` lines and rest parsed separately.
 
     Args:
-        thorimage_dir_or_xml: path to ThorImage output directory or XML Element
-            containing parsed contents of the corresponding Experiment.xml file.
+        xml: path to ThorImage output directory or XML Element containing parsed
+            contents of the corresponding Experiment.xml file.
+
+        debug: if True, prints notes and intermediate parsing results.
 
     Lines not matching the `<key>: <val>` format will be appended together under the
-    'prose' key in the returned dict.
+    'prose' key in the returned dict. Power (e.g. '~12 mW <note>', with or without a
+    'power:' prefix) is parsed to 'power_mw' and 'power_note'. If there is a 'fly' key,
+    'n_days_old', 'driver', and 'indicator' are also parsed from its value.
 
     It is assumed there will be a single line with the YAML path from `olf`, and this
     line is not included in output (should be handled separately, via
@@ -925,6 +957,17 @@ def get_thorsync_h5(thorsync_dir: Pathlike):
 def read_movie(thorimage_dir: Pathlike, discard_flyback: bool = True,
     discard_channel_b: bool = False, checks: bool = True, _debug: bool = False):
     """Returns (t,[z,]y,x) indexed timeseries as a numpy array.
+
+    Args:
+        thorimage_dir: ThorImage output directory, containing .raw file
+
+        discard_flyback: if True, flyback frames are removed from volumetric data
+
+        discard_channel_b: if True, data from PMT channel B is discarded. currently
+            required if channel B was enabled with non-zero gain. if channel B gain was
+            zero, this is set True automatically.
+
+        checks: if True, asserts PMT channel A was used
     """
     thorimage_dir = Path(thorimage_dir)
     fps, xy, z, c, n_flyback, imaging_file, xml = load_thorimage_metadata(thorimage_dir,
@@ -1192,9 +1235,22 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         drop_gctr (bool): (default=True) Drop '/Global/GCtr' data (would be returned
             as column 'gctr') after using it to calculate 'time_s' column.
 
+        return_dataset_names_only (bool): (default=False) if True, returns list of
+            full names of all datasets in the HDF5 file, rather than loading any data.
+
+        skip_dict_rename (bool): (default=False) if True, `rename_dict` is not applied
+
+        skip_normalization (bool): (default=False) if True, names are not lowercased
+            nor have spaces replaced with underscores (see below)
+
         rename_dict (None or dict): (default=None) a dict of original->new name. If
             not passed, `hdf5_dataset_rename_dict` is used. Applied before any
             further operations on the column (dataset) names.
+
+        use_tqdm (bool): currently ignored
+
+        verbose (bool): (default=False) if True, prints original and normalized name of
+            each dataset, and why any are skipped
 
     These HDF5 files have the following hierarchical structure, where leaves of
     this tree are "Datasets" and their parents are "Groups" (via inspection of a
@@ -1422,13 +1478,26 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
 # TODO is this slow / are there faster alternatives?
 # (copied from my deprecated al_imaging/al_imaging/util.py)
 def threshold_crossings(signal, threshold=None, onsets=True, offsets=True):
-    # TODO clarify "ignored" in equality case in doc
     """
     Returns indices where signal goes from < threshold to > threshold as onsets,
     and where signal goes from > threshold to < threshold as offsets.
 
-    Cases where it at one index equals the threshold are ignored. Shouldn't
-    happen and may indicate electrical problems for our application.
+    Only crossings between adjacent samples are detected, and the index returned is that
+    of the last sample before the crossing. If a sample exactly equals the threshold, no
+    crossing will be detected into or out of that sample (so a crossing passing through
+    such a sample will be missed entirely). Shouldn't happen and may indicate electrical
+    problems for our application.
+
+    Args:
+        signal (pd.Series): signal to threshold
+
+        threshold (float): defaults to `ANALOG_0_TO_5V_THRESHOLD`
+
+        onsets (bool): whether to compute onsets. if False, None returned in their
+            place.
+
+        offsets (bool): whether to compute offsets. if False, None returned in their
+            place.
     """
     if threshold is None:
         threshold = ANALOG_0_TO_5V_THRESHOLD
@@ -1503,14 +1572,14 @@ def get_flyback_indices(n_frames, z, n_flyback, series=None):
 
 
 def get_col_onset_indices(df, possible_col_names, threshold=None):
-    """Returns arrays onsets, offsets with appropriate indices in `df`.
+    """Returns array of onset indices in `df`.
 
     Args:
         possible_col_names (str or tuple): can be either exact column name in
             `df` or an iterable of column names, where the first matching a column
             in `df` will be used.
 
-        **kwargs: passed through to `threshold_crossings`.
+        threshold (float): passed through to `threshold_crossings`.
 
     """
     col = _get_column(df, possible_col_names)
@@ -1530,7 +1599,11 @@ def get_col_onset_offset_indices(df: pd.DataFrame, possible_col_names,
             `df` or an iterable of column names, where the first matching a column
             in `df` will be used.
 
-        threshold (float): passed to `threshold_crossings` under the same name.
+        checks (bool): if True, checks there are the same number of onsets and offsets,
+            and that each onset precedes the corresponding offset.
+
+        threshold (float): passed to `threshold_crossings` under the same name. if
+            column is of bool dtype, `DIGITAL_THRESHOLD` is used instead.
 
     Raises OnsetOffsetNumMismatch if `checks=True` and the number of onsets and offsets
     differ.
@@ -1610,17 +1683,25 @@ def get_frame_times(df: pd.DataFrame, thorimage_dir, time_ref='mid',
 
         thorimage_dir: path to ThorImage directory to load metadata from
 
-        time_ref ('mid' | 'end')
+        time_ref ('mid' | 'end'): whether to use midpoint or end (offset) of each
+            "Frame Out" pulse as the time of that frame
 
-        min_block_duration_s (float): (default=1.0) minimum time (in seconds) between
+        min_block_duration_s (float): (default=3.0) minimum time (in seconds) between
             onset and offset of acquisition trigger. Shorter blocks that precede all
             acceptable-length blocks will simply be disregarding, with a warning.
             Shorter blocks following any acceptable-length blocks will currently trigger
             an error.
 
+        acquisition_trigger_names (None | iterable of str): possible names of column in
+            `df` with acquisition trigger. defaults to `('scope_pin',)`.
+
+        warn (bool): whether to warn if initial short blocks are dropped
+
     Returns a `np.array` that should be of length equal to the number of frames
     actually saved by ThorImage (i.e. `<output>.shape` should be equal to
-    `(movie.shape[0],)`).
+    `(movie.shape[0],)`). Times of frames that ThorImage averaged together are averaged.
+    For volumetric data, flyback frames are dropped and the times of the remaining
+    frames in each volume are averaged, so there is one time per volume.
     """
     # NOTE: initially I was planning on basing this off of one of the ThorLabs
     # supplied MATLAB scripts (see GenerateFrameTime.m referenced in ThorSync
@@ -2081,6 +2162,15 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
             call first odor frame. mainly to compensate for known lag between valve
             opening and odor arriving at the animal.
 
+        odor_timing_names (None | iterable of str): possible names of column in ThorSync
+            data with odor valve signal. defaults to `('olf_disp_pin',)`.
+
+        check_all_frames_assigned (bool): if True, asserts all frames are assigned to
+            exactly one odor presentation.
+
+        check_no_discontinuity (bool): if True, asserts no time between adjacent frames
+            in a presentation is >=1.5x the median for that presentation.
+
         **kwargs: passed through to `get_frame_times`.
 
     """
@@ -2269,7 +2359,11 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
 
 # TODO rename to indicate it's parsing from directory name?
 def old_fmt_thorimage_num(x):
-    # TODO provide example(s) of format in docstring
+    """Returns int from old-format ThorImage directory name (e.g. '_001' -> 1).
+
+    Returns NaN if input is null or not of this format (an underscore followed by 3
+    characters).
+    """
 
     if pd.isnull(x) or not (x[0] == '_' and len(x) == 4):
         return np.nan
@@ -2282,7 +2376,13 @@ def old_fmt_thorimage_num(x):
 
 # TODO rename to indicate it's parsing from directory name?
 def new_fmt_thorimage_num(x):
-    # TODO provide example(s) of format in docstring
+    """Returns int from new-format ThorImage directory name.
+
+    e.g. 'fn' -> 0, 'fn_0002' -> 2. NOTE: only the last character is parsed, so
+    'fn_0012' -> 2.
+
+    Raises ValueError if last character can not be parsed as an int.
+    """
 
     parts = x.split('_')
     if len(parts) == 1:
@@ -2339,7 +2439,7 @@ def is_thorimage_raw(f: Pathlike) -> bool:
 def is_thorimage_dir(d: Pathlike, verbose=False) -> bool:
     """True if dir has expected ThorImage outputs, False otherwise.
 
-    Looks for .raw not any TIFFs now.
+    Requires Experiment.xml and either a .raw file or 'ChanA_*.tif' TIFF output.
     """
     if not isdir(d):
         return False
@@ -2478,9 +2578,21 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
     ignore=None) -> List[PathPair]:
     """
     Takes lists (not necessarily same len) of dirs, and returns a list of
-    lists of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
+    tuples of matching (ThorImage, ThorSync) dirs (sorted by experiment time).
 
     Args:
+        thorimage_dirs: ThorImage output directories
+
+        thorsync_dirs: ThorSync output directories
+
+        use_mtime (bool): (default=False) only used if `use_ranking=False`. if True,
+            absolute value of time difference is used as pairing cost. otherwise,
+            ThorSync dirs with times before a ThorImage dir are heavily penalized.
+
+        use_ranking (bool): (default=True) if True, pairs dirs in order of their times
+            (requiring equal numbers of each). otherwise, pairs by minimizing total
+            time differences (via `scipy.optimize.linear_sum_assignment`).
+
         check_against_naming_conv (bool): (default=False) If True, check ordering
             from pairing is consistent with ordering derived from our naming
             conventions for Thor software output.
@@ -2502,6 +2614,9 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
             after pairing. Both the ThorImage and ThorSync directories of a pair will be
             checked for these substrings and if any match the pair is not returned. This
             is mainly intended to ignore known-bad data.
+
+        verbose (bool): (default=False) if True, prints times and costs considered in
+            pairing (only used if `use_ranking=False`)
 
     Raises ValueError if two dirs of one type match to the same one of the
     other, but just returns shorter list of pairs if some matches can not be
@@ -2754,7 +2869,11 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
 # TODO maybe allow calling a fn 'pair_thor_dirs' with either this interface of
 # that of current 'pair_thor_dirs', detecting type from args
 def pair_thor_subdirs(parent_dir, verbose=False, **kwargs) -> List[PathPair]:
-    """
+    """Returns list of paired (ThorImage, ThorSync) immediate child dirs of `parent_dir`
+
+    `verbose` currently only controls printing of the dirs found. `verbose=True` is
+    always passed to `pair_thor_dirs`. Other `kwargs` are passed to `pair_thor_dirs`.
+
     Raises ValueError/AssertionError when pair_thor_dirs does.
 
     Above, the former causes skipping of automatic pairing, whereas the latter
@@ -2801,7 +2920,7 @@ def tif2xml_root(filename):
 def fps_from_thor(df):
     """Takes a DataFrame and returns fps from ThorImage XML.
 
-    df must have a 'thorimage_dir' column (that can be either a relative or
+    df must have a 'thorimage_path' column (that can be either a relative or
     absolute path, as long as it's under raw_data_root), which is expected to
     only contain one unique value.
 

@@ -24,6 +24,10 @@ db_hostname = os.getenv('HONG_POSTGRES_HOST', 'atlas')
 # under this package, and then just get the global conn upon that module import
 conn = None
 def get_db_conn():
+    """Returns (cached) SQLAlchemy engine for postgres database on `db_hostname`.
+
+    Also reflects database tables into global `meta`, on first call.
+    """
     global conn
     global meta
     if conn is not None:
@@ -61,9 +65,21 @@ def __getattr__(name):
 # TODO TODO can to_sql with pg_upsert replace this? what extra features did this
 # provide?
 def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
-    from sqlalchemy import MetaData, Table
+    """Inserts rows of `new_df` into `table_name`, skipping rows w/ existing primary key
 
-    # TODO TODO document what index means / delete
+    Data is first written to a temporary table (`temp_<table_name>`), with columns cast
+    to dtypes matching the SQL table (where no values are null).
+
+    Args:
+        new_df: data to insert
+
+        table_name: name of existing table to insert into
+
+        index: if True, index levels of `new_df` are also inserted (as columns)
+
+        verbose: if True, prints SQL and DataFrame column types
+    """
+    from sqlalchemy import MetaData, Table
 
     # TODO TODO if this fails and time won't be saved on reinsertion, any rows
     # that have been inserted already should be deleted to avoid confusion
@@ -197,6 +213,8 @@ def to_sql_with_duplicates(new_df, table_name, index=False, verbose=False):
 
 
 def pg_upsert(table, conn, keys, data_iter):
+    """For `method=` kwarg of `DataFrame.to_sql`, to update rows w/ conflicting index.
+    """
     from sqlalchemy.dialects import postgresql
     # https://github.com/pandas-dev/pandas/issues/14553
     for row in data_iter:
@@ -249,7 +267,13 @@ def upload_code_info(code_versions):
 
 
 def upload_analysis_info(*args) -> None:
-    """
+    """Uploads code versions associated with an analysis run.
+
+    Args are either `(analysis_started_at, code_versions)` or `(recording_started_at,
+    analysis_started_at, code_versions)`. In the latter case, a row is also upserted
+    into the analysis_runs table. `code_versions` can be a list of dicts (see
+    `upload_code_info`), or a list of int IDs of existing code version rows.
+
     Requires that corresponding row in analysis_runs table already exists,
     if only two args are passed.
     """
@@ -335,6 +359,12 @@ def list_segmentations(tif_path):
 
 
 def merge_odors(df, *args):
+    """Merges odor info from odors table onto `df` 'odor1'/'odor2' IDs.
+
+    Odor info columns are suffixed with '1' or '2' for the corresponding odor. Index of
+    `df` is dropped. Optional positional arg is an odors DataFrame to use instead of the
+    database table.
+    """
     global conn
     if conn is None:
         conn = get_db_conn()
@@ -376,6 +406,11 @@ def merge_odors(df, *args):
 
 
 def merge_recordings(df, *args, verbose=True):
+    """Merges recordings table onto `df`, matching `df.recording_from` to `started_at`.
+
+    Also adds a 'thorimage_id' column. Index of `df` is dropped. Optional positional arg
+    is a recordings DataFrame to use instead of the database table.
+    """
     global conn
     if conn is None:
         conn = get_db_conn()
@@ -409,7 +444,8 @@ def merge_recordings(df, *args, verbose=True):
 
 
 def merge_gsheet(df, *args, use_cache=False):
-    """
+    """Merges metadata from MB team Google sheet with `df`.
+
     df must have a column named either 'recording_from' or 'started_at'
 
     gsheet rows get this information by finding the right ThorImage
@@ -454,7 +490,11 @@ def merge_gsheet(df, *args, use_cache=False):
 
 
 def accepted_blocks(analysis_run_at, verbose=False):
-    """
+    """Returns list of bools for whether each block was accepted, for an analysis run.
+
+    Blocks without explicit labels are filled with `analysis_runs.accepted` (or False,
+    if that is null). If those labels are inconsistent, null labels in database are
+    updated and `analysis_runs.accepted` is set NULL.
     """
     global conn
     if conn is None:
@@ -657,6 +697,10 @@ def print_all_accepted_blocks():
 # TODO maybe delete this. doesn't seem used anywhere... (honestly maybe all of
 # the db code...)
 def latest_analysis(verbose=False):
+    """Returns DataFrame w/ latest analysis run (w/ >=1 accepted block) per input TIFF.
+
+    TIFFs that have sub-recordings are excluded (in favor of the sub-recordings).
+    """
     global conn
     if conn is None:
         conn = get_db_conn()
@@ -749,7 +793,8 @@ def latest_analysis(verbose=False):
 
 
 def sql_timestamp_list(df):
-    """
+    """Returns SQL list str (e.g. for use w/ `IN`) of timestamps in `df.run_at`.
+
     df must have a column run_at, that is a pandas Timestamp type
     """
     timestamp_list = '({})'.format(', '.join(
@@ -762,6 +807,13 @@ def sql_timestamp_list(df):
 # roughly like in data_tree in gui, so that i can check it against the gui
 # TODO maybe delete. seems unused.
 def latest_analysis_presentations(analysis_run_df):
+    """Returns accepted (or unlabelled) presentations for analysis runs in input.
+
+    For sub-recordings, 'comparison' is offset by the sub-recording's first block.
+
+    Args:
+        analysis_run_df: as returned by `latest_analysis`, but with 'run_at' column
+    """
     global conn
     if conn is None:
         conn = get_db_conn()
@@ -805,6 +857,8 @@ def latest_analysis_presentations(analysis_run_df):
 
 # TODO maybe delete. seems unused.
 def latest_analysis_footprints(analysis_run_df):
+    """Returns cells table rows for segmentation runs in `analysis_run_df.run_at`.
+    """
     global conn
     if conn is None:
         conn = get_db_conn()
@@ -817,7 +871,8 @@ def latest_analysis_footprints(analysis_run_df):
 
 # TODO maybe delete. seems unused.
 def latest_analysis_traces(df):
-    """
+    """Returns responses table rows for presentations in input.
+
     Input DataFrame must have a presentation_id column matching that in the db.
     This way, presentations already filtered to be the latest just get their
     responses assigned too them.
@@ -845,7 +900,12 @@ response_stat_cols = [
     'avg_zchange_5s'
 ]
 def latest_response_stats(*args):
-    """
+    """Returns most recent response statistics for each presentation (unfinished).
+
+    Currently raises NotImplementedError for any recording in analysis_runs.
+
+    Optional positional arg is presentations DataFrame to use instead of database
+    table.
     """
     global conn
     if conn is None:
@@ -979,7 +1039,10 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     # memory error
     # TODO TODO try to add a flag to force/allow this fn to operate
     # independently of the postgres database
-    """
+    """Returns DataFrame with traces and metadata for each comparison in a recording.
+
+    Also writes the DataFrame to a pickle under `<analysis_output_root>/trace_pickles`.
+
     May raise errors if some part of the loading fails.
     """
     import tifffile

@@ -37,6 +37,8 @@ from hong2p.olf import load_input_yaml
 # in one but not the other, any concentrations that changed, any solvents that changed)
 
 def thor2tiff_cli():
+    """Converts ThorImage .raw to TIFF (see `util.thor2tiff`).
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument('thor_raw_dir',
         help='path containing .raw and metadata created by ThorImage'
@@ -68,6 +70,8 @@ def thor2tiff_cli():
 
 
 def showsync_cli():
+    """Plots data from a ThorSync recording (see `viz.showsync`).
+    """
     parser = argparse.ArgumentParser()
     # TODO maybe also accept fly / date / thorsync basename instead of this?
     # or also check for the existence of this downstream of `util.raw_data_root`?
@@ -111,6 +115,8 @@ def suite2p_params_cli():
 
 
 def print_dir_fn_cli_wrapper(fn):
+    """Returns CLI entry point that parses -v/--verbose flag and passes to `fn`.
+    """
 
     def cli_wrapper():
         parser = argparse.ArgumentParser()
@@ -142,11 +148,9 @@ def print_analysis_intermediates_root():
 
 
 def print_paired_thor_subdirs():
-    # TODO clarify in doc what "experiment time" is. is it when thorimage started?
-    # ended?
     """Prints pairs of (ThorImage, ThorSync) dirs that are direct descendents of input.
 
-    Printed in order of ThorImage experiment times.
+    Printed in order of ThorImage recording start times (see `thor.get_thorimage_time`).
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('dir', nargs='?', default=os.getcwd(),
@@ -171,7 +175,7 @@ def print_paired_thor_subdirs():
 def print_thorimage_subdir_notes():
     """Prints the note field of ThorImage subdirectories.
 
-    Printed in order of ThorImage experiment times.
+    Printed in order of ThorImage recording start times (see `thor.get_thorimage_time`).
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('dir', nargs='?', default=os.getcwd(),
@@ -194,13 +198,10 @@ def save_requirements() -> None:
     # TODO TODO output in conda format (.yaml?), or something else that actually allows
     # installing python at specified version (and ideally pip + setuptools too; the
     # "build" deps)
-    """Saves pip requirements to a file, backup up old files at same path.
+    """Saves pip requirements to a file, backing up old files at same path.
 
-    Processes git repo auth to https, and including setuptools / pip / Python versions
+    Processes git repo auth to https, and includes setuptools / pip / Python versions
     in comments at top.
-
-    Args:
-        path: if not passed, will save to `requirements.txt` in current directory
     """
     parser = argparse.ArgumentParser(
         description=save_requirements.__doc__.split('Args:')[0].strip()
@@ -703,6 +704,11 @@ def save_requirements() -> None:
 
 chemfig_pdfdir = Path('.') / 'chemfig_pdf'
 def yaml2tex_cli() -> None:
+    """Prints LaTeX table of odors in olfactometer YAML, and renders their structures.
+
+    Structures (for odors with a 'cid') are rendered via `chem.draw_molecule`, under
+    `./chemfig_pdf`. Solvent odors ('pfo', 'water', 'solvent') are excluded.
+    """
     from hong2p.chem import draw_molecule
 
     parser = argparse.ArgumentParser()
@@ -825,6 +831,8 @@ def yaml2tex_cli() -> None:
 
 
 def cid2tex_cli() -> None:
+    """Renders chemfig structure for a single PubChem CID (see `chem.draw_molecule`).
+    """
     from hong2p.chem import draw_molecule
 
     parser = argparse.ArgumentParser(description='Saves chemfig .tex file (and rendered'

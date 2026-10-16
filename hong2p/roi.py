@@ -32,6 +32,21 @@ from hong2p.types import Pathlike, NumpyOrXArray
 # modified.
 def crop_to_coord_bbox(matrix, coords, margin=0):
     """Returns matrix cropped to bbox of coords and bounds.
+
+    Args:
+        matrix: 2D array to crop
+
+        coords: array of shape (n, 2), with first column indexing first dimension of
+            `matrix`, and second column indexing the second dimension
+
+        margin: number of extra elements to include on each side (clipped to bounds of
+            `matrix`)
+
+    Returns:
+        cropped: cropped `matrix`
+
+        bounds: ((x_min, x_max), (y_min, y_max)), inclusive bounds of `cropped` in
+            `matrix`, where x is the first dimension
     """
     x_min, y_min = coords.min(axis=0)
     x_max, y_max = coords.max(axis=0)
@@ -103,13 +118,15 @@ def db_footprints2array(df, shape):
 # TODO type hint for roi_indices
 def numpy2xarray_rois(rois: np.ndarray, roi_indices: Optional[dict] = None
     ) -> xr.DataArray:
-    # TODO doc what keys of roi_indices should be (/ delete).
-    # currently only used by hong2p.suite2p.suite2p_stat2rois
     """Takes numpy array of shape ([z,]y,x,roi) to labelled xarray.
 
     Args:
-        roi_indices (None | dict): values must be iterables of length equal to number of
-            ROIs. 'roi_num' will be included as an additional ROI index regardless.
+        rois: array of shape ([z,]y,x,roi)
+
+        roi_indices (None | dict): keys are names of additional levels for the 'roi'
+            MultiIndex (e.g. 'roi_name', 'roi_z'), and must not include 'roi_num'.
+            values must be iterables of length equal to number of ROIs. 'roi_num'
+            (`range(n_rois)`) will be included as the first ROI index level regardless.
     """
     shape = rois.shape
     # TODO check that the fact that i swapped y and x now didn't break how i was using
@@ -146,10 +163,13 @@ def numpy2xarray_rois(rois: np.ndarray, roi_indices: Optional[dict] = None
     return xr.DataArray(rois, dims=dims, coords={'roi': roi_index})
 
 
-# TODO doc + test
+# TODO test
 # TODO complete? check against imagej internal code?
 def is_ijroi_name_default(roi: str) -> bool:
+    """Returns whether ROI name looks like an ImageJ default name (e.g. '0123-0456').
 
+    Default names are 2 or 3 integers separated by '-'.
+    """
     parts = roi.split('-')
     if len(parts) not in (2, 3):
         return False
@@ -163,8 +183,10 @@ def is_ijroi_name_default(roi: str) -> bool:
     return True
 
 
-# TODO doc + test
+# TODO test
 def is_ijroi_named(roi: str) -> bool:
+    """Returns whether ROI has been given a name (i.e. it's not an int or default name).
+    """
     try:
         int(roi)
         return False
@@ -184,7 +206,7 @@ def is_ijroi_plane_outline(roi: str) -> bool:
 
 # TODO drop support for '/' (and maybe also '|'?)
 ijroi_uncertainty_chars = ('?', '|', '/', '+')
-# TODO doc + test
+# TODO test
 def is_ijroi_certain(roi: str) -> bool:
     """Returns whether an ROI is named indicating it's ID is certain.
 
@@ -284,8 +306,14 @@ def select_certain_rois(df: pd.DataFrame) -> pd.DataFrame:
 # (ALSO include ijrois2masks in consideration for refactoring. this fn might not be
 # necessary)
 def ijroi2mask(roi, shape, z: Optional[int] = None):
-    """
-        z: z-index ROI was drawn on
+    """Returns boolean mask of `shape`, True inside polygon of `roi` points.
+
+    Args:
+        roi: array of (x, y) vertices of ROI polygon
+
+        shape: 2D shape of mask, or 3D (with Z first) if `z` is passed
+
+        z: z-index ROI was drawn on. if passed, mask is False in all other planes.
     """
     # This mask creation was taken from Yusuke N.'s answer here:
     # https://stackoverflow.com/questions/3654289
@@ -337,7 +365,6 @@ def ijroi2mask(roi, shape, z: Optional[int] = None):
 
 # TODO TODO add option to translate ijroi labels to pandas index values?
 # (and check trace extraction downstream preserves those!)
-# TODO TODO TODO document type / structure expecations of inputs/outputs
 # TODO TODO accept either the input or output of ijroi.read_roi[_zip] for ijrois?
 # read_roi takes file object and read_roi_zip takes filename
 # TODO can ijroi lib be modified to read path to tif things were drawn over (is that
@@ -365,6 +392,17 @@ def ijrois2masks(ijrois, shape, as_xarray: bool = False
     """
     Transforms ROIs loaded from my ijroi fork to an array full of boolean masks,
     of dimensions (shape + (n_rois,)).
+
+    Args:
+        ijrois: iterable of (name, roi) pairs, as returned by `ijroi.read_roi_zip`.
+            for 3D `shape`, ROIs should be loaded with `points_only=False`, so Z can
+            be read from them (otherwise Z is parsed from names).
+
+        shape: shape of image ROIs were drawn on, either (y, x) or (z, y, x)
+
+        as_xarray: if True, returns DataArray (see `numpy2xarray_rois`), with 'roi_name'
+            (and, for 3D `shape`, 'roi_z', 'ijroi_prefix', and 'ijroi_suffix') ROI
+            index levels.
     """
     import ijroi
 
@@ -460,13 +498,17 @@ def ijrois2masks(ijrois, shape, as_xarray: bool = False
 # TODO TODO change `on` default to something like `roi`
 def merge_rois(rois, on='ijroi_prefix', merge_fn=None, label_fn=None,
     check_no_overlap=False):
-    """
+    """Returns ROIs with those sharing (non-null) values of `on` merged.
+
     Args:
         rois (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
             'roi' should be indexed by a MultiIndex and one of the levels should have
             the name of the `on` argument. Currently expect the dtype to be 'bool'.
 
         on (str): name of other ROI metadata dimension to merge on
+
+        merge_fn (callable): passed to `<groupby>.map`, to combine ROIs in each group.
+            defaults to taking max across ROIs in each group.
 
         label_fn (callable): function mapping the values of the `on` column to labels
             for the ROIs. Only ROIs created via merging will be given these labels,
@@ -549,17 +591,14 @@ def merge_rois(rois, on='ijroi_prefix', merge_fn=None, label_fn=None,
 
 
 def merge_ijroi_masks(masks, **kwargs):
-    """
+    """Calls `merge_rois` with `on='ijroi_prefix'`.
+
     Args:
         masks (xarray.DataArray): must have at least dims 'x', 'y', and 'roi'.
-            'roi' should be indexed by a MultiIndex and one of the levels should have
-            the name of the `on` argument. Currently expect the dtype to be 'bool'.
+            'roi' should be indexed by a MultiIndex with an 'ijroi_prefix' level.
+            Currently expect the dtype to be 'bool'.
 
-        label_fn (callable): function mapping the values of the `on` column to labels
-            for the ROIs. Only ROIs created via merging will be given these labels,
-            while unmerged ROIs will recieve unique number labels. Defaults to a
-            function that takes strings, removes trailing/leading underscores, and
-            parses an int from what remains.
+        **kwargs: passed to `merge_rois`
     """
     # TODO probably assert bool
     # TODO assert ijroi_prefix in here / accept kwarg on (defaulting to same), and
@@ -594,9 +633,24 @@ def merge_single_plane_rois(rois, min_overlap_frac=0.3, n_dilations=1):
 # TODO change verbose default to False
 def rois2best_planes_only(rois: xr.DataArray, roi_quality: pd.Series,
     verbose: bool = True) -> xr.DataArray:
-    """
+    """Keeps only the ROI with highest `roi_quality`, for each 'roi_name'.
+
     Currently assumes input only has non-zero values in a single plane for a given
     unique combination of ROI identifier variables.
+
+    Args:
+        rois: must have 'roi_name' coordinate on 'roi' dimension
+
+        roi_quality: Series w/ one value per ROI (in same order as `rois`), with a
+            `range` index
+
+        verbose: if True, prints which ROIs are kept / dropped, for names with multiple
+            ROIs
+
+    Returns:
+        roi_indices: integer indices (into input `rois`) of ROIs kept
+
+        rois: subset of input, with 'roi' coordinate replaced by 'roi_name'
     """
     # TODO modify calling code to pass roi_quality in w/ compatible metadata to rois,
     # and try to replace these w/ assertions that metadata is compatible
@@ -690,6 +744,14 @@ def rois2best_planes_only(rois: xr.DataArray, roi_quality: pd.Series,
 ijroiset_default_basename = 'RoiSet.zip'
 
 def ijroi_filename(ijroiset_dir_or_fname: Pathlike, must_exist: bool = True) -> Path:
+    """Returns path to ImageJ RoiSet.zip, given it or a directory containing it.
+
+    Args:
+        ijroiset_dir_or_fname: RoiSet.zip path, or directory with a 'RoiSet.zip'
+
+        must_exist: if True and a directory is passed, raises IOError if it does not
+            contain 'RoiSet.zip'
+    """
 
     ijroiset_dir_or_fname = Path(ijroiset_dir_or_fname)
     if ijroiset_dir_or_fname.is_dir():
@@ -710,6 +772,8 @@ def ijroi_filename(ijroiset_dir_or_fname: Pathlike, must_exist: bool = True) -> 
 
 
 def has_ijrois(ijroiset_dir_or_fname: Pathlike) -> bool:
+    """Returns whether RoiSet.zip (or directory w/ one) exists.
+    """
     # NOTE: not actually checking it contains any
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname, must_exist=False)
     return ijroiset_fname.is_file()
@@ -733,7 +797,28 @@ def ijroi_mtime(ijroiset_dir_or_fname: Pathlike) -> float:
 def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     as_xarray: bool = True, drop_maximal_extent_rois: bool = True,
     indices: Optional[List[int]] = None, **kwargs) -> NumpyOrXArray:
+    """Loads ImageJ ROIs to boolean masks, of same shape as ThorImage movie frames.
 
+    Args:
+        ijroiset_dir_or_fname: RoiSet.zip path, or directory with one (see
+            `ijroi_filename`)
+
+        thorimage_dir: ThorImage output directory for movie ROIs were drawn on (used to
+            get shape of masks)
+
+        as_xarray: passed to `ijrois2masks`
+
+        drop_maximal_extent_rois: if True, drops ROIs with names ending in '+' (which
+            may contain signal from multiple glomeruli). currently requires
+            `as_xarray=True`.
+
+        indices: if passed, only ROIs at these (integer) indices in the RoiSet are
+            loaded
+
+        **kwargs: currently ignored
+
+    Returns masks of shape ([z,]y,x,roi) (see `ijrois2masks`).
+    """
     ijroiset_fname = ijroi_filename(ijroiset_dir_or_fname)
 
     # TODO format better + put behind verbose flag (/delete)
@@ -808,10 +893,15 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     #return merged
 
 
-# TODO test / document requirements for type / properties of contour. it's just a
-# numpy array of points, right? doesn't need start = end or anything, does it?
+# TODO test requirements for type / properties of contour
 def contour2mask(contour, shape):
     """Returns a boolean mask True inside contour and False outside.
+
+    Args:
+        contour: numpy array of contour points, as accepted by `cv2.drawContours`
+            (closed automatically, so first point does not need to be repeated at end)
+
+        shape: shape of mask to return
     """
     # TODO TODO TODO appropriate checking of contour input. i.e. any requirements on
     # first/last point / order (do some orders imply overlapping edge segments, and if
@@ -881,6 +971,7 @@ def extract_traces_bool_masks(movie, footprints, *, verbose: bool = False):
     Args:
         movie: should be of shape (T, [Z,] Y, X).
         footprints: should be of shape ([Z,] Y, X, #-ROIs)
+        verbose: if True, prints when starting / finishing extraction
     """
     # need to support either of these? probably not
     assert not np.isnan(movie).any()
@@ -937,12 +1028,18 @@ def extract_traces_bool_masks(movie, footprints, *, verbose: bool = False):
 # or checked to be normalized.
 def extract_traces(movie, footprints, *, _sum=False, verbose: bool = False):
     """
-    Averages the movie within each mask in footprints
-    to make a matrix of traces (n_frames x n_footprints).
+    Weights the movie by each mask in footprints, and averages across ALL pixels, to
+    make a matrix of traces (n_frames x n_footprints).
+
+    NOTE: unlike `extract_traces_bool_masks`, the mean is across all pixels in the
+    frame, not just those in the mask, so outputs will not match for boolean masks.
 
     Args:
         movie: should be of shape (T, [Z,] Y, X).
         footprints: should be of shape ([Z,] Y, X, #-ROIs)
+        _sum: if True, sums across pixels instead of averaging (matching suite2p
+            trace extraction, for footprints that are each normalized to sum to 1)
+        verbose: if True, prints extraction time
     """
     # need to support either of these? probably not
     assert not np.isnan(movie).any()
@@ -1024,13 +1121,32 @@ def extract_traces(movie, footprints, *, _sum=False, verbose: bool = False):
 
 # TODO what were these files for again? still want to use? delete?
 def autoroi_metadata_filename(ijroi_file):
+    """Returns path of hidden '.<name>.meta.p' file next to `ijroi_file`.
+    """
     path, fname = split(ijroi_file)
     return join(path, '.{}.meta.p'.format(fname))
 
 
 def template_match(scene, template, method_str='cv2.TM_CCOEFF', hist=False,
     debug=False):
+    """Returns image of template match values (higher is better), at each offset.
 
+    Both `scene` and `template` are converted to uint8 (via `util.baselined_normed_u8`)
+    before matching with `cv2.matchTemplate`. Output is negated for SQDIFF methods, so
+    that higher is always better.
+
+    Args:
+        scene: 2D image to search for template in
+
+        template: 2D template image
+
+        method_str: str that evaluates to a `cv2.TM_*` matching method
+
+        hist: if True, plots histogram of match values
+
+        debug: if True, prints / plots information about scaling of inputs (and sets
+            `hist=True`)
+    """
     import cv2
 
     vscaled_scene = util.baselined_normed_u8(scene)
@@ -1173,24 +1289,82 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
     radii_px_ps=None, scale_order=None, subpixel=False, _src_img_shape=None,
     _show_match_images=False, _show_packing_constraints=False, _show_fit=True,
     _initial_single_threshold=None):
-    """
+    """Greedily places circular ROIs at best template matches, avoiding overlap.
+
+    Matches are considered in order of decreasing match value (see
+    `multiscale_strategy` for the order across scales), and each is accepted unless it
+    is too close to an already accepted ROI.
+
     Args:
-    match_images (np.ndarray / iterable of same): 2-dimensional array of match
-    value higher means better match of that point to template.
+        match_images (np.ndarray / iterable of same): 2-dimensional array of match
+            value higher means better match of that point to template.
 
-        Shape is determined by the number of possible offsets of the template in
-        the original image, so it is smaller than the original image in each
-        dimension. As an example, for a 3x3 image and a 2x2 template, the
-        template can occupy 4 possible positions in the 3x3 image, and the match
-        image will be 2x2.
+            Shape is determined by the number of possible offsets of the template in
+            the original image, so it is smaller than the original image in each
+            dimension. As an example, for a 3x3 image and a 2x2 template, the
+            template can occupy 4 possible positions in the 3x3 image, and the match
+            image will be 2x2.
 
-    ds (int / iterable of same): integer width (and height) of square template.
-        related to radius, but differ by margin set outside.
+        ds (int / iterable of same): integer width (and height) of square template.
+            related to radius, but differ by margin set outside.
 
-    radii_px (int / iterable of same): radius of cell in pixels.
+        radii_px (int / iterable of same): radius of cell in pixels. if iterable of
+            length >1, multiscale matching is used, with one element of each of
+            `match_images`, `ds`, and `radii_px` per scale.
 
-    exclusion_radius_frac (float): approximately 1 - the fraction of two ROI
-        radii that are allowed to overlap.
+        thresholds (float / iterable of same): only match values above these are
+            considered (one per scale, or the same for all). pass exactly one of this
+            or `ns`.
+
+        ns (int / iterable of same): if int, total number of ROIs to find (across
+            scales). if iterable, number of ROIs to find at each scale. pass exactly
+            one of this or `thresholds`.
+
+        exclusion_radius_frac (float): approximately 1 - the fraction of two ROI
+            radii that are allowed to overlap.
+
+        min_dist2neighbor_px (float): see `min_neighbors`
+
+        min_neighbors (int): ROIs without at least this many other ROI centers within
+            `min_dist2neighbor_px` are dropped (after packing). falsey values disable
+            this filtering.
+
+        exclusion_mask (np.ndarray): if passed, boolean mask (of shape of original
+            image) where ROI centers can be placed (only True pixels allowed)
+
+        draw_on (np.ndarray): if passed, 2D image (of shape of original image) to draw
+            accepted matches on (only shown if `debug=True` and `_show_fit=True`)
+
+        debug (bool): whether to print and plot debugging information
+
+        draw_bboxes (bool): whether to draw template bounding boxes on `draw_on`
+
+        draw_circles (bool): whether to draw ROI circles on `draw_on`
+
+        draw_nums (bool): whether to draw ROI numbers on `draw_on`
+
+        multiscale_strategy (str): how to order matches across scales.
+            'one_order': all matches sorted together by (weighted) match value.
+            'fixed_scale_order': all matches at each scale before the next, in order of
+                `scale_order`.
+            'random': next scale randomly sampled, with probabilities `radii_px_ps`.
+
+        match_value_weights (iterable of float): for 'one_order' strategy, factors to
+            multiply match values of each scale by, before sorting
+
+        radii_px_ps (iterable of float): for 'random' strategy, probability of sampling
+            each scale (must sum to 1)
+
+        scale_order (iterable of int): for 'fixed_scale_order' strategy, order of scale
+            indices
+
+        subpixel (bool): not implemented
+
+    Returns:
+        centers: array of shape (n_rois, 2), with centers of ROIs (in coordinates of
+            original image)
+
+        radii: array of shape (n_rois,), with radius (in pixels) of each ROI
     """
     # TODO move drawing fns for debug to mpl and remove this if not gonna
     # use for constraints here
@@ -1809,6 +1983,27 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
 
 def scale_template(template_data, um_per_pixel_xy, target_cell_diam_um=None,
     target_cell_diam_px=None, target_template_d=None, debug=False):
+    """Returns template resized so cells in it have diameter `target_cell_diam_um`.
+
+    Args:
+        template_data: dict with 'template' (square array) and 'margin' (int pixels
+            between cell and template edge) keys, as from `load_template_data`
+
+        um_per_pixel_xy: pixel size of image template will be matched against
+
+        target_cell_diam_um: desired cell diameter (in um)
+
+        target_cell_diam_px: currently ignored (must pass `target_cell_diam_um`)
+
+        target_template_d: currently ignored (must pass `target_cell_diam_um`)
+
+        debug: if True, prints intermediate values
+
+    Returns:
+        scaled_template: resized template (copy of input if size unchanged)
+
+        scaled_template_cell_diam_px: diameter of cell in scaled template (in pixels)
+    """
     import cv2
 
     if target_cell_diam_um is None:
@@ -1857,6 +2052,16 @@ def scale_template(template_data, um_per_pixel_xy, target_cell_diam_um=None,
 
 
 def _get_template_roi_radius_px(template_data, if_template_d=None, _round=True):
+    """Returns radius (in pixels) of cell in template, if it were scaled to width d.
+
+    Args:
+        template_data: dict with 'template' and 'margin' keys (see `scale_template`)
+
+        if_template_d: width of (scaled) template. defaults to width of template in
+            `template_data`.
+
+        _round: if True, rounds output to int
+    """
     template = template_data['template']
     margin = template_data['margin']
     d = template.shape[0]
@@ -1889,6 +2094,10 @@ def get_circle_ijroi_input(center_px, radius_px):
 
 # TODO move to viz? or maybe move all roi stuff to a new module?
 def plot_circles(draw_on, centers, radii):
+    """Shows histogram-equalized `draw_on` image with circles drawn on it.
+
+    Returns fig, ax.
+    """
     import cv2
     draw_on = cv2.normalize(draw_on, None, alpha=0, beta=255,
         norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1
@@ -1924,15 +2133,24 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
     multiscale_strategy='one_order', template_d2match_value_scale_fn=None,
     allow_duplicate_px_scales=False, _show_scaled_templates=False,
     verbose=False, **kwargs):
-    """
+    """Fits circular ROIs to average image, by template matching + greedy packing.
+
     Even if movie or avg is passed in, tif is used to find metadata and
     determine where to save ImageJ ROIs.
 
     _um_per_pixel_xy only used for testing. Normally, XML is found from `tif`,
     and that is loaded to get this value.
 
-    Returns centers_px, radii_px
-    (both w/ coordinates and conventions ijrois uses)
+    Thresholds are adjusted (up to `max_threshold_tries` times) until the number of ROIs
+    found is within [`min_n_rois`, `max_n_rois`] (or the per-scale equivalents, if
+    passed). Remaining `kwargs` are passed to `greedy_roi_packing`.
+
+    NOTE: ImageJ ROI writing is currently disabled, even if `write_ijrois=True`.
+
+    Returns centers_px, radii_px, thresholds, ns_found
+    (centers / radii both w/ coordinates and conventions ijrois uses, and `ns_found` the
+    number of ROIs found at each scale). If not overwriting existing ROI file, returns
+    (None, None, None, None).
     """
     import tifffile
     import cv2
@@ -2386,11 +2604,18 @@ def fit_circle_rois(tif, template_data=None, avg=None, movie=None,
 
 
 def template_data_file():
+    """Returns path to pickled template data (under `util.analysis_output_root()`).
+    """
     template_cache = 'template.p'
     return join(util.analysis_output_root(), template_cache)
 
 
 def load_template_data(err_if_missing=False):
+    """Loads template data dict from `template_data_file()`.
+
+    Returns None if file does not exist, unless `err_if_missing=True`, in which case
+    IOError is raised.
+    """
     template_cache = template_data_file()
     if exists(template_cache):
         with open(template_cache, 'rb') as f:
@@ -2406,6 +2631,8 @@ def load_template_data(err_if_missing=False):
 # don't like this convexHull based approach though...
 # (because roi may be intentionally not a convex hull)
 def ijroi2cv_contour(roi):
+    """Returns OpenCV contour for convex hull of ROI points.
+    """
     import cv2
 
     ## cnts = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -2423,6 +2650,8 @@ def ijroi2cv_contour(roi):
 
 
 def roi_center(roi):
+    """Returns int (x, y) centroid of convex hull of ROI points.
+    """
     import cv2
     cnt = ijroi2cv_contour(roi)
     M = cv2.moments(cnt)
@@ -2432,6 +2661,8 @@ def roi_center(roi):
 
 
 def roi_centers(rois):
+    """Returns array of `roi_center` of each ROI, of shape (n_rois, 2).
+    """
     centers = []
     for roi in rois:
         center = roi_center(roi)
@@ -2442,6 +2673,17 @@ def roi_centers(rois):
 
 
 def point_idx(xys_to_check, pt_xy, swap_xy=False):
+    """Returns index of row in `xys_to_check` (n_points, >=2) exactly equal to `pt_xy`
+
+    Args:
+        xys_to_check: array w/ x in first column and y in second
+
+        pt_xy: (x, y) point to find, or (y, x) if `swap_xy=True`
+
+        swap_xy: see `pt_xy`
+
+    Raises AssertionError if there is not exactly one matching row.
+    """
     if not swap_xy:
         x, y = pt_xy
     else:
@@ -2461,27 +2703,78 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=None,
     connect_centers=True, pairwise_plots=True, pairwise_same_style=False,
     roi_numbers=False, jitter=True, progress=None, squeeze=True,
     verbose=False, debug_points=None):
-    """
+    """Matches ROIs across consecutive timepoints, by minimizing total cost.
+
     Args:
-    left_centers_or_seq (list): (length n_timepoints) list of (n_rois x 2)
-        arrays of ROI center coordinates.
+        left_centers_or_seq (list): (length n_timepoints) list of (n_rois x 2)
+            arrays of ROI center coordinates. elements can also be lists of ROIs (each
+            an array of points), in which case `roi_centers` is used to get centers.
+            alternatively, a single such array, with `right_centers` the next.
+
+        *right_centers: if passed, a single array of centers to match to
+            `left_centers_or_seq`
+
+        cost_fn (callable): takes two centers to cost of matching them. defaults to
+            `util.euclidean_dist`.
+
+        max_cost (float): required. matches with cost >= this are treated as
+            unmatched.
+
+        show (bool): whether to plot centers (and matches)
+
+        write_plots (bool): if `show=True`, whether to save plots (to current directory)
+
+        left_name (str): for labelling plots, when only matching two sets of centers
+
+        right_name (str): see `left_name`
+
+        name_prefix (str): for labelling plots, when matching >2 sets of centers
+
+        draw_on (np.ndarray): image to plot centers on
+
+        title (str): plot title
+
+        colors: colors for each set of centers in plots
+
+        connect_centers (bool): whether to draw lines between matched centers
+
+        pairwise_plots (bool): whether to also make a plot for each pair of
+            consecutive timepoints (only if >2 timepoints)
+
+        pairwise_same_style (bool): whether pairwise plots use same colors / markers
+            as main plot
+
+        roi_numbers (bool): whether to label each center w/ its index in plots
+
+        jitter (bool): whether to add small random offsets to centers in plots
+
+        progress (bool): whether to show progress bar. defaults to True if >=10
+            timepoints.
+
+        squeeze (bool): if True and only two timepoints, outputs are returned for that
+            single pair rather than as length-1 lists
+
+        verbose (bool): whether to print number unmatched for exceeding max_cost
+
+        debug_points (dict): timepoint index -> list of dicts describing points to
+            print debugging info for (see output of `roi_jumps`)
 
     Returns:
-    lr_matches: list of arrays matching ROIs in one timepoint to ROIs in the
-        next.
+        lr_matches: list of arrays matching ROIs in one timepoint to ROIs in the
+            next.
 
-    left_unmatched: list of arrays with ROI labels at time t,
-        without a match at time (t + 1)
+        left_unmatched: list of arrays with ROI labels at time t,
+            without a match at time (t + 1)
 
-    right_unmatched: same as left_unmatched, but for (t + 1) with respect to t.
+        right_unmatched: same as left_unmatched, but for (t + 1) with respect to t.
 
-    total_costs: array of sums of costs from matching.
+        total_costs: array of sums of costs from matching (with unmatched ROIs counted
+            as `max_cost`, and normalized by min number of ROIs in the pair).
 
-    fig: matplotlib figure handle to the figure with all ROIs on it,
-        for modification downstream.
+        fig: matplotlib figure handle to the figure with all ROIs on it,
+            for modification downstream. None if `show=False`.
     """
-    # TODO doc support for ROI inputs / rewrite to expect them
-    # (to use jaccard, etc)
+    # TODO rewrite to expect ROI inputs (to use jaccard, etc)
 
     from scipy.optimize import linear_sum_assignment
     import seaborn as sns
@@ -2981,6 +3274,21 @@ def stable_rois(lr_matches, verbose=False):
 
 # TODO try to numba this
 def renumber_rois2(matches_list, centers_list):
+    """Returns array of centers over time, with one index per tracked ROI.
+
+    Each sequence of matched ROIs (including length-1 sequences, i.e. unmatched ROIs)
+    gets a new integer ID.
+
+    Args:
+        matches_list: list of (n_matches, 2) arrays, as first output of
+            `correspond_rois` (with `squeeze=False`)
+
+        centers_list: list (of length `len(matches_list) + 1`) of (n_rois, n_coords)
+            arrays
+
+    Returns array of shape (n_timepoints, n_ids, n_coords), with NaN where an ID was
+    not present.
+    """
     id2frame_bounds = dict()
     id2indices = dict()
     next_id = 0
@@ -3068,8 +3376,11 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
     Each sequence of matched ROIs gets an increasing integer identifier
     (including length-1 sequences, i.e. unmatched stuff).
 
-    Returns lists of IDs in each element of input list and centers,
-    re-indexed with new IDs.
+    Returns array of centers of shape (n_timepoints, n_ids, n_coords), re-indexed with
+    new IDs (NaN where an ID was not present). See `renumber_rois2`, which this is being
+    replaced by (this version still has debugging breakpoints in it).
+
+    `max_cost` is required, and used to check no ID jumps by >= this distance.
     """
     # TODO use this function inside stable_rois / delete that function
     # altogether (?)
@@ -3344,8 +3655,9 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
 
 def roi_jumps(roi_xyd, max_cost):
     """
-    Returns dict of first_frame -> list of (x, y, str(point idx)) for each
-    time an ROI jumps by >= max_cost on consecutive frames.
+    Returns dict of first_frame -> list of dicts (w/ keys 'name' [str(ROI idx)], 'xy0',
+    and 'xy1' [ROI (x, y) at first_frame and next frame]) for each time an ROI jumps by
+    >= max_cost on consecutive frames.
 
     correspond_rois should have not matched these points.
 
@@ -3379,12 +3691,31 @@ def roi_jumps(roi_xyd, max_cost):
 
 # TODO TODO use in unit tests of roi tracking w/ some real data as input
 def check_no_roi_jumps(roi_xyd, max_cost):
+    """Raises AssertionError if any ROI moves by >= `max_cost` between frames.
+    """
     assert len(roi_jumps(roi_xyd, max_cost)) == 0
 
 
 # TODO TODO TODO re-enable checks!!!
 def correspond_and_renumber_rois(roi_xyd_sequence, debug=False, checks=False,
     use_renumber_rois2=True, **kwargs):
+    """Matches ROIs across timepoints, and returns centers indexed by tracked ROI ID.
+
+    Args:
+        roi_xyd_sequence: list of (n_rois, 3) arrays of (x, y, diameter) for each
+            timepoint
+
+        debug: passed as `verbose` to `correspond_rois`
+
+        checks: if True, checks no ROI jumps by >= `max_cost` (see `check_no_roi_jumps`)
+
+        use_renumber_rois2: whether to use `renumber_rois2` (or `renumber_rois`)
+
+        **kwargs: passed to `correspond_rois`. if `max_cost` not passed, it defaults to
+            half the minimum ROI diameter + 1.
+
+    Returns array of shape (n_timepoints, n_ids, 3) (see `renumber_rois2`).
+    """
 
     max_cost = kwargs.get('max_cost')
     if max_cost is None:
@@ -3428,6 +3759,32 @@ def correspond_and_renumber_rois(roi_xyd_sequence, debug=False, checks=False,
 def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     exlusion_radius=None, p=0.05, max_n=None, round_=False, diam_px=20,
     add_diameters=True, verbose=False):
+    """Returns random walk test data for ROI tracking, of shape (nt, max_n, 2 or 3).
+
+    Args:
+        initial_n: number of ROIs at first timepoint
+
+        nt: number of timepoints
+
+        frame_shape: (square) shape of frame centers are restricted to
+
+        sigma: standard deviation of random steps (in pixels) per timepoint
+
+        exlusion_radius: not implemented
+
+        p: probability that each ROI is lost (and that each of remaining possible ROIs
+            are gained) at each timepoint. if falsey, number of ROIs is constant.
+
+        max_n: currently ignored (set to `2 * initial_n` if `p`, else `initial_n`)
+
+        round_: if True, rounds centers to uint16 (which converts NaN to 0)
+
+        diam_px: diameter added for each ROI (if `add_diameters=True`)
+
+        add_diameters: if True, adds a third coordinate with `diam_px`
+
+        verbose: if True, prints numbers of ROIs lost / gained
+    """
     # TODO maybe adapt p so it's the p over the course of the
     # nt steps, and derivce single timestep p from that?
 

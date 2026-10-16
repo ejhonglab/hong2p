@@ -22,6 +22,8 @@ from hong2p.types import Pathlike
 
 # TODO any constraints of type this can return? either dict or np array? always latter?
 def load(path: Path):
+    """Loads a suite2p .npy output (which may contain pickled objects).
+    """
     # all suite2p .npy outputs will probably need to be loaded this way
     # (ops certainly does)
     return np.load(path, allow_pickle=True)
@@ -29,6 +31,8 @@ def load(path: Path):
 
 # TODO type hint return (np array? dict?)
 def load_ops(s2p_dir: Path) -> Dict[str, Any]:
+    """Returns suite2p ops dict, loaded from `ops.npy` in `s2p_dir`.
+    """
     # seems ops is a shape/len-less numpy array with seemingly one dict element?
     # and seems this works to get it.
     return load(s2p_dir / 'ops.npy').item()
@@ -100,8 +104,9 @@ def load_traces(s2p_dir: Path) -> np.ndarray:
 # TODO add option to return as list of sparse matrices (-> use for prob faster
 # extraction fn path, similar to what s2p does)?
 def load_s2p_masks(s2p_dir: Path) -> np.ndarray:
-    # TODO doc shape this returns (should be (rois, y, x))
-    """Returns normalized (each sums to 1) cell footprints
+    """Returns normalized (each sums to 1) cell footprints, of shape (rois, y, x)
+
+    Pixels suite2p marked as overlapping with other ROIs are excluded.
     """
     from scipy.sparse import coo_array
 
@@ -393,12 +398,13 @@ def _subdict(d: dict, keys) -> dict:
 # affect output, like hopefully 'batch_size' / 'multiplane_parallel')
 def gui_params_equal(ops1: Suite2pOps, ops2: Suite2pOps, print_diff: bool = True,
     **kwargs) -> bool:
-    """Returns whether GUI-settable parameters differ.
+    """Returns whether GUI-settable parameters are equal.
 
     Args:
         ops1: as returned by `load_s2p_ops`
         ops2: to be compared to `ops1`
         print_diff: whether to print any differences
+        **kwargs: passed to `diff_dicts`
     """
     # Form a flat list of all parameter names we want to check.
     params_to_check = [x for xs in gui_params.values() for x in xs]
@@ -446,7 +452,13 @@ def gui_params_equal(ops1: Suite2pOps, ops2: Suite2pOps, print_diff: bool = True
 # TODO any other ops values i wanna check in here?
 def inputs_equal(ops1: Suite2pOps, ops2: Suite2pOps, print_diff: bool = True,
     **kwargs) -> bool:
-    """Returns whether input data and GUI-settable parameters differ.
+    """Returns whether input data and GUI-settable parameters are equal.
+
+    Args:
+        ops1: as returned by `load_s2p_ops`
+        ops2: to be compared to `ops1`
+        print_diff: whether to print any differences
+        **kwargs: passed to `diff_dicts`
     """
     # TODO TODO refactor to just add gui param list to input_data_keys, then call one
     # fn that compares/prints-diff-of dicts (otherwise header will get printed twice, if
@@ -470,6 +482,10 @@ def inputs_equal(ops1: Suite2pOps, ops2: Suite2pOps, print_diff: bool = True,
 
 
 def suite2p_params(thorimage_dir: Pathlike):
+    """Returns dict w/ suite2p 'fs' and 'nplanes' ops, computed from ThorImage metadata.
+
+    'fs' is the volume rate (in Hz), with flyback frames counted as part of each volume.
+    """
     # From: https://suite2p.readthedocs.io/en/latest/settings.html
 
     single_plane_fps, xy, z, c, n_flyback, _ = thor.load_thorimage_metadata(
@@ -515,6 +531,14 @@ def suite2p_params(thorimage_dir: Pathlike):
 
 
 def print_suite2p_params(thorimage_dir, print_movie_shape=False):
+    """Prints data specific suite2p parameters, so they can be set in suite2p GUI.
+
+    Args:
+        thorimage_dir: ThorImage output directory
+
+        print_movie_shape: if True, also prints movie shape (# volumes, z, y, x, and #
+            channels if >1)
+    """
     ops = suite2p_params(thorimage_dir)
     print('nplanes:', ops['nplanes'])
 
@@ -538,7 +562,17 @@ def print_suite2p_params(thorimage_dir, print_movie_shape=False):
 
 
 def invert_combined_view_offset(combined_ops, roi):
+    """Returns copy of `roi` w/ coords shifted from suite2p combined view to its plane.
 
+    In the suite2p "combined" view, planes are tiled in a grid. This subtracts the
+    offset of the tile the ROI is in (`roi['iplane']`) from the 'xpix', 'ypix', and
+    'med' coordinates.
+
+    Args:
+        combined_ops: suite2p ops from the 'combined' output directory
+
+        roi: a single suite2p ROI "stat" dict (from 'combined' outputs)
+    """
     # TODO probably assert that all pixels (after this) are within bounds of [0, Lx) and
     # [0, Ly), UNLESS i modify this function to handle stuff merged across multiple
     # panes of combined view
@@ -581,6 +615,20 @@ def suite2p_roi_stat2roi(roi_stat, ops, xy_only=False, fillna_0=True,
     """Takes a single suite2p ROI to a dense numpy representation
 
     roi_stat and ops are both assumed to come from the 'combined' folder outputs
+
+    Args:
+        roi_stat: a single suite2p ROI "stat" dict
+
+        ops: suite2p ops
+
+        xy_only: if True, returns 2D (y, x) array. otherwise, returns 3D (z, y, x)
+            array, with ROI only in plane `roi_stat['iplane']`.
+
+        fillna_0: if False, pixels outside ROI will be NaN rather than 0
+
+        invert_combined: if True, coordinates are converted from those of suite2p
+            combined view to those within a single plane (see
+            `invert_combined_view_offset`)
     """
     # TODO add args for additional conversion to xarray?
     # TODO args for using sparse representations instead?
@@ -615,6 +663,22 @@ def suite2p_roi_stat2roi(roi_stat, ops, xy_only=False, fillna_0=True,
 
 def suite2p_stat2rois(stat, ops, merges=None, as_xarray=True, **kwargs):
     """Takes suite2p 'stat' array / dict (roi # -> roi stat) to array / xarray ROIs.
+
+    Args:
+        stat: dict of ROI num -> suite2p ROI "stat" dict (array input not currently
+            supported)
+
+        ops: suite2p ops
+
+        merges: dict of merge output ROI num -> list of merge input ROI nums. if passed,
+            the 's2p_roi_num' coordinate of each merge input is replaced with the
+            corresponding merge output ROI num. requires `as_xarray=True`.
+
+        as_xarray: if True, returns DataArray (see `numpy2xarray_rois`), with
+            's2p_roi_num' and 'roi_z' coordinates. otherwise, returns array with ROIs
+            stacked along last dimension.
+
+        **kwargs: passed to `suite2p_roi_stat2roi`
     """
     # TODO TODO kwargs for adding extra roi metadata (like scalar-per-roi
     # max-response-magnitude or something?) or just add in subsequent steps (perhaps via
@@ -658,6 +722,15 @@ def suite2p_stat2rois(stat, ops, merges=None, as_xarray=True, **kwargs):
 
 # TODO TODO may need to adapt depending on how i handle rois merged across planes...
 def plot_roi(roi_stat, ops, ax=None):
+    """Shows image of a single suite2p ROI (cropped to its nonzero extent).
+
+    Args:
+        roi_stat: a single suite2p ROI "stat" dict
+
+        ops: suite2p ops (from 'combined' outputs)
+
+        ax: Axes to plot on. uses `plt.gca()` if not passed.
+    """
     if ax is None:
         ax = plt.gca()
 
@@ -684,7 +757,8 @@ def load_s2p_pickle(npy_path: Pathlike):
 # TODO type alias / similar for Dict[str, Any] (and use in other places in suite2p.py
 # where I use this)
 def load_s2p_ops(ops_path: Pathlike) -> Suite2pOps:
-    """
+    """Returns suite2p ops dict.
+
     Args:
         ops_path: if path does not end with '*.npy', assumed to be a directory
             containing a file named 'ops.npy'
@@ -715,10 +789,12 @@ def load_iscell(s2p_out_dir):
 
 # TODO delete?
 def set_suite2p_iscell_label(s2p_out_dir, roi_num, is_good):
-    """
+    """Sets suite2p "cell / not cell" label for one ROI, in iscell.npy (unfinished).
+
     Args:
         roi_num (int): index of ROI to change label of, according to suite2p
         s2p_out_dir (str): must directly contain a single iscell.npy file
+        is_good (bool): label to set (True for "cell")
     """
     assert is_good in (True, False)
 
@@ -745,6 +821,16 @@ def set_suite2p_iscell_label(s2p_out_dir, roi_num, is_good):
 # necessary? or unlikely enough? / just prompt before opening suite2p each time?
 # TODO maybe just use mtime?
 def is_iscell_modified(s2p_out_dir, warn=True):
+    """Returns whether any suite2p "cell / not cell" labels were manually changed.
+
+    Labels (first column of iscell.npy) are compared to those that would result from
+    thresholding classifier probabilities (second column) at suite2p's default 0.5.
+
+    Args:
+        s2p_out_dir: directory containing iscell.npy
+
+        warn: if True, warns if all ROIs are labelled "cell"
+    """
     iscell_path = get_iscell_path(s2p_out_dir)
     iscell = np.load(iscell_path)
 
@@ -786,6 +872,11 @@ def mark_all_suite2p_rois_good(s2p_out_dir):
 
 # TODO delete?
 def modify_iscell_in_suite2p(stat_path):
+    """Opens suite2p GUI on `stat_path`, and blocks until it is closed.
+
+    Requires my fork of suite2p (for --statfile CLI arg). Also calls `plt.show()`, so
+    any open matplotlib figures are shown while suite2p is open.
+    """
     # TODO TODO maybe show a plot for the relevant df/f image(s) alongside this, to
     # see if i'm getting *those* glomeruli? would probably need to couple with main loop
     # more though... (or modify my suite2p fork to have optional additional views)
@@ -811,6 +902,8 @@ def modify_iscell_in_suite2p(stat_path):
 
 # TODO delete?
 def suite2p_footprint2bool_mask(roi_stat, ops):
+    """Returns boolean (Ly, Lx) mask, from binary closing of a suite2p ROI's pixels.
+    """
     from scipy.ndimage import binary_closing
 
     full_roi = np.zeros((ops['Ly'], ops['Lx'])) * np.nan
@@ -847,8 +940,9 @@ def load_s2p_outputs(plane_or_combined_dir: Pathlike, good_only=True,
         good_only: whether to drop data for ROIs marked "not a cell" in suite2p GUI
         merge_inputs: whether to drop data for ROIs merged to create other ROIs
         merge_outputs: whether to drop data for ROIs created via merging in suite2p
-        subset_stat: whether to also drop data in `roi_stats` according to the above
-            criteria.
+        subset_stat: whether to also drop data in returned `stat_dict` according to the
+            above criteria.
+        err: whether to raise errors about ROI "cell / not cell" labels if `good_only`
 
     Returns:
         traces: DataFrame w/ ROI numbers and extracted signals
@@ -857,7 +951,6 @@ def load_s2p_outputs(plane_or_combined_dir: Pathlike, good_only=True,
         merges: dict of ROI nums of ROIs created via merging pointing to a list of the
             ROI nums merged to create them. can be used for implementing your own
             merging strategies.
-        err: whether to raise errors about ROI "cell / not cell" labels if `good_only`
 
     Raises:
         IOError: if suite2p outputs did not exist
@@ -964,11 +1057,37 @@ def load_s2p_combined_outputs(analysis_dir, **kwargs):
 # TODO unit test
 def remerge_suite2p_merged(traces, stat_dict, ops, merges, response_stats=None,
     how='best_plane', renumber=False, verbose=False):
-    """
-    Accepts input as the output of `load_s2p_outputs`
+    """Drops all but the "best" input ROI for each suite2p merge output ROI.
+
+    Accepts input as the output of `load_s2p_outputs` (which should have been called
+    with `merge_inputs=True`).
 
     Args:
-        response_stats
+        traces: DataFrame (frames X ROIs), as returned by `load_s2p_outputs`
+
+        stat_dict: dict of ROI num -> suite2p ROI "stat" dict, as returned by
+            `load_s2p_outputs`
+
+        ops: suite2p ops, as returned by `load_s2p_outputs`
+
+        merges: dict of merge output ROI num -> list of merge input ROI nums, as
+            returned by `load_s2p_outputs`
+
+        response_stats: Series (indexed by ROI num) of statistic used to pick best input
+            ROI (max value picked) for each merge output. defaults to range
+            (max - min) of each trace.
+
+        how: strategy to pick input ROI(s) to keep. only 'best_plane' supported.
+
+        renumber: not currently supported
+
+        verbose: if True, prints which input ROIs are kept / dropped for each merge
+
+    Returns:
+        traces: input `traces`, w/ non-best merge input ROIs dropped
+
+        rois: DataArray of ROIs (from `suite2p_stat2rois`), w/ the same ROIs dropped,
+            and `roi` coordinate set to suite2p ROI nums
     """
     if how != 'best_plane':
         raise NotImplementedError("only how='best_plane' currently supported")

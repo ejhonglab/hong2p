@@ -108,6 +108,10 @@ def is_categorical(values: pd.Series) -> bool:
 # https://stackoverflow.com/questions/49555991/can-i-create-a-local-numpy-random-seed
 @contextlib.contextmanager
 def temp_seed(seed):
+    """Context manager to temporarily set numpy global random seed.
+
+    Restores previous random state on exit.
+    """
     state = np.random.get_state()
     np.random.seed(seed)
     try:
@@ -150,6 +154,8 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
         df: dataframe with values to map to colors. If `axis=0`/`axis='index'`, each
             column will have its own palette, and each row will if `axis=1` /
             `axis='columns'`.
+
+        axis: see `df`. only `axis=0`/`axis='index'` currently implemented.
 
         name2palette: if a variable (column/row name from `df`, depending on `axis=`.
             see above.) name is a key in this, the corresponding palette value will be
@@ -645,7 +651,8 @@ def add_legends_and_colorbars(fig: Figure, for_legends: List[Dict[str, Any]],
     height: float = 0.25, cbar_fontsize: Optional[float] = None,
     cbar_label_fontsize: Optional[float] = None,
     cbar_ticklabel_fontsize: Optional[float] = None) -> None:
-    """
+    """Adds legends and colorbars, as output by `map_each_series_to_rgb`, to `fig`.
+
     Args:
         fig: figure to add legends and colorbars too
 
@@ -746,6 +753,8 @@ def rgb_tuple_df_to_3d_array(color_df: pd.DataFrame) -> np.ndarray:
 
 
 def remove_axes_ticks(ax: Axes) -> None:
+    """Removes ticks and ticklabels from both axes (leaving axis labels visible).
+    """
     # (was) trying to recreate ax.axis('off'), but in a way where i can still see
     # the ylabels (so micrometer_depth_title's as_ylabel kwarg can work)
     #
@@ -756,15 +765,18 @@ def remove_axes_ticks(ax: Axes) -> None:
     ax.set_yticks([])
 
 
-# TODO change docstring to indicate rowlabel_fn should take a pd.Series, if that is
-# always correct (for multiindex / not input, etc)
 def matlabels(df: DataFrameOrDataArray, rowlabel_fn: Callable, axis: Axis = 'index'):
     # TODO should i modify so it takes an Index/MultiIndex rather than a DataFrame row?
     # what would make these functions more natural to write?
     """
     Takes DataFrame/DataArray and function that takes one row of index to a label.
 
-    `rowlabel_fn` should take a one index value to a str
+    `rowlabel_fn` should take a `pd.Series` (one row of `index.to_frame()`, with one
+    element per index level, indexed by level names) to a str. This is true whether or
+    not the index is a `MultiIndex`.
+
+    Returns list of labels, one per element of index (`axis='index'`) or columns
+    (`axis='columns'`).
     """
     # TODO move to something like util._validate_axis?
     if axis == 'index':
@@ -816,12 +828,16 @@ def format_index_row(row: pd.Series, *, delim: str = ' / ',
 # TODO also provide a means of specifying the dimension of input the fns expect (at
 # least squeezed dimension, maybe w/ a squeeze=True kwarg added by wrapper?)
 def callable_ticklabels(plot_fn: Callable):
-    # TODO still true that fn must accept [x|y]ticklabels? change doc if not.
     """Allows [x/y]ticklabel functions evaluated on indices of `df` (`plot_fn(df, ...)`)
 
     First parameter to `plot_fn` must be a `pandas.DataFrame` (or `xarray.DataArray`
     convertable to one) to compute the `str` ticklabels from. `plot_fn` must also accept
-    the kwargs '[x|y]ticklabels'.
+    the kwargs '[x|y]ticklabels', if they will be passed.
+
+    Callable '[x|y]ticklabels' are evaluated on each row of the corresponding index (see
+    `matlabels`), and passing `True` is equivalent to passing `format_index_row`.
+    'delim' and 'float_format' kwargs are passed to `format_index_row` (and not to
+    `plot_fn`).
 
     If the input to the decorated function is a `xarray.DataArray`, the decorated
     function will receive a `DataFrame` (created via `arr.to_pandas()`) as input
@@ -831,9 +847,9 @@ def callable_ticklabels(plot_fn: Callable):
     wrapped function.
     """
     def _check_bools(ticklabels, **kwargs):
-        # TODO rewrite doc. don't know what i was even doing passing (a single?) str
-        # before...
-        """Makes True equivalent to passing str, and False equivalent to None.
+        """Returns fn calling `format_index_row` if `ticklabels` is True, else input.
+
+        `kwargs` are passed to `format_index_row`.
         """
         if ticklabels == True:
             # TODO TODO probably also default to this in case ticklabels=None
@@ -977,6 +993,8 @@ def _palettable_diverging_cmaps():
 '''
 
 def get_cmap_name(cmap: CMap) -> str:
+    """Returns name of colormap (input if already a str).
+    """
     if isinstance(cmap, str):
         return cmap
     else:
@@ -1047,6 +1065,11 @@ def is_cmap_diverging(cmap: CMap) -> bool:
 
 
 def is_centered_norm(norm: Union[type, Normalize]) -> bool:
+    """Returns whether `Normalize` subclass (or instance) is centered on some value.
+
+    True for `TwoSlopeNorm`, `CenteredNorm`, and `SymLogNorm` (implicitly centered on
+    0), as well as any others with a `vcenter` attribute.
+    """
     # hasattr checks seem to (currently) work for both the uninitialized classes
     # (type(x) is type) as well as instances (isinstance(x, Normalize), for any
     # parameters in each specific norm constructor
@@ -1078,8 +1101,30 @@ EPSILON_FROM_VCENTER: float = 1e-6
 def get_mpl_norm(norm: Union[str, type] = Normalize, data: Optional[ArrayLike] = None,
     *, vmin: Optional[float] = None, vmax: Optional[float] = None,
     vcenter: Optional[float] = None, _debug: bool = False, **norm_kws) -> Normalize:
+    """Returns instantiated `Normalize` subclass, with limits from args / data.
 
-    # TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False? True?)
+    Args:
+        norm: uninstantiated `Normalize` subclass, or 'two-slope' (`TwoSlopeNorm`) /
+            'centered' (`CenteredNorm`)
+
+        data: if passed, used to set any of `vmin`/`vmax` not passed
+
+        vmin: required (directly or via `data`), unless `halfrange` passed in
+            `norm_kws` (only allowed for `CenteredNorm`)
+
+        vmax: see `vmin`
+
+        vcenter: for centered norms (see `is_centered_norm`, though not supported for
+            `SymLogNorm`). defaults to 0. if `vmin > vcenter`, `vmin` is set to 0 (with
+            a warning), and if `vmin == vcenter`, `vmin` is decreased by
+            `EPSILON_FROM_VCENTER`.
+
+        **norm_kws: passed to `norm` constructor
+
+    NOTE: `TwoSlopeNorm` does not take a `clip` kwarg. In recent matplotlib (tested
+    with 3.11), it maps values beyond `vmin`/`vmax` to -inf/inf (so the colormap's
+    under/over colors are used), but this may differ in older versions.
+    """
     if norm == 'two-slope':
         norm = TwoSlopeNorm
     elif norm == 'centered':
@@ -1240,23 +1285,30 @@ def get_mpl_norm(norm: Union[str, type] = Normalize, data: Optional[ArrayLike] =
 
 
 def add_norm_options(plot_fn: Callable):
-    # TODO edit doc. copied from back before this was a decorator
-    # TODO prob rewrite doc + fn to use str 'centered' / 'two-slope' instead of (more
+    # TODO prob rewrite fn to use str 'centered' / 'two-slope' instead of (more
     # complicated for user) classes
-    """Processes kwargs to allow passing non-instantiated `Normalize` subclasses.
+    """Decorator allowing `plot_fn` to be passed uninstantiated `Normalize` subclasses.
 
-    Args:
+    First argument to `plot_fn` must be the data to be plotted. Adds these keyword
+    arguments to the wrapped function:
+
         norm: matplotlib expects str (e.g. 'linear', 'log', 'symlog', 'logit') or
             an instantiated `Normalize` subclass (or `None`), but passing a normalize
-            subclass like this conflicts with non-`None` `vmin`|`vmax`. this function
-            adds the option to pass a non-instantiated `Normalize` class, which will
-            receive `vmin`|`vmax`, removing those from kwargs. this will let plotting
-            functions determine the range of data to plot, while still allowing use of
-            norms not able to be passed a str.
+            subclass like this conflicts with non-`None` `vmin`|`vmax`. this decorator
+            adds the option to pass a non-instantiated `Normalize` class (or 'centered'
+            / 'two-slope'. see `get_mpl_norm`), which will receive `vmin`|`vmax`
+            (computed from data, if not passed). this will let plotting functions
+            determine the range of data to plot, while still allowing use of norms not
+            able to be passed a str.
 
-    Returns **kwargs, with vmin,vmax,norm modified when necessary.
-        kwargs['norm'] (if not str or None) will always be an instantiated `Normalize`
-        subclass (unlike input, where it's allowed to also be non-instantiated).
+        vmin|vmax|vcenter|norm_kws: passed to `get_mpl_norm`, if `norm` is passed
+            uninstantiated. otherwise, `vmin`/`vmax` are passed to `plot_fn`.
+
+        clip_warn: if True, warns if any data is outside [vmin, vmax]
+
+    `plot_fn` will receive an instantiated `norm` (and not `vmin`/`vmax`) if `norm` was
+    passed, otherwise `vmin`/`vmax` (and not `norm`). Warns if a centered norm is used
+    with a seemingly non-diverging `cmap`.
 
     See https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.imshow.html
     for descriptions of `vmin`/`vmax`/`norm` kwargs.
@@ -1381,8 +1433,10 @@ def _mpl_constrained_layout(enable: bool):
         """
         @functools.wraps(plot_fn)
         def wrapped_plot_fn(*args, **kwargs):
-            # TODO TODO doc how this interacts w/ ax passed in already having particular
-            # layout. probably want to be able to override (e.g. to deal with matshow's
+            # NOTE: this only changes the rcParam, which is only used for figures
+            # created inside plot_fn. if an `ax` from an existing figure is passed in,
+            # that figure's layout is not changed.
+            # TODO probably want to be able to override (e.g. to deal with matshow's
             # issue where once i start adding text (for group labels), constrained
             # layout can cut them off)
             with mpl.rc_context({'figure.constrained_layout.use': enable}):
@@ -1399,16 +1453,26 @@ def _mpl_constrained_layout(enable: bool):
 
 # TODO TODO add context managers for these too (not just decorators)
 
-# TODO how to give these docstrings?
 constrained_layout = _mpl_constrained_layout(True)
+constrained_layout.__doc__ = """Decorator to enable constrained layout in wrapped fn.
+
+See `_mpl_constrained_layout`.
+"""
 no_constrained_layout = _mpl_constrained_layout(False)
+no_constrained_layout.__doc__ = """Decorator to disable constrained layout in wrapped fn
+
+See `_mpl_constrained_layout`.
+"""
 
 
 # TODO maybe combine w/ decorator to add title/xlabel/ylabel/etc kwargs + their
 # reformatting (+ setting? some differences in how i do this, and would need Axes to
 # call on...)
 def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws: Optional[ParamDict] =None):
-    # TODO doc
+    """Returns kwargs for `set_ylabel`, with `ylabel_rotation` added as 'rotation'.
+
+    Modifies (and returns) `ylabel_kws`, if passed.
+    """
 
     # Will no longer have same behavior as passing rotation=None explicitly to the
     # corresponding set_ylabel call, but would need another sentinel for unset
@@ -1440,7 +1504,22 @@ _ax_id2order = dict()
     # TODO refactor to share this panel2order type?
 def with_panel_orders(plot_fn: Callable,
     panel2order: Optional[Dict[str, List[str]]] = None, **fn_kwargs) -> Callable:
+    """Returns `plot_fn` wrapped to pass `order=` based on panel of data.
 
+    For use with `FacetGrid.map_dataframe`, where each call of wrapped function gets
+    data from a single panel (from 'panel' column). `order` is looked up from panel, and
+    all odors (in `x` column) must be in that order.
+
+    Args:
+        plot_fn: plotting function (e.g. seaborn) taking `data`, `x`, `y`, and `order`
+            keyword arguments
+
+        panel2order: dict of panel -> list of odors in order to plot. if not passed,
+            uses dict set via `set_panel2order`.
+
+        **fn_kwargs: default kwargs for `plot_fn` (overridden by any passed at call
+            time)
+    """
     @functools.wraps(plot_fn)
     def ordered_plot_fn(*args, **kwargs):
 
@@ -1537,6 +1616,24 @@ COARSEN_CLUSTER_COL: str = 'coarsen_cluster'
 def coarsen(df: pd.DataFrame, downsampling_factor: int, *, random_state: int = 1,
     # TODO remove n_init='auto' if updating sklearn. just to silence FutureWarning
     n_init: Union[str, int] = 'auto', **kwargs) -> pd.DataFrame:
+    """Returns copy of `df` w/ rows assigned to clusters of size `downsampling_factor`.
+
+    Rows are clustered with K-means (with `len(df) // downsampling_factor` clusters),
+    and then assigned to (equal sized) clusters by optimal assignment to cluster
+    centers. The largest K-means cluster gets any remainder rows. Cluster IDs are added
+    as a new index level named `COARSEN_CLUSTER_COL`.
+
+    Args:
+        df: data to cluster rows of
+
+        downsampling_factor: number of rows per cluster
+
+        random_state: passed to `KMeans`
+
+        n_init: passed to `KMeans`
+
+        **kwargs: passed to `KMeans`
+    """
     # current strategy from: https://stats.stackexchange.com/questions/8744
     from sklearn.cluster import KMeans
     from scipy.optimize import linear_sum_assignment
@@ -1638,6 +1735,8 @@ def coarsen(df: pd.DataFrame, downsampling_factor: int, *, random_state: int = 1
 # TODO pass kwargs to coarsen? for clustering alg?
 def coarsen_within_groups(df: pd.DataFrame, downsampling_factor: int, names: List[str]
     ) -> pd.DataFrame:
+    """Calls `coarsen` separately within groups of rows sharing `names` index levels.
+    """
 
     assert all(x in df.index.names for x in names), \
         f'{names=} not all in {df.index.names}'
@@ -1677,8 +1776,47 @@ def clustermap(df: pd.DataFrame, *, optimal_ordering: bool = True,
     prevent warnings + disabling that would otherwise happen.
 
     Args:
+        df: data to cluster / plot
+
+        optimal_ordering: passed to `scipy.cluster.hierarchy.linkage`. disabled if
+            `z_score` or `standard_scale` passed.
+
+        title|xlabel|ylabel: set on heatmap Axes, w/ corresponding `*_kws` passed to
+            the setting function
+
+        ylabel_rotation: see `_ylabel_kwargs`
+
+        cbar_label: label for colorbar (added to `cbar_kws`)
+
+        cbar_kws: passed to `sns.clustermap`
+
+        row_cluster|col_cluster: whether to cluster rows / columns. set True if
+            corresponding linkage passed.
+
+        row_linkage|col_linkage: precomputed linkages. otherwise, computed here (unless
+            `z_score` or `standard_scale` passed, in which case seaborn computes them).
+
         method: default 'average' is same as `sns.clustermap`
         metric: default 'euclidean' is same as `sns.clustermap`
+
+        z_score|standard_scale: None, 0 (rows), or 1 (columns). passed to
+            `sns.clustermap`.
+
+        return_linkages: if True, also returns row and column linkages
+
+        row_coarsen_factor: if passed, rows are first averaged within clusters of
+            approximately this size (see `coarsen_within_groups`), within groups
+            defined by `row_coarsen_by`. requires 'roi' index level, which is averaged
+            over.
+
+        row_coarsen_by: index level names to coarsen rows within (required if
+            `row_coarsen_factor` passed). if `row_colors` passed, each group must have
+            a unique color.
+
+        **kwargs: passed to `sns.clustermap`
+
+    Returns `sns.ClusterGrid`, or (ClusterGrid, row_linkage, col_linkage) if
+    `return_linkages=True`.
     """
     import seaborn as sns
 
@@ -1884,10 +2022,18 @@ def add_group_labels_and_lines(ax: Axes, x: Sequence[Any] = None, *,
         label_name: places this text description of the group labels off to the side of
             (and inline with) the group labels
 
-        label_offset: controls positioning of `label_name`. only relevant if
+        label_offset: in axes coordinates. controls positioning of group labels (and
+            `label_name`). defaults to 0.08 for `x` and 0.12 for `y`.
+
+        label_name_offset: controls positioning of `label_name`. only relevant if
             `label_name=<str>`.
 
+        linewidth: width of lines between groups
+
         linecolor: default is black (='k'). 'w' for white is often useful.
+
+        line_offset: lines are drawn this far (in data coordinates) after last element
+            of each group. default 0.5 places them between matrix cells.
 
         **kwargs: passed thru to `ax.text` calls for group text labels. also applies to
             `label_name`, if specified.
@@ -2094,14 +2240,6 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
     xticks_also_on_bottom: bool = False, overlay_values: bool = False,
     overlay_fmt: str = '.2f', overlay_kws: Optional[ParamDict] = None,
     rasterized: bool = False, _debug=_DEBUG, **kwargs) -> Tuple[Figure, AxesImage]:
-    # TODO doc [v|h]line_group_text
-    # TODO check that levels_from_labels means *_level_fn get a single dict as input,
-    # not an iterable of dicts (or update doc)
-    # TODO in levels_from_labels doc, specify what would be doing the formatting of
-    # ticklabels (presumably it's just the callable passed in for [x|y]ticklabels, which
-    # is expected to map to str (from what again?)?, or nothing if input is single level
-    # str index? what happens if [x|y]ticklabels input is not callable and input data
-    # does not have a single level str index?)
     # TODO switch levels_from_labels default to False? would prob need to change a fair
     # bit of al_analysis code...
     # TODO accept str level names for specifying [v|h]line_levels (maybe rename
@@ -2109,8 +2247,38 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
     # TODO + support labelling level names off to side in that case?
     # TODO am i supporting False for [x|y]ticklabels? how else to hide default
     # regularly-spaced int ones?
-    """
+    """Plots matrix (via `ax.matshow`), with options for labelling groups of rows/cols.
+
     Args:
+        df: data to plot
+
+        title: set via `ax.set_title`, with `title_kws`
+
+        ticklabels: if passed, used for both `xticklabels` and `yticklabels` (requires
+            square `df`). can be a callable, as `[x|y]ticklabels`.
+
+        xticklabels: list of str, or callable taking each row of `df.columns` (as a
+            Series) to a str (see `callable_ticklabels`). True is equivalent to
+            `format_index_row`. if neither these nor `ticklabels` are passed, index
+            values are used if index is a single level of str (and no ticklabels shown
+            otherwise).
+
+        yticklabels: as `xticklabels`, but for `df.index`
+
+        xtickrotation: defaults to 'horizontal' if all xticklabels are length 1, else
+            'vertical'
+
+        xlabel: str, or True to join `df.columns.names` with '/'
+
+        ylabel: str, or True to join `df.index.names` with '/'
+
+        ylabel_rotation|ylabel_kws: see `_ylabel_kwargs`
+
+        cbar_label: label for colorbar
+
+        group_ticklabels: if True, consecutive repeated ticklabels are shown only once,
+            centered on the group (see `olf.remove_consecutive_repeats`)
+
         transpose_sort_key (None | function): takes df.index/df.columns and compares
             output to decide whether matrix should be transposed before plotting
 
@@ -2119,6 +2287,14 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
             changes in the output of this function.
 
         hline_level_fn: as `vline_level_fn`, but for horizontal lines.
+
+        vline_group_text: if True (and `vline_level_fn` passed), also draws text label
+            for each group (formatted by `vgroup_formatter`, if passed) above matrix.
+            also changes check for duplicate xticklabels to check for duplicate
+            (vline_level, xticklabel) combinations.
+
+        hline_group_text: as `vline_group_text`, but for groups of rows (labels drawn to
+            left of matrix).
 
         [h|v]group_formatter: optional function to map group values to str
 
@@ -2129,10 +2305,38 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
         [h|v]group_label_rotation: passed to `rotation` of corresponding `Axes.text`
             call
 
-        levels_from_labels: if True, `[h|v]line_level_fn` functions use formatted
-            `[x|y]ticklabels` as input. Otherwise, a dict mapping index level names to
-            values are used. Currently only support drawing labels for each group if
-            this is False (still true?).
+        levels_from_labels: if True, `[h|v]line_level_fn` functions are called on
+            each (formatted) element of `[x|y]ticklabels` (see above for how those are
+            determined. they must not be None in this case). Otherwise, the functions
+            are called on a dict (one per row/column) mapping index level names to
+            values.
+
+        group_fontsize|group_fontweight: for group text labels. `group_fontsize`
+            defaults to `bigtext_fontsize`.
+
+        linewidth|linecolor: for lines between groups
+
+        ax: Axes to plot on. a new figure is made if not passed.
+
+        bigtext_fontsize: fontsize for title, xlabel/ylabel, colorbar label, and group
+            labels (by default). defaults to `bigtext_fontsize_scaler * fontsize`.
+
+        fontweight: for ticklabels
+
+        figsize|dpi: for new figure (only if `ax` not passed)
+
+        inches_per_cell: if passed, `figsize` is computed from this and shape of `df`
+            (plus `extra_figsize`, which defaults to (2.0, 1.0))
+
+        colorbar: whether to add colorbar
+
+        cbar_shrink: passed as `shrink` to `add_colorbar`
+
+        cbar_kws: passed to `add_colorbar`
+
+        allow_duplicate_labels: if False, raises ValueError if any ticklabels (or
+            (group level, ticklabel) combinations, if `[v|h]line_group_text=True`) are
+            duplicated
 
         xticks_also_on_bottom: if True, show same xticks on bottom as will be shown on
             top. for very tall plots where we can sometimes more easily reference the
@@ -2148,7 +2352,11 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
             for xlabel/ylabel fontsize (if `bigtext_fontsize` not passed). also used for
             group label font, unless `group_fontsize` is passed a float.
 
+        rasterized: passed to `ax.matshow`
+
         **kwargs: passed thru to `matplotlib.pyplot.matshow`
+
+    Returns figure and `AxesImage` (output of `ax.matshow`).
     """
     # added after reverting callable_ticklabels code that would do the same,
     # which was needed to continue using w/ sns.clustermap
@@ -2516,6 +2724,19 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
 @add_norm_options
 def imshow(img, ax: Optional[Axes] = None, title: Optional[str] = None,
     cmap: Optional[CMap] = DEFAULT_ANATOMICAL_CMAP, **kwargs):
+    """Shows image (via `ax.imshow`) w/o ticks, returning `AxesImage`.
+
+    Args:
+        img: image to show
+
+        ax: Axes to plot on. a new figure is made if not passed.
+
+        title: set via `ax.set_title`, if passed
+
+        cmap: passed to `ax.imshow`
+
+        **kwargs: passed to `ax.imshow`
+    """
     # TODO warn if ax not set? or at least in the case where plt.gca() (/gcf?) returns
     # something? (to make sure we aren't making figures that don't get populated/closed)
     # (factor this check into wrapper shared w/ matshow?)
@@ -2540,6 +2761,8 @@ def imshow(img, ax: Optional[Axes] = None, title: Optional[str] = None,
 
 
 def _get_cbar_orientation(cbar: Colorbar) -> str:
+    """Returns 'vertical' or 'horizontal'.
+    """
     expected_cbar_orientations = ('vertical', 'horizontal')
     orientation = cbar.orientation
     assert orientation in expected_cbar_orientations, (
@@ -2566,12 +2789,15 @@ def get_cbar_axis(cbar: Colorbar) -> Axis:
 
 
 def set_cbar_tick_params(cbar: Colorbar, **kwargs) -> None:
+    """Calls `set_tick_params(**kwargs)` on appropriate (x vs y) axis of colorbar.
+    """
     cbar_axis = get_cbar_axis(cbar)
     cbar_axis.set_tick_params(**kwargs)
 
 
 def set_cbar_scale(cbar: Colorbar, scale: str) -> None:
-    """
+    """Sets scale of colorbar, on appropriate (x vs y) axis.
+
     matplotlib `Axes.set_[x|y]scale` functions take `scale` of type str or `ScaleBase`,
     but str should be fine for me (e.g. 'linear', 'log', etc).
 
@@ -2600,11 +2826,16 @@ def set_cbar_scale(cbar: Colorbar, scale: str) -> None:
 
 def min_tick_for_centered_cmap(vmin: float, *, increment: float = 0.05,
     round_tick_towards0_under_rtol: float = 0.1, _debug: bool = False) -> float:
-    """Finds suitable minimum tick for colorbar using a diverging cmap with
+    """Finds suitable minimum tick for colorbar using a diverging cmap with `vmin` < 0.
+
+    Returns a multiple of `increment` <= `vmin` (or slightly greater than `vmin`,
+    if within `round_tick_towards0_under_rtol`).
 
     Args:
         vmin: minimum value of colorbar (and of data, if colormap is showing the full
             range of the data). should be negative.
+
+        increment: minimum tick will be a multiple of this
 
         round_tick_towards0_under_rtol: if vmin * increment < nearest increment, by this
             fraction of increment size, set the min tick to that nearest (closer to 0)
@@ -2735,22 +2966,19 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
         axes_index: if `match_axes_size=True`, use `fig.axes[axes_index]` to match
 
         location: {'left', 'right', 'bottom', 'top'}. where new colorbar axes is placed
-            relative to axes it's created from. if `match_axes_size=True`, passed as 1st
-            arg to `AxesDivider.append_axes`, otherwise passed as `location` kwarg to
-            `fig.colorbar`.
+            relative to axes it's created from. passed as `location` kwarg to
+            `fig.colorbar`, if `cax` not passed and `match_axes_size=False`. otherwise
+            unused (colorbar is placed on right if `match_axes_size=True`).
 
-        size: passed to `AxesDivider.append_axes` (default: '7%'), if
-            `match_axes_size=True`. unused otherwise. '<x>%' means the size of the
-            created colorbar axes will be x% of matched `Axes` size (width, if appending
-            on right).
+        size: passed as `width` to `inset_axes` (default: '5%'), if
+            `match_axes_size=True`. unused otherwise. '<x>%' means the width of the
+            created colorbar axes will be x% of matched `Axes` width.
 
-            see matplotlib docs and examples listed there:
-            https://matplotlib.org/stable/api/_as_gen/mpl_toolkits.axes_grid1.axes_divider.AxesDivider.html
-            https://matplotlib.org/stable/gallery/axes_grid1/demo_colorbar_with_axes_divider.html
+            see matplotlib docs:
+            https://matplotlib.org/stable/api/_as_gen/mpl_toolkits.axes_grid1.inset_locator.inset_axes.html
 
-        pad: passed to `AxesDivider.append_axes` (default: '2%'), if
-            `match_axes_size=True`. passed to `fig.colorbar` otherwise. spacing between
-            created colorbar (vs matched) `Axes`.
+        pad: passed to `fig.colorbar` (if `cax` not passed and
+            `match_axes_size=False`). spacing between created colorbar and `Axes`.
 
         cax: passed to `fig.colorbar`. use for more control of size/shape of colorbar,
             e.g. to make colorbar same height as `Axes`, as in
@@ -2758,9 +2986,17 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
 
         label: label for colorbar
 
-        fontsize: passed to `Axes.set_ylabel`
+        fontsize: fontsize for `label`
+
+        tick_fontsize: fontsize for tick labels
+
+        float_format: used to format tick labels, if ticks are set in this function
+            (i.e. if `ticks` in `kwargs`, or for some `TwoSlopeNorm` cases)
 
         **kwargs: passed to `Figure.colorbar`
+
+    For `TwoSlopeNorm`, colorbar scale is set to linear, and a negative tick is added
+    (see `min_tick_for_centered_cmap`), if needed.
     """
     # TODO check whether kwargs `label=label` to fig.colorbar can replace
     # cbar.ax.set_ylabel. i think so, but poorly documented.
@@ -2791,7 +3027,7 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
 
         ax = fig.axes[axes_index]
 
-        # TODO update doc w/ default change (or just use normal kwarg... why not?)
+        # TODO just use normal kwarg default? why not?
         size = '5%' if size is None else size
 
         # TODO TODO find args for placing on bottom too
@@ -3029,6 +3265,8 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
 
 
 def _check_contour_array(contour):
+    """Asserts input is an (n > 1, 2) array of (x, y) contour vertices.
+    """
     # just takes normal array input (not the QuadContourSet directly returned by
     # matplotlib's contour fns)
     shape = contour.shape
@@ -3039,6 +3277,8 @@ def _check_contour_array(contour):
 
 
 def contour_bbox(contour):
+    """Returns dict with 'xmin', 'xmax', 'ymin', 'ymax' of (n, 2) contour vertices.
+    """
     _check_contour_array(contour)
 
     x = contour[:, 0]
@@ -3050,6 +3290,8 @@ def contour_bbox(contour):
 
 
 def contour_center_of_mass(contour):
+    """Returns (x, y) center of mass of closed polygon of (n, 2) contour vertices.
+    """
     _check_contour_array(contour)
 
     # Taken from ImportanceOfBeingErnests's answer here:
@@ -3077,26 +3319,42 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
     #label_outline_linewidth=0.9, label_outline_color='white',
 
     smooth=False, **kwargs):
-    # TODO doc / delete
-    # TODO doc footprint type, to start
-    # TODO specify if label_to_bbox_dy is in data/axes coords (former, i think?)
     """Plots line around the contiguous positive region(s) in footprint.
 
     Args:
+        footprint: 2D array (e.g. ROI mask) with positive values in region(s) to
+            outline. DataArray inputs also work.
+
         ax: Axes to plot onto. will use current Axes otherwise.
 
         if_multiple: 'take_largest'|'join'|'err'|'ignore'. what to do if there are
             multiple closed contours within footprint. contour will be plotted
             regardless, but error will happen before a contour is returned for use in
-            other analysis.
+            other analysis. 'take_largest' and 'join' are not currently implemented.
+            'ignore' returns None (without drawing `label`).
+
+        _pad: if True, pads footprint with zeros before computing contour, so that
+            footprints touching the edge of the image still produce closed contours.
+            if False, raises AssertionError if footprint touches the edge.
 
         label: name of ROI. drawn in center of ROI contour by default.
 
         label_over_contour: if True, will draw `label` above ROI contour (rather than on
             center of mass). see also `label_to_bbox_dy`.
 
-        label_to_bbox_dy: how many pixels above ROI bounding box to draw ROI label.
-            ignored if `label_over_contour=False`.
+        label_to_bbox_dy: how many pixels (in data coordinates) above ROI bounding box
+            to draw ROI label. ignored if `label_over_contour=False`.
+
+        text_kws: passed to `ax.text` for label (overriding defaults)
+
+        colors: passed to `ax.contour`. defaults to `color`, or 'red' if neither passed.
+
+        color: see `colors`
+
+        linewidths: passed to `ax.contour`
+
+        linestyles: passed to `ax.contour`. if not 'dotted', contour lines also get an
+            outline (from `label_outline_[color|linewidth]`).
 
         label_outline: if True, adds a `PathEffects` to `text_kws` to add an outline
             around drawn label.
@@ -3105,7 +3363,12 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
 
         label_outline_linewidth: linewidth for outline from `label_outline=True`
 
+        smooth: not implemented
+
         **kwargs: passed through to matplotlib `ax.contour` call
+
+    Returns (n, 2) array of (x, y) contour vertices (shifted by -1 in each dimension, to
+    correct for padding).
     """
     if ax is None:
         ax = plt.gca()
@@ -3448,11 +3711,15 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
     cbar_kws: Optional[ParamDict] = None, **kwargs):
     # TODO also allow specifying either height_inches/width_inches instead of
     # inches_per_pixel (would only save specifying one component of figsize...)?
-    """
+    """Shows images in a grid (via `ImageGrid`), with optional shared colorbar.
+
     Args:
         image_list: list/array of images, whose length is equal to the number of images
             (i.e. number of planes, for typical input of single-fly volumetric data,
             where input has been reduced across timepoints)
+
+        nrows: how many rows for grid. if neither this nor `ncols` passed, grid will be
+            square (as small as possible to fit all images).
 
         ncols: how many columns for grid showing the background of each plane
             (one panel per plane)
@@ -3481,6 +3748,8 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
             everything should be in [0, 1]. width and height are fractions of figure
             sizes.
 
+        dpi: passed to `plt.figure`
+
         scale_per_plane: if False, min/max of colorscale will be picked from min/max of
             all data (after excluding `minmax_clip_frac`, if it's greater than 0).
 
@@ -3488,13 +3757,20 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
             deciding the limits of the colormap for the background images.
             `v[min|max]` must not be set if this is, and vice versa.
 
-        cbar: set to `False` to disable colorbar(s)
+        vmin|vmax: limits of colorscale (if passing, must pass both)
+
+        cbar: set to `False` to disable colorbar. no colorbar is drawn if
+            `scale_per_plane=True`.
+
+        cmap: passed to `imshow`
 
         cbar_label: label for colorbar
 
         cbar_kws: passed to `add_colorbar`
 
         **kwargs: passed to `imshow`
+
+    Returns figure and array of image Axes.
     """
     if figsize is not None:
         assert all(x is None for x in (width, height, extra_figsize))
@@ -3788,22 +4064,29 @@ def image_grid(image_list, *, nrows: Optional[int] = None, ncols: Optional[int] 
 def micrometer_depth_title(ax: Axes, zstep_um: float, z_index: int, *,
     as_ylabel: bool = False, as_overlay: bool = False, fontsize: Optional[float] = 8,
     **kwargs) -> None:
-    # TODO cleanup formatting of doc re: as_ylabel/as_overlay changes to which fn gets
-    # args passed thru to it
-    """
+    """Labels `ax` with depth of plane, in micrometers (e.g. '-12 um' for z_index=1).
+
     Args:
+        ax: Axes to label
+
+        zstep_um: distance (in um) between planes
+
+        z_index: index of plane `ax` shows. depth is `-zstep_um * z_index`.
+
         as_ylabel: if True, use `ax.set_ylabel` instead of `ax.title`, to put this
             information on the left (may want to use if have a series of single column
             plots, rather than a series of rows). adds `rotation=0` and `labelpad=16`
             by default. mutually exclusive with `as_overlay`.
 
         as_overlay: draws on `ax` instead of labelling above / to the side. in top left
-            corner by default. mutually exclusive with `as_ylabel`.
+            corner by default (`x`/`y` kwargs, in axes coordinates, can be used to
+            change position), in white by default. mutually exclusive with `as_ylabel`.
 
         fontsize: passed to `ax.set_title` (or `ax.set_ylabel`, if `as_ylabel=True`;
             `ax.text` if `as_overlay=True`)
 
-        **kwargs: passed to `ax.set_title` (or `ax.set_ylabel`, if `as_ylabel=True`)
+        **kwargs: passed to `ax.set_title` (or `ax.set_ylabel`, if `as_ylabel=True`;
+            `ax.text` if `as_overlay=True`)
     """
     curr_z = -zstep_um * z_index
 
@@ -3891,6 +4174,18 @@ def get_default_overlay_color(ax: Axes) -> str:
 
 def add_scalebar(ax: Axes, pixelsize_um: float, *, color: Optional[Color] = None,
     **kwargs) -> None:
+    """Adds scalebar (10 um, by default) to `ax`.
+
+    Args:
+        ax: Axes with image to draw scalebar on
+
+        pixelsize_um: size of image pixels (in um)
+
+        color: color of scalebar and text. defaults to `get_default_overlay_color(ax)`.
+
+        **kwargs: passed to `matplotlib_scalebar.scalebar.ScaleBar` (overriding
+            defaults)
+    """
     # TODO move default_kwargs to actual default kwarg values in fn def? why not?
     #
     # I did check (in 2023-05-10/1, where FOV width/height are 100.[6?] uM,
@@ -3961,7 +4256,6 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     linewidth: float = 1.2, _pad: bool = False,
     zero_outside_plane_outlines: bool = False,
     plane_outline_line_kws: Optional[ParamDict] = None, **kwargs) -> Figure:
-    # TODO doc whether palette can be a dict (str -> color) (yea, right?) anything else?
     # TODO use color= kwarg in making 'ijroi/with_focusroi' variant (/similar) in
     # al_analysis
     #
@@ -3977,7 +4271,8 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
     # names)
     # TODO refactor default plane outline kwargs, so defaults can also be mentioned in
     # plane_outline_line_kws doc here
-    """
+    """Plots outlines of ROIs on background image of each plane.
+
     Args:
         rois: with dims ('roi', 'z', 'y', 'x'). coords must have at least
             ('roi_z', 'roi_name') on the 'roi' dimension.
@@ -3992,12 +4287,22 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
             If True, requires input also has 'is_best_plane' on 'roi' dimension.
 
         show_names: whether to plot ROI names in the center of each ROI.
-            `True`|`False`|`focus`.
+            `True`|`False`|`'focus'` (`'focus'` only shows name of `focus_roi`).
 
         color: for coloring ROI labels/outlines. use either this or `palette`.
             this is never desaturated, like `palette` can be via `palette_desat`.
 
         palette: for coloring ROI labels/outlines. use either this or `color`.
+            either a dict mapping ROI names to colors (keys must be the same as set of
+            ROI names), or anything `sns.color_palette` accepts (e.g. str name or list
+            of colors). in latter case, colors are assigned to ROI names in a random
+            order (seeded by `seed`), cycling if there are more ROIs than colors.
+            defaults to 'hls' palette (with 10 colors).
+
+        seed: seed for random assignment of `palette` colors to ROI names
+
+        focus_roi: name of ROI to highlight (see `focus_roi_color`,
+            `focus_roi_linewidth`, and `show_names`)
 
         focus_roi_color: color to use when the ROI name matching `focus_roi` (if
             passed). set to `None` to color these ROIs no differently from others,
@@ -4009,12 +4314,16 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
             desaturate everything by this amount, for consistency. will not desaturate
             if color is specified via `color` kwarg instead of `palette`.
 
+        focus_roi_linewidth: linewidth for `focus_roi` outline. defaults to `linewidth`.
+
         scalebar: if True, will draw scalebar on first plane
             (must also pass `pixelsize_um`)
 
         pixelsize_um: for use drawing scalebar
 
         scalebar_kws: passed to `matplotlib_scalebar.scalebar.ScaleBar`
+
+        cbar|cbar_label|cbar_kws: currently ignored (pass via `image_kws` instead)
 
         zstep_um: if passed, axes titles will be added to indicate depth of each plane.
             no depth titles will be drawn if this is `None`.
@@ -4037,7 +4346,15 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
             `roi.is_ijroi_plane_outline`. defaults specified internally (different from
             for regular ROIs).
 
-        **kwargs: passed thru to `plot_closed_contours`
+        _pad: passed to `plot_closed_contours`
+
+        **kwargs: passed thru to `plot_closed_contours`, except for any of:
+            'nrows', 'ncols', 'scale_per_plane', 'minmax_clip_frac', 'vmin', 'vmax',
+            'norm', 'cmap', 'cbar', 'cbar_label', 'cbar_kws', which are passed to
+            `image_grid`
+
+    Raises RuntimeError (after plotting all ROIs) if `plot_closed_contours` raised
+    RuntimeError for any ROIs (e.g. if ROI had multiple disconnected parts).
     """
     import seaborn as sns
 
@@ -4410,6 +4727,21 @@ def plot_odor_corrs(corr_df: pd.DataFrame, *, odor_order: bool = False,
     odors_in_order: Sequence[str] = None, trial_stat: str = 'mean',
     title_suffix: str = '', **kwargs):
     """Takes a symmetric DataFrame with odor x odor correlations and plots it.
+
+    Args:
+        corr_df: odor X odor correlations
+
+        odor_order: if True, sorts by `odors_in_order` (on levels starting with
+            'name1').
+            otherwise, sorts on 'order' level (presentation order).
+
+        odors_in_order: list of odor names, in order. implies `odor_order=True`.
+
+        trial_stat: for default colorbar label
+
+        title_suffix: appended to default title
+
+        **kwargs: passed to `matshow`
     """
     # TODO replace ordering stuff w/ new fns for that in olf.py (or maybe just delete
     # all of plot_odor_corrs if not using...)
@@ -4495,6 +4827,17 @@ def plot_odor_corrs(corr_df: pd.DataFrame, *, odor_order: bool = False,
 def fix_facetgrid_axis_labels(facet_grid, *, shared_in_center: bool = False,
     x: bool = True, y: bool = True) -> None:
     """Modifies a FacetGrid to not duplicate X and Y axis text labels.
+
+    Labels are only kept on the bottom left Axes.
+
+    Args:
+        facet_grid: FacetGrid to modify
+
+        shared_in_center: not implemented
+
+        x: whether to remove duplicate xlabels
+
+        y: whether to remove duplicate ylabels
     """
     # regarding the choice of shared_in_center: WWMDD?
     if shared_in_center:
@@ -4517,10 +4860,13 @@ def fix_facetgrid_axis_labels(facet_grid, *, shared_in_center: bool = False,
 
 
 def set_facetgrid_legend(facet_grid, **kwargs) -> None:
-    """
+    """Adds legend to FacetGrid, with hue artists from all its axes.
+
     In cases where different axes have different subsets of the hue levels,
     the legend may not contain the artists for the union of hue levels across
     all axes. This sets a legend from the hue artists across all axes.
+
+    `kwargs` are passed to `facet_grid.add_legend`.
     """
     #from matplotlib.collections import PathCollection
     legend_data = dict()
@@ -4561,8 +4907,12 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     smoothed=True, show_footprints=True, show_footprints_alone=False,
     show_cell_ids=True, show_footprint_with_mask=False, gridspec=None,
     linewidth=0.5, verbose=True):
-    # TODO TODO be clear on requirements of df and cell_ids in docstring
-    """
+    """Plots traces for each (cell, trial), optionally with footprints.
+
+    Called as either `plot_traces(df, **kwargs)` or `plot_traces(df, cells, **kwargs)`,
+    where `df` is as returned by `db.load_recording`, and `cells` are the IDs of cells
+    to plot (from 'cell' column of `df`).
+
     n (int): (default=20) Number of cells to plot traces for if cell_ids not
         passed as second positional argument.
     random (bool): (default=False) Whether the `n` cell ids should be selected
@@ -5156,6 +5506,7 @@ def showsync(thorsync_dir, verbose=False, **kwargs):
 
     Args:
         thorsync_dir: path to a directory created by ThorSync
+        verbose: passed through to `thor.load_thorsync_hdf5`
         kwargs: passed through to `thor.load_thorsync_hdf5`
     """
     import pyqtgraph as pg
@@ -5239,18 +5590,20 @@ def showsync(thorsync_dir, verbose=False, **kwargs):
 # TODO delete / move to project specific repo / generalize
 # (currently only used in no-longer-used natural_odors/kc_analysis.py)
 def plot_pair_n(df, *args):
-    """Plots a matrix of odor1 X odor2 w/ counts of flies as entries.
+    """Saves table of odor1 X odor2 w/ counts of flies as entries.
+
+    Table is rendered (via `imgkit`) to 'natural_odors_pair_n.png' in current directory.
 
     Args:
     df (pd.DataFrame): DataFrame with columns:
         - prep_date
         - fly_num
-        - thorimage_id
+        - recording_from
         - name1
         - name2
         Data already collected w/ odor pairs.
 
-    odor_panel (pd.DataFrame): (optional) DataFrame with columns:
+    *args: optionally, odor_panel (pd.DataFrame), with columns:
         - odor_1
         - odor_2
         - reason (maybe make this optional?)

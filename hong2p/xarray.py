@@ -27,11 +27,11 @@ from hong2p.pandas import subset_index
 NETCDF_ENGINE: str = 'netcdf4'
 
 def load_dataarray(path: Path) -> xr.DataArray:
-    """Loads DataArray saved via `save_datarray`, and restores any MultiIndex coords.
+    """Loads DataArray saved via `save_dataarray`, and restores any MultiIndex coords.
 
     Makes same assumptions that `save_dataarray` does; namely that we should call
     `move_all_coords_to_index(arr)` on the loaded data, to recreate input to
-    `save_datarray`. This may not be true for some NetCDF files saved with `to_netcdf`
+    `save_dataarray`. This may not be true for some NetCDF files saved with `to_netcdf`
     directly, or anything other than `save_dataarray`.
     """
     arr = xr.open_dataarray(path, engine=NETCDF_ENGINE)
@@ -344,6 +344,13 @@ def all_coord_names(arr: xr.DataArray) -> List[str]:
 # TODO test
 # TODO add option to only reset a subset (or a particular one)?
 def reset_all_multiindex(arr: xr.DataArray) -> xr.DataArray:
+    """Returns array with `reset_index` called on each dim with a MultiIndex.
+
+    Dims with a single-level index are not reset. Inverse (for supported inputs) of
+    `move_all_coords_to_index`.
+
+    Raises AssertionError if the set of `all_coord_names` changes.
+    """
     vars_before = all_coord_names(arr)
     dims = arr.dims
     if len(arr.indexes) > 0:
@@ -413,6 +420,16 @@ def move_all_coords_to_index(arr: xr.DataArray) -> xr.DataArray:
 def odor_corr_frame_to_dataarray(df: pd.DataFrame,
     metadata: Optional[Dict[str, Any]] = None) -> xr.DataArray:
     """Converts (odor X odor) correlation DataFrame to DataArray.
+
+    Output has dims ('odor', 'odor_b'), with column index level names suffixed with
+    '_b' (via `util.suffix_index_names`).
+
+    Args:
+        df: square correlation DataFrame, with same index level names on rows and
+            columns (including at least 'odor1')
+
+        metadata: if passed, assigned as additional (typically scalar) coordinates. keys
+            must not already be index level names.
     """
     # TODO also need to check it's .names that are defined and not .name? .names
     # should be None in that case, causing this to fail, right?
@@ -472,7 +489,10 @@ def odor_corr_frame_to_dataarray(df: pd.DataFrame,
 # TODO how to type hint coordinates in current xr? (replace Any with that)
 def find_matching_coords(index: pd.Index, arr: xr.DataArray, *, warn: bool = True
     ) -> Optional[Any]:
-    """Checks whether `data` and `arr` have compatible indices, returns matching coords.
+    """Checks whether `index` and `arr` have compatible indices, returns matching coords
+
+    Returns coords for the first dim in `arr` that matches `index`, or None if no dims
+    match.
 
     Args:
         index: pandas index to find matching coords for (from a single dim in `arr`)

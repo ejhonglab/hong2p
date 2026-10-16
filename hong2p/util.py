@@ -51,6 +51,12 @@ from hong2p.olf import NO_ODOR
 ACQUISITION_ENV_VAR = 'HONG2P_ACQUISITION'
 
 def is_acquisition_host() -> bool:
+    """Returns whether this computer is used for acquisition.
+
+    Determined by `ACQUISITION_ENV_VAR` ('HONG2P_ACQUISITION', which must be '0' or
+    '1') if set. Otherwise, Windows computers are assumed to be acquisition computers
+    (with a warning).
+    """
     _is_acquisition_host = False
 
     if ACQUISITION_ENV_VAR in os.environ:
@@ -146,6 +152,19 @@ def set_data_root(new_data_root: Pathlike) -> None:
 
 
 def data_root(verbose: bool = False) -> Path:
+    """Returns root directory for data (with 'raw_data', 'analysis_output', etc).
+
+    If not set via `set_data_root`, determined from (in order of priority):
+    - `$HONG2P_DATA` (`DATA_ROOT_ENV_VAR`)
+    - `$HONG_NAS/mb_team` (`NAS_PREFIX_ENV_VAR` + `NAS_PATH_TO_HONG2P_DATA`)
+
+    Result is cached for future calls.
+
+    Args:
+        verbose: if True, prints which environment variable was used
+
+    Raises IOError if none of these are set, or if chosen path is not a directory.
+    """
     global _data_root
 
     if _data_root is None:
@@ -194,7 +213,12 @@ def data_root(verbose: bool = False) -> Path:
 
 
 def check_dir_exists(fn_returning_dir):
+    """Decorator to check directory returned by wrapped function exists.
 
+    Adds these keyword arguments to the wrapped function:
+        check: if True (default), raises IOError if directory does not exist
+        create: if True, creates directory (and any parents) if it does not exist
+    """
     @functools.wraps(fn_returning_dir)
     def optionally_checked_fn_returning_dir(*args, check=True, create=False, **kwargs):
 
@@ -273,7 +297,22 @@ def compile_latex(tex_path: Pathlike, output_dir: Optional[Pathlike] = None, *,
     # Pathlike b/c can have '~' in them, so may want to pass str w/ that
     tex_inputs: Optional[List[Pathlike]] = None, verbose: bool = False) -> Path:
     """
-    Compiles a .tex file to a PDF using pdflatex.
+    Compiles a .tex file to a PDF using pdflatex, returning path to the PDF.
+
+    Args:
+        tex_path: .tex file to compile
+
+        output_dir: passed to pdflatex `-output-directory`. NOTE: returned PDF path (and
+            check that it was written) currently assumes PDF is written next to
+            `tex_path`, so this should currently be the directory containing `tex_path`.
+
+        tex_inputs: directories to add to `TEXINPUTS` (e.g. ones containing required
+            .sty files)
+
+        verbose: if True, prints pdflatex stdout
+
+    Raises `subprocess.CalledProcessError` (after printing pdflatex stdout/stderr) if
+    compilation fails.
     """
     # so we can see if PDF was updated after this
     start = time.time()
@@ -402,7 +441,7 @@ def n_bytes_in_unit(nbytes: int, *, unit: str = 'G', bsize: int = 1024) -> float
     """Convert nbytes to gigabytes (with default `unit='G'``), megabytes, etc.
 
        sample code:
-           print('mb= ' + str(n_bytes_in_unit(314575262000000, 'M')))
+           print('mb= ' + str(n_bytes_in_unit(314575262000000, unit='M')))
        sample output:
            mb= 300002347.946
     """
@@ -426,6 +465,8 @@ def file_size_bytes(path: Pathlike, **kwargs) -> int:
 
     Args:
         path: file to get size of
+
+        **kwargs: currently ignored
 
     Probably will only work on Linux. Does `path.stat().st_size` work on Windows?
     Alternative, if not?
@@ -458,6 +499,24 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
     checks: bool = True, replace: bool = False, verbose: bool = True,
     _debug: bool = False) -> None:
     """Create symlink link pointing to target, doing nothing if link exists.
+
+    Existing links are replaced if they are broken or `replace=True`.
+
+    Args:
+        target: path link should point to. must exist.
+
+        link: path of link to create. if this is an existing directory (and not a
+            symlink), raises IOError.
+
+        relative: if True, link will point to a path relative to directory containing
+            link. otherwise, `target` must be absolute.
+
+        checks: if True, checks link resolves to `target` (including for existing
+            links that are not replaced)
+
+        replace: if True, replaces any existing link at `link`
+
+        verbose: if True, prints link being created (and if replacing existing link)
     """
     # TODO err if link exists and was created *in this same run* (indicating trying to
     # point to multiple different outputs from the same link; a bug)
@@ -606,7 +665,8 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
 # (include mb_team in that part and rename from data_root?)
 @check_dir_exists
 def raw_data_root(root: Optional[Pathlike] = None, **kwargs) -> Path:
-
+    """Returns `<root>/raw_data`, where `root` defaults to `data_root(**kwargs)`.
+    """
     # TODO TODO also default to _fast_data_root?
 
     if root is None:
@@ -618,6 +678,11 @@ def raw_data_root(root: Optional[Pathlike] = None, **kwargs) -> Path:
 # TODO kwarg / default to makeing dir if not exist (and for similar fns above)?
 @check_dir_exists
 def analysis_intermediates_root() -> Path:
+    """Returns `analysis_intermediates` directory, under fast data root if set.
+
+    Fast data root is set via `$HONG2P_FAST_DATA` (`FAST_DATA_ROOT_ENV_VAR`). If that is
+    not set, uses current directory (with a warning).
+    """
     # TODO probably prefer using $HONG2P_DATA over os.getcwd() (assuming it's not on NAS
     # and it therefore acceptably fast if not instead using $HONG_NAS)
     if _fast_data_root is None:
@@ -634,6 +699,8 @@ def analysis_intermediates_root() -> Path:
 
 @check_dir_exists
 def stimfile_root(**kwargs) -> Path:
+    """Returns `$HONG2P_STIMFILE_DIR` if set, else `<data_root>/stimulus_data_files`.
+    """
     return Path(os.environ.get(STIMFILE_DIR_ENV_VAR,
         data_root(**kwargs) / 'stimulus_data_files'
     ))
@@ -643,6 +710,8 @@ def stimfile_root(**kwargs) -> Path:
 # least pin an older version of hong2p for them)
 @check_dir_exists
 def analysis_output_root(**kwargs) -> Path:
+    """Returns `<data_root>/analysis_output`.
+    """
     return data_root(**kwargs) / 'analysis_output'
 
 
@@ -653,6 +722,9 @@ class IOPerformanceWarning(Warning):
 
 def argparse_dir(path: Any, *, expected_subdirs: Optional[Sequence[str]] = None) -> Path:
     """Returns path if can be converted to a Path directory.
+
+    For use as `type=` to `argparse` `add_argument` calls (e.g. via
+    `functools.partial`, if passing `expected_subdirs`). `~` is expanded.
 
     Raises `argparse.ArgumentTypeError` if input can not be converted to a directory, or
     if it does not contain the expected subdirectory names (if `expected_subdirs !=
@@ -726,11 +798,17 @@ def get_fly_dir(date: Datelike, fly: FlyNum) -> Path:
 
 def raw_fly_dir(date: Datelike, fly: FlyNum, *, warn: bool = True, short: bool = False
     ) -> Path:
-    """
+    """Returns raw data directory for a fly, preferring one under fast data root.
+
     Args:
-        short: If True, returns in format YYYY-MM-DD/<fly #>/<ThorImage dir>, without
-            the prefix specifying the full path. Intended for creating more readable
-            paths, where absolute paths are not required.
+        date: date fly was imaged
+
+        fly: fly number (within date)
+
+        warn: if True, warns (with `IOPerformanceWarning`) if fast data root is set, but
+            does not contain directory for this fly
+
+        short: currently ignored
     """
     raw_fly_basedir = get_fly_dir(date, fly)
 
@@ -753,10 +831,14 @@ def raw_fly_dir(date: Datelike, fly: FlyNum, *, warn: bool = True, short: bool =
 
 
 def thorimage_dir(date, fly, thorimage_id, **kwargs) -> Path:
+    """Returns ThorImage output directory. `kwargs` passed to `raw_fly_dir`.
+    """
     return raw_fly_dir(date, fly, **kwargs) / thorimage_id
 
 
 def thorsync_dir(date, fly, base_thorsync_dir, **kwargs) -> Path:
+    """Returns ThorSync output directory. `kwargs` passed to `raw_fly_dir`.
+    """
     return raw_fly_dir(date, fly, **kwargs) / base_thorsync_dir
 
 
@@ -764,7 +846,8 @@ def thorsync_dir(date, fly, base_thorsync_dir, **kwargs) -> Path:
 def thorimage_dir_input(fn):
     """Wraps functions taking ThorImage path and adds option to call via fly keys
 
-    Fly keys are (date, fly_num, thorimage_id)
+    Fly keys are (date, fly_num, thorimage_id). Any other arguments to the wrapped
+    function must be passed as keyword arguments.
     """
 
     @functools.wraps(fn)
@@ -797,6 +880,8 @@ def thorimage_dir_input(fn):
 # TODO use new name in al_pair_grids + also handle fast data dir here.
 # (maybe always returning directories under fast? or kwarg to behave that way?)
 def analysis_fly_dir(date, fly) -> Path:
+    """Returns `<analysis_output_root>/<date>/<fly>`.
+    """
     return analysis_output_root() / get_fly_dir(date, fly)
 
 
@@ -812,6 +897,8 @@ def shorten_path(full_path: Pathlike, n: int = 3) -> str:
 
 def print_thor_paths(image_dir: Pathlike, sync_dir: Pathlike, print_full_paths=True
     ) -> None:
+    """Prints ThorImage and ThorSync directories (last 3 parts only, if not full).
+    """
 
     if print_full_paths:
         image_dir_toprint = image_dir
@@ -838,7 +925,6 @@ def print_thor_paths(image_dir: Pathlike, sync_dir: Pathlike, print_full_paths=T
 def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths=True,
     verbose=False, **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathPair], None,
     None]:
-    # TODO add code example to doc
     """Takes list of (date, fly_num) tuples to pairs of their Thor outputs.
 
     Args:
@@ -850,12 +936,20 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths
         verbose (bool): (default=False) If True, prints the fly/ThorImage/ThorSync
             directories as they are being iterated over.
 
+        print_full_paths (bool): (default=True) If False, only prints last few parts of
+            each path (if `verbose=True`)
+
         **pair_kwargs: Passed through to `thor.pair_thor_subdirs`. See arguments to
             `thor.pair_thor_dirs` (called by `thor.pair_thor_subdirs`) for most of the
             useful options.
 
     Each output is of the form:
     ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
+
+    Example:
+        pairs = date_fly_list2paired_thor_dirs([('2021-03-07', 1), ('2021-03-08', 2)])
+        for (date, fly_num), (thorimage_dir, thorsync_dir) in pairs:
+            movie = thor.read_movie(thorimage_dir)
     """
     if n_first is not None:
         warnings.warn(f'only returning first {n_first} paired Thor[Image/Sync] outputs')
@@ -890,18 +984,35 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
     n_first: Optional[int] = None, skip_redone: bool = True, verbose: bool = False,
     print_skips: bool = True, print_fast: bool = True, print_full_paths: bool = True,
     **pair_kwargs) -> Generator[Tuple[DateAndFlyNum, PathPair], None, None]:
-    # TODO add code example to doc
     """Generates tuples of fly metadata and ThorImage output paths, in acquisition order
+
+    Searches all (date, fly) directories under `raw_data_root()` (preferring those under
+    fast data root, if set).
 
     Args:
         matching_substrs: If passed, only experiments whose ThorImage path contains at
             least one of these substring will be included.
 
+        start_date: If passed, flies from dates before this are skipped.
+
+        end_date: If passed, flies from dates after this are skipped.
+
         n_first: If passed, only up to this many of pairs are enumerated.
             Intended for testing on subsets of data.
 
+        skip_redone: If True, skips ThorImage directories where another directory with
+            same name plus a '_redo' suffix exists.
+
         verbose: If True, prints the fly/ThorImage/ThorSync directories as they are
             being iterated over.
+
+        print_skips: If True (and `verbose=True`), prints why directories are skipped.
+
+        print_fast: If True (and `verbose=True`), prints which directories are not used
+            because an equivalent exists under fast data root.
+
+        print_full_paths: If False, only prints last few parts of each path (if
+            `verbose=True`)
 
         **pair_kwargs: Passed through to `thor.pair_thor_subdirs`. See arguments to
             `thor.pair_thor_dirs` (called by `thor.pair_thor_subdirs`) for most of the
@@ -909,6 +1020,12 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
 
     Each output is of the form:
     ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
+
+    Example:
+        for (date, fly_num), (thorimage_dir, thorsync_dir) in paired_thor_dirs(
+            matching_substrs=['diag'], start_date='2021-03-07'):
+
+            movie = thor.read_movie(thorimage_dir)
     """
     if n_first is not None:
         warnings.warn(f'only returning first {n_first} paired Thor[Image/Sync] outputs')
@@ -1034,6 +1151,8 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
 
 
 def _raw_data_root_grandchildren() -> Generator[Path, None, None]:
+    """Returns generator of directories two levels under `raw_data_root()`.
+    """
     return raw_data_root().glob('*/*/')
 
 
@@ -1093,7 +1212,10 @@ def _all_paired_thor_dirs(skip_errors=True, **kwargs) -> List[PathPair]:
 
 
 def _stimfile_dir(stimfile_dir: Optional[Pathlike] = None) -> Path:
-    # TODO doc
+    """Returns `stimfile_dir` as a Path (or `stimfile_root()` if None).
+
+    Raises IOError if passed `stimfile_dir` is not a directory.
+    """
     if stimfile_dir is None:
         stimfile_dir = stimfile_root()
     else:
@@ -1229,7 +1351,7 @@ def thorimage2yaml_info_and_odor_lists(thorimage_dir_or_xml, stimfile_dir=None):
             If not passed, `stimfile_root()` is used.
 
     Returns:
-        yaml_path (str): path to YAML
+        yaml_path (Path): path to YAML
 
         yaml_data (dict): loaded contents of `yaml_path`
 
@@ -1346,6 +1468,8 @@ def nan_eq(arr1, arr2):
 
     Normally, NaN != NaN, but this is not the behavior I want when trying to check which
     parts of an array/DataFrame were changed by an operation.
+
+    NOTE: currently also True wherever just `arr2` is NaN (only checks `arr2` for NaN).
     """
     # https://stackoverflow.com/questions/19322506
     # Psuedocode: (x == y) or (isnan(x) and isnan(y))
@@ -1645,7 +1769,8 @@ def load_odor_metadata(stimfile_path):
 # TODO maybe break into a kc_mix_analysis repo (or something else appropriately
 # project specific)
 def print_trial_odors(data, odor_onset_frames=None):
-    """
+    """Prints odors presented in each block (w/ 1-indexed onset frames, if passed).
+
     data should be as the output of `load_odor_metadata`
     """
     import chemutils as cu
@@ -1829,6 +1954,19 @@ def tiff_ijroi_filename(tiff, confirm=None,
 # TODO maybe replace w/ (/ borrow some ideas from) al_analysis.delta_f_over_f
 def calculate_df_over_f(raw_f, trial_start_frames, odor_onset_frames,
     trial_stop_frames):
+    """Returns dF/F, using mean from trial start through odor onset frame as baseline.
+
+    Args:
+        raw_f: array of shape (frames, cells)
+
+        trial_start_frames: first frame of each trial
+
+        odor_onset_frames: odor onset frame of each trial (included in baseline)
+
+        trial_stop_frames: last frame of each trial (inclusive)
+
+    Frames not in any trial will be NaN in output.
+    """
     # TODO TODO maybe factor this into some kind of util fn that applies
     # another fn (perhaps inplace, perhaps onto new array) to each
     # (cell, block) (or maybe just each block, if smooth_1d can be vectorized,
@@ -1867,6 +2005,14 @@ def calculate_df_over_f(raw_f, trial_start_frames, odor_onset_frames,
 
 # TODO move to project specific repo
 def stimfile_odorset(stimfile_path, strict=True):
+    """Returns name of odor set (see `odorset_name`) for odors in pickle stimfile.
+
+    Args:
+        stimfile_path: path to pickle stimfile (see `load_stimfile`)
+
+        strict: if False, returns None (rather than raising ValueError) for stimfiles
+            from pair experiments or with empty odor lists
+    """
     data = load_stimfile(stimfile_path)
 
     # TODO did i use some other indicator elsewhere? anything more robust than
@@ -1916,6 +2062,8 @@ def stimfile_odorset(stimfile_path, strict=True):
 
 
 def print_all_stimfile_odorsets() -> None:
+    """Prints (filename, odor set) for each pickle stimfile under `stimfile_root()`.
+    """
     stimfiles = sorted(glob.glob(join(stimfile_root(), '*.p')))
     stimfile_odorsets = [stimfile_odorset(sf, strict=False)
         for sf in stimfiles
@@ -1969,6 +2117,8 @@ odor_set2order = {
 }
 def df_to_odor_order(df, observed=True, return_name1=False):
     """Takes a complex-mixture DataFrame to odor names in desired plot order.
+
+    Order is from `odor_set2order`, with odor set determined via `odorset_name`.
 
     Args:
     df (pd.DataFrame): should have a 'original_name1' column, with names of
@@ -2025,6 +2175,18 @@ def gsheet_csv_export_link(file_with_edit_link: Union[str, Pathlike],
 
     GID seems to default to 0 for the first sheet, but seems unpredictable for further
     sheets in the same document, though you can extract it from the URL in those cases.
+
+    Args:
+        file_with_edit_link: either the URL itself, or name of a text file containing
+            it (searched for in `extra_search_dirs`, current directory, and hong2p
+            root, in that order)
+
+        gid: ID of sheet within document. if not passed, parsed from 'gid=<x>' in URL,
+            or 0 if not in URL. raises ValueError if passed and also in URL.
+
+        no_append_gid: if True, output ends with 'gid=', so caller can append GID
+
+        extra_search_dirs: see `file_with_edit_link`
     """
     if str(file_with_edit_link).startswith('http'):
         url = str(file_with_edit_link)
@@ -2097,13 +2259,18 @@ def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
     drop_trailing_bools: bool = True, restore_ints: bool = True,
     normalize_col_names: bool = False, use_cache: bool = False,
     extra_search_dirs: Optional[Sequence[Pathlike]] = None) -> pd.DataFrame:
-    # TODO doc file_with_edit_link / gid (w/ expected format + how to get them)
     # TODO want to allow str url for file_with_edit_link too (allowed in called fn)?
-    """
-    Args:
-        file_with_edit_link:
+    """Loads a Google sheet into a DataFrame (via its CSV export link).
 
-        gid:
+    Args:
+        file_with_edit_link: name of a text file containing the URL of the Google sheet,
+            as copied from the browser address bar while editing it (e.g.
+            'https://docs.google.com/spreadsheets/d/<doc-id>/edit#gid=<gid>'). see
+            `gsheet_csv_export_link` for where this file is searched for.
+
+        gid: ID of the sheet (tab) within the document. shown as 'gid=<gid>' at the end
+            of the URL while that sheet is selected. if not passed, taken from URL in
+            `file_with_edit_link`, or 0 (first sheet) if not in URL.
 
         bool_fillna_false: whether to replace missing values in columns that otherwise
             only contain True/False with False. will convert column dtype to 'bool' as
@@ -2237,6 +2404,27 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
     drop_nonexistant_dirs=True, show_inferred_paths=False,
     print_excluded_on_disk=True, verbose=False):
     '''Returns a pandas.DataFrame with data on flies and MB team recordings.
+
+    Missing ThorImage / ThorSync directory names are inferred from files on disk or
+    naming conventions. Result is cached for future calls. Also uploads fly data to
+    database (see `db.to_sql_with_duplicates`).
+
+    Args:
+        use_cache: if True, loads sheet data from `.gsheet_cache.p` in current
+            directory (if it exists), instead of downloading
+
+        natural_odors_only: currently ignored (only 'natural_odors' project rows are
+            ever returned)
+
+        drop_nonexistant_dirs: if True, drops rows where either Thor directory does not
+            exist
+
+        show_inferred_paths: if True, prints inferred Thor directories
+
+        print_excluded_on_disk: if True, prints Thor directories on disk but not in
+            output
+
+        verbose: if True, prints details of path inference
     '''
     global _mb_team_gsheet
     if _mb_team_gsheet is not None:
@@ -2885,6 +3073,20 @@ def git_hash(repo_file):
 def version_info(*args, used_for='', force_git=False):
     """Takes module or string path to file in Git repo to a dict with version
     information (with keys and values the database will accept).
+
+    If no positional argument is passed, returns information for hong2p (requiring it
+    be installed from a git repo).
+
+    Args:
+        *args: optionally, a module or str path to a file in a git repo
+
+        used_for: added to output under 'used_for' key
+
+        force_git: if True, raises error if input is not in a git repo. otherwise, falls
+            back to getting installed package version (requires module input).
+
+    Output has keys 'name', 'used_for', and either 'git_remote', 'git_hash',
+    'git_uncommitted_changes' (if in a git repo) or 'version'.
     """
     import git
     import pkg_resources
@@ -3083,6 +3285,8 @@ def tiff_filename2keys(tiff_filename):
 
 # TODO delete?
 def recording_df2keys(df):
+    """Returns tuple of unique `recording_cols` values, asserting there is one.
+    """
     dupes = df[recording_cols].drop_duplicates()
     assert len(dupes) == 1
     return tuple(dupes.iloc[0])
@@ -3185,10 +3389,19 @@ def subrecording_tiff_blocks_df(series):
 
 
 def parent_recording_id(tiffname_or_thorimage_id):
-    # TODO provide example of naming convention / manipulation in doc
     """Returns recording id for recording subrecording was derived from.
 
-    Input can be a TIFF filename or recording id.
+    Input can be a TIFF filename or recording id. Sub-recording IDs are of the form
+    `<parent id>_<first block>b<last block>_from_<nr|rig>` (see
+    `shared_subrecording_regex`).
+
+    Raises ValueError if input is not a sub-recording.
+
+    >>> parent_recording_id('fn_0002_1b3_from_nr')
+    'fn_0002'
+
+    >>> parent_recording_id('2019-07-25/2/_001_2b4_from_rig_nr.tif')
+    '_001'
     """
     last_part = split(tiffname_or_thorimage_id)[1]
     match = re.search(shared_subrecording_regex, last_part)
@@ -3211,7 +3424,17 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
     Metadata may not be correct.
 
     Args:
-        dims: may or may not have the same meaning as `tifffile.imsave` `axes` kwarg
+        tiff_filename: path to write TIFF to
+
+        movie: data to write
+
+        strict_dtype: if True, requires `movie` have uint16 dtype (with explicit byte
+            order), and converts to big-endian if needed. otherwise, only converts
+            float64 to float32.
+
+        dims: may or may not have the same meaning as `tifffile.imsave` `axes` kwarg.
+            characters must be among 'TZCYX'. defaults to 'TYX' or 'TZYX', depending on
+            number of dimensions of `movie`.
     """
     import tifffile
 
@@ -3332,6 +3555,8 @@ def full_frame_avg_trace(movie):
 
 
 def exp_decay(t, scale, tau, offset):
+    """Returns `scale * exp(-t / tau) + offset`.
+    """
     # TODO is this the usual definition of tau (as in RC time constant?)
     return scale * np.exp(-t / tau) + offset
 
@@ -3344,6 +3569,12 @@ def fit_exp_decay(signal, sampling_rate=None, times=None, numerical_scale=1.0):
     Args:
         signal (1 dimensional np.ndarray): time series, beginning at decay onset
         sampling_rate (float): sampling rate in Hz
+        times (np.ndarray): times of each sample. pass either this or `sampling_rate`.
+        numerical_scale (float): signal is multiplied by this before fitting (and
+            parameters are scaled back after)
+
+    Returns ((scale, tau, offset), sigmas), where `sigmas` are standard deviations of
+    parameter estimates. See `exp_decay`.
     """
     from scipy.optimize import curve_fit
 
@@ -3389,7 +3620,10 @@ def n_expected_repeats(df):
 # TODO move to project specific repo unless stimulus metadata can be
 # meaningfully generalized
 def missing_repeats(df, n_repeats=None):
-    """
+    """Returns DataFrame with a row for each missing (comparison, odors, repeat).
+
+    `n_repeats` defaults to `n_expected_repeats(df)`.
+
     Requires at least recording_from, comparison, name1, name2, and repeat_num
     columns. Can also take prep_date, fly_num, thorimage_id.
     """
@@ -3457,7 +3691,8 @@ def missing_repeats(df, n_repeats=None):
 
 
 def have_all_repeats(df, n_repeats=None):
-    """
+    """Returns whether `missing_repeats` finds no missing repeats.
+
     Returns True if a recording has all blocks gsheet says it has, w/ full
     number of repeats for each. False otherwise.
 
@@ -3472,7 +3707,8 @@ def have_all_repeats(df, n_repeats=None):
 
 
 def missing_odor_pairs(df):
-    """
+    """Returns DataFrame w/ a row for each comparison without exactly 3 odor pairs.
+
     Requires at least recording_from, comparison, name1, name2 columns.
     Can also take prep_date, fly_num, thorimage_id.
     """
@@ -3532,11 +3768,11 @@ def missing_odor_pairs(df):
 
 
 def have_full_comparisons(df):
-    """
+    """Returns whether `missing_odor_pairs` finds no incomplete comparisons.
+
     Requires at least recording_from, comparison, name1, name2 columns.
     Can also take prep_date, fly_num, thorimage_id.
     """
-    # TODO docstring
     if len(missing_odor_pairs(df)) == 0:
         return True
     else:
@@ -3544,8 +3780,12 @@ def have_full_comparisons(df):
 
 
 def skipped_comparison_nums(df):
-    # TODO doc
-    """
+    """Returns DataFrame w/ a row for each comparison number skipped within recordings.
+
+    Skipped comparisons are those between min and max comparison number (inclusive) of
+    each recording that are not present. NOTE: currently checks for these numbers in
+    the index (not values) of the comparison column.
+
     Requires at least recording_from and comparison columns.
     Can also take prep_date, fly_num, and thorimage_id.
     """
@@ -3592,8 +3832,8 @@ def skipped_comparison_nums(df):
 
 
 def no_skipped_comparisons(df):
-    # TODO doc
-    """
+    """Returns whether `skipped_comparison_nums` finds no skipped comparisons.
+
     Requires at least recording_from and comparison columns.
     Can also take prep_date, fly_num, and thorimage_id.
     """
@@ -3623,10 +3863,9 @@ def drop_incomplete_presentations():
 def smooth_1d(x, window_len=11, window='hanning'):
     """smooth the data using a window with requested size.
 
-    This method is based on the convolution of a scaled window with the signal.
-    The signal is prepared by introducing reflected copies of the signal
-    (with the window size) in both ends so that transient parts are minimized
-    in the begining and end part of the output signal.
+    This method is based on the convolution of a scaled window with the signal (with
+    `np.convolve(..., mode='same')`, so output is same length as input, and edges are
+    effectively zero-padded).
 
     input:
         x: the input signal
@@ -3652,8 +3891,6 @@ def smooth_1d(x, window_len=11, window='hanning'):
 
     TODO: the window parameter could be the window itself if an array instead of
     a string
-    NOTE: length(output) != length(input), to correct this: return
-    y[(window_len/2-1):-(window_len/2)] instead of just y.
     """
     if x.ndim != 1:
         raise ValueError("smooth_1d only accepts 1 dimension arrays.")
@@ -3892,6 +4129,11 @@ def format_mixture(*args):
 
 # TODO move to olf / delete
 def split_odor_w_conc(row_or_str):
+    """Returns Series with 'name' and 'log10_conc_vv' parsed from '<name> @ <conc>'.
+
+    Input can be a str or a row (Series) with 'odor_w_conc' (in which case, other row
+    data is also included in output). Concentration defaults to 0.0 if not in str.
+    """
     try:
         odor_w_conc = row_or_str.odor_w_conc
         include_other_row_data = True
@@ -3917,6 +4159,8 @@ def split_odor_w_conc(row_or_str):
 
 
 def format_keys(date, fly, *other_keys):
+    """Returns str like '<YYYY-MM-DD>/<fly>[/<other key>...]'.
+    """
     date = format_date(date)
     fly = str(int(fly))
     others = [str(k) for k in other_keys]
@@ -3930,10 +4174,20 @@ def format_params(params: Dict[str, Any], *, delim: str = ', ', sort: bool = Tru
     # TODO float_format option to print all decimal places, as if no format specifier
     # was provided? some float_format value equiv to that? otherwise, make optional and
     # use None for that? even care to support this behavior tho?
-    """Formats dict with params into one string.
+    """Formats dict with params into one string, like 'a=1, b=0.500'.
 
     Args:
+        params: dict of parameter names to values
+
+        delim: str to join '<name>=<value>' strs with
+
         sort: whether to sort keys
+
+        exclude_params: names of parameters to not include in output
+
+        float_format: format specifier for float values
+
+        abbrevs: dict of parameter names to (shorter) names to use in output
     """
     items = params.items()
     if sort:
@@ -4032,7 +4286,15 @@ def pair_ordering(comparison_df):
 # require accesss to df...) and call that there
 # TODO delete?
 def add_missing_odor_cols(df, missing_df):
-    """
+    """Adds NaN columns to `missing_df` for presentations w/ null 'df_over_f' in `df`.
+
+    Args:
+        df: data with 'cell', 'df_over_f', and odor columns (as `missing_df` column
+            level names)
+
+        missing_df: cell X odor presentation data to add columns to
+
+    Returns `missing_df` with added columns, with columns sorted.
     """
     # TODO maybe check cols are indeed describing odors in missing_df?
 
@@ -4076,6 +4338,8 @@ def add_missing_odor_cols(df, missing_df):
 # either scene or template for the other? i guess point of baselining
 # is to avoid need for stuff like that...
 def baselined_normed_u8(img):
+    """Returns image linearly scaled to [0, 255] range, as uint8.
+    """
     u8_max = 255
     # TODO maybe convert to float64 or something first before some operations,
     # to minimize rounding errs?
@@ -4086,6 +4350,8 @@ def baselined_normed_u8(img):
 
 # TODO refactor this behind a color=True kwarg baselined_normed_u8 above?
 def u8_color(draw_on):
+    """Returns 2D image scaled to [0, 255] as uint8 RGB (via gray cmap), shape (y,x,3).
+    """
     # TODO figure out why background looks lighter here than in other
     # imshows of same input (w/o converting manually)
     draw_on = draw_on - np.min(draw_on)
@@ -4097,6 +4363,8 @@ def u8_color(draw_on):
 
 
 def euclidean_dist(v1, v2):
+    """Returns Euclidean distance between two vectors (cast to float64 first).
+    """
     # Without the conversions to float 64 (or at least something else signed),
     # uint inputs lead to wraparound -> big distances occasionally.
     return np.linalg.norm(np.array(v1).astype(np.float64) -
@@ -4107,6 +4375,10 @@ def euclidean_dist(v1, v2):
 def assign_frames_to_trials(movie, presentations_per_block, block_first_frames,
     odor_onset_frames):
     """Returns arrays trial_start_frames, trial_stop_frames
+
+    Trials (other than the first, which starts at frame 0) start a fixed number of
+    frames before each odor onset (the max offset from block start to first odor onset),
+    and end right before next trial (or at end of movie). Stop frames are inclusive.
     """
     n_frames = movie.shape[0]
     # TODO maybe just add metadata['drop_first_n_frames'] to this?
@@ -4462,7 +4734,27 @@ def downsample_movie(movie, target_fps, current_fps, allow_overshoot=True,
     allow_uneven_division=False, relative_fps_err=True, debug=False):
     """Returns downsampled movie by averaging consecutive groups of frames.
 
-    Groups of frames averaged do not overlap.
+    Groups of frames averaged do not overlap. Group size is the divisor of number of
+    frames giving fps closest to `target_fps`.
+
+    Args:
+        movie: array with time as first dimension
+
+        target_fps: desired frames per second
+
+        current_fps: frames per second of `movie`
+
+        allow_overshoot: if False, output fps will not be below `target_fps`
+
+        allow_uneven_division: not implemented
+
+        relative_fps_err: whether to compare fps error as fraction of `target_fps`
+
+        debug: if True, prints intermediate values
+
+    Returns downsampled movie and its fps.
+
+    Raises ValueError if no downsampling is possible (best factor is 1).
     """
     if allow_uneven_division:
         raise NotImplementedError
@@ -4579,6 +4871,16 @@ def to_filename(x: str, period: bool = True,
 
     E.g. taking a plot title and using it to derive a filename for saving the
     plot.
+
+    Whitespace and '/' / '@' are replaced with '_' (with consecutive '_' collapsed),
+    and some punctuation (e.g. ',', '.', parentheses) is removed.
+
+    Args:
+        x: str to normalize
+
+        period: if True, appends '.' to output (so an extension can be appended)
+
+        extra_remove_chars: additional characters to remove
     """
     # To handle things like consecutive whitespace (e.g. 'x\n y')
     x = '_'.join(x.split())
@@ -4620,6 +4922,10 @@ _color_codes = {
     'cyan': '36'
 }
 def start_color(color_name):
+    """Prints ANSI escape code so that subsequent terminal output is `color_name`.
+
+    See `_color_codes` for available colors.
+    """
     try:
         color_code = _color_codes[color_name]
     except KeyError as err:
@@ -4630,10 +4936,14 @@ def start_color(color_name):
 
 
 def stop_color():
+    """Prints ANSI escape code to reset terminal output color.
+    """
     print('\033[0m', end='')
 
 
 def print_color(color_name, *args, **kwargs):
+    """Prints `args` in color `color_name` (without trailing newline).
+    """
     start_color(color_name)
     print(*args, **kwargs, end='')
     stop_color()
@@ -4641,8 +4951,11 @@ def print_color(color_name, *args, **kwargs):
 
 # TODO delete
 def latest_trace_pickles():
-    # TODO say which data is searched/included in this fn
     """Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.
+
+    Searches '*.p' files under `<analysis_output_root>/trace_pickles` (as written by
+    `db.load_recording`), which should be named like
+    '<YYYYMMDD>_<HHMM>_<YYYY-MM-DD>_<fly_num>_<thorimage_id>.p'.
 
     Only returns rows for filenames that had the latest timestamp for the
     combination of index values.
@@ -4696,6 +5009,21 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, *, dim=None,
 
     Args:
         data: DataFrame or DataArray to add metadata to
+
+        group_keys: columns (or coordinates, for DataArray input) to group on
+
+        name: name of new ID column / coordinate. defaults to
+            `'_'.join(group_keys) + '_id'`.
+
+        dim: for DataArray input, dimension to add new coordinate to (required)
+
+        start_at_one: if True, IDs start at 1 (rather than 0). ignored if
+            `letter=True`.
+
+        sort: passed to `groupby`. if True, IDs are assigned in sorted order of group
+            keys. otherwise, in order of first appearance.
+
+        inplace: if True, adds column to input DataFrame (not supported for DataArray)
 
         letter: if True, use letters starting from 'A' (rather than integers) for the
             new ID variable
@@ -4765,12 +5093,16 @@ def add_group_id(data: DataFrameOrDataArray, group_keys, name=None, *, dim=None,
 # have that be the default (to avoid ambiguity w/ fly_num, which is numbered within each
 # day)
 def add_fly_id(df, **kwargs):
+    """Adds 'fly_id' identifying unique (date, fly_num). See `add_group_id`.
+    """
     name = 'fly_id'
     # TODO switch to fly_cols instead
     return add_group_id(df, recording_cols[:2], name=name, **kwargs)
 
 
 def add_recording_id(df, **kwargs):
+    """Adds 'recording_id' for unique `recording_cols` values. See `add_group_id`.
+    """
     name = 'recording_id'
     return add_group_id(df, recording_cols, name=name, **kwargs)
 
@@ -4782,7 +5114,20 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
     ) -> Optional[np.ndarray]:
     """Converts ThorImage .raw file to .tif file in same directory
 
+    Can also be called with (date, fly_num, thorimage_id) instead of `image_dir` (see
+    `thorimage_dir_input`).
+
     Args:
+        image_dir: ThorImage output directory
+
+        output_name: full path of TIFF to write. pass at most one of this or
+            `output_basename`.
+
+        output_basename: name of TIFF to write (under `output_dir`). defaults to
+            'raw.tif' or 'flipped.tif' (see `flip_lr`).
+
+        output_dir: directory to write TIFF to. defaults to `image_dir`.
+
         if_exists: 'load', 'ignore', 'overwrite', or 'err'
 
         flip_lr: If True, flip the raw movie along the left/right axis, to make
@@ -4790,8 +5135,12 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
             If True/False, default output basename will be 'flipped.tif'. If None,
             default output basename will remain 'raw.tif'.
 
+        discard_channel_b: passed to `thor.read_movie`
+
         check_round_trip: If True, and a TIFF was written, read it and check it is equal
-            to data loaded from ThorImage raw.
+            to data loaded from ThorImage raw. currently requires (t, z, y, x) data.
+
+        verbose: whether to print progress
 
     Returns an np.ndarray movie if TIFF was created OR if if_exists='load' and
     the corresponding TIFF already exists. Returns None if if_exists='ignore' and the
@@ -4970,7 +5319,11 @@ def is_all_float(xs: Any) -> bool:
 # (just call it isclose? allclose?)
 def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
     allow_complex_type_seqs: bool = False, _warn: bool = True, **kwargs) -> bool:
-    """
+    """Returns whether `x` and `y` are equal, handling pandas/numpy/other types.
+
+    NOTE: if `x == y` raises an ambiguous truth value ValueError and
+    `allow_complex_type_seqs=False`, this currently returns None (rather than raising).
+
     Args:
         x,y: check equality, with the follow methods (if available, in order):
             1. `x.equals(y)`
@@ -4980,11 +5333,12 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
         check_float_with_allclose: if True, if `is_all_float` evaluates True on both
             inputs, will try `pd_allclose` before other equality checks
 
-        allow_complex_type_seqs: if False, will raise `ValueError` if `x` or `y` are
-            lists or tuples of numpy (non-scalar) arrays / pandas Series/DataFrames (and
-            probably also other things which may extend those). No other collections of
-            these objects, other than lists/tuples, are supported (and `ValueError`
-            could be raised for inputs like that).
+        allow_complex_type_seqs: if True and `x` and `y` are lists or tuples of numpy
+            (non-scalar) arrays / pandas Series/DataFrames (and probably also other
+            things which may extend those), elements are compared recursively. No other
+            collections of these objects, other than lists/tuples, are supported
+            (`ValueError` is raised for inputs like that). See NOTE above for behavior
+            if False.
 
         _warn: if `allow_complex_type_seqs=True`, will still warn if there are these
             "complex" types in the input, though will not raise. Does nothing if
@@ -5055,9 +5409,13 @@ def pd_index_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *, axis: str = 'i
     only_check_shared_levels: bool  = False,
     assert_no_dupes_in_shared_levels: bool = True,
     if_index_mismatch: Optional[str] = None) -> bool:
-    # TODO doc
-    """
+    """Returns whether `a` and `b` have equal indices along `axis`.
+
     Args:
+        a|b: DataFrames / Series to compare indices of
+
+        axis: 'index' or 'columns'
+
         only_check_shared_levels: if True, will only check level names shared
             between both indices, but requires that they share at least one level.
             see `assert_no_dupes_in_shared_levels`.
@@ -5066,6 +5424,9 @@ def pd_index_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *, axis: str = 'i
             duplicates in either input index (so that they could be a valid index on
             their own, otherwise, the equality may not mean as much). only relevant if
             `only_check_shared_levels=True`
+
+        if_index_mismatch: None (just return False), 'warn' (warn and return False), or
+            'err' (raise ValueError) if indices do not match
     """
     # TODO factor this axis checking into fn [decorator?]?
     assert axis in ('index', 'columns')
@@ -5120,12 +5481,14 @@ def pd_index_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *, axis: str = 'i
 # TODO add kwarg for also checking index name[s]?
 def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     if_index_mismatch: Optional[str] = None) -> bool:
-    """
+    """Returns whether row indices (and column indices, for DataFrames) are equal.
+
     Args:
         a|b: inputs to compare. must both be either DataFrames or Series.
 
-        if_index_mismatch: whether to return False (None), warn (and return False), or
-            raise ValueError if either row/column indices do not match
+        if_index_mismatch: currently ignored (always just returns False on mismatch).
+            intended to choose whether to return False (None), warn (and return False),
+            or raise ValueError if either row/column indices do not match
     """
     if not pd_index_equal(a, b, axis='index'):
         return False
@@ -5193,7 +5556,11 @@ def is_scalar(x: Any) -> bool:
 # i'm now getting w/ pd 1.5.0 (when a column has dtype object) and np 1.24.4
 def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     if_index_mismatch: Optional[str] = None, **kwargs) -> bool:
-    """
+    """Like `np.allclose`, but also checks pandas indices are equal.
+
+    Scalars and numpy arrays are also supported (compared with `np.isclose` /
+    `np.allclose`). str/object columns of DataFrames are compared for exact equality.
+
     Args:
         a|b: inputs to compare. must both be either DataFrames or Series.
 
@@ -5241,9 +5608,10 @@ def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
     Args:
         a|b: inputs to compare. must both be either DataFrames or Series.
 
-        **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)
+        **kwargs: passed thru to `np.isclose` (`equal_nan=True` may be the most useful)
 
-    Raises ValueError if indices do not match.
+    Intended to raise ValueError if indices do not match, but `pd_indices_equal`
+    currently ignores `if_index_mismatch`, so it will not.
     """
     # not sure what isclose behavior is if shapes mismatch, but only really imagine
     # using this fn for like-indexed stuff anyway
@@ -5265,7 +5633,20 @@ def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
 
 def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
     cast: bool = True, verbose: bool = False) -> bool:
-    # TODO doc
+    """Returns whether column dtypes of `a` and `b` are equal.
+
+    Args:
+        a|b: DataFrames to compare. must have same set of columns.
+
+        reorder_cols: if True, `b` columns are reordered to match `a` before comparing.
+            otherwise, asserts columns are in the same order.
+
+        cast: if True (and dtypes differ), tries casting `b` to dtypes of `a` before
+            comparing. NOTE: this path currently raises AttributeError (calls
+            nonexistent `Series.equal`).
+
+        verbose: if True, prints mismatching dtypes
+    """
 
     # NOTE: Series do not seem to have dtypes available on a per-key basis anymore. just
     # has one dtype (and a .dtypes attribute, but still just a scalar, not per-column).
@@ -5297,6 +5678,9 @@ def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
 
 # TODO use (/delete)
 def subset_levels(index: pd.MultiIndex, subset: List[str]) -> pd.Index:
+    """Returns MultiIndex with only levels named in `subset` (see also
+    `hong2p.pandas.subset_index`).
+    """
     # does pandas really still not have a function like this? am i missing something?
     # TODO work w/ one level index? change type hint to `-> pd.MultiIndex` if so?
     # if not, fix
@@ -5318,6 +5702,9 @@ def reindex(x: DataFrameOrSeries, index: pd.Index, checks: bool = True, **kwargs
             if `x` is a DataFrame and `axis='columns'`) will equal this index.
 
             Will raise AssertionError if this index contains any duplicates.
+
+        checks: if True, checks output index equals `index`, and that the other index
+            (for DataFrames) is unchanged
 
         **kwargs: passed thru to `<x>.reindex(...)`
     """
@@ -5431,6 +5818,23 @@ def melt_symmetric(symmetric_df, drop_constant_levels=True,
 
     Symmetric means the row and columns indices are equal, and values should
     be a symmetric matrix.
+
+    Output index has levels from both row and column indices, suffixed with `suffixes`
+    (unless they already were).
+
+    Args:
+        symmetric_df: data to melt. rows/columns that are all NaN are dropped.
+
+        drop_constant_levels: if True, drops (MultiIndex) levels with only one value
+
+        suffixes: added to row and column index level names, respectively
+
+        name: name of output Series
+
+        keep_duplicate_values: if False, only upper triangle (including diagonal) is
+            kept. otherwise, all values are kept.
+
+    See `invert_melt_symmetric` for inverse.
     """
     # This is actually not dependent on the level names / .name (if we wanted to check
     # those + the types as well, we'd use .identical(...)), so it's ok if the
@@ -5527,7 +5931,12 @@ def melt_symmetric(symmetric_df, drop_constant_levels=True,
 
 # TODO rename if it could make it more accurate
 def invert_melt_symmetric(ser, suffixes=('_a', '_b')):
-    """
+    """Takes Series (as output by `melt_symmetric`) back to a square DataFrame.
+
+    Levels ending in first suffix (that have a matching level ending in the second
+    suffix) are unstacked into columns. Levels without such a pair are dropped. Only
+    values in `ser` are filled, so output will have NaN in other triangle, if `ser` only
+    has one triangle (as by default in `melt_symmetric`).
     """
     assert len(ser.shape) == 1, 'not a series'
     assert len(ser.index.names) == len(set(ser.index.names)), \
@@ -5566,6 +5975,8 @@ def check_index_vals_unique(df: pd.DataFrame) -> None:
 # TODO already have something like this?
 # TODO typehint subclass of Index? already good on that?
 def get_axis_index(df: pd.DataFrame, axis: Union[int, str]) -> pd.Index:
+    """Returns `df.index` (axis=0/'index') or `df.columns` (axis=1/'columns').
+    """
     if axis == 0 or axis == 'index':
         return df.index
     elif axis == 1 or axis == 'columns':
@@ -5576,6 +5987,8 @@ def get_axis_index(df: pd.DataFrame, axis: Union[int, str]) -> pd.Index:
 
 # TODO also factor to a pandas module
 def suffix_index_names(df: pd.DataFrame, suffix: str = '_b', axis='columns') -> None:
+    """Adds `suffix` to all level names of index along `axis` (inplace).
+    """
     # TODO TODO also support non-multiindex w/ .name
     # TODO factor out helper to get df
     index = get_axis_index(df, axis)

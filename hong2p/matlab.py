@@ -28,6 +28,10 @@ USE_MATLAB_ENGINE = False
 # startup (like with a PYTHONSTARTUP script) are maintained.
 old_excepthook = sys.excepthook
 def matlab_exit_except_hook(exctype, value, traceback):
+    """`sys.excepthook` that ignores `TypeError` MATLAB raises on `exit`.
+
+    All other exceptions are passed to the `sys.excepthook` in place at import time.
+    """
     if exctype == TypeError:
         args = value.args
         # This message is what MATLAB says in this case.
@@ -335,7 +339,11 @@ def _check_timing_info_equal(ti0, ti1):
 
 def check_movie_timing_info(movie, frame_times, block_first_frames,
     block_last_frames):
-    """Checks that `movie` and `ti` refer to the same number of frames.
+    """Checks `movie` has same number of frames as timing info.
+
+    Number of frames in `movie` (first dimension) is compared to both the length of
+    `frame_times` and the total number of frames across blocks (inclusive ranges defined
+    by corresponding elements of `block_first_frames` and `block_last_frames`).
 
     Raises `AssertionError` if the check fails.
     """
