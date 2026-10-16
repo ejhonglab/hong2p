@@ -11,8 +11,7 @@ packages = ["hong2p"]
 # https://stackoverflow.com/questions/69647590/specifying-package-data-in-pyproject-toml
 [tool.setuptools.package-data]
 # really just want to include hong2p/hong2p/mol2chemfig.sty for now
-myModule = ["mol2chemfig.sty"]
-#myModule = ["*.sty"]
+hong2p = ["mol2chemfig.sty"]
 
 [project]
 name = "hong2p"
