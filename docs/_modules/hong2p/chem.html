@@ -193,16 +193,16 @@
 <span class="c1"># \listfiles for debugging package versions</span>
 <span class="c1"># https://tex.stackexchange.com/questions/13304/which-package-version-am-i-using</span>
 <span class="n">CHEMFIG_STANDALONE</span> <span class="o">=</span> \
-<span class="sd">"""\documentclass[border={border}]{{standalone}}</span>
-<span class="sd">\\listfiles</span>
-<span class="sd">\\usepackage{{chemfig}}</span>
+<span class="sa">r</span><span class="sd">"""\documentclass[border={border}]{{standalone}}</span>
+<span class="sd">\listfiles</span>
+<span class="sd">\usepackage{{chemfig}}</span>
 
-<span class="sd">\\usepackage{{mol2chemfig}}</span>
+<span class="sd">\usepackage{{mol2chemfig}}</span>
 
 <span class="sd">\setchemfig{{{chemfig_opts}}}</span>
-<span class="sd">\\renewcommand*\printatom[1]{{{atom_fontsize}\ensuremath{{\mathrm{{#1}}}}}}</span>
+<span class="sd">\renewcommand*\printatom[1]{{{atom_fontsize}\ensuremath{{\mathrm{{#1}}}}}}</span>
 
-<span class="sd">\\begin{{document}}</span>
+<span class="sd">\begin{{document}}</span>
 <span class="sd">${chemfig_tex}$</span>
 <span class="sd">\end{{document}}</span>
 <span class="sd">"""</span>
