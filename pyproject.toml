@@ -129,7 +129,10 @@ readme = "README.md"
 [project.optional-dependencies]
 dev = [
     # TODO some way to not need to repeat this (across here and minversion below)?
-    "pytest >= 8.3.5"
+    "pytest >= 8.3.5",
+    # for running tests across multiple python/dependency versions (`tox`)
+    "tox >= 4.21; python_version >= '3.9'",
+    "tox-uv; python_version >= '3.9'",
 ]
 
 [project.urls]
@@ -190,4 +193,30 @@ filterwarnings = [
     'ignore:distutils Version classes are deprecated. Use packaging.version instead.:DeprecationWarning',
     'ignore:pkg_resources is deprecated as an API.:DeprecationWarning',
     'ignore:Deprecated call to `pkg_resources.declare_namespace:DeprecationWarning',
+]
+
+# Plain `pytest` just runs in the current environment. `tox` runs the tests in all of
+# the envs below (`tox -e py38` / `tox -e current` for just one). Extra args after `--`
+# are passed to pytest, e.g. `tox -- -k sort_odors`.
+# Requires `pip install -e .[dev]` (for tox + tox-uv). tox-uv will download python 3.8
+# if needed.
+[tool.tox]
+requires = ["tox >= 4.21", "tox-uv"]
+env_list = ["py38", "current"]
+# tox otherwise strips most env vars. these are used to find data (see util.data_root)
+env_run_base = { pass_env = ["HONG2P_DATA", "HONG_NAS"] }
+
+# Oldest supported versions: python 3.8 + pins from exact-requirements.txt (except
+# pandas 1.5, see requirements-py38-test.txt)
+[tool.tox.env.py38]
+base_python = ["python3.8"]
+deps = ["-r requirements-py38-test.txt"]
+commands = [["pytest", { replace = "posargs", extend = true }]]
+
+# The existing ./venv, as-is (tox does not install anything into it)
+[tool.tox.env.current]
+skip_install = true
+allowlist_externals = ["{tox_root}/venv/bin/python"]
+commands = [
+    ["{tox_root}/venv/bin/python", "-m", "pytest", { replace = "posargs", extend = true }],
 ]
