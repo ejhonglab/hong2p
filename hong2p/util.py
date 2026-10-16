@@ -5517,7 +5517,8 @@ def melt_symmetric(symmetric_df, drop_constant_levels=True,
         assert n_nonnull == (n * (n + 1) / 2)
 
         # TODO make sure this also still works in non-multiindex case!
-        tidy = masked.stack(level=masked.columns.names)
+        # dropna for pandas >= 3.0, where stack no longer drops NaN by default
+        tidy = masked.stack(level=masked.columns.names).dropna()
         assert tidy.shape == (n_nonnull,)
 
     tidy.name = name
