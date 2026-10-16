@@ -23,6 +23,7 @@ import xarray as xr
 import colorcet as cc
 import matplotlib as mpl
 from matplotlib.axes import Axes
+from matplotlib.axis import Axis
 from matplotlib.colors import (Normalize, CenteredNorm, TwoSlopeNorm, to_rgb,
     ListedColormap, LinearSegmentedColormap, SymLogNorm
 )
@@ -57,7 +58,7 @@ from hong2p import roi as hong_roi
 from hong2p.olf import remove_consecutive_repeats
 # TODO use Color/CMap/Palette
 from hong2p.types import (DataFrameOrDataArray, ParamDict, CMap, Axis, Color, CMap,
-    Palette, Figsize, ArrayLike
+    Palette, Figsize, ArrayLike, MplRotation
 )
 
 
@@ -975,6 +976,14 @@ def _palettable_diverging_cmaps():
     import ipdb; ipdb.set_trace()
 '''
 
+def get_cmap_name(cmap: CMap) -> str:
+    if isinstance(cmap, str):
+        return cmap
+    else:
+        name = cmap.name
+        assert isinstance(name, str)
+        return name
+
 
 def is_cmap_diverging(cmap: CMap) -> bool:
     """Returns guess as to whether input colormap is a diverging colormap.
@@ -1054,8 +1063,15 @@ def is_centered_norm(norm: Union[type, Normalize]) -> bool:
     return False
 
 
-def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
-    vmin: Optional[float] = None, vmax: Optional[float] = None,
+# needs to actually be slightly less than 0, as vmin=vcenter triggers
+# same ValueError about vmin, vcenter, vmax not being in ascending order
+# TODO comment above is referring to two slope norm? is it the same
+# error w/ all centered norms? what about SymLogNorm?
+# TODO make even smaller? 1e-9?
+EPSILON_FROM_VCENTER: float = 1e-6
+
+def get_mpl_norm(norm: Union[str, type] = Normalize, data: Optional[ArrayLike] = None,
+    *, vmin: Optional[float] = None, vmax: Optional[float] = None,
     vcenter: Optional[float] = None, _debug: bool = False, **norm_kws) -> Normalize:
 
     # TODO test + doc clip behavior of TwoSlopeNorm (same as clip=False? True?)
@@ -1065,6 +1081,10 @@ def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
         norm = CenteredNorm
     # TODO support LogNorm and SymLogNorm too (via strs)?
     # TODO rename all str norm options to be spelled exactly as classes?
+
+    assert not isinstance(norm, Normalize), ('pass the class of the Normalize object '
+        'instead of an an already initialized object of that class'
+    )
 
     # TODO did any plot_fns actually take norm=<str> directly (and would have to be
     # other than the two above)? old code seemed like it would pass str other than
@@ -1077,9 +1097,11 @@ def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
     # TODO or issubclass(norm, Norm) instead?
     assert isinstance(norm, type) and issubclass(norm, Normalize), (
         'expected norm to be one of the str listed above, or an uninstantiated '
-        'subclass of mpl.colors.Normalize'
+        f'subclass of mpl.colors.Normalize. got {norm=}'
     )
 
+    dmin = None
+    dmax = None
     halfrange = norm_kws.pop('halfrange', None)
     if halfrange is not None:
         # TODO do any other Normalize subclasses take halfrange?
@@ -1108,7 +1130,6 @@ def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
             "(except if norm=CenteredNorm/'centered' and halfrange passed). must either"
             ' pass data or vmax'
         )
-
         # TODO should i assert vmax > vmin? (equality?)
         assert vmax >= vmin, f'{vmax=} < {vmin=}'
 
@@ -1132,9 +1153,9 @@ def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
             # but is implied to be 0
             assert vcenter < vmax, f'{vmax=} <= {vcenter=}'
 
-            # TODO delete? or delete code below center vmin to 0 - epsilon if it starts
-            # > vcenter?
-            # allowing equality for vmin, to be consistent w/ handling below
+            # TODO delete (prob?)? or delete code below center vmin to 0 -
+            # EPSILON_FROM_VCENTER if it starts > vcenter? allowing equality for vmin,
+            # to be consistent w/ handling below
             #assert vmin <= vcenter, f'{vmin=} > {vcenter=}'
             #
 
@@ -1148,23 +1169,10 @@ def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
             # (e.g. if vmin == vcenter), initializing TwoSlopeNorm would raise:
             # ValueError: vmin, vcenter, and vmax must be in ascending order
             if vmin == vcenter:
-                # TODO still do this? modifying vmin=0 for convenience when calling
-                # (when vcenter would also be 0), rather than hardcoding vmin=-epsilon a
-                # bunch of places
-                #
-                # NOTE: this would break CenteredNorm stuff below, but might want to
-                # delete that option anyway...
-                #
-                # needs to actually be slightly less than 0, as vmin=vcenter triggers
-                # same ValueError about vmin, vcenter, vmax not being in ascending order
-                # TODO comment above is referring to two slope norm? is it the same
-                # error w/ all centered norms? what about symlog norm?
                 old_vmin = vmin
-                # TODO make even smaller? 1e-9?
-                epsilon = 1e-6
-                vmin = vcenter - epsilon
-                warnings.warn(f'setting vmin=({vcenter - epsilon=}) (from {old_vmin}) '
-                    f'to make vmin < {vcenter=} True'
+                vmin = vcenter - EPSILON_FROM_VCENTER
+                warnings.warn(f'setting vmin=({vcenter - EPSILON_FROM_VCENTER=}) (from '
+                    f'{old_vmin}) to make vmin < {vcenter=} True'
                 )
 
             if issubclass(norm, CenteredNorm):
@@ -1174,16 +1182,6 @@ def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
                 # regarding halfrange "Defaults to the largest absolute difference to
                 # vcenter for the values in the dataset."
                 # TODO how does it do that? via what imshow does w/ norm input?
-
-                # TODO delete?
-                if vcenter != 0:
-                    # TODO may need to take difference from vcenter first -> add back?
-                    print()
-                    print('finish supporting vcenter in CenteredNorm case?')
-                    print(f'{vmin=}')
-                    print(f'{vcenter=}')
-                    breakpoint()
-                #
                 assert vmin < 0, (
                     'assumes vmin < 0 for CenteredNorm, with current calculation'
                 )
@@ -1204,9 +1202,20 @@ def get_mpl_norm(norm: Union[str, type], data: Optional[ArrayLike] = None, *,
 
     if _debug:
         print()
+        print(f'{dmin=} {dmax=}')
+
+        print(f'{vmin=} {vmax=}')
+        if centered_norm:
+            print(f'{vcenter=}')
+
         print(f'{norm=}')
         print(f'{type(norm)=}')
         print(f'{centered_norm=}')
+        if halfrange is not None:
+            print(f'{halfrange=}')
+        print('both kws and norm_kws below used as args to initialize the Normalize '
+            '[sub]class'
+        )
         print(f'{kws=}')
         print(f'{norm_kws=}')
 
@@ -1268,8 +1277,9 @@ def add_norm_options(plot_fn: Callable):
             # using None should give us consistent default behavior w/ plt.get_cmap
             cmap = kwargs.get('cmap', None)
             if not is_cmap_diverging(cmap):
-                warnings.warn(f'using seemingly non-diverging cmap ({cmap.name}) with '
-                    f'{norm=}, where center has special meaning. probably a mistake!'
+                warnings.warn('using seemingly non-diverging cmap '
+                    f'({get_cmap_name(cmap)}) with {norm=}, where center has special '
+                    'meaning. probably a mistake!'
                 )
 
             # TODO also support discrete colormap here (instantiating from just str cmap
@@ -1374,6 +1384,8 @@ def _mpl_constrained_layout(enable: bool):
     return wrap_plot_fn
 
 
+# TODO TODO add context managers for these too (not just decorators)
+
 # TODO how to give these docstrings?
 constrained_layout = _mpl_constrained_layout(True)
 no_constrained_layout = _mpl_constrained_layout(False)
@@ -1383,6 +1395,8 @@ no_constrained_layout = _mpl_constrained_layout(False)
 # reformatting (+ setting? some differences in how i do this, and would need Axes to
 # call on...)
 def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws: Optional[ParamDict] =None):
+    # TODO doc
+
     # Will no longer have same behavior as passing rotation=None explicitly to the
     # corresponding set_ylabel call, but would need another sentinel for unset
     # values than None to fix.
@@ -1632,13 +1646,14 @@ def coarsen_within_groups(df: pd.DataFrame, downsampling_factor: int, names: Lis
 # decorator like callable_ticklabels to deal w/ [h|v]line_level_fn matshow kwargs)
 # TODO type hint for linkages and return type?
 def clustermap(df: pd.DataFrame, *, optimal_ordering: bool = True,
-    title: Optional[str] = None, xlabel: Optional[str] = None,
-    ylabel: Optional[str] = None, ylabel_rotation=None, ylabel_kws=None,
-    cbar_label: Optional[str] = None, cbar_kws: Optional[ParamDict] = None,
-    row_cluster: bool = True, col_cluster: bool = True, row_linkage=None,
-    col_linkage=None, method='average', metric='euclidean', z_score=None,
-    standard_scale=None, return_linkages: bool = False,
-    row_coarsen_factor: Optional[int] = None,
+    title: Optional[str] = None, title_kws: Optional[ParamDict] = None,
+    xlabel: Optional[str] = None, xlabel_kws: Optional[ParamDict] = None,
+    ylabel: Optional[str] = None, ylabel_kws: Optional[ParamDict] = None,
+    ylabel_rotation: Optional[MplRotation] = None, cbar_label: Optional[str] = None,
+    cbar_kws: Optional[ParamDict] = None, row_cluster: bool = True,
+    col_cluster: bool = True, row_linkage=None, col_linkage=None, method='average',
+    metric='euclidean', z_score=None, standard_scale=None,
+    return_linkages: bool = False, row_coarsen_factor: Optional[int] = None,
     row_coarsen_by: Optional[List[str]] = None, **kwargs):
     """Same as seaborn.clustermap but allows callable [x/y]ticklabels + adds opts.
 
@@ -1704,19 +1719,19 @@ def clustermap(df: pd.DataFrame, *, optimal_ordering: bool = True,
         kwargs['z_score'] = z_score
         kwargs['standard_scale'] = standard_scale
 
-    # TODO TODO TODO do i need row_cluster=True to support coarsening within levels of
-    # those before clustering? (and same for columns) (see comments below)
+    # TODO TODO (done? delete?) do i need row_cluster=True to support coarsening within
+    # levels of those before clustering? (and same for columns) (see comments below)
     row_colors = kwargs.pop('row_colors', None)
     if row_coarsen_factor is not None:
         # linkage passed in would have to be computed on something coarsened the same
         # way, or else it wouldn't work
-        # TODO TODO TODO should we assume input is already coarsened here (maybe
-        # providing option to return it here?), or recompute? recomputing would be
-        # cleaner, but potentially compute heavy w/o caching (and how to even cache?)
-        # TODO TODO should i make return type a dict already, so i can support arbitrary
+        # TODO TODO (done? delete?) should we assume input is already coarsened here
+        # (maybe providing option to return it here?), or recompute? recomputing would
+        # be cleaner, but potentially compute heavy w/o caching (and how to even cache?)
+        # TODO should i make return type a dict already, so i can support arbitrary
         # return values without having to change as much code? (could remove
         # return_linkages flag?)
-        assert row_cluster, 'NEED TO TEST / GET WORKING IN CASE ROW_LINKAGE PASSED IN'
+        assert row_cluster, 'need to test / get working in case row_linkage passed in'
 
         if row_coarsen_factor is not None:
             # TODO can we infer which (or avoid need to pass) levels to use based on
@@ -1795,11 +1810,16 @@ def clustermap(df: pd.DataFrame, *, optimal_ordering: bool = True,
     )
 
     if title is not None:
-        clustergrid.ax_heatmap.set_title(title)
+        if title_kws is None:
+            title_kws = dict()
+        clustergrid.ax_heatmap.set_title(title, **title_kws)
 
     if xlabel is not None:
+        if xlabel_kws is None:
+            xlabel_kws = dict()
+
         # This will overwrite whatever labels the seaborn call slaps on
-        clustergrid.ax_heatmap.set_xlabel(xlabel)
+        clustergrid.ax_heatmap.set_xlabel(xlabel, **xlabel_kws)
 
     if ylabel is not None:
         ylabel_kws = _ylabel_kwargs(
@@ -2421,23 +2441,30 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
     if title is not None and title != '':
         # TODO also need labelpad here? do i even need below, now that i'm using
         # constrained layout by default typically?
-        if title_kws is None:
-            title_kws = dict()
+        _title_kws = dict(fontsize=bigtext_fontsize)
+        if title_kws is not None:
+            _title_kws.update(title_kws)
 
-        ax.set_title(title, fontsize=bigtext_fontsize, **title_kws)
+        ax.set_title(title, **_title_kws)
 
     if xlabel is not None:
+        # TODO also take xlabel_kws, as w/ ylabel and title
         # TODO put in title instead now?
         xlabel = _names_to_label(xlabel, df.columns)
         ax.set_xlabel(xlabel, fontsize=bigtext_fontsize, labelpad=12)
 
     if ylabel is not None:
         ylabel = _names_to_label(ylabel, df.index)
-        ylabel_kws = _ylabel_kwargs(
-            ylabel_rotation=ylabel_rotation, ylabel_kws=ylabel_kws
+
+        _ylabel_kws = dict(fontsize=bigtext_fontsize)
+        # TODO maybe move this after _ylabel_kws? (so user can override rotation?)
+        if ylabel_kws is not None:
+            _ylabel_kws.update(ylabel_kws)
+
+        _ylabel_kws = _ylabel_kwargs(
+            ylabel_rotation=ylabel_rotation, ylabel_kws=_ylabel_kws
         )
-        # TODO allow ylabel_kws to override bigtext_fontsize (w/ 'fontsize' key)?
-        ax.set_ylabel(ylabel, fontsize=bigtext_fontsize, **ylabel_kws)
+        ax.set_ylabel(ylabel, **_ylabel_kws)
 
     if not xticks_also_on_bottom:
         # didn't seem to do what i was expecting
@@ -2499,6 +2526,158 @@ def imshow(img, ax: Optional[Axes] = None, title: Optional[str] = None,
     return im
 
 
+def _get_cbar_orientation(cbar: Colorbar) -> str:
+    expected_cbar_orientations = ('vertical', 'horizontal')
+    orientation = cbar.orientation
+    assert orientation in expected_cbar_orientations, (
+        f'unexpected cbar.{orientation=} not in {expected_cbar_orientations=}'
+    )
+    return orientation
+
+
+def get_cbar_axis(cbar: Colorbar) -> Axis:
+    """
+    Returns appropriate (x vs y) axis to use for setting properties not accessible via
+    axes (orientation) agnostic functions like `cbar.set_[ticks|label]`
+
+    Can be necessary to  change ticklabel fontsize via `tick_params(...)`.
+
+    NOTE: output does NOT have a `set_scale` method, so use `set_cbar_scale` for that.
+    """
+    orientation = _get_cbar_orientation(cbar)
+    if orientation == 'vertical':
+        return cbar.ax.yaxis
+    else:
+        assert orientation == 'horizontal'
+        return cbar.ax.xaxis
+
+
+def set_cbar_tick_params(cbar: Colorbar, **kwargs) -> None:
+    cbar_axis = get_cbar_axis(cbar)
+    cbar_axis.set_tick_params(**kwargs)
+
+
+def set_cbar_scale(cbar: Colorbar, scale: str) -> None:
+    """
+    matplotlib `Axes.set_[x|y]scale` functions take `scale` of type str or `ScaleBase`,
+    but str should be fine for me (e.g. 'linear', 'log', etc).
+
+    See: https://matplotlib.org/stable/api/scale_api.html#builtin-scales and
+    https://matplotlib.org/stable/api/scale_api.html#matplotlib.scale.register_scale
+    """
+    orientation = _get_cbar_orientation(cbar)
+    if orientation == 'vertical':
+        cbar.ax.set_yscale(scale)
+    else:
+        assert orientation == 'horizontal'
+        cbar.ax.set_xscale(scale)
+
+    # NOTE: was needed to fix ticks changing when setting linear scale (for cbar w/ two
+    # slope norm), when re-analyzing validation2 data 2026-08-14. they changed from:
+    # [-0.35,  0.  ,  0.5 ,  1.  ,  1.5 ,  2.  ,  2.5 ] to
+    # [-0.5,  0. ,  0.5,  1. ,  1.5,  2. ,  2.5]
+    # not clear yet on why not all paths through this code trigger the need to call
+    # this.
+    #
+    # TODO this wouldn't cause any unwanted changes to ticks ever, would it? can i do
+    # anything to prevent if so? at least doc ticks should be set after, if that's the
+    # case (unlikely?)
+    cbar.update_ticks()
+
+
+def min_tick_for_centered_cmap(vmin: float, *, increment: float = 0.05,
+    round_tick_towards0_under_rtol: float = 0.1, _debug: bool = False) -> float:
+    """Finds suitable minimum tick for colorbar using a diverging cmap with
+
+    Args:
+        vmin: minimum value of colorbar (and of data, if colormap is showing the full
+            range of the data). should be negative.
+
+        round_tick_towards0_under_rtol: if vmin * increment < nearest increment, by this
+            fraction of increment size, set the min tick to that nearest (closer to 0)
+            increment.
+
+        For example:
+        ```
+        ipdb> vmin
+        -0.35374016010182685
+        ipdb> increment
+        0.05
+        ipdb> vmin / increment
+        -7.074803202036537
+        ipdb> np.round(vmin / increment)
+        -7.0
+        ipdb> vmin / increment - np.round(vmin / increment)
+        -0.07480320203653701
+        ipdb> np.isclose(vmin / increment, np.round(vmin / increment), atol=0.1)
+        True
+        ```
+    """
+    assert vmin < 0, f'expected {vmin=} to be negative'
+    assert increment > 0, f'expected {increment=} to be positive'
+    assert round_tick_towards0_under_rtol > 0, (
+        f'expected {round_tick_towards0_under_rtol=} to be positive'
+    )
+    n_increments_float: float = np.abs(vmin) / increment
+    n_increments_rounded = np.round(n_increments_float)
+
+    if _debug:
+        print()
+        print(f'{vmin=}')
+        print(f'{increment=}')
+        print()
+        print(f'{np.abs(vmin)=}')
+        print(f'{n_increments_float=}')
+        print(f'{n_increments_rounded=}')
+        print()
+
+    # TODO ever want to round away from 0 (within some other tolerance),
+    # or always want cbar to include all the data?
+    if n_increments_rounded > n_increments_float:
+        if _debug:
+            print('n_increments_rounded > n_increments_float (case 1)')
+
+        n = np.ceil(n_increments_float)
+
+    elif np.isclose(n_increments_float, n_increments_rounded,
+            atol=round_tick_towards0_under_rtol
+        ):
+        if _debug:
+            print('n_increments_float within rtol of n_increments_rounded (case 2)')
+
+        n = n_increments_rounded
+    else:
+        if _debug:
+            print('else case')
+
+        n = np.ceil(n_increments_float)
+
+    min_tick = -n * increment
+    if _debug:
+        print(f'{n=}')
+        print(f'{min_tick=}')
+
+    # just so output can always check vmin <= min_tick, without having to worry about
+    # numerical issues causing min_tick to be insignificantly (due to numerical issues)
+    # > vmin
+    # TODO add a flag to disable this? (it did make test case w/ vmin=-.99999 and
+    # expected_min_tick=-1.0 fail, before changing default tols here)
+    # rtol=1e-6 smaller than default 1e-5. default atol is 1e-8
+    if np.isclose(min_tick, vmin, rtol=1e-6):
+        if _debug:
+            print(f'setting {min_tick=} to {vmin=} b/c they are close')
+        min_tick = vmin
+
+    # this even change any numerical things? (yes, and gets test to pass w/ ==, rather
+    # than np.isclose)
+    # TODO flag to disable this?
+    min_tick_rounded = np.round(min_tick, 3)
+    if np.isclose(min_tick_rounded, min_tick):
+        min_tick = min_tick_rounded
+
+    return min_tick
+
+
 # TODO type hint matplotlib.cm.ScalarMappable for im (as in mpl docs)?
 # TODO possible to get it to work reasonably w/o explicit im passed in?
 # (maybe use a generic ScalarMappable as
@@ -2521,7 +2700,8 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
     # TODO delete (what?) if not useful. trying to add support for ImageGrid cax's
     axes_index: int = -1, location: str = 'right', size=None, pad=None,
     cax: Optional[Axes] = None, label: Optional[str] = None,
-    fontsize: Optional[float] = None, **kwargs) -> Colorbar:
+    fontsize: Optional[float] = None, tick_fontsize: Optional[float] = None,
+    float_format: Optional[str] = '.2g', _debug: bool = False, **kwargs) -> Colorbar:
     # TODO TODO does size= steal that size from specified ax tho? answer change
     # depending on whether we are using constrained layout or not?
     #
@@ -2639,10 +2819,11 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
     if cax is None:
         kwargs['ax'] = fig.axes
 
-        # TODO TODO this causing problems in natmix_data/analysis.py usage? (when cax
-        # defined from inset_axes) (moving into `if cax is None` conditional to see)
+        # TODO (delete? probably no longer used, if it was causing issues...) this
+        # causing problems in natmix_data/analysis.py usage? (when cax defined from
+        # inset_axes) (moving into `if cax is None` conditional to see)
         if not match_axes_size:
-            # TODO TODO may not want in case cax is passed in (e.g. from ImageGrid
+            # TODO (delete?) ay not want in case cax is passed in (e.g. from ImageGrid
             # output)
             kwargs['location'] = location
 
@@ -2652,6 +2833,18 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
                 # fig.colorbar
                 kwargs['pad'] = pad
 
+    # TODO delete? this either doesn't work, or gets reset by the set_ticks below (even
+    # tho that call has no means of changing float format, other than passing in labels=
+    # explicitly. and not sure it layout is equiv that way...)
+    #fmt = None
+    #if float_format is not None:
+    #    # TODO delete
+    #    print(f'will format floats with :{float_format}')
+    #    #
+    #    fmt = lambda x, _: f'{x:{float_format}}'
+    #
+    #cbar = fig.colorbar(im, cax=cax, format=fmt, **kwargs)
+    #
     cbar = fig.colorbar(im, cax=cax, **kwargs)
 
     assert im.norm is cbar.norm
@@ -2659,133 +2852,163 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
     assert np.isclose(cbar.norm.vmax, cbar.vmax)
     cbar_min = cbar.vmin
     cbar_max = cbar.vmax
+    cbar_ticks = cbar.get_ticks()
+
+    ticks = None
+    if 'ticks' in kwargs:
+        # TODO warn if any are outside of data range? or err?
+        ticks = kwargs['ticks']
+
+        # would fail sometimes. ticks can be off cbar and that's fine. (still in shared
+        # kwargs for some plots that set vmin to -1e-6, and seems to not cause bad
+        # output)
+        #assert cbar_min <= min(ticks), f'{cbar_min} > {min(ticks)=}'
+        #assert cbar_max >= max(ticks), f'{cbar_max} > {max(ticks)=}'
 
     # TODO comment explaining why we are doing this. seems there is often not a tick
     # shown on lower end by default, but a bit confused about that b/c i was getting:
     # ipdb> cbar.get_ticks()
     # array([-0.4, -0.2,  0. ,  0.2,  0.4,  0.6,  0.8,  1. ])
     # ...and if the -0.25 set manually below works, then why doesn't the -0.2 display?
-    #
-    # TODO TODO should i do something else to clarify scales are diff on two sides?
-    # break in middle (could add in illustrator / inkscape tho)?
-    # maybe https://stackoverflow.com/questions/53642861 ?
-    # see also:
-    # https://matplotlib.org/stable/gallery/subplots_axes_and_figures/broken_axis.html
     if isinstance(cbar.norm, TwoSlopeNorm):
-        # this seems to change the cbar ticks, so we need to re-set them after
+        set_cbar_scale(cbar, 'linear')
+
+        # TODO delete if assertion keeps passing
         #
-        # i think it would just make size of each side of TwoSlopeNorm cbar seem
-        # proportionate, w/o changing colors in image plotted.
-        # https://github.com/matplotlib/matplotlib/issues/22197
-        cbar.ax.set_yscale('linear')
+        # at some point i thought these changed somehow after set_scale('linear') below,
+        # but not sure i can repro. maybe it was in a case i was setting scale on wrong
+        # (x vs y) axis for colorbar (old code)?
+        # (yea i also found this when reanalyzing validation2 data 2026-08-14, b/c
+        # set_cbar_scale call above was changing them from:
+        # [-0.35,  0.  ,  0.5 ,  1.  ,  1.5 ,  2.  ,  2.5 ] to
+        # [-0.5,  0. ,  0.5,  1. ,  1.5,  2. ,  2.5], but adding a call to
+        # cbar.update_ticks() in that function fixed it
+        assert cbar.vmin == cbar_min
+        assert cbar.vmax == cbar_max
+        # TODO TODO TODO fix! was failing in reanalyzing validation2 data 2026-08-14
+        # TODO use allclose?
+        assert np.array_equal(cbar_ticks, cbar.get_ticks()), (
+            f'{cbar_ticks=} != {cbar.get_ticks()=}'
+        )
+        #
+        if ticks is None:
+            # as noted above, it is not a guarantee here that ticks will all be in
+            # range of colorbar min/max (which are equal to cbar.norm min/max, as
+            # checked above)
+            ticks_in_range = cbar_ticks[
+                (cbar_min <= cbar_ticks) & (cbar_ticks <= cbar_max)
+            ]
+            curr_min_tick = ticks_in_range.min()
+
+            if curr_min_tick < 0:
+                ticks = ticks_in_range
+
+            # TODO how to handle case where <1?
+            # TODO also check just whether abs(cbar_min) is sufficiently small, as a
+            # fraction of vmax? maybe 10% or less? (regardless of 0.75 or not)?
+            elif cbar_min < -0.75:
+                warnings.warn('current strategy to set TwoSlopeNorm cbar ticks for '
+                    'small cbar_min probably does not make sense with cbar_min<0.75. '
+                    'disabling!'
+                )
+            else:
+                min_tick_increment: float = 0.05
+                round_tick_towards0_under_rtol: float = 0.1
+
+                min_tick = min_tick_for_centered_cmap(cbar_min,
+                    increment=min_tick_increment,
+                    round_tick_towards0_under_rtol=round_tick_towards0_under_rtol
+                )
+                # want to relax this assertion? (I did. was originally `min_tick < 0`)
+                # was getting when trying to plot SEM, when vmin was 0 (added
+                # al_util.plot_responses_err, which sets vmin=0 currently anyway, so not
+                # actively an issue for my uses) (and also failing when re-analyzing
+                # validation2 data 2026-08-14)
+                assert min_tick <= 0, f'{min_tick=}'
+
+                # delete. this will specifically be false sometimes (if we are not OK
+                # with having a bit of the cbar extend beyond the last tick, need other
+                # code to enforce that desire)
+                #assert min_tick <= cbar_min, f'expected {min_tick=} <= {cbar_min}'
+
+                assert curr_min_tick == 0, ('expected curr_min_tick=0, got '
+                    f'{curr_min_tick=}. would need to add a tick for 0 if no 0 tick, '
+                    'and expected no negative ticks at this point. this code is to '
+                    'add missing negative ticks, when all existing negative ticks were '
+                    'out of range.'
+                )
+                ticks = list(ticks_in_range)
+                if min_tick < 0:
+                    ticks = [min_tick] + ticks
+
+                # TODO delete (after figuring out when warning / assertion below may or
+                # may not trigger)
+                if _debug:
+                    print(f'existing {cbar_ticks=}')
+                    print(f'{cbar_min=}')
+                    print(f'{cbar_max=}')
+                    print(f'{ticks_in_range=}')
+                    print(f'adding new {min_tick=}')
+                #
+                pos_ticks = ticks_in_range[ticks_in_range > 0]
+                assert len(pos_ticks) > 0, (
+                    'add code to process missing positive ticks'
+                )
+                if len(pos_ticks) == 1:
+                    pos_tick = pos_ticks[0]
+                    pos_tick_frac = pos_tick / cbar_max
+                    # TODO TODO only warn if pos_tick_frac is under some frac? probably.
+                    # just need to figure out what a good rtol is
+                    warnings.warn(f'only one positive cbar tick ({pos_tick:.2g} in '
+                        f'range, for cbar with min={cbar_min:.4g} max={cbar_max:.4g}! '
+                        f'this tick is {pos_tick_frac:.3g} of cbar max. add code to '
+                        'add appropriate positive cbar ticks here?'
+                    )
+
+    if ticks is not None:
+        # TODO does this pre-formatting w/ .2g have same effect as if using
+        # format=<fn> passed to colorbar(...)? (can't tell so far, b/c any formatting
+        # that should have done seems to have been overwritten by end of this fn, maybe
+        # by this set_ticks call. currently commented above, but could test w/o below
+        # set_ticks whether it worked up there)
+        #
+        labels = None
+        if float_format is not None:
+            labels = [f'{x:{float_format}}' for x in ticks]
+
+            # TODO delete?
+            # does work, and seems to horizontally align things of different length
+            # (not right align like i was expecting), but loks a bit weird. too much
+            # space)
+            #
+            # assumes each character has equal width, and spaces also do...
+            # can't seem to accomplish this easily through mpl text properties.
+            rjust_labels: bool = False
+            if rjust_labels:
+                max_len = max(len(x) for x in labels)
+                # adds spaces to left, to make str len max_len
+                labels = [x.rjust(max_len) for x in labels]
+            #
 
         # TODO delete
-        if 'ticks' not in kwargs:
-            # NOTE: some of the plots mentioned below probably currently have their cbar
-            # ticks hardcoded (via cbar_kws=dict(ticks=<x>), e.g. [-0.3, 2.5] set for
-            # some in al_analysis.response_matrix_plots), in which case this branch
-            # should not be hit (if below, outside conditional on norm type, should be)
-            #
-            # some plots i care about that this probably applies to:
-            # - ijroi/certain[_mean|_stddev].pdf
-            #   (stddev using same norm, but starts from midpoint=0)
-            #   - and ijroi/by_panel/<panel>/*certain[_mean|_stddev].pdf
-            #
-            # - ijroi/by_panel/glomeruli_diagnostics/
-            #   - each_fly/
-            #     - *_certain.pdf
-            #     - diag-highlight_certain.pdf
-            #
-            # - 2023-05-10_1_diagnostics1/ijroi/with_rois/*
-            #
-            # other plots with this norm that i'm not using/generating as actively:
-            # - 2023-05-10_1_diagnostics1/ijroi/timeseries/*
-            # - 2023-05-10_1_diagnostics1/ijroi/*_rois_on_max_triamean_dff.pdf
-            #
-            # 2023-05-10/1 is the fly i was using for diagnostic examples, so often only
-            # generated some <fly_dir>/ijroi/* plots for that one
-            #
-            # main thing we are missing, is no ticks on lower end of scale
-            # (after set_yscale('linear') call above)
-            # TODO at least also print existing ticks if i still wanna find a better
-            # solution for this?
-            # TODO delete? OK w/ ticks not set, as-is?
-            if _DEBUG:
-                print('add_colorbar: not setting cbar ticks for twoslopenorm')
-            #
-
-            # TODO cbar doesn't have a vcenter does it? (to use instead of 0)
-
-            # wouldn't work w/ cmap i set up for correlation-distance viz.matshow plots
-            # (from al_analysis.plot_corrs)
-            # TODO keep? (no, replace w/ only adding 0 tick if this is true)
-            #assert cbar.vmin < 0
-
-            # TODO TODO only show stuff at nice even numbers
-            # (or at least force formatter to not show 5 sigfigs?)
-            # TODO TODO find |smallest| nearby multiple of 0.1, 0.25, 1.0, etc that is
-            # under vmin/vmax? (how does mpl do it by default? can i use some of their
-            # code?)
-            #cbar.set_ticks([cbar.vmin, 0., cbar.vmax / 2, cbar.vmax])
-
-            # TODO this work OK?
-            #cbar.set_ticks([cbar.vmin, 0., cbar.vmax])
-
-            # TODO TODO just prepend cbar.vmin to ticks?
-
-            # TODO delete
-            '''
-            if cbar.vmin < -0.2:
-                print(f'{cbar.vmin=}')
-                old_ticks = cbar.get_ticks()
-                print(f'{cbar.get_ticks()=}')
-                import ipdb; ipdb.set_trace()
-            '''
-            #
+        if _debug:
+            print(f'will format floats with :{float_format}')
+            print(f'add_colorbar: setting {ticks=}')
         #
 
-        # TODO TODO draw axes break or something (hline at least?) to indicate diff
-        # scales on two sides of cbar?
-
-    if 'ticks' in kwargs:
-        # TODO TODO maybe also default to setting ticks to include these limits by
-        # default?
-
-        # TODO TODO can i change how ticks are formatted to have a diff number of
-        # sigfigs per tick (only as many as needed for each)?
-
-        # TODO delete. redundant w/ warnings in add_norm_options.
-        # (could be used to set default ticks tho...?)
-        '''
-        # NOTE: this is a MaskedArray (at least, as I'm looking at it now), but not sure
-        # if it will ever actually be masked (maybe some cmap's use that for things like
-        # set_bad/etc?)
-        # TODO some way to ensure i'm getting min/max of full data, not masked portion?
+        # set_ticks doesn't seem to format=<formatter-fn> kwarg, like colorbar
+        # constructor does
         #
-        # get_array() seemed to be only way to access data from `im`. limits matched w/
-        # what I expected in my first test.
-        data = im.get_array()
-        dmin = data.min()
-        dmax = data.max()
-        # these are both scalars after single min|max operation (unlike pandas where i'd
-        # need 2 generally, for 2d input)
-        assert dmin.shape == tuple() and dmax.shape == tuple()
-        '''
-        #
+        # can not set fontsize here if labels is None (which it currently would be if
+        # float_format=None (do i want that?)
+        cbar.set_ticks(ticks=ticks, labels=labels)
 
-        ticks = kwargs['ticks']
-        # TODO delete. ticks can be off cbar and that's fine. (still in shared kwargs
-        # for some plots that set vmin to -1e-6, and seems to not cause bad output)
-        #assert cbar_min <= min(ticks), f'{cbar_min} > {min(ticks)=}'
-        #assert cbar_max >= max(ticks), f'{cbar_max} > {max(ticks)=}'
-
-        # NOTE: important that this happens after possible set_yscale('linear') call
-        # above, as that seems to reset the cbar ticks
-        cbar.set_ticks(ticks)
+    # since labels might be None in call above, and then i can't set fontsize
+    if tick_fontsize is not None:
+        set_cbar_tick_params(cbar, labelsize=tick_fontsize)
 
     if label is not None:
-        # TODO test fontsize=None doesn't change default behavior
-        cbar.ax.set_ylabel(label, fontsize=fontsize)
+        cbar.set_label(label, fontsize=fontsize)
 
     return cbar
 

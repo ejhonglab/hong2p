@@ -9,8 +9,10 @@ from os.path import join, split, exists, sep, isdir, getmtime, splitext
 from pathlib import Path
 import pickle
 import platform
+import json
 import subprocess
 import sys
+import time
 from types import ModuleType
 from datetime import datetime
 import warnings
@@ -236,6 +238,105 @@ def run_cmd(cmd: str) -> str:
     return out.stdout
 
 
+def read_json(path: Path) -> Dict[str, Any]:
+    """Returns dict contained within JSON at `path`
+    """
+    # TODO work?
+    j2 = json.loads(path.read_text())
+    # TODO delete
+    with open(path, 'r') as f:
+        j1 = json.load(f)
+    assert j1 == j2, 'revert to j1 method?'
+    #
+    return j2
+
+
+def to_json(data: Dict[str, Any], path: Path, *, check: bool = False) -> None:
+    """Write `data` to JSON at `path`, with optional round trip check.
+    """
+    assert path.suffix == '.json', f"{path.suffix} should be '.json'"
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=4)
+
+    if check:
+        round_trip = read_json(path)
+        assert data == round_trip, f'{data=}\n...!=...\n{round_trip=}'
+
+
+# TODO also take PDF argument? or default to tex_path w/ pdf extension? what does
+# latex do? just return what it makes?
+# TODO also (or only?) take tex str, and save to temp dir?
+# TODO TODO take extra compile options? paths to search for .sty files?
+def compile_latex(tex_path: Pathlike, output_dir: Optional[Pathlike] = None, *,
+    # TODO can tex_inputs be both paths containing .sty and full paths to .sty files
+    # themselves? (seems it needs to be the directories, not the .sty files)
+    # Pathlike b/c can have '~' in them, so may want to pass str w/ that
+    tex_inputs: Optional[List[Pathlike]] = None, verbose: bool = False) -> Path:
+    """
+    Compiles a .tex file to a PDF using pdflatex.
+    """
+    # so we can see if PDF was updated after this
+    start = time.time()
+
+    tex_path = Path(tex_path)
+    if not tex_path.exists():
+        raise FileNotFoundError(f'{tex_path} did not exist!')
+    elif not tex_path.is_file():
+        raise IOError(f'{tex_path} was not a file!')
+
+    # Build the command. Using -interaction=nonstopmode prevents
+    # the process from freezing if your LaTeX document has an error.
+    # TODO anything else? do i actually want interaction=nonstopmode?
+    # TODO TODO how to automatically do however many passes needed (e.g. for longtable?)
+    cmd = ['pdflatex', '-interaction=nonstopmode']
+
+    if output_dir:
+        output_dir = Path(output_dir)
+        if not output_dir.is_dir():
+            raise IOError(f'{output_dir} was not a directory!')
+
+        cmd.append(f'-output-directory={output_dir}')
+
+    cmd.append(tex_path)
+
+    # otherwise would change for more than just subprocess (potentially?)
+    env = os.environ.copy()
+    if tex_inputs is not None:
+        # https://tex.stackexchange.com/questions/1137
+        # do need trailing colon, or else system dirs won't be searched
+        # TODO may not need '.'. omit?
+        # one user things leading '.' is necessary (another says its not)
+        tex_inputs = ['.'] + tex_inputs + ['']
+        env['TEXINPUTS'] = ':'.join([str(x) for x in tex_inputs])
+        # TODO delete
+        #print(f'setting {env["TEXINPUTS"]=}')
+        #
+
+    try:
+        # TODO actually need PIPE for each of these? what are they doing?
+        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, env=env
+        )
+        if verbose:
+            print(result.stdout)
+
+        # pdf should exist if we made it this far without above command erring
+        pdf_out = tex_path.with_suffix('.pdf')
+        assert pdf_out.exists(), f'{pdf_out=} should exist'
+        pdf_mtime = os.path.getmtime(pdf_out)
+        assert pdf_mtime > start, f'{pdf_out} was not newer than fn start'
+
+        return pdf_out
+
+    except subprocess.CalledProcessError as e:
+        print('Error during compilation:')
+        print('stderr:')
+        print(e.stderr)
+        print('stdout:')
+        print(e.stdout)
+        raise
+
+
 # TODO use to warn if data_root / etc are not on SSDs? fast data root at least?
 def is_path_on_hdd(path: Path, *, verbose: bool = True) -> bool:
     """Returns whether path exists on a HDD (vs e.g. SSD). Only work on Linux/similar.
@@ -383,6 +484,8 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
         link_to_print = link
 
         # TODO TODO factor below into some general path shortening (+printing?) fn?
+        # TODO TODO + share w/ al_analysis.al_util savefig /etc path printing
+        # (vs Path.cwd() at least)
 
         # TODO maybe want to resolve before doing this? or want to print either relative
         # to Path.cwd() if cwd contained in either?
@@ -412,6 +515,8 @@ def symlink(target: Pathlike, link: Pathlike, *, relative: bool = True,
         if print_link_relative_to is not None:
             link_to_print = link.relative_to(print_link_relative_to)
 
+        termwidth = 120
+        # TODO if sufficiently short, print all on 1 or two lines?
         print(f'linking\n{link_to_print} ->\n{target_to_print}')
 
     if relative:

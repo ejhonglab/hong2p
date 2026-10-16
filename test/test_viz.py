@@ -6,9 +6,29 @@ import seaborn as sns
 from matplotlib.colors import Normalize, TwoSlopeNorm, CenteredNorm, SymLogNorm
 
 from hong2p import viz
-from hong2p.viz import get_mpl_norm
+from hong2p.viz import get_mpl_norm, min_tick_for_centered_cmap
 from hong2p.olf import format_mix_from_strs
 
+
+min_tick_cases = [
+    (-0.3556, -0.4),
+    (-.99999, -1.0),
+    # would have needed np.isclose(min_tick, expected_min_tick) in comparisons for this
+    # test, if not for adding code returning np.round(min_tick, 3), if it is np.isclose
+    # to what output otherwise would be
+    (-0.35374016010182685, -0.35),
+]
+@pytest.mark.parametrize('vmin, expected_min_tick', min_tick_cases)
+def test_min_tick_for_centered_cmap(vmin: float, expected_min_tick: float):
+    # this is the default increment
+    increment = 0.05
+    # also default kwarg in fn def
+    round_tick_towards0_under_rtol: float = 0.1
+
+    min_tick = min_tick_for_centered_cmap(vmin, increment=increment,
+        round_tick_towards0_under_rtol=round_tick_towards0_under_rtol
+    )
+    assert min_tick == expected_min_tick
 
 
 def test_is_centered_norm():

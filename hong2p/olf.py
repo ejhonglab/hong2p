@@ -8,6 +8,7 @@ somewhat heavy dependencies that the analysis side of things will generally not 
 
 import atexit
 from collections import Counter, defaultdict
+from pathlib import Path
 from pprint import pprint, pformat
 import pickle
 import warnings
@@ -982,6 +983,14 @@ def yaml_data2odor_lists(yaml_data: dict, *, sort: bool = True):
         odor_lists.append(odor_list)
 
     return odor_lists
+
+
+def load_input_yaml(input_yaml: Path) -> Dict[str, Any]:
+    assert input_yaml.exists()
+    yaml_data = yaml.safe_load(input_yaml.read_text())
+    assert 'odors' in yaml_data
+    assert len(yaml_data['odors']) > 0
+    return yaml_data
 
 
 # TODO doc

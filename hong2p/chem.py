@@ -1,0 +1,218 @@
+
+from contextlib import redirect_stdout
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
+from typing import Dict, Optional
+
+import numpy as np
+
+# TODO TODO add mol2chemfigPy3 (i have 1.6.0, but not sure it matters) to requirements
+from hong2p.util import read_json, to_json, compile_latex
+
+
+# TODO or store under some hong2p app data dir? python have those? xdg?
+chemfig_cache = Path(f'~/.cid2chemfig.json').expanduser()
+
+def _read_chemfig_cache() -> Dict[int, str]:
+    from_cache = read_json(chemfig_cache)
+    # after reading from cache, key type will currently be str not int
+    return {int(k): v for k, v in from_cache.items()}
+
+
+cid2chemfig: Optional[Dict[int, str]] = None
+def cid2chemfig_tex(cid: int, *args, ignore_cache: bool = False) -> str:
+    """
+    Args:
+        cid: int PubChem CID
+
+        ignore_cache: if True, ignore values in `chemfig_cache` (but will still update
+            it with new values)
+
+        *args: passed to `mol2chemfig`, in addition to default `--hydrogens delete` this
+            function adds
+
+    NOTE: in addition to having chemfig installed, also need `mol2chemfig.sty` copied
+    into overleaf project, and then `\\usepackage{mol2chemfig}` in addition to
+    `\\usepackage{chemfig}`, despite it being on CTAN.
+
+    Can copy from CTAN or I may commit into my thesis repo once I make that.
+    """
+    global cid2chemfig
+
+    # was using 1.6.0
+    from mol2chemfigPy3 import mol2chemfig
+
+    # TODO factor out hong2p fn (is_int_scalar?) for that at this
+    # point? (+ maybe is_float_scalar?)
+    #
+    # works w/ both int and np.int64 scalar CID
+    assert np.issubdtype(type(cid), int)
+
+    assert cid > 0, 'CIDs should be positive'
+
+    if cid2chemfig is None:
+        if chemfig_cache.exists():
+            cid2chemfig = _read_chemfig_cache()
+        else:
+            cid2chemfig = dict()
+
+    if not ignore_cache and cid in cid2chemfig:
+        return cid2chemfig[cid]
+
+    cstr = StringIO()
+    # since mol2chemfig fn doesn't return anything. just prints to stdout.
+    with redirect_stdout(cstr):
+        # mol2chemfig currently accepts positional arguments the CLI takes
+        # as strings in *args, like '--hydrogens delete'
+        mol2chemfig(f'{cid}', '--hydrogens delete')
+
+    # TODO TODO add a latex comment w/ mol2chemfig version in all output? args too?
+
+    chemfig_tex_str = cstr.getvalue()
+
+    assert isinstance(chemfig_tex_str, str), f'{chemfig_tex_str=}'
+    assert len(chemfig_tex_str) > 0, f'{chemfig_tex_str=}'
+
+    update_cache = True
+    if ignore_cache:
+        cache_value = cid2chemfig.get(cid)
+        if cache_value == chemfig_tex_str:
+            update_cache = False
+
+    if update_cache:
+        to_json(cid2chemfig, chemfig_cache)
+
+    return chemfig_tex_str
+
+
+# TODO TODO just commit mol2chemfig.sty in this repo too? or
+# hong2p/wherever i put this fn? (+ example tex to render using it?
+# + tex for standalone rendering? might need that to invoke rendering from python
+# anyway...)
+
+# TODO what is mol2chemfig.sty actually doing? why need mfcringle or whatever instead of
+# just working w/in chemfig itself?
+#
+# https://tex.stackexchange.com/questions/656530/how-can-i-create-this
+# TODO what's easiest way to make a latex template string (w/ all the existing
+# { } chars...? raw string?
+# currently doubling up all braces to escape them, other than in variables to format
+#
+# TODO should chemfig really be in math like this? change anything?
+# $\chemfig{*6(-(-[:240](=[:300]O)(-[4]HO))(<[:300]CH_3)-(<:[:150]H)*6(--=-(<:[6]H)-)----)}$
+#
+# TODO include same chemfig setup as i do in my thesis doc? try w/ and w/o?
+# (that's these opts, and atom_fontsize \tiny)
+DEFAULT_CHEMFIG_OPTS: str = (
+    # don't need to escape braces here since not a f-string
+    # TODO TODO is my installed version of chemfig older? can i get a new one?
+    # getting: ! Key "double sep" is not defined: nothing is modified.
+    # works w/ overleaf chemfig: chemfig 2023/12/28 v1.66
+    #'atom sep=1.0em,bond offset=1pt,double sep=4pt,bond style={line width=0.8 pt}'
+    # needed "double bond sep" instead of "double sep" in older version i have locally:
+    # chemfig.sty    2019/05/21 v1.41
+    'atom sep=1.0em,bond offset=1pt,double bond sep=4pt,bond style={line width=0.8 pt}'
+)
+
+# \listfiles for debugging package versions
+# https://tex.stackexchange.com/questions/13304/which-package-version-am-i-using
+CHEMFIG_STANDALONE = \
+"""\documentclass[border={border}]{{standalone}}
+\\listfiles
+\\usepackage{{chemfig}}
+
+\\usepackage{{mol2chemfig}}
+
+\setchemfig{{{chemfig_opts}}}
+\\renewcommand*\printatom[1]{{{atom_fontsize}\ensuremath{{\mathrm{{#1}}}}}}
+
+\\begin{{document}}
+${chemfig_tex}$
+\end{{document}}
+"""
+
+# TODO actually want a border? default to 0mm or something smaller than 2mm?
+def chemfig_standalone_tex(chemfig_tex: str, *, atom_fontsize: str = '\\tiny',
+    chemfig_opts: str = DEFAULT_CHEMFIG_OPTS, border: str = '2mm') -> str:
+
+    assert chemfig_tex.startswith('\\chemfig'), chemfig_tex
+
+    return CHEMFIG_STANDALONE.format(chemfig_tex=chemfig_tex, chemfig_opts=chemfig_opts,
+        atom_fontsize=atom_fontsize, border=border
+    )
+
+
+# TODO TODO add arg for *args to pass to cid2chemfig_tex (mol2chemfig CLI args)?
+def draw_molecule(cid: int, output_name: Optional[str] = None,
+    output_dir: Optional[Path] = None, *, chemfig_output_dir: Optional[Path] = None,
+    ignore_cache: bool = False, verbose: bool = False, **kwargs) -> None:
+
+    # TODO TODO relocate + commit + install mol2chemfig.sty in a way where we don't
+    # depend on a path relative to this script (which will only  work w/ current
+    # editable setup)
+    hong2p_pkg_path = Path(__file__).resolve().parent
+    mol2chemfig_sty = hong2p_pkg_path / 'mol2chemfig.sty'
+    assert mol2chemfig_sty.exists(), f'{mol2chemfig_sty=} did not exist!'
+
+    # TODO TODO how to handle mol2chemfig.sty path? how to pass to compile_latex?
+    # TODO TODO copy to TEXMFHOME on install? or after running some other script?
+    # kpsewhich -var-value=TEXMFHOME (e.g. ~/texmf)
+    # (not sure how to initialize this directory tho... might need something other than
+    # just .sty files?)
+    # see: https://tex.stackexchange.com/questions/1137
+    # (may not be as simple as putting right under TEXMFHOME)
+
+    # TODO TODO split into two subfns, one for doing w/ rdkit, and add a flag to switch
+    # between them here (-> compare chemfig/rdkit output)
+
+    if output_name is None:
+        # TODO need to manually append '.pdf' (for latex output)?
+        output_name = f'{cid}'
+
+    chemfig_tex = cid2chemfig_tex(cid, ignore_cache=ignore_cache)
+    tex = chemfig_standalone_tex(chemfig_tex, **kwargs)
+
+    if verbose:
+        print('chemfig_tex:')
+        print(chemfig_tex)
+
+    if output_dir is None:
+        # TODO skip the resolve? make relative to cwd anyway? either work w/ tex better?
+        # if both work, worth for readability to make relative, or nah?
+        output_dir = Path('.').resolve()
+        output_dir.mkdir(exist_ok=True)
+
+    if chemfig_output_dir is None:
+        chemfig_output_dir = output_dir / 'chemfig'
+        chemfig_output_dir.mkdir(exist_ok=True)
+        # TODO or just save as <CID>.tex always? or at least assert CID <> output_name
+        # are at least 1:1 w/in run? makes me wanna just save to <cid>.tex...
+        chemfig_tex_path = chemfig_output_dir / f'{output_name}.tex'
+        if verbose:
+            print(f'writing chemfig TeX to {chemfig_tex_path}')
+
+        chemfig_tex_path.write_text(chemfig_tex)
+
+    # TODO TODO should i make a temp dir for tex_path? should i have compile_latex
+    # handle that, and it take a str instead?
+    tex_path = output_dir / f'{output_name}.tex'
+    if verbose:
+        print(f'writing TeX to {tex_path}')
+
+    tex_path.write_text(tex)
+
+    if verbose:
+        print()
+        print('standalone tex:')
+        print(tex)
+        print()
+        print('compiling latex...')
+
+    pdf_path = compile_latex(tex_path, output_dir=output_dir,
+        tex_inputs=[mol2chemfig_sty.parent]
+    )
+    if verbose:
+        print('done compiling latex')
+        print(f'PDF: {pdf_path}')
+

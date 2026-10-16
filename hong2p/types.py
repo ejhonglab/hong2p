@@ -56,6 +56,8 @@ SingleTrialOdors = Sequence[OdorDict]
 ExperimentOdors = Sequence[SingleTrialOdors]
 
 DataFrameOrSeries = Union[pd.DataFrame, pd.Series]
+# TODO use elsewhere (for cases that will use the .map or .str accessors)
+SeriesOrIndex = Union[pd.Series, pd.Index]
 # TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray
 # / better check for both?)? maybe in another type?
 # TODO i once was wrapper the args to Union with Type[...]. did that serve a purpose?

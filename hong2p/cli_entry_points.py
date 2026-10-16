@@ -9,6 +9,7 @@ from shutil import copy2
 import subprocess
 import sys
 from tempfile import NamedTemporaryFile
+from tqdm import tqdm
 from typing import List, Optional
 import warnings
 
@@ -20,6 +21,7 @@ from hong2p import util, thor
 from hong2p.suite2p import print_suite2p_params
 from hong2p.util import format_date, run_cmd
 from hong2p.viz import showsync
+from hong2p.olf import load_input_yaml
 
 
 # NOTE: to add additional endpoints:
@@ -698,4 +700,151 @@ def save_requirements() -> None:
     # TODO add option to save / output in pyproject.toml deps format?
     # (or can pyproject.toml reference requirements.txt like files? maybe, actually?)
 
+
+chemfig_pdfdir = Path('.') / 'chemfig_pdf'
+def yaml2tex_cli() -> None:
+    from hong2p.chem import draw_molecule
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('yaml_path', type=Path, help='path to YAML used as input to olf'
+        ' CLI'
+    )
+    # TODO ignore_cache arg?
+    parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+
+    yaml_path = args.yaml_path
+    verbose = args.verbose
+
+    # TODO exclude pfo/water by default
+    # TODO skip air_mix entries
+
+    odor_list = load_input_yaml(yaml_path)['odors']
+
+    # TODO allow disabling this? factor creation of this into draw_molecule?
+    # (currently .tex saved under chemfig/ subdir UNDER this tho)
+    # TODO change so draw_molecule handles this w/ reasonable default
+    chemfig_pdfdir.mkdir(exist_ok=True)
+
+    df = pd.DataFrame.from_records(odor_list)
+
+    # TODO assert NaN name entries only for air_mix rows? factor to some other (more
+    # general?) validation?
+    air_mix = 'air_mix'
+    df = df.dropna(subset='name')
+    if air_mix in df.columns:
+        # after dropping above, this should be true
+        assert df[air_mix].isna().all()
+        df = df.drop(columns=air_mix)
+
+    # these would be the components of any air_mix entries
+    alias = 'alias'
+    if alias in df.columns:
+        df = df.drop(columns=alias)
+
+    # TODO add flag to not drop this?
+    inventory = 'inventory'
+    if inventory in df.columns:
+        df = df.drop(columns=inventory)
+
+    df = df[~ df.name.isin(('pfo', 'water', 'solvent'))].copy()
+
+    # TODO option to bold everything in first column?
+
+    # TODO need to ever handle this missing? assert not?
+    # (or fillna(0) or something?)
+    # TODO just use float_format instead?
+    #df['log10_conc'] = df['log10_conc'].map(lambda x: f'{x:.2g}')
+
+    initial_col_order = ['name', 'abbrev', 'log10_conc']
+    assert all(x in df.columns for x in initial_col_order)
+    other_cols = [x for x in df.columns if x not in initial_col_order]
+    col_order = initial_col_order + other_cols
+    df = df[col_order].copy()
+
+    have_cid = False
+    cid = 'cid'
+    if cid in df.columns and df[cid].notna().any():
+        # mostly to format all CIDs as int rather than as <x>.0 floats
+        df[cid] = df[cid].fillna(0).astype(int).replace(0, '')
+
+    # TODO add CLI flag for this?
+    dupe_cid_for_structure = True
+    if dupe_cid_for_structure and cid in df.columns:
+        df['Structure'] = df[cid].copy()
+
+    col_renames = {
+        # TODO delete. don't see a way currently to have these interpreted as raw latex
+        #'name': '\\textbf{Name}',
+        #'abbrev': '\\textbf{Abbrev.}',
+        ## NOTE: \boldsymbol assumes \usepackage{bm}, which is apparently recommended way
+        ## to bold math. \ce assumes mhchem
+        ## this is equivalent to \LogConcXBold macro in my thesis (except $...$ here
+        ## instead of \ensuremath{...} there)
+        ## TODO option to switch between bold version and not?
+        #'log10_conc': '$\\boldsymbol{\\log_{10}} \\textbf{\\ce{[x]}}$',
+        ## need to test if we have this first? no.
+        #cid: '\\textbf{CID}',
+        #
+        'name': 'Name',
+        'abbrev': 'Abbrev.',
+        # need to test if we have this first? no.
+        cid: 'CID',
+    }
+    df = df.rename(columns=col_renames)
+
+    # TODO not sure how to disable index formatting via call this warning recommends, so
+    # i think i want to silence this for now:
+    # FutureWarning: In future versions `DataFrame.to_latex` is expected to utilise the
+    # base implementation of `Styler.to_latex` for formatting and rendering. The
+    # arguments signature may therefore change. It is recommended instead to use
+    # `DataFrame.style.to_latex` (using 1.5.0 now)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=FutureWarning)
+        tex = df.to_latex(index=False, float_format='%.2g')
+
+    # TODO float formatting on log10_conc col? \num{} wrap and leave formatting to
+    # latex?
+    # TODO rename cols (name->Name, abbrev->Abbrev.)
+
+    cids = df.CID[df.CID != ''].unique()
+    for cid in tqdm(cids, desc='mol2chemfig CID -> chemfig structure TeX', unit='CID'):
+        assert cid == int(cid)
+        # NOTE: .tex chemfig structures will currently be in <chemfig_pdfdir>/chemfig,
+        # as currently implemented
+        # TODO verbose=True by default (and change CLI arg above to -q/--quiet?)?
+        draw_molecule(cid, output_dir=chemfig_pdfdir, verbose=verbose)
+
+    if verbose:
+        print()
+
+    print(f'wrote structure .tex files to {chemfig_pdfdir}/chemfig')
+    print()
+
+    print(tex)
+
+
+def cid2tex_cli() -> None:
+    from hong2p.chem import draw_molecule
+
+    parser = argparse.ArgumentParser(description='Saves chemfig .tex file (and rendered'
+        ' PDF) under current directory, for a single CID.'
+    )
+    parser.add_argument('cid', type=int, action='store', help='int PubChem CID')
+    # TODO ignore_cache arg?
+    parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+
+    cid = args.cid
+    assert cid > 0
+
+    verbose = args.verbose
+
+    # TODO change so draw_molecule handles this w/ reasonable default
+    chemfig_pdfdir.mkdir(exist_ok=True)
+
+    draw_molecule(cid, output_dir=chemfig_pdfdir, verbose=verbose)
+    if verbose:
+        print()
+    print(f'wrote structure .tex file to {chemfig_pdfdir}/chemfig/{cid}.tex')
 
