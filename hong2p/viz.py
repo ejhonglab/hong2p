@@ -2924,7 +2924,9 @@ def add_colorbar(fig: Figure, im, match_axes_size: bool = False,
                     'small cbar_min probably does not make sense with cbar_min<0.75. '
                     'disabling!'
                 )
-            else:
+            # (nothing negative to add ticks for if cbar_min >= 0, e.g. correlation
+            # distance plots, w/ vmin=0 and vcenter=1)
+            elif cbar_min < 0:
                 min_tick_increment: float = 0.05
                 round_tick_towards0_under_rtol: float = 0.1
 

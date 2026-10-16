@@ -490,6 +490,11 @@ def find_matching_coords(index: pd.Index, arr: xr.DataArray, *, warn: bool = Tru
     """
     matching_coords = None
     for name, coords in arr.coords.items():
+        # newer xarray (unlike 0.19) also has MultiIndex levels in coords, which we
+        # want to skip (as well as any scalar / non-dimension coords)
+        if name not in arr.dims:
+            continue
+
         if arr.sizes[name] != len(index):
             continue
 
