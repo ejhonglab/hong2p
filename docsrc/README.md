@@ -1,63 +1,46 @@
-
 ### Building the documentation
 
+Sphinx configuration is in `source/conf.py`. API documentation `.rst` files are
+generated under `source/apidoc/` (gitignored) by `sphinxcontrib.apidoc` on each build,
+so they should not be edited manually. To exclude a module, add it to
+`apidoc_excluded_paths` in `source/conf.py`.
 
-#### Initial setup
 
+#### Setup
+
+From the root of the repository (requires Python >= 3.12):
 ```
-# had been using 3.8.12
-python3 -m venv venv
-
-source venv/bin/activate
-
-# had been using 20.2.3
-pip install --upgrade pip
-
-pip install -r requirements.txt
+pip install -e .[doc]
 ```
 
-If `hong2p` requirements change (currently specified in `hong2p/setup.py`), 
-re-run `pip install -r requirements.txt`. Otherwise, you may notice import errors as
-part of the build process.
+The documentation dependencies are pinned in the `doc` extra in `../pyproject.toml`.
 
 
-#### Build
+#### Build and publish
 
+From the root of the repository:
 ```
-make github
+hong2p-docs
+git push
 ```
 
-Should generate output under `docsrc/build`, and copy to `../docs`. Also makes and
-copies `.nojekyll` file that was required for Github pages to work correctly with this
-type of output (`make html` below didn't seem to include this file).
+`hong2p-docs` (defined in `hong2p/cli_entry_points.py:build_docs_cli`):
+1. Deletes any previous `docsrc/build` and `docsrc/source/apidoc` outputs.
+2. Builds the HTML (equivalent to `make html` here).
+3. Replaces `../docs` with the contents of `build/html`. This includes the empty
+   `.nojekyll` file Github Pages requires, which `sphinx.ext.githubpages` generates.
+4. Commits only `../docs` (refusing to run if other changes are staged).
 
-To publish, continue at step 4 under publishing section below (committing `../docs`
-contents).
+Pass `--no-commit` to skip step 4. Github Pages should be configured to serve the
+`docs/` directory of the `master` branch, which publishes it
+[here](https://ejhonglab.github.io/hong2p).
 
 
-##### Manual method
+#### Manual method
 
-Only relevant if `make github` is broken for some reason.
-
+To just build the HTML without touching `../docs`:
 ```
 make html
 ```
 
 Then you can open `build/html/index.html` in a web browser to view the output.
-
-
-#### Publishing
-
-1. Delete any existing `hong2p/docs` directory, via `git rm -rf docs` (if exists, all
-   contents should have been generated from a prior run of the build process above).
-
-2. Make `hong2p/docs` directory via `mkdir docs`.
-
-3. Copy contents of `hong2p/docsrc/build/html` to `hong2p/docs`, via:
-   `cp -a docsrc/build/html/* ./docs/.`
-
-4. (if used `make github`, start here) Commit all contents to the repository.
-
-5. Push changes to `ejhonglab/hong2p`, and the Github repository should be set up to
-   publish that HTML [here](https://ejhonglab.github.io/hong2p).
-

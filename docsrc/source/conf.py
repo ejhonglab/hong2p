@@ -46,7 +46,7 @@ extensions = [
     'sphinx.ext.githubpages',
 
     # TODO actually use
-    'sphinx-prompt',
+    'sphinx_prompt',
 
     # It is important that this comes after napoleon, see:
     # https://github.com/agronholm/sphinx-autodoc-typehints/issues/15
@@ -76,6 +76,10 @@ apidoc_excluded_paths = [
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
+# tifffile has some type hints that reference optional dependencies (e.g. zarr), which
+# sphinx_autodoc_typehints warns about failing to import
+suppress_warnings = ['sphinx_autodoc_typehints.guarded_import']
+
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
@@ -92,4 +96,5 @@ html_theme = 'sphinx_rtd_theme'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# (commented since we don't currently have any, and sphinx warns if dir doesn't exist)
+#html_static_path = ['_static']

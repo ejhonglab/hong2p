@@ -4,6 +4,6 @@
 from .cli_entry_points import (thor2tiff_cli, showsync_cli, suite2p_params_cli,
     print_data_root, print_raw_data_root, print_analysis_intermediates_root,
     print_paired_thor_subdirs, print_thorimage_subdir_notes, save_requirements,
-    yaml2tex_cli, cid2tex_cli
+    yaml2tex_cli, cid2tex_cli, build_docs_cli
 )
 

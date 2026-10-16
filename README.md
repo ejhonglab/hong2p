@@ -112,26 +112,28 @@ pip install -e .[test]
 
 #### Updating the documentation
 
-The documentation is generated via Sphinx, and hosted on Github Pages. To re-generate
-the documentation:
+The documentation is generated via Sphinx (configured under `docsrc/`), and hosted on
+Github Pages (serving the `docs/` directory on `master`). To re-generate the
+documentation, from the root of this repository:
 ```
-cd docsrc
-# (activate venv where you installed docsrc/requirements.txt)
+# Only needed once (requires Python >= 3.12). Installs hong2p editable, with the
+# documentation dependencies (the `doc` extra in pyproject.toml).
+pip install -e .[doc]
 
-# This should overwrite the files currently in the ../docs directory.
-make github
+# Rebuilds docs/ from docsrc/ and commits the docs/ changes (only). Refuses to run if
+# other changes are staged.
+hong2p-docs
 
-# Now we manually commit the generated ../docs directory
-git add ../docs
-git commit -m "Re-generate docs"
 git push
 ```
 
 There may be a slight delay between pushing and Github running the action to update the
 Github Pages site.
 
-To just generate the docs to `docsrc/build/html`, and not overwrite the `docs`
-directory, use `make html` and open the `docsrc/build/html/index.html` file.
+To rebuild `docs/` without committing, use `hong2p-docs --no-commit`. To just generate
+the docs to `docsrc/build/html` (without touching `docs/`), run `make html` from
+`docsrc/` and open `docsrc/build/html/index.html`. See `docsrc/README.md` for more
+details.
 
 
 #### Testing
