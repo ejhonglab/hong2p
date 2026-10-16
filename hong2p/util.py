@@ -22,8 +22,8 @@ import re
 import hashlib
 import functools
 from itertools import product
-from typing import (Any, Collection, Dict, Generator, List, Optional, Sequence, Tuple,
-    Union
+from typing import (Any, Callable, Collection, Dict, Generator, List, Optional,
+    Sequence, Tuple, Union
 )
 import xml.etree.ElementTree as etree
 from urllib.error import URLError
@@ -2670,11 +2670,50 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
     return df
 
 
+def df_map(df: pd.DataFrame, fn: Callable, **kwargs) -> pd.DataFrame:
+    """Applies `fn` elementwise. `DataFrame.map` if available, else `.applymap`.
+
+    `DataFrame.map` was added in pandas 2.1 (and `.applymap` removed in 3.0).
+    """
+    try:
+        map_fn = df.map
+    # pandas < 2.1
+    except AttributeError:
+        map_fn = df.applymap
+
+    return map_fn(fn, **kwargs)
+
+
+def is_str_or_object_dtype(dtype) -> bool:
+    """Returns whether dtype is `object` or a pandas string dtype.
+
+    pandas >= 3.0 infers `str` dtype (a `pd.StringDtype`) for string data, where older
+    versions would use `object`.
+    """
+    return dtype == object or isinstance(dtype, pd.StringDtype)
+
+
+def select_str_and_object_dtypes(df: pd.DataFrame, *, exclude: bool = False
+    ) -> pd.DataFrame:
+    """Like `df.select_dtypes(include='object')` (`exclude=...` if `exclude=True`),
+    but also including pandas >= 3.0 `str` dtype columns, without a deprecation warning.
+    """
+    kwarg = 'exclude' if exclude else 'include'
+    try:
+        return df.select_dtypes(**{kwarg: ['object', 'str']})
+    # pandas < 3.0:
+    # TypeError: string dtypes are not allowed, use 'object' instead
+    except TypeError:
+        return df.select_dtypes(**{kwarg: 'object'})
+
+
 def arraylike_cols(df):
     """Returns a list of columns that have only lists or arrays as elements.
     """
-    df = df.select_dtypes(include='object')
-    return df.columns[df.applymap(lambda o:
+    # not using select_dtypes(include='object'), as that also includes pandas>=3.0 'str'
+    # dtype columns (and warns about that behavior being deprecated)
+    df = df[[c for c in df.columns if df[c].dtype == object]]
+    return df.columns[df_map(df, lambda o:
         type(o) is list or isinstance(o, np.ndarray)).all()]
 
 
@@ -2722,7 +2761,7 @@ def expand_array_cols(df):
 
     # TODO true vectorized way to do this?
     # is str.len (on either rows/columns) faster (+equiv)?
-    array_lengths = df[array_cols].applymap(len)
+    array_lengths = df_map(df[array_cols], len)
     c0 = array_lengths[array_cols[0]]
     for c in array_cols[1:]:
         assert np.array_equal(c0, array_lengths[c])
@@ -5182,16 +5221,16 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 
     # Series don't have select_dtypes
     if isinstance(a, pd.DataFrame):
-        a_obj = a.select_dtypes(include='object')
+        a_obj = select_str_and_object_dtypes(a)
         if len(a_obj.columns) > 0:
-            b_obj = b.select_dtypes(include='object')
+            b_obj = select_str_and_object_dtypes(b)
             if not a_obj.equals(b_obj):
                 return False
 
             # since np.allclose below can throw TypeError if there are 'object' dtype
             # columns (like str) in input
-            a = a.select_dtypes(exclude='object')
-            b = b.select_dtypes(exclude='object')
+            a = select_str_and_object_dtypes(a, exclude=True)
+            b = select_str_and_object_dtypes(b, exclude=True)
 
     return np.allclose(a, b, **kwargs)
 

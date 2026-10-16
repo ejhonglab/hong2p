@@ -412,11 +412,14 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
 
     # The assignment below failed for some int dtype levels, even though the boolean
     # mask dictating where assignment should happen must have been all False...
-    if level.dtype != np.dtype('O'):
+    # (pandas >= 3.0 infers 'str' dtype for these levels, where older versions had
+    # object dtype)
+    if not util.is_str_or_object_dtype(level.dtype):
         return level
 
-    # prob don't need the .values most/all places anymore, but would need to test
-    odor_strs = level.values
+    # converting to object ndarray, since for pandas>=3.0 'str' dtype, .values would be
+    # a pandas ExtensionArray
+    odor_strs = np.asarray(level, dtype=object)
 
     # Will be overwritten with floats (either log10 concentration, or another float to
     # appropriately order solvent elements).
@@ -733,14 +736,20 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
         found_odor_multiindex = True
 
         if not panel_sort:
+            # NOTE: in pandas 3.0, passing level= for a non-MultiIndex index seems to
+            # make the sort no longer stable (despite kind='mergesort'), so only
+            # passing when needed.
+            level_kws = dict()
+            if isinstance(index, pd.MultiIndex):
+                level_kws = dict(level=levels, sort_remaining=False)
+
             df = df.sort_index(
                 key=lambda x: odor_index_sort_key(x, **kwargs),
                 axis=axis_name,
-                level=levels,
-                sort_remaining=False,
                 # So that the sort is "stable", meaning if stuff compares equal, it
                 # preserves input order.
                 kind='mergesort',
+                **level_kws
             )
 
         else:
@@ -780,8 +789,20 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
             # Since we are already checking 'panel' is in index.names above, we can
             # always use level= in groupby (would need to specify as by= [or positional
             # arg 0] if 'panel' was a column).
-            for panel, pdf in df.groupby(level='panel', axis=axis_name, sort=False,
+            #
+            # Grouping integer positions (rather than df.groupby(..., axis=axis_name)),
+            # because groupby axis= kwarg was removed in pandas 3.0 (and want to avoid
+            # transposing, which can change dtypes).
+            positions = pd.Series(np.arange(len(index)),
+                index=index.get_level_values('panel')
+            )
+            for panel, panel_positions in positions.groupby(level='panel', sort=False,
                 dropna=False):
+
+                if axis_name == 'index':
+                    pdf = df.iloc[panel_positions.values]
+                else:
+                    pdf = df.iloc[:, panel_positions.values]
 
                 try:
                     name_order = panel2name_order[panel]

@@ -353,7 +353,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
         # TODO handle bool differently depending on whether we are using a dict
         # palette or not? (previously was only checking dtype('O') here)
         # (have only tested bool dtype w/ dict palette so far)
-        if dtype == np.dtype('O') or dtype == bool:
+        if util.is_str_or_object_dtype(dtype) or dtype == bool:
             make_legend = True
 
         elif dtype == int or dtype == float:
@@ -379,7 +379,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
                     # between 0 and max (inclusive)
                     unique_values = range(vmin, vmax + 1)
                 else:
-                    assert dtype == np.dtype('O'), f'unrecognized {dtype=}'
+                    assert util.is_str_or_object_dtype(dtype), f'unrecognized {dtype=}'
                     unique_values = set()
                     for c in values.columns:
                         # TODO assert values are str? (maybe w/ some None/NaN allowed?)
@@ -419,7 +419,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
                 # palette has), and recommend palettes like hsl/husl?
                 raise ValueError(f'{var_names=}: duplicate colors in {palette=}')
 
-            colors = values.applymap(
+            colors = util.df_map(values,
                 # now we can use color strings for both dict values and na_color, b/c
                 # to_rgb. to_rgb will not change input that is already a RGB tuple
                 lambda x: to_rgb(value2color[x] if pd.notna(x) else na_color)
@@ -484,7 +484,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
             # set_[over|under] and check we get those if i  call w/ 1+eps or 0-eps,
             # but colors at 1 / 0?
 
-            colors = normed.applymap(palette)
+            colors = util.df_map(normed, palette)
             if not make_cbar:
                 del palette
 
@@ -733,7 +733,7 @@ def rgb_tuple_df_to_3d_array(color_df: pd.DataFrame) -> np.ndarray:
     assert (color_df.apply(lambda x: x.str.len()) == n_channels).all().all()
     channels = []
     for i in range(n_channels):
-        channels.append(color_df.applymap(lambda x: x[i]))
+        channels.append(util.df_map(color_df, lambda x: x[i]))
 
     arr = np.stack(channels, axis=-1)
     assert arr.shape == color_df.shape + (n_channels,)
@@ -1053,6 +1053,11 @@ def is_centered_norm(norm: Union[type, Normalize]) -> bool:
     if hasattr(norm, 'vcenter'):
         return True
 
+    # matplotlib < 3.5 (at least 3.4.2) only defines vcenter on instances, so hasattr
+    # check above fails for these classes
+    if isinstance(norm, type) and issubclass(norm, (TwoSlopeNorm, CenteredNorm)):
+        return True
+
     # NOTE: SymLogNorm is assumed to be centered about 0, and does not have a vcenter
     # parameter
     if ((isinstance(norm, type) and issubclass(norm, SymLogNorm)) or
@@ -1223,6 +1228,14 @@ def get_mpl_norm(norm: Union[str, type] = Normalize, data: Optional[ArrayLike] =
     assert isinstance(norm, Normalize), (f'expected instantiated {type(norm)=} to have '
         'isinstance(norm, Normalize)=True'
     )
+
+    # matplotlib < 3.5 (at least 3.4.2) CenteredNorm does not set vmin/vmax from
+    # halfrange on init (only lazily, when first called on data)
+    if (isinstance(norm, CenteredNorm) and norm.vmin is None and
+        norm.halfrange is not None):
+
+        norm.vmin = norm.vcenter - norm.halfrange
+        norm.vmax = norm.vcenter + norm.halfrange
     return norm
 
 
