@@ -55,6 +55,10 @@ extensions = [
 ]
 
 
+# My 'Returns:' sections generally list multiple named return values (like 'Args:'),
+# rather than the single value napoleon expects by default.
+napoleon_custom_sections = [('Returns', 'params_style')]
+
 # TODO TODO any way to exclude specific stuff (e.g. functions in a module) from apidoc
 # -> autodoc generation? would i need to manually change the outputs of apidoc?
 

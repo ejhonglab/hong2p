@@ -1339,11 +1339,12 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
 
         draw_nums (bool): whether to draw ROI numbers on `draw_on`
 
-        multiscale_strategy (str): how to order matches across scales.
-            'one_order': all matches sorted together by (weighted) match value.
-            'fixed_scale_order': all matches at each scale before the next, in order of
-                `scale_order`.
-            'random': next scale randomly sampled, with probabilities `radii_px_ps`.
+        multiscale_strategy (str): how to order matches across scales:
+
+            - 'one_order': all matches sorted together by (weighted) match value.
+            - 'fixed_scale_order': all matches at each scale before the next, in order
+              of `scale_order`.
+            - 'random': next scale randomly sampled, with probabilities `radii_px_ps`.
 
         match_value_weights (iterable of float): for 'one_order' strategy, factors to
             multiply match values of each scale by, before sorting
@@ -3182,20 +3183,21 @@ def correspond_rois(left_centers_or_seq, *right_centers, cost_fn=None,
 
 
 def stable_rois(lr_matches, verbose=False):
-    """
+    """Returns ROIs matched across all timepoints, and IDs lost at each timepoint.
+
     Takes a list of n_cells x 2 matrices, with each row taking an integer ROI
     label from one set of labels to the other.
 
     Input is as first output of correspond_rois.
 
     Returns:
-    stable_cells: a n_stable_cells x (len(lr_matches) + 1) matrix, where rows
-        represent different labels for the same real cells. Columns have the
-        set of stable cells IDs, labelled as the inputs are.
+        stable_cells: a n_stable_cells x (len(lr_matches) + 1) matrix, where rows
+            represent different labels for the same real cells. Columns have the
+            set of stable cells IDs, labelled as the inputs are.
 
-    new_lost: a (len(lr_matches) - 1) length list of IDs lost when matching
-        lr_matches[i] to lr_matches[i + 1]. only considers IDs that had
-        been stable across all previous pairs of matchings.
+        new_lost: a (len(lr_matches) - 1) length list of IDs lost when matching
+            lr_matches[i] to lr_matches[i + 1]. only considers IDs that had
+            been stable across all previous pairs of matchings.
     """
     # TODO TODO also test in cases where lr_matches is greater than len 2
     # (at least len 3)

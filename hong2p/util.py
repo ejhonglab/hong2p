@@ -948,7 +948,8 @@ def date_fly_list2paired_thor_dirs(date_fly_list, n_first=None, print_full_paths
     Each output is of the form:
     ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
 
-    Example:
+    Example::
+
         pairs = date_fly_list2paired_thor_dirs([('2021-03-07', 1), ('2021-03-08', 2)])
         for (date, fly_num), (thorimage_dir, thorsync_dir) in pairs:
             movie = thor.read_movie(thorimage_dir)
@@ -1023,7 +1024,8 @@ def paired_thor_dirs(matching_substrs: Optional[Sequence[str]] = None,
     Each output is of the form:
     ((date, fly_num), (thorimage_dir<i>, thorsync_dir<i>))
 
-    Example:
+    Example::
+
         for (date, fly_num), (thorimage_dir, thorsync_dir) in paired_thor_dirs(
             matching_substrs=['diag'], start_date='2021-03-07'):
 
@@ -2122,15 +2124,15 @@ def df_to_odor_order(df, observed=True, return_name1=False):
     Order is from `odor_set2order`, with odor set determined via `odorset_name`.
 
     Args:
-    df (pd.DataFrame): should have a 'original_name1' column, with names of
-        odors from complex mixture experiments we have pre-defined odor orders
-        for.
+        df (pd.DataFrame): should have a 'original_name1' column, with names of
+            odors from complex mixture experiments we have pre-defined odor orders
+            for.
 
-    observed (bool): (optional, default=True) If True, only return odor names
-        in `df`.
+        observed (bool): (optional, default=True) If True, only return odor names
+            in `df`.
 
-    return_name1 (bool): (optional, default=False) If True, corresponding
-        values in 'name1' will be returned for each value in 'original_name1'.
+        return_name1 (bool): (optional, default=False) If True, corresponding
+            values in 'name1' will be returned for each value in 'original_name1'.
     """
     # TODO might need to use name1 if original_name1 not there...
     # (for gui case)
@@ -3874,27 +3876,26 @@ def smooth_1d(x, window_len=11, window='hanning'):
     `np.convolve(..., mode='same')`, so output is same length as input, and edges are
     effectively zero-padded).
 
-    input:
+    Args:
         x: the input signal
+
         window_len: the dimension of the smoothing window; should be an odd
             integer
+
         window: the type of window from 'flat', 'hanning', 'hamming',
             'bartlett', 'blackman' flat window will produce a moving average
             smoothing.
 
-    output:
-        the smoothed signal
+    Returns the smoothed signal.
 
-    example:
+    Example::
 
-    t=linspace(-2,2,0.1)
-    x=sin(t)+randn(len(t))*0.1
-    y=smooth_1d(x)
+        t = np.linspace(-2, 2, 50)
+        x = np.sin(t) + np.random.randn(len(t)) * 0.1
+        y = smooth_1d(x)
 
-    see also:
-
-    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
-    scipy.signal.lfilter
+    See also: numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman,
+    numpy.convolve, scipy.signal.lfilter
 
     TODO: the window parameter could be the window itself if an array instead of
     a string
@@ -4077,6 +4078,7 @@ def format_mixture(*args):
     """Returns `str` representing 2-component odor mixture.
 
     Input can be any of:
+
     - 2 `str` names
     - 2 names and concs (n1, n2, c1, c2)
     - a pandas.Series / dict with keys `name1`, `name2`, and (optionally)
@@ -4960,7 +4962,7 @@ def print_color(color_name, *args, **kwargs):
 def latest_trace_pickles():
     """Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.
 
-    Searches '*.p' files under `<analysis_output_root>/trace_pickles` (as written by
+    Searches `*.p` files under `<analysis_output_root>/trace_pickles` (as written by
     `db.load_recording`), which should be named like
     '<YYYYMMDD>_<HHMM>_<YYYY-MM-DD>_<fly_num>_<thorimage_id>.p'.
 

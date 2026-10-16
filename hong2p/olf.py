@@ -698,16 +698,15 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
             matching key in `panel2name_order`. all data will be assumed to belong to
             this panel.
 
-        if_panel_missing: 'warn'|'err'|None. what to do if a panel in data is not in
+        if_panel_missing: 'warn', 'err', or None. what to do if a panel in data is not in
             `panel2name_order`. if not 'err', odors in those panels are sorted
             alphabetically, and those panels are sorted after those in `panel_order`.
 
         axis: if None, detect which axes to sort (and may sort both). otherwise,
-            expecting 'columns'|'index'
+            expecting 'columns' or 'index'
 
         **kwargs: passed through to :func:`odor_index_sort_key`.
 
-    Notes:
     Index and columns will be checked first, and any with odor levels will be sorted on
     them (both may be sorted, e.g. for correlation matrices). If neither has odor
     levels, rows will be sorted on values of odor columns.
@@ -725,6 +724,7 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
     Names are sorted alphabetically by default, then within each name they are sorted by
     concentration. Pass `sort_names=False` to only sort on concentration, or
     `names_first=False` to sort on concentrations first.
+
     >>> sort_odors(df)
                     delta_f
     odor1  odor2
@@ -741,6 +741,7 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
 
     'odor2' is only used to break ties in 'odor1', and `solvent_str` sorts first in each
     level.
+
     >>> df = pd.DataFrame({
     ...     'odor1': ['A @ -2', 'solvent', 'A @ -2', 'B @ -3'],
     ...     'odor2': ['B @ -3', 'solvent', 'solvent', 'solvent'],
@@ -755,6 +756,7 @@ def sort_odors(df: pd.DataFrame, *, panel_order: Optional[List[str]] = None,
     B @ -3  solvent      0.9
 
     With a 'panel' level, panels can be sorted, and odors sorted within each.
+
     >>> df = pd.DataFrame({
     ...     'panel': ['p1', 'p2', 'p2', 'p1'],
     ...     'odor1': ['A @ -2', 'C @ -2', 'D @ -2', 'B @ -3'],

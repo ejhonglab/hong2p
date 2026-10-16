@@ -760,7 +760,7 @@ def load_s2p_ops(ops_path: Pathlike) -> Suite2pOps:
     """Returns suite2p ops dict.
 
     Args:
-        ops_path: if path does not end with '*.npy', assumed to be a directory
+        ops_path: if path does not end with '.npy', assumed to be a directory
             containing a file named 'ops.npy'
     """
     ops_path = Path(ops_path)

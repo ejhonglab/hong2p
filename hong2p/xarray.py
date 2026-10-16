@@ -605,7 +605,7 @@ def outer_product(x: xr.DataArray, y: xr.DataArray, *, squeeze: bool = True,
     Output shape is the concatenation of input shapes (`x.shape + y.shape`).
 
     One should be missing a name (`.name == None`) or both should have matching
-    `.name`s.
+    `.name` attributes.
 
     Assumed that they will have non-overlapping dims, as otherwise what would be the
     point of an outer product.

@@ -2839,23 +2839,20 @@ def min_tick_for_centered_cmap(vmin: float, *, increment: float = 0.05,
 
         round_tick_towards0_under_rtol: if vmin * increment < nearest increment, by this
             fraction of increment size, set the min tick to that nearest (closer to 0)
-            increment.
+            increment. For example::
 
-        For example:
-        ```
-        ipdb> vmin
-        -0.35374016010182685
-        ipdb> increment
-        0.05
-        ipdb> vmin / increment
-        -7.074803202036537
-        ipdb> np.round(vmin / increment)
-        -7.0
-        ipdb> vmin / increment - np.round(vmin / increment)
-        -0.07480320203653701
-        ipdb> np.isclose(vmin / increment, np.round(vmin / increment), atol=0.1)
-        True
-        ```
+                ipdb> vmin
+                -0.35374016010182685
+                ipdb> increment
+                0.05
+                ipdb> vmin / increment
+                -7.074803202036537
+                ipdb> np.round(vmin / increment)
+                -7.0
+                ipdb> vmin / increment - np.round(vmin / increment)
+                -0.07480320203653701
+                ipdb> np.isclose(vmin / increment, np.round(vmin / increment), atol=0.1)
+                True
     """
     assert vmin < 0, f'expected {vmin=} to be negative'
     assert increment > 0, f'expected {increment=} to be positive'
@@ -4919,16 +4916,22 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     where `df` is as returned by `db.load_recording`, and `cells` are the IDs of cells
     to plot (from 'cell' column of `df`).
 
-    n (int): (default=20) Number of cells to plot traces for if cell_ids not
-        passed as second positional argument.
-    random (bool): (default=False) Whether the `n` cell ids should be selected
-        randomly. If False, the first `n` cells are used.
-    order_by (str): 'odors' or 'presentation_order'
-    scale_within (str): 'none', 'cell', or 'trial'
-    gridspec (None or matplotlib.gridspec.*): region of a parent figure
-        to draw this plot on.
-    linewidth (float): 0.25 seemed ok on CNMF data, but too small w/ clean
-    traces.
+    Args:
+        n (int): (default=20) Number of cells to plot traces for if cell_ids not
+            passed as second positional argument.
+
+        random (bool): (default=False) Whether the `n` cell ids should be selected
+            randomly. If False, the first `n` cells are used.
+
+        order_by (str): 'odors' or 'presentation_order'
+
+        scale_within (str): 'none', 'cell', or 'trial'
+
+        gridspec (None or matplotlib.gridspec.*): region of a parent figure
+            to draw this plot on.
+
+        linewidth (float): 0.25 seemed ok on CNMF data, but too small w/ clean
+            traces.
     """
     import tifffile
     import cv2
@@ -5601,19 +5604,12 @@ def plot_pair_n(df, *args):
     Table is rendered (via `imgkit`) to 'natural_odors_pair_n.png' in current directory.
 
     Args:
-    df (pd.DataFrame): DataFrame with columns:
-        - prep_date
-        - fly_num
-        - recording_from
-        - name1
-        - name2
-        Data already collected w/ odor pairs.
+        df (pd.DataFrame): data already collected w/ odor pairs. must have columns
+            'prep_date', 'fly_num', 'recording_from', 'name1', and 'name2'.
 
-    *args: optionally, odor_panel (pd.DataFrame), with columns:
-        - odor_1
-        - odor_2
-        - reason (maybe make this optional?)
-        The odor pairs experiments are supposed to collect data for.
+        *args: optionally, `odor_panel` (pd.DataFrame), with the odor pairs experiments
+            are supposed to collect data for. must have columns 'odor_1', 'odor_2', and
+            'reason' (maybe make this optional?).
     """
     import imgkit
     import seaborn as sns

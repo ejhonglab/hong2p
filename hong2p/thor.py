@@ -1252,49 +1252,49 @@ def load_thorsync_hdf5(thorsync_dir, datasets=None, exclude_datasets=None,
         verbose (bool): (default=False) if True, prints original and normalized name of
             each dataset, and why any are skipped
 
-    These HDF5 files have the following hierarchical structure, where leaves of
-    this tree are "Datasets" and their parents are "Groups" (via inspection of a
-    ThorSync 3.0 output):
-    - Global:
-      - GCtr
-        (from ThorSync 3.0 manual) "ThorSync records data into a table with
-        clock cycles beginning with 0.  The time of acquisition can be
-        determined by dividing the clock cycle by the frequency of the data
-        collection set at 20 MHz. Thus, each sequential clock cycle represents
-        an increment of 0.05 μs."
+    These HDF5 files have the following hierarchical structure, where leaves of this
+    tree are "Datasets" and their parents are "Groups" (via inspection of a ThorSync 3.0
+    output):
 
-        Note that this 20 MHz is not the same as the sampling rate specified in
-        the ThorSync XML output. See commented example at end of this function.
+    - Global:
+
+      - GCtr: from ThorSync 3.0 manual, "ThorSync records data into a table with clock
+        cycles beginning with 0. The time of acquisition can be determined by dividing
+        the clock cycle by the frequency of the data collection set at 20 MHz. Thus,
+        each sequential clock cycle represents an increment of 0.05 μs."
+
+        Note that this 20 MHz is not the same as the sampling rate specified in the
+        ThorSync XML output. See commented example at end of this function.
 
     - DI:
-      - Frame In
-        - completely zero in the file I was exploring
 
-      - Frame Out
-        - may have one high pulse (==2 for some reason; low==0) per frame
-        - seems to only be low briefly before returning high again. perhaps just
-          for one / a few samples?
-        - it may be possible there are cases where there are more high pulses
-          here than there are frames in the movie, perhaps in cases with
-          averaging or multiple separate acquisition periods.
+      - Frame In: completely zero in the file I was exploring.
+
+      - Frame Out: may have one high pulse (==2 for some reason; low==0) per frame.
+        Seems to only be low briefly before returning high again (perhaps just for one
+        / a few samples?). It may be possible there are cases where there are more high
+        pulses here than there are frames in the movie, perhaps in cases with averaging
+        or multiple separate acquisition periods.
 
     - CI:
+
       - Frame Counter
 
     - AI:
-      - <one entry for each user-configured analog input>
 
-    Three changes will be made in translating HDF5 dataset names to DataFrame
-    column names:
-    1. If any dataset name is in the keys of `rename_dict`, it will be replaced
-       with the corresponding value, unless `skip_dict_rename` is passed.
+      - (one entry for each user-configured analog input)
 
-    2. Names *except* those under the group 'AI' (mostly user configurable
-       inputs) will be lowercased, unless `skip_normalization` is passed.
+    Three changes will be made in translating HDF5 dataset names to DataFrame column
+    names:
+
+    1. If any dataset name is in the keys of `rename_dict`, it will be replaced with
+       the corresponding value, unless `skip_dict_rename` is passed.
+
+    2. Names *except* those under the group 'AI' (mostly user configurable inputs) will
+       be lowercased, unless `skip_normalization` is passed.
 
     3. All names will have any spaces converted to underscores, unless
        `skip_normalization` is passed.
-
     """
     # TODO TODO DI/Frame [In/Out] useful? how?
 
@@ -2106,11 +2106,11 @@ def assign_frames_to_blocks(df, thorimage_dir, **kwargs):
     """Takes ThorSync+Image data to (start, stop) indices for each block.
 
     Args:
-    df: as output by `load_thorsync_hdf5`
+        df: as output by `load_thorsync_hdf5`
 
-    thorimage_dir: path to a directory created by ThorImage
+        thorimage_dir: path to a directory created by ThorImage
 
-    **kwargs: passed through to `get_frame_times`
+        **kwargs: passed through to `get_frame_times`
 
     See documentation of `assign_frame_times_to_blocks` for more details on the
     definition of blocks and the properties of the output.
