@@ -1,0 +1,360 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.chem &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">hong2p.chem</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for hong2p.chem</h1><div class="highlight"><pre>
+<span></span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">redirect_stdout</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">redirect_stdout</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">StringIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="c1"># TODO TODO add mol2chemfigPy3 (i have 1.6.0, but not sure it matters) to requirements</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_json</span><span class="p">,</span> <span class="n">to_json</span><span class="p">,</span> <span class="n">compile_latex</span>
+
+
+<span class="c1"># TODO or store under some hong2p app data dir? python have those? xdg?</span>
+<span class="n">chemfig_cache</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s1">'~/.cid2chemfig.json'</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_chemfig_cache</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+    <span class="n">from_cache</span> <span class="o">=</span> <span class="n">read_json</span><span class="p">(</span><span class="n">chemfig_cache</span><span class="p">)</span>
+    <span class="c1"># after reading from cache, key type will currently be str not int</span>
+    <span class="k">return</span> <span class="p">{</span><span class="nb">int</span><span class="p">(</span><span class="n">k</span><span class="p">):</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">from_cache</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+
+<span class="n">cid2chemfig</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+<div class="viewcode-block" id="cid2chemfig_tex">
+<a class="viewcode-back" href="../../apidoc/hong2p.chem.html#hong2p.chem.cid2chemfig_tex">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">cid2chemfig_tex</span><span class="p">(</span><span class="n">cid</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">ignore_cache</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns chemfig TeX for PubChem `cid`, generated by `mol2chemfig` (or cache).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        cid: int PubChem CID</span>
+
+<span class="sd">        ignore_cache: if True, ignore values in `chemfig_cache` (but will still update</span>
+<span class="sd">            it with new values)</span>
+
+<span class="sd">        *args: passed to `mol2chemfig`, in addition to default `--hydrogens delete` this</span>
+<span class="sd">            function adds. if any are passed, cache is neither read nor updated (since</span>
+<span class="sd">            it is only keyed by CID).</span>
+
+<span class="sd">    NOTE: in addition to having chemfig installed, also need `mol2chemfig.sty` copied</span>
+<span class="sd">    into overleaf project, and then `\\usepackage{mol2chemfig}` in addition to</span>
+<span class="sd">    `\\usepackage{chemfig}`, despite it being on CTAN.</span>
+
+<span class="sd">    Can copy from CTAN or I may commit into my thesis repo once I make that.</span>
+<span class="sd">    """</span>
+    <span class="k">global</span> <span class="n">cid2chemfig</span>
+
+    <span class="c1"># was using 1.6.0</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">mol2chemfigPy3</span><span class="w"> </span><span class="kn">import</span> <span class="n">mol2chemfig</span>
+
+    <span class="c1"># TODO factor out hong2p fn (is_int_scalar?) for that at this</span>
+    <span class="c1"># point? (+ maybe is_float_scalar?)</span>
+    <span class="c1">#</span>
+    <span class="c1"># works w/ both int and np.int64 scalar CID</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">cid</span><span class="p">),</span> <span class="nb">int</span><span class="p">)</span>
+
+    <span class="k">assert</span> <span class="n">cid</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="s1">'CIDs should be positive'</span>
+
+    <span class="k">if</span> <span class="n">cid2chemfig</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">chemfig_cache</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">cid2chemfig</span> <span class="o">=</span> <span class="n">_read_chemfig_cache</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cid2chemfig</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+    <span class="c1"># cache only keyed by CID, so can't use it if extra args might change output</span>
+    <span class="n">use_cache</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+
+    <span class="k">if</span> <span class="n">use_cache</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">ignore_cache</span> <span class="ow">and</span> <span class="n">cid</span> <span class="ow">in</span> <span class="n">cid2chemfig</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cid2chemfig</span><span class="p">[</span><span class="n">cid</span><span class="p">]</span>
+
+    <span class="n">cstr</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+    <span class="c1"># since mol2chemfig fn doesn't return anything. just prints to stdout.</span>
+    <span class="k">with</span> <span class="n">redirect_stdout</span><span class="p">(</span><span class="n">cstr</span><span class="p">):</span>
+        <span class="c1"># mol2chemfig currently accepts positional arguments the CLI takes</span>
+        <span class="c1"># as strings in *args, like '--hydrogens delete'</span>
+        <span class="n">mol2chemfig</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">cid</span><span class="si">}</span><span class="s1">'</span><span class="p">,</span> <span class="s1">'--hydrogens delete'</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+    <span class="c1"># TODO TODO add a latex comment w/ mol2chemfig version in all output? args too?</span>
+
+    <span class="n">chemfig_tex_str</span> <span class="o">=</span> <span class="n">cstr</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">chemfig_tex_str</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">chemfig_tex_str</span><span class="si">=}</span><span class="s1">'</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">chemfig_tex_str</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">chemfig_tex_str</span><span class="si">=}</span><span class="s1">'</span>
+
+    <span class="k">if</span> <span class="n">use_cache</span> <span class="ow">and</span> <span class="n">cid2chemfig</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cid</span><span class="p">)</span> <span class="o">!=</span> <span class="n">chemfig_tex_str</span><span class="p">:</span>
+        <span class="n">cid2chemfig</span><span class="p">[</span><span class="n">cid</span><span class="p">]</span> <span class="o">=</span> <span class="n">chemfig_tex_str</span>
+        <span class="n">to_json</span><span class="p">(</span><span class="n">cid2chemfig</span><span class="p">,</span> <span class="n">chemfig_cache</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">chemfig_tex_str</span></div>
+
+
+
+<span class="c1"># TODO TODO just commit mol2chemfig.sty in this repo too? or</span>
+<span class="c1"># hong2p/wherever i put this fn? (+ example tex to render using it?</span>
+<span class="c1"># + tex for standalone rendering? might need that to invoke rendering from python</span>
+<span class="c1"># anyway...)</span>
+
+<span class="c1"># TODO what is mol2chemfig.sty actually doing? why need mfcringle or whatever instead of</span>
+<span class="c1"># just working w/in chemfig itself?</span>
+<span class="c1">#</span>
+<span class="c1"># https://tex.stackexchange.com/questions/656530/how-can-i-create-this</span>
+<span class="c1"># TODO what's easiest way to make a latex template string (w/ all the existing</span>
+<span class="c1"># { } chars...? raw string?</span>
+<span class="c1"># currently doubling up all braces to escape them, other than in variables to format</span>
+<span class="c1">#</span>
+<span class="c1"># TODO should chemfig really be in math like this? change anything?</span>
+<span class="c1"># $\chemfig{*6(-(-[:240](=[:300]O)(-[4]HO))(&lt;[:300]CH_3)-(&lt;:[:150]H)*6(--=-(&lt;:[6]H)-)----)}$</span>
+<span class="c1">#</span>
+<span class="c1"># TODO include same chemfig setup as i do in my thesis doc? try w/ and w/o?</span>
+<span class="c1"># (that's these opts, and atom_fontsize \tiny)</span>
+<span class="n">DEFAULT_CHEMFIG_OPTS</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="c1"># don't need to escape braces here since not a f-string</span>
+    <span class="c1"># TODO TODO is my installed version of chemfig older? can i get a new one?</span>
+    <span class="c1"># getting: ! Key "double sep" is not defined: nothing is modified.</span>
+    <span class="c1"># works w/ overleaf chemfig: chemfig 2023/12/28 v1.66</span>
+    <span class="c1">#'atom sep=1.0em,bond offset=1pt,double sep=4pt,bond style={line width=0.8 pt}'</span>
+    <span class="c1"># needed "double bond sep" instead of "double sep" in older version i have locally:</span>
+    <span class="c1"># chemfig.sty    2019/05/21 v1.41</span>
+    <span class="s1">'atom sep=1.0em,bond offset=1pt,double bond sep=4pt,bond style={line width=0.8 pt}'</span>
+<span class="p">)</span>
+
+<span class="c1"># \listfiles for debugging package versions</span>
+<span class="c1"># https://tex.stackexchange.com/questions/13304/which-package-version-am-i-using</span>
+<span class="n">CHEMFIG_STANDALONE</span> <span class="o">=</span> \
+<span class="sd">"""\documentclass[border={border}]{{standalone}}</span>
+<span class="sd">\\listfiles</span>
+<span class="sd">\\usepackage{{chemfig}}</span>
+
+<span class="sd">\\usepackage{{mol2chemfig}}</span>
+
+<span class="sd">\setchemfig{{{chemfig_opts}}}</span>
+<span class="sd">\\renewcommand*\printatom[1]{{{atom_fontsize}\ensuremath{{\mathrm{{#1}}}}}}</span>
+
+<span class="sd">\\begin{{document}}</span>
+<span class="sd">${chemfig_tex}$</span>
+<span class="sd">\end{{document}}</span>
+<span class="sd">"""</span>
+
+<span class="c1"># TODO actually want a border? default to 0mm or something smaller than 2mm?</span>
+<div class="viewcode-block" id="chemfig_standalone_tex">
+<a class="viewcode-back" href="../../apidoc/hong2p.chem.html#hong2p.chem.chemfig_standalone_tex">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">chemfig_standalone_tex</span><span class="p">(</span><span class="n">chemfig_tex</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">atom_fontsize</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'</span><span class="se">\\</span><span class="s1">tiny'</span><span class="p">,</span>
+    <span class="n">chemfig_opts</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_CHEMFIG_OPTS</span><span class="p">,</span> <span class="n">border</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'2mm'</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns TeX for a standalone document rendering `chemfig_tex`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        chemfig_tex: TeX for a single `\\chemfig{...}` command (e.g. from</span>
+<span class="sd">            `cid2chemfig_tex`)</span>
+
+<span class="sd">        atom_fontsize: TeX font size command used for atom labels</span>
+
+<span class="sd">        chemfig_opts: passed to `\\setchemfig`</span>
+
+<span class="sd">        border: border for `standalone` document class</span>
+<span class="sd">    """</span>
+    <span class="k">assert</span> <span class="n">chemfig_tex</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'</span><span class="se">\\</span><span class="s1">chemfig'</span><span class="p">),</span> <span class="n">chemfig_tex</span>
+
+    <span class="k">return</span> <span class="n">CHEMFIG_STANDALONE</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">chemfig_tex</span><span class="o">=</span><span class="n">chemfig_tex</span><span class="p">,</span> <span class="n">chemfig_opts</span><span class="o">=</span><span class="n">chemfig_opts</span><span class="p">,</span>
+        <span class="n">atom_fontsize</span><span class="o">=</span><span class="n">atom_fontsize</span><span class="p">,</span> <span class="n">border</span><span class="o">=</span><span class="n">border</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="c1"># TODO TODO add arg for *args to pass to cid2chemfig_tex (mol2chemfig CLI args)?</span>
+<div class="viewcode-block" id="draw_molecule">
+<a class="viewcode-back" href="../../apidoc/hong2p.chem.html#hong2p.chem.draw_molecule">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">draw_molecule</span><span class="p">(</span><span class="n">cid</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">output_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">chemfig_output_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ignore_cache</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Renders 2D structure of PubChem `cid` to a PDF, via chemfig + LaTeX.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        cid: PubChem CID</span>
+
+<span class="sd">        output_name: basename (w/o extension) for output .tex/.pdf files. defaults to</span>
+<span class="sd">            `str(cid)`.</span>
+
+<span class="sd">        output_dir: directory to write standalone .tex and compiled PDF to. defaults to</span>
+<span class="sd">            current directory.</span>
+
+<span class="sd">        chemfig_output_dir: if None, also writes just the chemfig TeX to</span>
+<span class="sd">            `&lt;output_dir&gt;/chemfig/&lt;output_name&gt;.tex`. if passed, the chemfig TeX is</span>
+<span class="sd">            currently not written anywhere.</span>
+
+<span class="sd">        ignore_cache: passed to `cid2chemfig_tex`</span>
+
+<span class="sd">        verbose: if True, prints generated TeX and paths of files being written</span>
+
+<span class="sd">        **kwargs: passed to `chemfig_standalone_tex`</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO TODO relocate + commit + install mol2chemfig.sty in a way where we don't</span>
+    <span class="c1"># depend on a path relative to this script (which will only  work w/ current</span>
+    <span class="c1"># editable setup)</span>
+    <span class="n">hong2p_pkg_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span>
+    <span class="n">mol2chemfig_sty</span> <span class="o">=</span> <span class="n">hong2p_pkg_path</span> <span class="o">/</span> <span class="s1">'mol2chemfig.sty'</span>
+    <span class="k">assert</span> <span class="n">mol2chemfig_sty</span><span class="o">.</span><span class="n">exists</span><span class="p">(),</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">mol2chemfig_sty</span><span class="si">=}</span><span class="s1"> did not exist!'</span>
+
+    <span class="c1"># TODO TODO how to handle mol2chemfig.sty path? how to pass to compile_latex?</span>
+    <span class="c1"># TODO TODO copy to TEXMFHOME on install? or after running some other script?</span>
+    <span class="c1"># kpsewhich -var-value=TEXMFHOME (e.g. ~/texmf)</span>
+    <span class="c1"># (not sure how to initialize this directory tho... might need something other than</span>
+    <span class="c1"># just .sty files?)</span>
+    <span class="c1"># see: https://tex.stackexchange.com/questions/1137</span>
+    <span class="c1"># (may not be as simple as putting right under TEXMFHOME)</span>
+
+    <span class="c1"># TODO TODO split into two subfns, one for doing w/ rdkit, and add a flag to switch</span>
+    <span class="c1"># between them here (-&gt; compare chemfig/rdkit output)</span>
+
+    <span class="k">if</span> <span class="n">output_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># TODO need to manually append '.pdf' (for latex output)?</span>
+        <span class="n">output_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">cid</span><span class="si">}</span><span class="s1">'</span>
+
+    <span class="n">chemfig_tex</span> <span class="o">=</span> <span class="n">cid2chemfig_tex</span><span class="p">(</span><span class="n">cid</span><span class="p">,</span> <span class="n">ignore_cache</span><span class="o">=</span><span class="n">ignore_cache</span><span class="p">)</span>
+    <span class="n">tex</span> <span class="o">=</span> <span class="n">chemfig_standalone_tex</span><span class="p">(</span><span class="n">chemfig_tex</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">'chemfig_tex:'</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">chemfig_tex</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># TODO skip the resolve? make relative to cwd anyway? either work w/ tex better?</span>
+        <span class="c1"># if both work, worth for readability to make relative, or nah?</span>
+        <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+        <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">chemfig_output_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">chemfig_output_dir</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s1">'chemfig'</span>
+        <span class="n">chemfig_output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># TODO or just save as &lt;CID&gt;.tex always? or at least assert CID &lt;&gt; output_name</span>
+        <span class="c1"># are at least 1:1 w/in run? makes me wanna just save to &lt;cid&gt;.tex...</span>
+        <span class="n">chemfig_tex_path</span> <span class="o">=</span> <span class="n">chemfig_output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">output_name</span><span class="si">}</span><span class="s1">.tex'</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'writing chemfig TeX to </span><span class="si">{</span><span class="n">chemfig_tex_path</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+
+        <span class="n">chemfig_tex_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">chemfig_tex</span><span class="p">)</span>
+
+    <span class="c1"># TODO TODO should i make a temp dir for tex_path? should i have compile_latex</span>
+    <span class="c1"># handle that, and it take a str instead?</span>
+    <span class="n">tex_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">output_name</span><span class="si">}</span><span class="s1">.tex'</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'writing TeX to </span><span class="si">{</span><span class="n">tex_path</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+
+    <span class="n">tex_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">tex</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">'standalone tex:'</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">tex</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">'compiling latex...'</span><span class="p">)</span>
+
+    <span class="n">pdf_path</span> <span class="o">=</span> <span class="n">compile_latex</span><span class="p">(</span><span class="n">tex_path</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="n">output_dir</span><span class="p">,</span>
+        <span class="n">tex_inputs</span><span class="o">=</span><span class="p">[</span><span class="n">mol2chemfig_sty</span><span class="o">.</span><span class="n">parent</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">'done compiling latex'</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'PDF: </span><span class="si">{</span><span class="n">pdf_path</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,171 +1,206 @@
 
 
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
   <meta charset="utf-8" />
-  
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
   <title>hong2p.xarray &mdash; hong2p 0.0.0 documentation</title>
-  
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/sphinx_autodoc_typehints.css?v=057ac668" />
 
   
-  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-
-  
-  
-
-  
-  
-
-  
-
-  
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-    
-      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/jquery.js"></script>
-        <script src="../../_static/underscore.js"></script>
-        <script src="../../_static/doctools.js"></script>
-    
-    <script type="text/javascript" src="../../_static/js/theme.js"></script>
-
-    
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
-
-   
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
-    
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-          
 
           
-            <a href="../../index.html" class="icon icon-home"> hong2p
           
-
-          
+          <a href="../../index.html" class="icon icon-home">
+            hong2p
           </a>
-
-          
-            
-            
-          
-
-          
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
   </form>
 </div>
-
-          
-        </div>
-
-        
-        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
-          
-            
-            
-              
-            
-            
-              <p class="caption"><span class="caption-text">Contents:</span></p>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
 </ul>
 
-            
-          
         </div>
-        
       </div>
     </nav>
 
-    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
-
-      
-      <nav class="wy-nav-top" aria-label="top navigation">
-        
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
           <a href="../../index.html">hong2p</a>
-        
       </nav>
 
-
       <div class="wy-nav-content">
-        
         <div class="rst-content">
-        
-          
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div role="navigation" aria-label="breadcrumbs navigation">
-
+          <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-    
-      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
-        
-          <li><a href="../index.html">Module code</a> &raquo;</li>
-        
-      <li>hong2p.xarray</li>
-    
-    
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">hong2p.xarray</li>
       <li class="wy-breadcrumbs-aside">
-        
       </li>
-    
   </ul>
-
-  
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-            
+             
   <h1>Source code for hong2p.xarray</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""</span>
 <span class="sd">Utility functions for working with xarray objects, primarily DataArrays</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
-<span class="kn">import</span> <span class="nn">xarray</span> <span class="k">as</span> <span class="nn">xr</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib_resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 
-<span class="kn">from</span> <span class="nn">hong2p.util</span> <span class="kn">import</span> <span class="n">suffix_index_names</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">suffix_index_names</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">subset_index</span>
+
+
+<span class="c1"># TODO switch to h5netcdf? docs say it can sometimes be faster. is it, for me?</span>
+<span class="c1"># h5netcdf (according to latest xarray docs) also supports more compression options</span>
+<span class="c1"># behind the to_netcdf encoding=&lt;dict&gt; kwarg. from 2026 docs:</span>
+<span class="c1"># "The h5netcdf engine supports both the NetCDF4-style compression encoding parameters</span>
+<span class="c1"># {"zlib": True, "complevel": 9} and the h5py ones {"compression": "gzip",</span>
+<span class="c1"># "compression_opts": 9}. This allows using any compression plugin installed in the HDF5</span>
+<span class="c1"># library, e.g. LZF."</span>
+<span class="c1"># TODO add script to benchmark size / load / write times for diff engines and</span>
+<span class="c1"># compression levels? use claw_sims?</span>
+<span class="n">NETCDF_ENGINE</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'netcdf4'</span>
+
+<div class="viewcode-block" id="load_dataarray">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.load_dataarray">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_dataarray</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Loads DataArray saved via `save_dataarray`, and restores any MultiIndex coords.</span>
+
+<span class="sd">    Makes same assumptions that `save_dataarray` does; namely that we should call</span>
+<span class="sd">    `move_all_coords_to_index(arr)` on the loaded data, to recreate input to</span>
+<span class="sd">    `save_dataarray`. This may not be true for some NetCDF files saved with `to_netcdf`</span>
+<span class="sd">    directly, or anything other than `save_dataarray`.</span>
+<span class="sd">    """</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_dataarray</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="n">NETCDF_ENGINE</span><span class="p">)</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">move_all_coords_to_index</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">arr</span></div>
+
+
+
+<span class="c1"># TODO does zarr work w/ MultiIndex in newer xarray (0.19 doesn't support zarr)</span>
+<span class="c1"># TODO (delete) want to use cf_xarray encode/decode, or just assume everything i'll</span>
+<span class="c1"># want to write can have move_all_coords_to_index called on load (and then reset</span>
+<span class="c1"># all indices before saving)? does latter approach produce files that are more useful to</span>
+<span class="c1"># people not using cf_xarray?</span>
+<span class="c1"># https://cf-xarray.readthedocs.io/en/latest/coding.html</span>
+<span class="c1"># https://github.com/arviz-devs/arviz/issues/2165</span>
+<span class="c1"># https://github.com/pydata/xarray/issues/1077</span>
+<span class="c1"># current IO docs don't mention MultiIndex:</span>
+<span class="c1"># https://docs.xarray.dev/en/stable/user-guide/io.html</span>
+
+<div class="viewcode-block" id="save_dataarray">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.save_dataarray">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_dataarray</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">check</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Writes `arr` to NetCDF4 at `path`.</span>
+
+<span class="sd">    Currently requires that input does not change after being passed through:</span>
+<span class="sd">    `reset_all_multiindex(move_all_coords_to_index(arr))`, since we need to reset</span>
+<span class="sd">    MultiIndex coords for saving to netCDF to work, and if we can't assume we can move</span>
+<span class="sd">    them all back to MultiIndex (when possible) on load, we wouldn't currently know how</span>
+<span class="sd">    to recreate the saved data.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        check: if True, check we get exactly the input `arr`, if we load the saved file</span>
+
+<span class="sd">        **kwargs: passed to `&lt;DataArray&gt;.to_netcdf`. can be used to set compression, via</span>
+<span class="sd">            `encoding=&lt;dict&gt;` kwarg. see xarray `to_netcdf` docs.</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO assert no attrs? can those be saved too? move to scalar coords (assuming even</span>
+    <span class="c1"># those work... but i can probably make those work?). test</span>
+    <span class="n">reset</span> <span class="o">=</span> <span class="n">reset_all_multiindex</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+
+    <span class="n">encoding_kws</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="k">if</span> <span class="s1">'encoding'</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+        <span class="c1"># TODO try h5netcdf engine w/ compression=gzip, compression_opts=9 (not</span>
+        <span class="c1"># supported by netcdf4 engine)? and compare it's default performance?</span>
+        <span class="c1">#</span>
+        <span class="c1"># so far i've only tried encoding=dict(zlib=True, complevel=9), which i think is</span>
+        <span class="c1"># all that is supported by netcdf4 engine</span>
+        <span class="n">encoding</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">'encoding'</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">encoding</span><span class="p">,</span> <span class="nb">dict</span><span class="p">),</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">encoding</span><span class="si">=}</span><span class="s1">'</span>
+        <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">encoding</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">encoding</span><span class="si">=}</span><span class="s1">'</span>
+
+        <span class="n">DEFAULT_XARRAY_NETCDF_VAR_NAME</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'__xarray_dataarray_variable__'</span>
+        <span class="c1"># from xarray docs: "Only xarray.Dataset objects can be written to netCDF files,</span>
+        <span class="c1"># so the xarray.DataArray is converted to a xarray.Dataset object containing a</span>
+        <span class="c1"># single variable.  If the DataArray has no name, or if the name is the same as</span>
+        <span class="c1"># a coordinate name, then it is given the name "__xarray_dataarray_variable__"."</span>
+        <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">arr</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">reset</span><span class="o">.</span><span class="n">coords</span><span class="p">:</span>
+            <span class="n">var_name</span> <span class="o">=</span> <span class="n">DEFAULT_XARRAY_NETCDF_VAR_NAME</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">var_name</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">name</span>
+
+        <span class="n">encoding_kws</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="p">{</span><span class="n">var_name</span><span class="p">:</span> <span class="n">encoding</span><span class="p">})</span>
+
+    <span class="c1"># need to check we can use the same approach to restore all MultiIndex coordinates</span>
+    <span class="c1"># on load (or else, would need to look into using cf_xarray MultiIndex encoding</span>
+    <span class="c1"># support, or some other alternatives)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">arr</span><span class="o">.</span><span class="n">identical</span><span class="p">(</span><span class="n">move_all_coords_to_index</span><span class="p">(</span><span class="n">reset</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'can only use with input where move_all_coords_to_index does '</span>
+            <span class="s1">'produces the same array+coords as its input'</span>
+        <span class="p">)</span>
+    <span class="n">reset</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="n">NETCDF_ENGINE</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="n">encoding_kws</span><span class="p">)</span>
+    <span class="k">del</span> <span class="n">reset</span>
+
+    <span class="k">if</span> <span class="n">check</span><span class="p">:</span>
+        <span class="n">arr2</span> <span class="o">=</span> <span class="n">load_dataarray</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">arr</span><span class="o">.</span><span class="n">identical</span><span class="p">(</span><span class="n">arr2</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># al_analysis tests that use this also work w/ this</span>
+<span class="n">data_dir</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s1">'hong2p'</span><span class="p">)</span>
+<span class="n">orn_test_data</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="s1">'orn_dynamics_test.nc'</span>
+<div class="viewcode-block" id="get_example_orn_dynamics">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.get_example_orn_dynamics">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_example_orn_dynamics</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns an example DataArray (small subset of model ORN dynamics)</span>
+<span class="sd">    """</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">load_dataarray</span><span class="p">(</span><span class="n">orn_test_data</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">arr</span></div>
+
 
 
 <span class="c1"># NOTE: lots of my current MultiIndex related woes should be tractable once development</span>
-<span class="c1"># on xarray&#39;s own &quot;Explicit indexes&quot; completes here:</span>
+<span class="c1"># on xarray's own "Explicit indexes" completes here:</span>
 <span class="c1"># https://github.com/pydata/xarray/projects/1</span>
 <span class="c1">#</span>
 <span class="c1"># See also: https://github.com/pydata/xarray/issues/6293 (if project number changes)</span>
@@ -174,11 +209,104 @@
 <span class="c1"># dimension</span>
 <span class="c1"># TODO how do i even add new scalar coords? should i make a helper to add a bunch of</span>
 <span class="c1"># them?</span>
-<div class="viewcode-block" id="is_scalar_coord"><a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.is_scalar_coord">[docs]</a><span class="k">def</span> <span class="nf">is_scalar_coord</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;Whether item from &lt;DataArray&gt;.coords.values() corresponds to a scalar coordinate.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="is_scalar_coord">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.is_scalar_coord">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_scalar_coord</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether item from &lt;DataArray&gt;.coords.values() corresponds to a scalar coordinate.</span>
+<span class="sd">    """</span>
     <span class="c1"># TODO shape == (1,) ever happen?</span>
     <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span></div>
+
+
+
+<div class="viewcode-block" id="coords_equal">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.coords_equal">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">coords_equal</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Checks set of dims and all variables under coordinates are equal.</span>
+
+<span class="sd">    For older versions of xarray without `Coordinates.equals()/.identical()`</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO when was Coordinates.equals()/identical() added? how to implementent in</span>
+    <span class="c1"># meantime, if i can't upgrade xarray? seems not in 0.19 (what i've been using) or</span>
+    <span class="c1"># 0.21 (last version before many vYYYY.MM.N versions, starting in 2022)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">coords</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">coords</span>
+
+    <span class="c1"># NOTE: there can be elments of dims that are not in things checked below</span>
+    <span class="c1"># e.g. orns.reset_index('stim') still has a 'stim' dim, but no associated index</span>
+    <span class="c1"># levels ('odor' / 'panel' still exist as non-scalar metadata)</span>
+    <span class="c1">#</span>
+    <span class="c1"># TODO want to require order to be the same?</span>
+    <span class="k">if</span> <span class="nb">set</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">set</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">dims</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="c1"># if this fails, would need to decide which of keys/items/variables.</span>
+    <span class="c1"># i don't see any other attributes under dir(coords) (in 0.19) that seem useful.</span>
+    <span class="c1"># only other thinsg are dims/indexes/values()/xindexes/_data/_names</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_options_equiv</span><span class="p">(</span><span class="n">coords</span><span class="p">):</span>
+        <span class="n">k0</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">)</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">coords</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">item_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+        <span class="n">var_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">coords</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="k">assert</span> <span class="n">keys</span> <span class="o">==</span> <span class="n">k0</span>
+        <span class="k">assert</span> <span class="n">keys</span> <span class="o">==</span> <span class="n">item_keys</span>
+        <span class="k">assert</span> <span class="n">keys</span> <span class="o">==</span> <span class="n">var_keys</span>
+
+    <span class="n">_check_options_equiv</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">_check_options_equiv</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+
+    <span class="c1"># TODO possible to have non-index elements still associated with one dimension</span>
+    <span class="c1"># (don't think so? can have non-scalar not in indices, but not sure any of those can</span>
+    <span class="c1"># be associated w/ a dimension?)? what does that look like? still wouldn't show up</span>
+    <span class="c1"># in .keys() / .variables i assume, since those only contain outer indices?</span>
+    <span class="n">xk</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">yk</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">xk</span> <span class="o">!=</span> <span class="n">yk</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="c1"># TODO also sort on names to allow this to not depend on order?</span>
+    <span class="c1"># (would prob be easiest to convert to frame and sort columns)</span>
+    <span class="c1"># NOTE: to_index() output has int index for stuff in dims but not in index</span>
+    <span class="c1"># associated names</span>
+    <span class="c1">#</span>
+    <span class="c1"># there should be a level for each variable in each dimension-specific multiindex</span>
+    <span class="c1"># here, and no longer any name for dimensions (at least not those [only?] containing</span>
+    <span class="c1"># MultiIndex values) (because index level names can't seem to be equal to dimension</span>
+    <span class="c1"># name)</span>
+    <span class="n">x_index</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">to_index</span><span class="p">()</span>
+    <span class="n">y_index</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">to_index</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">x_index</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">y_index</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="c1"># we already checked above both of these same in x/y</span>
+    <span class="n">dims</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">dims</span>
+    <span class="n">index_names</span> <span class="o">=</span> <span class="n">x_index</span><span class="o">.</span><span class="n">names</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">xk</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">index_names</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># was name of dimension with a MultiIndex, and thus can not be a name of a</span>
+        <span class="c1"># variable to check (i.e. one of the index levels, or something not associated</span>
+        <span class="c1"># with a dimension)</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">dims</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">vx</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="n">vy</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">vx</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="nb">tuple</span><span class="p">():</span>
+            <span class="k">assert</span> <span class="n">vy</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="nb">tuple</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">vx</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">!=</span> <span class="n">vy</span><span class="o">.</span><span class="n">item</span><span class="p">():</span>
+                <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">eq0</span> <span class="o">=</span> <span class="n">vx</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">vy</span><span class="p">)</span>
+        <span class="c1"># just checking we don't need to use anything other than .equals()</span>
+        <span class="c1"># could delete eventually</span>
+        <span class="k">assert</span> <span class="n">eq0</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">vx</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">vy</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">eq0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">return</span> <span class="kc">True</span></div>
+
 
 
 <span class="c1"># TODO a to_pandas function, wrapping existing, and using this to add non-dimension</span>
@@ -186,18 +314,20 @@
 <span class="c1"># call move_all_coords_to_index first</span>
 <span class="c1"># TODO maybe add kwarg flag to return as a pandas Series instead?</span>
 <span class="c1"># TODO non-dim only flag? or kwarg for a specific dim only?</span>
-<div class="viewcode-block" id="scalar_coords"><a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.scalar_coords">[docs]</a><span class="k">def</span> <span class="nf">scalar_coords</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<div class="viewcode-block" id="scalar_coords">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.scalar_coords">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">scalar_coords</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
     <span class="c1"># TODO TODO clarify (renaming if necessary) + test whether this should [only] work</span>
     <span class="c1"># with scalar coords associated with a particular dimension (and maybe it should</span>
     <span class="c1"># only be coordinates not associated with any dimension).</span>
-    <span class="c1"># TODO will series constructor already convert to Timestamp as i&#39;d want? or nah (is</span>
+    <span class="c1"># TODO will series constructor already convert to Timestamp as i'd want? or nah (is</span>
     <span class="c1"># dtype lost?)?</span>
-    <span class="sd">&quot;&quot;&quot;Returns all scalar coordinates as a dict</span>
+<span class="w">    </span><span class="sd">"""Returns all scalar coordinates as a dict</span>
 
 <span class="sd">    Converts any datatime64[ns] to pandas Timestamp</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># TODO need to account for endianness (the &gt; or &lt; in the dtype str, e.g.</span>
-    <span class="c1"># dtype(&#39;&lt;M8[ns]&#39;)) in conversion to Timestamp?</span>
+    <span class="c1"># dtype('&lt;M8[ns]')) in conversion to Timestamp?</span>
     <span class="c1"># TODO do i want to handle coords that are repeated, but also just have a single</span>
     <span class="c1"># unique coordinate?</span>
     <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="o">.</span><span class="n">item</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
@@ -206,22 +336,28 @@
     <span class="p">}</span></div>
 
 
-<div class="viewcode-block" id="drop_scalar_coords"><a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.drop_scalar_coords">[docs]</a><span class="k">def</span> <span class="nf">drop_scalar_coords</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;Returns DataArray with all scalar coordinates dropped.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="drop_scalar_coords">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.drop_scalar_coords">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">drop_scalar_coords</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns DataArray with all scalar coordinates dropped.</span>
+<span class="sd">    """</span>
     <span class="n">to_drop</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">is_scalar_coord</span><span class="p">(</span><span class="n">v</span><span class="p">)]</span>
     <span class="k">return</span> <span class="n">arr</span><span class="o">.</span><span class="n">drop_vars</span><span class="p">(</span><span class="n">to_drop</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="assign_scalar_coords_to_dim"><a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.assign_scalar_coords_to_dim">[docs]</a><span class="k">def</span> <span class="nf">assign_scalar_coords_to_dim</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;Returns DataArray with all scalar coordinates moved to dimension `dim`.</span>
+
+<div class="viewcode-block" id="assign_scalar_coords_to_dim">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.assign_scalar_coords_to_dim">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">assign_scalar_coords_to_dim</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns DataArray with all scalar coordinates moved to dimension `dim`.</span>
 
 <span class="sd">    Assumes scalar coordinates are non-dimension coordinates.</span>
 
 <span class="sd">    May also depend on dim being of size &gt;1 (at least for some intended uses)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">dim</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">sizes</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">dim</span><span class="si">}</span><span class="s1"> not in </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">dims</span><span class="si">=}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">dim</span><span class="si">}</span><span class="s1"> not in </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">dims</span><span class="si">=}</span><span class="s1">'</span><span class="p">)</span>
 
     <span class="n">coord_dict</span> <span class="o">=</span> <span class="n">scalar_coords</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">arr</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">({</span>
@@ -229,16 +365,19 @@
     <span class="p">})</span></div>
 
 
+
 <span class="c1"># TODO TODO should this, and/or scalar_coords above, be converting datetime64[ns]</span>
 <span class="c1"># (xarray represetation) to pd.Timestamp (constructor of latter takes former directly)?</span>
 <span class="c1"># TODO Any or hashable?</span>
-<div class="viewcode-block" id="unique_coord_value"><a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.unique_coord_value">[docs]</a><span class="k">def</span> <span class="nf">unique_coord_value</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="n">coord</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;Returns unique value for a DataArray coordinate, if there is one.</span>
+<div class="viewcode-block" id="unique_coord_value">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.unique_coord_value">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">unique_coord_value</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="n">coord</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns unique value for a DataArray coordinate, if there is one.</span>
 
 <span class="sd">    If `arr[coord]` has multiple values, raises `ValueError`.</span>
 
 <span class="sd">    Can also call like `unique_coord_value(arr.&lt;coord_name&gt;)`.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># To handle case when called like unique_coord_value(arr.&lt;coord_name&gt;), where the</span>
     <span class="c1"># arr will still be a DataArray</span>
     <span class="k">if</span> <span class="n">coord</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -251,146 +390,407 @@
     <span class="c1"># https://docs.xarray.dev/en/stable/generated/xarray.DataArray.to_pandas.html</span>
     <span class="c1"># seem to indicate it should be of type DataArray if the shape is length 0</span>
     <span class="c1"># (0-dimensional), but at least now w/ xarray 0.19.0, that seems to not be the case</span>
-    <span class="c1"># (seems to be of type numpy.datetime64 in one case where that&#39;s the value)</span>
+    <span class="c1"># (seems to be of type numpy.datetime64 in one case where that's the value)</span>
     <span class="c1"># TODO work w/ old and new version ideally, or at least new versions and upgrade</span>
     <span class="c1"># from 0.19.0</span>
-    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">ser</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;coord: </span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s1">, ser: </span><span class="si">{</span><span class="n">ser</span><span class="si">}</span><span class="s1">&#39;</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">ser</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'coord: </span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s1">, ser: </span><span class="si">{</span><span class="n">ser</span><span class="si">}</span><span class="s1">'</span>
 
     <span class="n">unique</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">unique</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;arr[&#39;</span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s2">&#39;] did not have a unique value:</span><span class="se">\n</span><span class="s2"> </span><span class="si">{</span><span class="n">unique</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"arr['</span><span class="si">{</span><span class="n">coord</span><span class="si">}</span><span class="s2">'] did not have a unique value:</span><span class="se">\n</span><span class="s2"> </span><span class="si">{</span><span class="n">unique</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">unique</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+
+<span class="c1"># TODO TODO test when some non-scalar level has already been processed by reset_index()</span>
+<div class="viewcode-block" id="all_coord_names">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.all_coord_names">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">all_coord_names</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns all coordinate variables names, excluding names containing MultiIndex</span>
+
+<span class="sd">    Some dims can have a MultiIndex associated with them, where there is one name in the</span>
+<span class="sd">    coordinates that should equal a name in `dims`, but does not equal any of the names</span>
+<span class="sd">    of the levels in the MultiIndex it contains. This function will exclude those outer</span>
+<span class="sd">    names from the output.</span>
+
+<span class="sd">    Calling `reset_index()` on all dimensions should produce a `DataArray` where the</span>
+<span class="sd">    coordinate variable names match those returned here.</span>
+<span class="sd">    """</span>
+    <span class="n">names</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">coords</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="o">.</span><span class="n">to_index</span><span class="p">()</span>
+
+        <span class="c1"># should get something like this if x is a scalar variable not associated with a</span>
+        <span class="c1"># coordinate:</span>
+        <span class="c1"># ValueError: IndexVariable objects must be 1-dimensional</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+            <span class="n">names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">nlevels</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># if we reset_index(c) for some c with a MultiIndex, when x is any level</span>
+                <span class="c1"># from that MultiIndex, the .names will just contain c, not x</span>
+                <span class="n">names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">names</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">names</span></div>
+
+
+
+<span class="c1"># TODO test</span>
+<span class="c1"># TODO add option to only reset a subset (or a particular one)?</span>
+<div class="viewcode-block" id="reset_all_multiindex">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.reset_all_multiindex">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">reset_all_multiindex</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns array with `reset_index` called on each dim with a MultiIndex.</span>
+
+<span class="sd">    Dims with a single-level index are not reset. Inverse (for supported inputs) of</span>
+<span class="sd">    `move_all_coords_to_index`.</span>
+
+<span class="sd">    Raises AssertionError if the set of `all_coord_names` changes.</span>
+<span class="sd">    """</span>
+    <span class="n">vars_before</span> <span class="o">=</span> <span class="n">all_coord_names</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+    <span class="n">dims</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">dims</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">indexes</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># arr.indexes is of type xarray.core.indexs.Indexes, and will give names of dims</span>
+        <span class="c1"># as keys when iterating over it.</span>
+        <span class="k">for</span> <span class="n">indexed_dim</span><span class="p">,</span> <span class="n">index</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">indexes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># now that i've added the `and indexed_dim in dims` part, seems to also work</span>
+            <span class="c1"># in xarray 2023.1.0, not just the 0.19 i was using before</span>
+            <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">nlevels</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">indexed_dim</span> <span class="ow">in</span> <span class="n">dims</span><span class="p">:</span>
+                <span class="c1"># why am i now getting '_' suffixed to names of keys i</span>
+                <span class="c1"># reset_index() on? (only for things not part of a multiindex) (oh, it's</span>
+                <span class="c1"># probably because coord names can't match dim names exactly)</span>
+                <span class="c1"># TODO problem that i'm no longer reset_index()-ing the non-multi</span>
+                <span class="c1"># indexes? test</span>
+                <span class="c1"># TODO add flag to have option to still reset those?</span>
+                <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">indexed_dim</span><span class="p">)</span>
+
+    <span class="n">vars_after</span> <span class="o">=</span> <span class="n">all_coord_names</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+    <span class="c1"># TODO sort array coords before checking equal? add flag to coords_equal for</span>
+    <span class="c1"># that? something already existing in xarray for that?</span>
+    <span class="k">assert</span> <span class="nb">set</span><span class="p">(</span><span class="n">vars_after</span><span class="p">)</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">vars_before</span><span class="p">),</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">vars_after</span><span class="si">}</span><span class="s1"> != </span><span class="si">{</span><span class="n">vars_before</span><span class="si">}</span><span class="s1">'</span>
+    <span class="k">return</span> <span class="n">arr</span></div>
+
 
 
 <span class="c1"># TODO option to just do for a subset of dimensions?</span>
 <span class="c1"># TODO rename index-&gt;indices?</span>
 <span class="c1"># TODO allow passing in str list of order for them to be in (could also be the subset of</span>
 <span class="c1"># names to use as new index, assuming there would be any value add over set_index)</span>
-<div class="viewcode-block" id="move_all_coords_to_index"><a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.move_all_coords_to_index">[docs]</a><span class="k">def</span> <span class="nf">move_all_coords_to_index</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;Returns array with all coord variables associated with a dim to index on that dim</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">indexes</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="c1"># arr.indexes is of type xarray.core.indexs.Indexes, and will give names of dims</span>
-        <span class="c1"># as keys when iterating over it.</span>
-        <span class="k">for</span> <span class="n">indexed_dim</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">indexes</span><span class="p">:</span>
-            <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">indexed_dim</span><span class="p">)</span>
+<span class="c1"># TODO TODO give more sensible error when this is called w/ input that has scalar</span>
+<span class="c1"># coordinate values (not associated w/ dims). currently get:</span>
+<span class="c1"># TypeError: unhashable type: 'numpy.ndarray'</span>
+<span class="c1"># on this input:</span>
+<span class="c1"># &lt;xarray.DataArray (stim: 2, glomerulus: 3, time_s: 4)&gt;</span>
+<span class="c1"># array([[[13.26, 13.26, 13.26, 13.26],</span>
+<span class="c1">#         [13.26, 13.26, 13.26, 13.26],</span>
+<span class="c1">#         [13.26, 13.26, 13.26, 13.26]],</span>
+<span class="c1">#</span>
+<span class="c1">#        [[13.26, 13.26, 13.26, 13.26],</span>
+<span class="c1">#         [13.26, 13.26, 13.26, 13.26],</span>
+<span class="c1">#         [13.26, 13.26, 13.26, 13.26]]])</span>
+<span class="c1"># Coordinates:</span>
+<span class="c1">#   * stim        (stim) MultiIndex</span>
+<span class="c1">#   - panel       (stim) object 'megamat' 'megamat'</span>
+<span class="c1">#   - odor        (stim) object '2h @ -3' 'IaA @ -3'</span>
+<span class="c1">#   * time_s      (time_s) float64 -0.4995 -0.499 -0.4985 -0.498</span>
+<span class="c1">#   * glomerulus  (glomerulus) object 'D' 'DA1' 'DA2'</span>
+<span class="c1">#     x           int64 1</span>
+<span class="c1"># TODO test</span>
+<div class="viewcode-block" id="move_all_coords_to_index">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.move_all_coords_to_index">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">move_all_coords_to_index</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns array with all coord variables associated with a dim to index on that dim</span>
+<span class="sd">    """</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">reset_all_multiindex</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
 
     <span class="n">dim2coords</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">dim_name</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">dims</span><span class="p">:</span>
         <span class="c1"># Of type DataArrayCoordinates</span>
         <span class="n">dim_coords</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">dim_name</span><span class="p">]</span><span class="o">.</span><span class="n">coords</span>
-
         <span class="c1"># Iterating over the coordinates just gives us the names of each, like a</span>
         <span class="c1"># iterating over a dict would just give us the keys</span>
         <span class="n">dim_coord_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">dim_coords</span><span class="p">)</span>
-
         <span class="n">dim2coords</span><span class="p">[</span><span class="n">dim_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">dim_coord_names</span>
 
-    <span class="k">return</span> <span class="n">arr</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="n">dim2coords</span><span class="p">)</span></div>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="n">dim2coords</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">arr</span></div>
 
 
-<div class="viewcode-block" id="odor_corr_frame_to_dataarray"><a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.odor_corr_frame_to_dataarray">[docs]</a><span class="k">def</span> <span class="nf">odor_corr_frame_to_dataarray</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+
+<div class="viewcode-block" id="odor_corr_frame_to_dataarray">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.odor_corr_frame_to_dataarray">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">odor_corr_frame_to_dataarray</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
     <span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;Converts (odor X odor) correlation DataFrame to DataArray.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># TODO also need to check it&#39;s .names that are defined and not .name? .names</span>
+<span class="w">    </span><span class="sd">"""Converts (odor X odor) correlation DataFrame to DataArray.</span>
+
+<span class="sd">    Output has dims ('odor', 'odor_b'), with column index level names suffixed with</span>
+<span class="sd">    '_b' (via `util.suffix_index_names`).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        df: square correlation DataFrame, with same index level names on rows and</span>
+<span class="sd">            columns (including at least 'odor1')</span>
+
+<span class="sd">        metadata: if passed, assigned as additional (typically scalar) coordinates. keys</span>
+<span class="sd">            must not already be index level names.</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO also need to check it's .names that are defined and not .name? .names</span>
     <span class="c1"># should be None in that case, causing this to fail, right?</span>
     <span class="k">assert</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span><span class="p">)</span>
 
     <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">):</span>
-        <span class="c1"># Will often also have &#39;odor2&#39; and &#39;repeat&#39; levels, but potentially</span>
+        <span class="c1"># Will often also have 'odor2' and 'repeat' levels, but potentially</span>
         <span class="c1"># additional metadata too.</span>
-        <span class="k">assert</span> <span class="s1">&#39;odor1&#39;</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">names</span>
+        <span class="k">assert</span> <span class="s1">'odor1'</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">names</span>
 
     <span class="k">if</span> <span class="n">metadata</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-            <span class="k">assert</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;metadata key </span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s1"> already in index&#39;</span>
+            <span class="k">assert</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'metadata key </span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s1"> already in index'</span>
 
     <span class="c1"># Since util.suffix_index_names is currently inplace</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
-    <span class="c1"># Adds &#39;_b&#39; to end of all column names</span>
+    <span class="c1"># Adds '_b' to end of all column names</span>
     <span class="n">suffix_index_names</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
 
     <span class="c1"># TODO TODO why does corr.odor1 work if odor1 is an input MultiIndex level but</span>
-    <span class="c1"># not just the name of an Index? &#39;odor1&#39; is in index.names either way...</span>
+    <span class="c1"># not just the name of an Index? 'odor1' is in index.names either way...</span>
     <span class="c1"># for normal input (with MultiIndex rows/cols), coords look like:</span>
     <span class="c1"># Coordinates:</span>
-    <span class="c1">#     odor1     (odor) object &#39;1-5ol @ -3&#39; &#39;1-5ol @ -3&#39; ... &#39;va @ -3&#39; &#39;va @ -3&#39;</span>
-    <span class="c1">#     odor2     (odor) object &#39;solvent&#39; &#39;solvent&#39; ... &#39;solvent&#39; &#39;solvent&#39;</span>
+    <span class="c1">#     odor1     (odor) object '1-5ol @ -3' '1-5ol @ -3' ... 'va @ -3' 'va @ -3'</span>
+    <span class="c1">#     odor2     (odor) object 'solvent' 'solvent' ... 'solvent' 'solvent'</span>
     <span class="c1">#     repeat    (odor) int64 0 1 2 0 1 2 0 1 2 0 1 2 0 ... 0 1 2 0 1 2 0 1 2 0 1 2</span>
-    <span class="c1">#     odor1_b   (odor_b) object &#39;1-5ol @ -3&#39; &#39;1-5ol @ -3&#39; ... &#39;va @ -3&#39; &#39;va @ -3&#39;</span>
-    <span class="c1">#     odor2_b   (odor_b) object &#39;solvent&#39; &#39;solvent&#39; ... &#39;solvent&#39; &#39;solvent&#39;</span>
+    <span class="c1">#     odor1_b   (odor_b) object '1-5ol @ -3' '1-5ol @ -3' ... 'va @ -3' 'va @ -3'</span>
+    <span class="c1">#     odor2_b   (odor_b) object 'solvent' 'solvent' ... 'solvent' 'solvent'</span>
     <span class="c1">#     repeat_b  (odor_b) int64 0 1 2 0 1 2 0 1 2 0 1 2 ... 0 1 2 0 1 2 0 1 2 0 1 2</span>
     <span class="c1"># Dimensions without coordinates: odor, odor_b</span>
     <span class="c1">#</span>
     <span class="c1"># (c1)</span>
-    <span class="c1"># coordinates look like (for input w/ just &#39;odor1&#39; X &#39;odor1_b&#39; Index name[s]):</span>
+    <span class="c1"># coordinates look like (for input w/ just 'odor1' X 'odor1_b' Index name[s]):</span>
     <span class="c1"># Coordinates:</span>
-    <span class="c1">#   * odor     (odor) object &#39;1-5ol @ -3&#39; &#39;1-6ol @ -3&#39; ... &#39;t2h @ -3&#39; &#39;va @ -3&#39;</span>
-    <span class="c1">#   * odor_b   (odor_b) object &#39;1-5ol @ -3&#39; &#39;1-6ol @ -3&#39; ... &#39;t2h @ -3&#39; &#39;va @ -3&#39;</span>
+    <span class="c1">#   * odor     (odor) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'</span>
+    <span class="c1">#   * odor_b   (odor_b) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'</span>
     <span class="c1">#</span>
     <span class="c1"># (c2)</span>
     <span class="c1"># if i change this call to xr.DataArray(df), then coordinates looks like this:</span>
     <span class="c1"># Coordinates:</span>
-    <span class="c1">#   * odor1    (odor1) object &#39;1-5ol @ -3&#39; &#39;1-6ol @ -3&#39; ... &#39;t2h @ -3&#39; &#39;va @ -3&#39;</span>
-    <span class="c1">#   * odor1_b  (odor1_b) object &#39;1-5ol @ -3&#39; &#39;1-6ol @ -3&#39; ... &#39;t2h @ -3&#39; &#39;va @ -3&#39;</span>
+    <span class="c1">#   * odor1    (odor1) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'</span>
+    <span class="c1">#   * odor1_b  (odor1_b) object '1-5ol @ -3' '1-6ol @ -3' ... 't2h @ -3' 'va @ -3'</span>
     <span class="c1">#</span>
-    <span class="c1"># c1.set_index({&#39;odor1&#39;: &#39;odor&#39;, &#39;odor1_b&#39;: &#39;odor_b&#39;}</span>
+    <span class="c1"># c1.set_index({'odor1': 'odor', 'odor1_b': 'odor_b'}</span>
     <span class="c1"># just converts c1 (above) to c2</span>
     <span class="c1"># TODO what happens if i add an empty level and then drop it though? possible?</span>
     <span class="c1">#</span>
-    <span class="n">corr</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;odor&#39;</span><span class="p">,</span> <span class="s1">&#39;odor_b&#39;</span><span class="p">])</span>
+    <span class="n">corr</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">[</span><span class="s1">'odor'</span><span class="p">,</span> <span class="s1">'odor_b'</span><span class="p">])</span>
 
     <span class="k">if</span> <span class="n">metadata</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">corr</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">corr</span></div>
 
+
+
+<span class="c1"># TODO how to type hint coordinates in current xr? (replace Any with that)</span>
+<div class="viewcode-block" id="find_matching_coords">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.find_matching_coords">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_matching_coords</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">,</span> <span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">warn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Checks whether `index` and `arr` have compatible indices, returns matching coords</span>
+
+<span class="sd">    Returns coords for the first dim in `arr` that matches `index`, or None if no dims</span>
+<span class="sd">    match.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        index: pandas index to find matching coords for (from a single dim in `arr`)</span>
+
+<span class="sd">        arr: DataArray that should contain a single dimension with coordinates that</span>
+<span class="sd">            match index. Index levels names (and contents, currently including sort</span>
+<span class="sd">            order) should all match.</span>
+
+<span class="sd">            The set of levels that match must also be unique, so that they could</span>
+<span class="sd">            actually be used to reindex along this dimension. Only dimensions with</span>
+<span class="sd">            length matching `len(index)` are checked for matching.</span>
+
+<span class="sd">        warn: if True, will warn about any coords with same length but no overlapping</span>
+<span class="sd">            names, as well as any level names in one index but not the other</span>
+<span class="sd">    """</span>
+    <span class="n">matching_coords</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">coords</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="c1"># newer xarray (unlike 0.19) also has MultiIndex levels in coords, which we</span>
+        <span class="c1"># want to skip (as well as any scalar / non-dimension coords)</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">dims</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">index</span><span class="p">):</span>
+            <span class="k">continue</span>
+
+        <span class="n">arr_index</span> <span class="o">=</span> <span class="n">coords</span><span class="o">.</span><span class="n">to_index</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">arr_index</span><span class="p">):</span>
+            <span class="n">matching_coords</span> <span class="o">=</span> <span class="n">coords</span>
+            <span class="c1"># TODO or check no other matching coords? very unarrly anything would match</span>
+            <span class="c1"># below for multiple, or that i'd care which was chosen (if they did)</span>
+            <span class="k">break</span>
+
+        <span class="n">index_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span>
+        <span class="n">arr_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">arr_index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span>
+        <span class="n">shared_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">index_names</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">arr_names</span><span class="p">]</span>
+
+        <span class="c1"># TODO update warning/assertion messages below to refer to the specific coord</span>
+        <span class="c1"># (/dim) name being checked, rather than just 'arr'</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shared_names</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">warn</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">'{name=} size matches, but no matching index level names'</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="n">warn</span> <span class="ow">and</span> <span class="n">index_names</span> <span class="o">!=</span> <span class="n">arr_names</span><span class="p">:</span>
+            <span class="n">index_only_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">index_names</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">arr_names</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">index_only_names</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">'names only in index (not arr): </span><span class="si">{</span><span class="n">index_only_names</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+
+            <span class="n">arr_only_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">arr_names</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">index_names</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr_only_names</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">'names only in arr (not index): </span><span class="si">{</span><span class="n">arr_only_names</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+
+        <span class="c1"># otherwise would have to decide if it ever matters which order we go with</span>
+        <span class="c1"># (from the series or the DataArray? prob latter, if this ever trips)</span>
+        <span class="k">assert</span> <span class="n">shared_names</span> <span class="o">==</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">arr_names</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">shared_names</span><span class="p">],</span> \
+            <span class="s1">'index and arr have index names in different orders!'</span>
+
+        <span class="n">common</span> <span class="o">=</span> <span class="n">subset_index</span><span class="p">(</span><span class="n">arr_index</span><span class="p">,</span> <span class="n">shared_names</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="n">common</span><span class="o">.</span><span class="n">duplicated</span><span class="p">()</span><span class="o">.</span><span class="n">any</span><span class="p">(),</span> <span class="p">(</span><span class="sa">f</span><span class="s1">'duplicates in </span><span class="si">{</span><span class="n">shared_names</span><span class="si">=}</span><span class="s1"> subset '</span>
+            <span class="s1">'of arr index'</span>
+        <span class="p">)</span>
+        <span class="n">index_common</span> <span class="o">=</span> <span class="n">subset_index</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">shared_names</span><span class="p">)</span>
+        <span class="c1"># this should imply nothing duplicated in index_common either</span>
+        <span class="k">assert</span> <span class="n">common</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">index_common</span><span class="p">),</span> <span class="p">(</span><span class="s1">'index and arr indices did not match, even'</span>
+            <span class="sa">f</span><span class="s1">' after subsetting both to only </span><span class="si">{</span><span class="n">shared_names</span><span class="si">=}</span><span class="s1">. maybe different order?'</span>
+        <span class="p">)</span>
+        <span class="c1"># TODO support stuff in wrong order too, if we can sort into right order?</span>
+        <span class="c1"># (also warning, if warn=True)</span>
+
+        <span class="n">matching_coords</span> <span class="o">=</span> <span class="n">coords</span>
+        <span class="k">break</span>
+
+    <span class="k">return</span> <span class="n">matching_coords</span></div>
+
+
+
+<span class="c1"># TODO also implement a version that is just `series2xarray`, and doesn't need to get</span>
+<span class="c1"># coords from other array</span>
+<span class="c1"># NOTE: don't seem to need a similar fn for dataframes. xr.DataArray(df) works fine,</span>
+<span class="c1"># and might just want to pass dims=&lt;list-of-str&gt;</span>
+<span class="c1"># TODO TODO update xarray? in recent versions, i could probably define coords from</span>
+<span class="c1"># xr.Coordinates, by passing series index. that constructor is not available in 0.19</span>
+<div class="viewcode-block" id="series2xarray_like">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.series2xarray_like">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">series2xarray_like</span><span class="p">(</span><span class="n">ser</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">like</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">warn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Checks `ser` and `like` have compatible indices, and converts `ser` to DataArray.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ser: Series to convert to 1D DataArray</span>
+
+<span class="sd">        like: DataArray that should contain one coordinate with index levels (and</span>
+<span class="sd">            contents, currently including sort order) that match `ser.index`.</span>
+<span class="sd">            See `find_matching_coords`.</span>
+
+<span class="sd">        warn: passed to `find_matching_coords`</span>
+<span class="sd">    """</span>
+    <span class="n">matching_coords</span> <span class="o">=</span> <span class="n">find_matching_coords</span><span class="p">(</span><span class="n">ser</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">like</span><span class="p">,</span> <span class="n">warn</span><span class="o">=</span><span class="n">warn</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">matching_coords</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span> <span class="p">(</span><span class="sa">f</span><span class="s1">'found no matching coord between:</span><span class="se">\n</span><span class="s1">'</span>
+        <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">ser</span><span class="o">.</span><span class="n">index</span><span class="si">=}</span><span class="se">\n</span><span class="s1">...and...</span><span class="se">\n</span><span class="si">{</span><span class="n">like</span><span class="o">.</span><span class="n">coords</span><span class="si">=}</span><span class="s1">'</span>
+    <span class="p">)</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">ser</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">coords</span><span class="o">=</span><span class="n">matching_coords</span><span class="o">.</span><span class="n">coords</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">ser</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">ser</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">assert</span> <span class="n">arr</span><span class="o">.</span><span class="n">isnull</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">==</span> <span class="n">ser</span><span class="o">.</span><span class="n">isnull</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">arr</span></div>
+
+
+
+<div class="viewcode-block" id="outer_product">
+<a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.outer_product">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">outer_product</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">squeeze</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">drop</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns outer product of two DataArrays.</span>
+
+<span class="sd">    Output shape is the concatenation of input shapes (`x.shape + y.shape`).</span>
+
+<span class="sd">    One should be missing a name (`.name == None`) or both should have matching</span>
+<span class="sd">    `.name`s.</span>
+
+<span class="sd">    Assumed that they will have non-overlapping dims, as otherwise what would be the</span>
+<span class="sd">    point of an outer product.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        x,y: DataArrays to multiply</span>
+
+<span class="sd">        squeeze: whether to `.squeeze()` inputs before multiplying</span>
+
+<span class="sd">        drop: if `squeeze=True`, passes this to `squeeze()`</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO remove this restriction too? want to support other types of multiplication</span>
+    <span class="c1"># that are not outer products? would have to rename fn if so...</span>
+    <span class="n">overlapping_dims</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">overlapping_dims</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">overlapping_dims</span><span class="si">=}</span><span class="s1">'</span>
+
+    <span class="k">if</span> <span class="n">squeeze</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="n">drop</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="n">drop</span><span class="p">)</span>
+
+    <span class="c1"># oh, actually it does work if both names are None. just didn't work when i was</span>
+    <span class="c1"># trying to multiply against a Series.</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">y</span><span class="o">.</span><span class="n">name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">y</span><span class="o">.</span><span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">y</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="p">(</span><span class="s1">'if both x &amp; y have .name not-None, they must be '</span>
+            <span class="s1">'equal. you may also set the name you do not wish to keep to None'</span>
+        <span class="p">)</span>
+
+    <span class="n">outer</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">y</span>
+    <span class="c1"># TODO remove this if i make this fn do more than just outer products</span>
+    <span class="n">concat_shape</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span> <span class="o">+</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">assert</span> <span class="n">outer</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">concat_shape</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">outer</span><span class="o">.</span><span class="n">shape</span><span class="si">=}</span><span class="s1"> != </span><span class="si">{</span><span class="n">concat_shape</span><span class="si">=}</span><span class="s1">'</span>
+    <span class="c1">#</span>
+    <span class="k">return</span> <span class="n">outer</span></div>
+
+
 </pre></div>
 
            </div>
-           
           </div>
           <footer>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>
-        &#169; Copyright 2022, Tom O&#39;Connell.
-
-    </p>
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
   </div>
-    
-    
-    
-    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
-    
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
-    
-    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
 
 </footer>
         </div>
       </div>
-
     </section>
-
   </div>
-  
-
-  <script type="text/javascript">
+  <script>
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-
-  
-  
-    
-   
+  </script> 
 
 </body>
 </html>
