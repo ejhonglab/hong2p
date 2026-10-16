@@ -30,8 +30,9 @@ def cid2chemfig_tex(cid: int, *args, ignore_cache: bool = False) -> str:
         ignore_cache: if True, ignore values in `chemfig_cache` (but will still update
             it with new values)
 
-        *args: currently ignored. `mol2chemfig` is only ever called with
-            `--hydrogens delete`.
+        *args: passed to `mol2chemfig`, in addition to default `--hydrogens delete` this
+            function adds. if any are passed, cache is neither read nor updated (since
+            it is only keyed by CID).
 
     NOTE: in addition to having chemfig installed, also need `mol2chemfig.sty` copied
     into overleaf project, and then `\\usepackage{mol2chemfig}` in addition to
@@ -58,7 +59,10 @@ def cid2chemfig_tex(cid: int, *args, ignore_cache: bool = False) -> str:
         else:
             cid2chemfig = dict()
 
-    if not ignore_cache and cid in cid2chemfig:
+    # cache only keyed by CID, so can't use it if extra args might change output
+    use_cache = len(args) == 0
+
+    if use_cache and not ignore_cache and cid in cid2chemfig:
         return cid2chemfig[cid]
 
     cstr = StringIO()
@@ -66,7 +70,7 @@ def cid2chemfig_tex(cid: int, *args, ignore_cache: bool = False) -> str:
     with redirect_stdout(cstr):
         # mol2chemfig currently accepts positional arguments the CLI takes
         # as strings in *args, like '--hydrogens delete'
-        mol2chemfig(f'{cid}', '--hydrogens delete')
+        mol2chemfig(f'{cid}', '--hydrogens delete', *args)
 
     # TODO TODO add a latex comment w/ mol2chemfig version in all output? args too?
 
@@ -75,13 +79,8 @@ def cid2chemfig_tex(cid: int, *args, ignore_cache: bool = False) -> str:
     assert isinstance(chemfig_tex_str, str), f'{chemfig_tex_str=}'
     assert len(chemfig_tex_str) > 0, f'{chemfig_tex_str=}'
 
-    update_cache = True
-    if ignore_cache:
-        cache_value = cid2chemfig.get(cid)
-        if cache_value == chemfig_tex_str:
-            update_cache = False
-
-    if update_cache:
+    if use_cache and cid2chemfig.get(cid) != chemfig_tex_str:
+        cid2chemfig[cid] = chemfig_tex_str
         to_json(cid2chemfig, chemfig_cache)
 
     return chemfig_tex_str

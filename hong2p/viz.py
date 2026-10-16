@@ -1481,7 +1481,7 @@ def _ylabel_kwargs(*, ylabel_rotation=None, ylabel_kws: Optional[ParamDict] =Non
         ylabel_kws = dict()
 
     if ylabel_rotation is not None:
-        if ylabel_kws is not None and 'ylabel_rotation' in ylabel_kws:
+        if 'rotation' in ylabel_kws:
             raise ValueError('only specify either ylabel_rotation or '
                 "ylabel_kws['rotation']"
             )
@@ -4323,7 +4323,8 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
 
         scalebar_kws: passed to `matplotlib_scalebar.scalebar.ScaleBar`
 
-        cbar|cbar_label|cbar_kws: currently ignored (pass via `image_kws` instead)
+        cbar|cbar_label|cbar_kws: passed to `image_grid` (unless also in `image_kws`,
+            which takes precedence)
 
         zstep_um: if passed, axes titles will be added to indicate depth of each plane.
             no depth titles will be drawn if this is `None`.
@@ -4486,6 +4487,11 @@ def plot_rois(rois: xr.DataArray, background: np.ndarray, *,
         # (to let image_grid defaults come thru)
         if k in kwargs:
             image_kws[k] = kwargs.pop(k)
+
+    # these are explicit kwargs of this fn, so they won't be in kwargs above
+    for k, v in dict(cbar=cbar, cbar_label=cbar_label, cbar_kws=cbar_kws).items():
+        if k not in image_kws:
+            image_kws[k] = v
 
 
     z_with_outlines = set(plane_outlines.roi_z.values)

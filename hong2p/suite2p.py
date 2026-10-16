@@ -789,7 +789,9 @@ def load_iscell(s2p_out_dir):
 
 # TODO delete?
 def set_suite2p_iscell_label(s2p_out_dir, roi_num, is_good):
-    """Sets suite2p "cell / not cell" label for one ROI, in iscell.npy (unfinished).
+    """Sets suite2p "cell / not cell" label for one ROI, in iscell.npy.
+
+    Only the label (first column) is changed, not the classifier probability.
 
     Args:
         roi_num (int): index of ROI to change label of, according to suite2p
@@ -801,19 +803,16 @@ def set_suite2p_iscell_label(s2p_out_dir, roi_num, is_good):
     iscell_npy = get_iscell_path(s2p_out_dir)
     iscell = np.load(iscell_npy)
 
-    import ipdb; ipdb.set_trace()
     dtype_before = iscell.dtype
-    # TODO TODO need to index the correct column (1st of 2)
-    iscell[roi_num] = float(is_good)
+    # first column is the label, second is the classifier probability
+    iscell[roi_num, 0] = float(is_good)
     assert iscell.dtype == dtype_before
 
     # TODO only write if diff
     # TODO TODO see how suite2p actually writes this file, in case there is anything
     # special
-    import ipdb; ipdb.set_trace()
     # NOTE: if redcell.npy is used, may also need to modify that? see suite2p/io:save.py
     np.save(iscell_npy, iscell)
-    import ipdb; ipdb.set_trace()
 
 
 # TODO maybe wrap call that checks this (and opens suite2p if not) with something that

@@ -1028,11 +1028,10 @@ def extract_traces_bool_masks(movie, footprints, *, verbose: bool = False):
 # or checked to be normalized.
 def extract_traces(movie, footprints, *, _sum=False, verbose: bool = False):
     """
-    Weights the movie by each mask in footprints, and averages across ALL pixels, to
-    make a matrix of traces (n_frames x n_footprints).
+    Computes the mean of the movie within each mask in footprints (weighted by mask
+    values), to make a matrix of traces (n_frames x n_footprints).
 
-    NOTE: unlike `extract_traces_bool_masks`, the mean is across all pixels in the
-    frame, not just those in the mask, so outputs will not match for boolean masks.
+    For boolean masks, this should match `extract_traces_bool_masks`.
 
     Args:
         movie: should be of shape (T, [Z,] Y, X).
@@ -1089,9 +1088,8 @@ def extract_traces(movie, footprints, *, _sum=False, verbose: bool = False):
             trace = np.sum(movie * mask, axis=movie_spatial_dims)
         #
         else:
-            # TODO TODO test this against my bool one, at least for input to this fn
-            # that is boolean
-            trace = np.mean(movie * mask, axis=movie_spatial_dims)
+            # weighted mean within mask (equivalent to np.average w/ weights=mask)
+            trace = np.sum(movie * mask, axis=movie_spatial_dims) / np.sum(mask)
 
         # TODO TODO try np.average w/ weights= either normalized or not mask?
         # any advantage? output the same (as either of above branches, for suite2p
@@ -1614,8 +1612,9 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
 
         all_vals = []
         all_scale_and_flat_indices = []
-        for i, (fv, thresh) in enumerate(zip(all_flat_vals, thresholds)):
+        for i, fv in enumerate(all_flat_vals):
             if thresholds is not None:
+                thresh = thresholds[i]
                 flat_idx_at_least_thresh = np.argwhere(fv > thresh)[:,0]
                 vals_at_least_thresh = fv[flat_idx_at_least_thresh]
             else:
@@ -3378,7 +3377,7 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
 
     Returns array of centers of shape (n_timepoints, n_ids, n_coords), re-indexed with
     new IDs (NaN where an ID was not present). See `renumber_rois2`, which this is being
-    replaced by (this version still has debugging breakpoints in it).
+    replaced by.
 
     `max_cost` is required, and used to check no ID jumps by >= this distance.
     """
@@ -3401,7 +3400,6 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
     assert len(np.setdiff1d(matches_list[0][:,0], first_ids)) == 0
     ids_list.append(first_ids)
     next_new_id = first_ids.max() + 1
-    print('next_new_id (after making first_ids):', next_new_id)
     ##next_new_id = matches_list[0][:,0].max() + 1
 
     #if len(centers_list[0]) > len(matches_list[0]):
@@ -3470,20 +3468,10 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
         # Not + 1 because arange does not include the endpoint.
         stop = next_new_id + n_new_ids
         new_ids = np.arange(next_new_id, stop)
-        for i, idl in enumerate(ids_list[::-1]):
-            print(- (i + 1))
+        for idl in ids_list:
             overlap = set(new_ids) & set(idl)
-            if len(overlap) > 0:
-                print('overlap:', overlap)
-                import ipdb; ipdb.set_trace()
-        #
-        print('i:', i)
-        print('n_new_ids:', n_new_ids)
-        print('stop:', stop)
-        print('next_new_id:', next_new_id)
-        print('next_new_id - existing_ids.max():',
-            next_new_id - existing_ids.max()
-        )
+            assert len(overlap) == 0, f'new IDs overlapped previous IDs: {overlap}'
+
         next_new_id = stop
 
         curr_ids = np.concatenate((existing_ids, new_ids))
@@ -3501,35 +3489,10 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
             if _id in id2last_xy:
                 last_xy = id2last_xy[_id]
                 dist = util.euclidean_dist(cxy, last_xy)
-                try:
-                    assert dist < max_cost
-                except AssertionError:
-                    print('')
-                    #print(max_cost)
-                    #print(dist)
-                    print('id:', _id)
-                    #print(last_xy)
-                    #print(cxy)
-                    if _id in new_ids:
-                        fr = 'new'
-                    elif _id in existing_ids:
-                        fr = 'old'
-                    else:
-                        assert False
-                    print(fr)
-
-                    print(id2src_history[_id])
-                    prev_idx = id2idx_history[_id]
-                    print(prev_idx)
-                    if len(prev_idx) > 0:
-                        prev_idx = prev_idx[-1]
-                        if prev_idx is not None:
-                            # (previous entry in ids_list)
-                            assert (np.argwhere(ids_list[i] == _id)[0][0] ==
-                                prev_idx
-                            )
-
-                    import ipdb; ipdb.set_trace()
+                assert dist < max_cost, (f'ROI {_id} moved {dist:.2f} >= {max_cost=}'
+                    f' (ID source history: {id2src_history[_id]}, index history: '
+                    f'{id2idx_history[_id]})'
+                )
 
             id2last_xy[_id] = cxy
             # TODO delete these after debugging
@@ -3609,9 +3572,7 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
                 matches2[shared_m2_idx, 0]
             )
             prior_ids_of_shared = matches1[shared_m1_idx, 0]
-            print(len(np.unique(matches2[:,0])) == len(matches2[:,0]))
             matches2[shared_m2_idx, 0] = prior_ids_of_shared
-            print(len(np.unique(matches2[:,0])) == len(matches2[:,0]))
 
             nonshared_m2_idx = np.setdiff1d(np.arange(len(matches2)),
                 shared_m2_idx
@@ -3621,15 +3582,6 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
             # nonshared_m2_idx.
             # TODO TODO TODO will we ever need to map from these new_ids that
             # run off the end to specific centers later?
-            print('new_ids:', new_ids)
-            print('new_ids[:len(nonshared_m2_idx)]:',
-                new_ids[:len(nonshared_m2_idx)]
-            )
-            print('nonshared_m2_idx:', nonshared_m2_idx)
-            print('matches2[nonshared_m2_idx, 0]:',
-                matches2[nonshared_m2_idx, 0]
-            )
-            import ipdb; ipdb.set_trace()
             matches2[nonshared_m2_idx, 0] = new_ids[:len(nonshared_m2_idx)]
             assert len(np.unique(matches2[:,0])) == len(matches2[:,0])
 

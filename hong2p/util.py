@@ -748,10 +748,11 @@ def argparse_dir(path: Any, *, expected_subdirs: Optional[Sequence[str]] = None)
         raise ArgumentTypeError(f'{path} was not a directory')
 
     missing_subdirs = []
-    for subdir in expected_subdirs:
-        subdir_dir = path / subdir
-        if not subdir_dir.is_dir():
-            missing_subdirs.append(subdir)
+    if expected_subdirs is not None:
+        for subdir in expected_subdirs:
+            subdir_dir = path / subdir
+            if not subdir_dir.is_dir():
+                missing_subdirs.append(subdir)
 
     if len(missing_subdirs) > 0:
         raise ArgumentTypeError(f'{path} did not contain expected subdirectories! '
@@ -1220,7 +1221,7 @@ def _stimfile_dir(stimfile_dir: Optional[Pathlike] = None) -> Path:
         stimfile_dir = stimfile_root()
     else:
         stimfile_dir = Path(stimfile_dir)
-        if not stimfile_dir.is_dir(stimfile_dir):
+        if not stimfile_dir.is_dir():
             raise IOError(f'passed stimfile_dir={stimfile_dir} is not a directory!')
 
     return stimfile_dir
@@ -1469,11 +1470,10 @@ def nan_eq(arr1, arr2):
     Normally, NaN != NaN, but this is not the behavior I want when trying to check which
     parts of an array/DataFrame were changed by an operation.
 
-    NOTE: currently also True wherever just `arr2` is NaN (only checks `arr2` for NaN).
     """
     # https://stackoverflow.com/questions/19322506
     # Psuedocode: (x == y) or (isnan(x) and isnan(y))
-    return (arr1 == arr2) | ( (arr1 != arr2) & (arr2 != arr2) )
+    return (arr1 == arr2) | ( (arr1 != arr1) & (arr2 != arr2) )
 
     # This is ugly, but should let this work on very large arrays without causing any
     # memory issues (not sure I need that...).
@@ -3783,8 +3783,7 @@ def skipped_comparison_nums(df):
     """Returns DataFrame w/ a row for each comparison number skipped within recordings.
 
     Skipped comparisons are those between min and max comparison number (inclusive) of
-    each recording that are not present. NOTE: currently checks for these numbers in
-    the index (not values) of the comparison column.
+    each recording that are not present.
 
     Requires at least recording_from and comparison columns.
     Can also take prep_date, fly_num, and thorimage_id.
@@ -3805,8 +3804,9 @@ def skipped_comparison_nums(df):
     for g, gdf in df.groupby(rec_cols):
         max_comp_num = gdf.comparison.max()
         min_comp_num = gdf.comparison.min()
+        present_comp_nums = set(gdf.comparison)
         skipped_comp_nums = [x for x in range(min_comp_num, max_comp_num + 1)
-            if x not in gdf.comparison]
+            if x not in present_comp_nums]
 
         if len(skipped_comp_nums) > 0:
             gmeta = gdf[rec_cols].drop_duplicates().reset_index(drop=True)
@@ -5321,9 +5321,6 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
     allow_complex_type_seqs: bool = False, _warn: bool = True, **kwargs) -> bool:
     """Returns whether `x` and `y` are equal, handling pandas/numpy/other types.
 
-    NOTE: if `x == y` raises an ambiguous truth value ValueError and
-    `allow_complex_type_seqs=False`, this currently returns None (rather than raising).
-
     Args:
         x,y: check equality, with the follow methods (if available, in order):
             1. `x.equals(y)`
@@ -5337,8 +5334,8 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
             (non-scalar) arrays / pandas Series/DataFrames (and probably also other
             things which may extend those), elements are compared recursively. No other
             collections of these objects, other than lists/tuples, are supported
-            (`ValueError` is raised for inputs like that). See NOTE above for behavior
-            if False.
+            (`ValueError` is raised for inputs like that). If False, `ValueError` is
+            raised for any such inputs.
 
         _warn: if `allow_complex_type_seqs=True`, will still warn if there are these
             "complex" types in the input, though will not raise. Does nothing if
@@ -5391,7 +5388,8 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
                         warnings.warn('had list/tuple of array/pandas/etc types! may '
                             'want to change handling of these nested types (hard to '
                             'serialize in an easy and portable manner). set _warn=False'
-                            ' to silence or allow_complex_type_seqs=True to err instead'
+                            ' to silence or allow_complex_type_seqs=False to err '
+                            'instead'
                             '.', FutureWarning
                         )
 
@@ -5400,9 +5398,10 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
 
                     return all(equals(x, y) for x, y in zip(x, y))
 
-                # raising here, since we don't support non-list/tuple cases here, and we
-                # don't mention what to do in this case in warning above
-                raise verr
+            # raising here if allow_complex_type_seqs=False, or if we have a
+            # non-list/tuple case (which we don't support, and don't mention what to do
+            # about in warning above)
+            raise verr
 
 
 def pd_index_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *, axis: str = 'index',
@@ -5486,11 +5485,10 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     Args:
         a|b: inputs to compare. must both be either DataFrames or Series.
 
-        if_index_mismatch: currently ignored (always just returns False on mismatch).
-            intended to choose whether to return False (None), warn (and return False),
-            or raise ValueError if either row/column indices do not match
+        if_index_mismatch: whether to return False (None), warn (and return False), or
+            raise ValueError ('err') if either row/column indices do not match
     """
-    if not pd_index_equal(a, b, axis='index'):
+    if not pd_index_equal(a, b, axis='index', if_index_mismatch=if_index_mismatch):
         return False
 
     if isinstance(a, pd.DataFrame):
@@ -5498,7 +5496,9 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
         # ValueError?)?
         assert isinstance(b, pd.DataFrame)
 
-        if not pd_index_equal(a, b, axis='columns'):
+        if not pd_index_equal(a, b, axis='columns',
+            if_index_mismatch=if_index_mismatch):
+
             return False
     else:
         # TODO don't?
@@ -5610,8 +5610,7 @@ def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
 
         **kwargs: passed thru to `np.isclose` (`equal_nan=True` may be the most useful)
 
-    Intended to raise ValueError if indices do not match, but `pd_indices_equal`
-    currently ignores `if_index_mismatch`, so it will not.
+    Raises ValueError if indices do not match.
     """
     # not sure what isclose behavior is if shapes mismatch, but only really imagine
     # using this fn for like-indexed stuff anyway
@@ -5642,8 +5641,7 @@ def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
             otherwise, asserts columns are in the same order.
 
         cast: if True (and dtypes differ), tries casting `b` to dtypes of `a` before
-            comparing. NOTE: this path currently raises AttributeError (calls
-            nonexistent `Series.equal`).
+            comparing.
 
         verbose: if True, prints mismatching dtypes
     """
@@ -5662,7 +5660,7 @@ def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
             assert set(a.columns) == set(b.columns)
             b = b[a.columns]
 
-    if cast and not a.dtypes.equal(b.dtypes):
+    if cast and not a.dtypes.equals(b.dtypes):
         # TODO how will this fail if casting not possible? need to catch and return
         # False?
         b = b.astype(a.dtypes)

@@ -61,7 +61,7 @@ def matlab_engine(force=False):
     """
     global evil
 
-    if USE_MATLAB_ENGINE and not force:
+    if not USE_MATLAB_ENGINE and not force:
         warnings.warn('not loading MATLAB engine because USE_MATLAB_ENGINE=False')
         return None
 

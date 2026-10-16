@@ -133,9 +133,9 @@ def abbrev(odor_str: str, abbrevs: Optional[Dict[str, str]] = None, *,
     cast_int: bool = False) -> str:
     """Abbreviates odor name in input, when an abbreviation is available.
 
-    Input containing `component_delim` (i.e. an air mixture) is currently returned
-    without abbreviating the components (though any `olf.solvent_str` components will be
-    removed, via `format_mix_from_strs`).
+    Input containing `component_delim` (i.e. an air mixture) has each component
+    abbreviated (and any `olf.solvent_str` components removed, via
+    `format_mix_from_strs`).
 
     Args:
         odor_str: can optionally contain concentration information (followed by
@@ -153,16 +153,19 @@ def abbrev(odor_str: str, abbrevs: Optional[Dict[str, str]] = None, *,
 
     >>> abbrev('ethyl acetate @ -2')
     'ea @ -2'
+
+    >>> abbrev('ethyl acetate @ -2 + hexyl hexanoate @ -3')
+    'ea @ -2 + hh @ -3'
     """
     # TODO add tests for each of the 3 cases (doctest?)
 
     if component_delim in odor_str:
         # TODO refactor to use parse_odor_lists? (would need an abbrev fn that takes
         # dict input)
-        odor_strs = [x.strip() for x in odor_str.split(component_delim)]
-
-        # TODO need to pass abbrevs thru? why do i even have this branch, if it's not
-        # gonna recursively call abbrev?
+        odor_strs = [
+            abbrev(x.strip(), abbrevs, conc_delim=conc_delim, cast_int=cast_int)
+            for x in odor_str.split(component_delim)
+        ]
         return format_mix_from_strs(odor_strs, delim=component_delim)
 
     elif conc_delim in odor_str:
@@ -1607,13 +1610,10 @@ def pad_odor_indices_to_max_components(dfs: Sequence[pd.DataFrame]
 # TODO take axis kwarg, to work on columsns too?
 def drop_solvent_odors(df: pd.DataFrame, *, axis: str = 'index', warn: bool = True
     ) -> pd.DataFrame:
-    """Drops where 'odor' / 'odor1' index level name is 'pfo'/'water'.
+    """Drops where 'odor' / 'odor1' index level name is 'pfo'/'water'/`solvent_str`.
 
-    Currently expects concentration to be '@ 0' for all of these odor strings, e.g. 'pfo
-    @ 0' / 'pfo @ 0.0'.
-
-    NOTE: elements equal to `solvent_str` are currently NOT dropped (since
-    `parse_odor_name(solvent_str)` returns None).
+    Currently expects concentration to be '@ 0' for all of these odor strings (other
+    than `solvent_str`, which has no concentration), e.g. 'pfo @ 0' / 'pfo @ 0.0'.
 
     Copies input data, whether or not data is subset.
 
@@ -1639,22 +1639,28 @@ def drop_solvent_odors(df: pd.DataFrame, *, axis: str = 'index', warn: bool = Tr
     # component_delim from consideration here [can set solvent_mask=False already for
     # those]). currently get:
     # ValueError: unexpected number of conc_delimiter='@' in 1o3ol @ -3 + 2h @ -5
-    odor_names = index.get_level_values(odor_level).map(parse_odor_name)
-    odor_concs = index.get_level_values(odor_level).map(parse_log10_conc)
-    solvent_names = ('pfo', 'water', solvent_str)
-    solvent_mask = odor_names.isin(solvent_names)
+    odor_strs = index.get_level_values(odor_level)
+    odor_names = odor_strs.map(parse_odor_name)
+    odor_concs = odor_strs.map(parse_log10_conc)
+    solvent_names = ('pfo', 'water')
+    # parse_odor_name(solvent_str) returns None, so need to check for it separately
+    is_solvent_str = np.asarray(odor_strs == solvent_str)
+    solvent_mask = np.asarray(odor_names.isin(solvent_names)) | is_solvent_str
     if solvent_mask.any():
         if warn:
             n_solvent = solvent_mask.sum()
             warnings.warn(f'dropping {n_solvent}/{len(index)} solvent elements')
 
-        solvent_conc_set = set(odor_concs[solvent_mask])
-        # TODO if this gets triggered by None/NaN, adapt to also include None/NaN
-        # (if there are any negative float concs, that would indicate a bug)
-        # TODO also accept null (None/NaN) conc for these? or no?
-        #
-        # NOTE: {0.0} == {0} is True
-        assert solvent_conc_set == {0}, f'{solvent_conc_set=}'
+        # solvent_str has no concentration (parse_log10_conc returns None for it)
+        named_solvent_mask = solvent_mask & ~is_solvent_str
+        if named_solvent_mask.any():
+            solvent_conc_set = set(odor_concs[named_solvent_mask])
+            # TODO if this gets triggered by None/NaN, adapt to also include None/NaN
+            # (if there are any negative float concs, that would indicate a bug)
+            # TODO also accept null (None/NaN) conc for these? or no?
+            #
+            # NOTE: {0.0} == {0} is True
+            assert solvent_conc_set == {0}, f'{solvent_conc_set=}'
 
         if axis == 'index':
             df = df.loc[~solvent_mask].copy()

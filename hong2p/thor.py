@@ -2378,17 +2378,15 @@ def old_fmt_thorimage_num(x):
 def new_fmt_thorimage_num(x):
     """Returns int from new-format ThorImage directory name.
 
-    e.g. 'fn' -> 0, 'fn_0002' -> 2. NOTE: only the last character is parsed, so
-    'fn_0012' -> 2.
+    e.g. 'fn' -> 0, 'fn_0002' -> 2, 'fn_0012' -> 12.
 
-    Raises ValueError if last character can not be parsed as an int.
+    Raises ValueError if part after last '_' can not be parsed as an int.
     """
-
     parts = x.split('_')
     if len(parts) == 1:
         return 0
     else:
-        return int(x[-1])
+        return int(parts[-1])
 
 
 thorsync_dir_prefix = 'SyncData'
@@ -2615,8 +2613,8 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
             checked for these substrings and if any match the pair is not returned. This
             is mainly intended to ignore known-bad data.
 
-        verbose (bool): (default=False) if True, prints times and costs considered in
-            pairing (only used if `use_ranking=False`)
+        verbose (bool): (default=False) if True, prints times, costs, and assignment
+            considered in pairing (only used if `use_ranking=False`)
 
     Raises ValueError if two dirs of one type match to the same one of the
     other, but just returns shorter list of pairs if some matches can not be
@@ -2724,9 +2722,10 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
                 print('')
 
         ti_idx, ts_idx = linear_sum_assignment(costs)
-        print(costs)
-        print(ti_idx)
-        print(ts_idx)
+        if verbose:
+            print(costs)
+            print(ti_idx)
+            print(ts_idx)
         pairs = list(zip(thorimage_dirs[ti_idx], thorsync_dirs[ts_idx]))
 
     if check_against_naming_conv:
@@ -2871,8 +2870,8 @@ def pair_thor_dirs(thorimage_dirs, thorsync_dirs, use_mtime=False,
 def pair_thor_subdirs(parent_dir, verbose=False, **kwargs) -> List[PathPair]:
     """Returns list of paired (ThorImage, ThorSync) immediate child dirs of `parent_dir`
 
-    `verbose` currently only controls printing of the dirs found. `verbose=True` is
-    always passed to `pair_thor_dirs`. Other `kwargs` are passed to `pair_thor_dirs`.
+    `verbose` and other `kwargs` are passed to `pair_thor_dirs`. If `verbose=True`, the
+    directories found are also printed.
 
     Raises ValueError/AssertionError when pair_thor_dirs does.
 
@@ -2891,7 +2890,7 @@ def pair_thor_subdirs(parent_dir, verbose=False, **kwargs) -> List[PathPair]:
         print('thorsync_dirs:')
         pprint(thorsync_dirs)
 
-    return pair_thor_dirs(thorimage_dirs, thorsync_dirs, verbose=True, **kwargs)
+    return pair_thor_dirs(thorimage_dirs, thorsync_dirs, verbose=verbose, **kwargs)
 
 
 # TODO maybe delete / refactor to use fns above
