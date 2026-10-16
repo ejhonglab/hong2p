@@ -796,7 +796,7 @@ def ijroi_mtime(ijroiset_dir_or_fname: Pathlike) -> float:
 # 95% of the time this fn took was from ijrois2masks
 def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
     as_xarray: bool = True, drop_maximal_extent_rois: bool = True,
-    indices: Optional[List[int]] = None, **kwargs) -> NumpyOrXArray:
+    indices: Optional[List[int]] = None) -> NumpyOrXArray:
     """Loads ImageJ ROIs to boolean masks, of same shape as ThorImage movie frames.
 
     Args:
@@ -814,8 +814,6 @@ def ijroi_masks(ijroiset_dir_or_fname: Pathlike, thorimage_dir: Pathlike,
 
         indices: if passed, only ROIs at these (integer) indices in the RoiSet are
             loaded
-
-        **kwargs: currently ignored
 
     Returns masks of shape ([z,]y,x,roi) (see `ijrois2masks`).
     """
@@ -3727,7 +3725,8 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
         p: probability that each ROI is lost (and that each of remaining possible ROIs
             are gained) at each timepoint. if falsey, number of ROIs is constant.
 
-        max_n: currently ignored (set to `2 * initial_n` if `p`, else `initial_n`)
+        max_n: max number of ROIs (over whole duration). defaults to `2 * initial_n` if
+            `p`, else `initial_n`. RuntimeError raised if more would be added.
 
         round_: if True, rounds centers to uint16 (which converts NaN to 0)
 
@@ -3746,12 +3745,15 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
     # So that we can pre-allocate the center coordinates over time
     # (rather than having to figure out how many were added by the end,
     # and then pad all the preceding arrays of centers w/ NaN)
-    if p:
-        max_n = 2 * initial_n
+    if max_n is None:
+        if p:
+            max_n = 2 * initial_n
+        else:
+            # Don't need to allocate extra space if the number of ROIs is
+            # deterministic.
+            max_n = initial_n
     else:
-        # Don't need to allocate extra space if the number of ROIs is
-        # deterministic.
-        max_n = initial_n
+        assert max_n >= initial_n, f'{max_n=} < {initial_n=}'
 
     assert len(frame_shape) == 2
     assert frame_shape[0] == frame_shape[1]
@@ -3794,7 +3796,7 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
         if not p:
             continue
 
-        lose = np.random.binomial(1, p, size=max_n).astype(np.bool)
+        lose = np.random.binomial(1, p, size=max_n).astype(bool)
         if verbose:
             nonnan = ~ np.isnan(centers[t,:,0])
             print('# non-nan:', nonnan.sum())
@@ -3819,6 +3821,11 @@ def make_test_centers(initial_n=20, nt=100, frame_shape=(256, 256), sigma=3,
         # To justify first arg (n), imagine case where initial_n=0 and
         # max_n=1.
         n_to_gain = np.random.binomial(max_n - initial_n, p)
+        if next_trajectory_idx + n_to_gain > max_n:
+            raise RuntimeError(f'would exceed max_n ({max_n}) on step {t} (before '
+                f'{nt} requested steps)'
+            )
+
         if n_to_gain > 0:
             if verbose:
                 print(f't={t}, gaining {n_to_gain}')

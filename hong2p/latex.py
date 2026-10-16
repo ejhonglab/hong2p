@@ -95,8 +95,7 @@ def make_pdf(pdf_path, fig_dir, section_names2figs, header: Optional[str] = None
 
         header: if passed, rendered (verbatim) as a header on each page
 
-        template_path: currently ignored. 'template.tex' (from hong2p `latex` dir) is
-            always used.
+        template_path: name of Jinja2 template, relative to hong2p `latex` dir
 
         write_latex_like_pdf: if True, also writes rendered LaTeX next to `pdf_path`,
             w/ '.tex' replacing '.pdf' suffix
@@ -127,7 +126,7 @@ def make_pdf(pdf_path, fig_dir, section_names2figs, header: Optional[str] = None
         # TODO can FileSystemLoader take Path input?
         env = make_env(loader=FileSystemLoader(latex_dir))
 
-    template = env.get_template('template.tex')
+    template = env.get_template(str(template_path))
 
     # TODO try to just use a dict if jinja can support that
     section_names_and_figs = [(name, figs) for name, figs in section_names2figs.items()]

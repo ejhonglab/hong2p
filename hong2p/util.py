@@ -302,9 +302,8 @@ def compile_latex(tex_path: Pathlike, output_dir: Optional[Pathlike] = None, *,
     Args:
         tex_path: .tex file to compile
 
-        output_dir: passed to pdflatex `-output-directory`. NOTE: returned PDF path (and
-            check that it was written) currently assumes PDF is written next to
-            `tex_path`, so this should currently be the directory containing `tex_path`.
+        output_dir: passed to pdflatex `-output-directory`. PDF is written here (or to
+            current directory, if not passed).
 
         tex_inputs: directories to add to `TEXINPUTS` (e.g. ones containing required
             .sty files)
@@ -360,7 +359,9 @@ def compile_latex(tex_path: Pathlike, output_dir: Optional[Pathlike] = None, *,
             print(result.stdout)
 
         # pdf should exist if we made it this far without above command erring
-        pdf_out = tex_path.with_suffix('.pdf')
+        # pdflatex writes to current directory, if -output-directory not passed
+        pdf_dir = output_dir if output_dir else Path.cwd()
+        pdf_out = pdf_dir / tex_path.with_suffix('.pdf').name
         assert pdf_out.exists(), f'{pdf_out=} should exist'
         pdf_mtime = os.path.getmtime(pdf_out)
         assert pdf_mtime > start, f'{pdf_out} was not newer than fn start'
@@ -2299,7 +2300,10 @@ def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
         use_cache: whether to try loading cached Google sheet data, if there is a
             connection error when trying to load the sheet data from online. Each call
             will unconditionally write to this cache, saved as a hidden file in the same
-            directory as `file_with_edit_link`.
+            directory as `file_with_edit_link`. NOTE: currently, the cache is also used
+            on connection errors even if this is False, and the cache (if it exists) is
+            returned (after the download) if this is True, even without a connection
+            error. If there is a connection error and no cache, the error is raised.
 
         extra_search_dirs: extra directories to search for file with name
             `file_with_edit_link`. will be searched before defaults (current directory
@@ -2311,17 +2315,20 @@ def gsheet_to_frame(file_with_edit_link: Pathlike, *, gid: Optional[int] = None,
         extra_search_dirs=extra_search_dirs
     )
 
+    # TODO support file_with_edit_link being url str too (+ change type hint), or maybe
+    # unsupport that in other gsheet fn
+    cache_path = file_with_edit_link.parent / f'.{file_with_edit_link.stem}_cache.p'
+
     try:
         df = pd.read_csv(gsheet_link)
 
     # This might not always be the error, depending on the pandas version.
     # Tested with 1.3.1
     except URLError:
-        use_cache = True
+        if not cache_path.exists():
+            raise
 
-    # TODO support file_with_edit_link being url str too (+ change type hint), or maybe
-    # unsupport that in other gsheet fn
-    cache_path = file_with_edit_link.parent / f'.{file_with_edit_link.stem}_cache.p'
+        use_cache = True
 
     if use_cache and cache_path.exists():
         warnings.warn(f'using Google sheet cache at {cache_path}. may be out-of-date!')
@@ -3199,7 +3206,7 @@ def metadata_filename(thorimage_dir):
     """
     # TODO port over any metadata yamls i have in the raw data tree in this old location
     #return join(raw_fly_dir(date, fly_num), thorimage_id + '_metadata.yaml')
-    return join(thorimage_dir(date, fly, thorimage_id), 'metadata.yaml')
+    return join(thorimage_dir, 'metadata.yaml')
 
 
 # TODO maybe something to indicate various warnings

@@ -763,6 +763,7 @@ def load_s2p_ops(ops_path: Pathlike) -> Suite2pOps:
         ops_path: if path does not end with '*.npy', assumed to be a directory
             containing a file named 'ops.npy'
     """
+    ops_path = Path(ops_path)
     if not ops_path.name.endswith('.npy'):
         ops_path = ops_path / 'ops.npy'
 
