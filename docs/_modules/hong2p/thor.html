@@ -1428,49 +1428,49 @@
 <span class="sd">        verbose (bool): (default=False) if True, prints original and normalized name of</span>
 <span class="sd">            each dataset, and why any are skipped</span>
 
-<span class="sd">    These HDF5 files have the following hierarchical structure, where leaves of</span>
-<span class="sd">    this tree are "Datasets" and their parents are "Groups" (via inspection of a</span>
-<span class="sd">    ThorSync 3.0 output):</span>
-<span class="sd">    - Global:</span>
-<span class="sd">      - GCtr</span>
-<span class="sd">        (from ThorSync 3.0 manual) "ThorSync records data into a table with</span>
-<span class="sd">        clock cycles beginning with 0.  The time of acquisition can be</span>
-<span class="sd">        determined by dividing the clock cycle by the frequency of the data</span>
-<span class="sd">        collection set at 20 MHz. Thus, each sequential clock cycle represents</span>
-<span class="sd">        an increment of 0.05 μs."</span>
+<span class="sd">    These HDF5 files have the following hierarchical structure, where leaves of this</span>
+<span class="sd">    tree are "Datasets" and their parents are "Groups" (via inspection of a ThorSync 3.0</span>
+<span class="sd">    output):</span>
 
-<span class="sd">        Note that this 20 MHz is not the same as the sampling rate specified in</span>
-<span class="sd">        the ThorSync XML output. See commented example at end of this function.</span>
+<span class="sd">    - Global:</span>
+
+<span class="sd">      - GCtr: from ThorSync 3.0 manual, "ThorSync records data into a table with clock</span>
+<span class="sd">        cycles beginning with 0. The time of acquisition can be determined by dividing</span>
+<span class="sd">        the clock cycle by the frequency of the data collection set at 20 MHz. Thus,</span>
+<span class="sd">        each sequential clock cycle represents an increment of 0.05 μs."</span>
+
+<span class="sd">        Note that this 20 MHz is not the same as the sampling rate specified in the</span>
+<span class="sd">        ThorSync XML output. See commented example at end of this function.</span>
 
 <span class="sd">    - DI:</span>
-<span class="sd">      - Frame In</span>
-<span class="sd">        - completely zero in the file I was exploring</span>
 
-<span class="sd">      - Frame Out</span>
-<span class="sd">        - may have one high pulse (==2 for some reason; low==0) per frame</span>
-<span class="sd">        - seems to only be low briefly before returning high again. perhaps just</span>
-<span class="sd">          for one / a few samples?</span>
-<span class="sd">        - it may be possible there are cases where there are more high pulses</span>
-<span class="sd">          here than there are frames in the movie, perhaps in cases with</span>
-<span class="sd">          averaging or multiple separate acquisition periods.</span>
+<span class="sd">      - Frame In: completely zero in the file I was exploring.</span>
+
+<span class="sd">      - Frame Out: may have one high pulse (==2 for some reason; low==0) per frame.</span>
+<span class="sd">        Seems to only be low briefly before returning high again (perhaps just for one</span>
+<span class="sd">        / a few samples?). It may be possible there are cases where there are more high</span>
+<span class="sd">        pulses here than there are frames in the movie, perhaps in cases with averaging</span>
+<span class="sd">        or multiple separate acquisition periods.</span>
 
 <span class="sd">    - CI:</span>
+
 <span class="sd">      - Frame Counter</span>
 
 <span class="sd">    - AI:</span>
-<span class="sd">      - &lt;one entry for each user-configured analog input&gt;</span>
 
-<span class="sd">    Three changes will be made in translating HDF5 dataset names to DataFrame</span>
-<span class="sd">    column names:</span>
-<span class="sd">    1. If any dataset name is in the keys of `rename_dict`, it will be replaced</span>
-<span class="sd">       with the corresponding value, unless `skip_dict_rename` is passed.</span>
+<span class="sd">      - (one entry for each user-configured analog input)</span>
 
-<span class="sd">    2. Names *except* those under the group 'AI' (mostly user configurable</span>
-<span class="sd">       inputs) will be lowercased, unless `skip_normalization` is passed.</span>
+<span class="sd">    Three changes will be made in translating HDF5 dataset names to DataFrame column</span>
+<span class="sd">    names:</span>
+
+<span class="sd">    1. If any dataset name is in the keys of `rename_dict`, it will be replaced with</span>
+<span class="sd">       the corresponding value, unless `skip_dict_rename` is passed.</span>
+
+<span class="sd">    2. Names *except* those under the group 'AI' (mostly user configurable inputs) will</span>
+<span class="sd">       be lowercased, unless `skip_normalization` is passed.</span>
 
 <span class="sd">    3. All names will have any spaces converted to underscores, unless</span>
 <span class="sd">       `skip_normalization` is passed.</span>
-
 <span class="sd">    """</span>
     <span class="c1"># TODO TODO DI/Frame [In/Out] useful? how?</span>
 
@@ -2309,11 +2309,11 @@
 <span class="w">    </span><span class="sd">"""Takes ThorSync+Image data to (start, stop) indices for each block.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">    df: as output by `load_thorsync_hdf5`</span>
+<span class="sd">        df: as output by `load_thorsync_hdf5`</span>
 
-<span class="sd">    thorimage_dir: path to a directory created by ThorImage</span>
+<span class="sd">        thorimage_dir: path to a directory created by ThorImage</span>
 
-<span class="sd">    **kwargs: passed through to `get_frame_times`</span>
+<span class="sd">        **kwargs: passed through to `get_frame_times`</span>
 
 <span class="sd">    See documentation of `assign_frame_times_to_blocks` for more details on the</span>
 <span class="sd">    definition of blocks and the properties of the output.</span>

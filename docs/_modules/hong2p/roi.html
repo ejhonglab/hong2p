@@ -1503,11 +1503,12 @@
 
 <span class="sd">        draw_nums (bool): whether to draw ROI numbers on `draw_on`</span>
 
-<span class="sd">        multiscale_strategy (str): how to order matches across scales.</span>
-<span class="sd">            'one_order': all matches sorted together by (weighted) match value.</span>
-<span class="sd">            'fixed_scale_order': all matches at each scale before the next, in order of</span>
-<span class="sd">                `scale_order`.</span>
-<span class="sd">            'random': next scale randomly sampled, with probabilities `radii_px_ps`.</span>
+<span class="sd">        multiscale_strategy (str): how to order matches across scales:</span>
+
+<span class="sd">            - 'one_order': all matches sorted together by (weighted) match value.</span>
+<span class="sd">            - 'fixed_scale_order': all matches at each scale before the next, in order</span>
+<span class="sd">              of `scale_order`.</span>
+<span class="sd">            - 'random': next scale randomly sampled, with probabilities `radii_px_ps`.</span>
 
 <span class="sd">        match_value_weights (iterable of float): for 'one_order' strategy, factors to</span>
 <span class="sd">            multiply match values of each scale by, before sorting</span>
@@ -3382,20 +3383,21 @@
 <div class="viewcode-block" id="stable_rois">
 <a class="viewcode-back" href="../../apidoc/hong2p.roi.html#hong2p.roi.stable_rois">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">stable_rois</span><span class="p">(</span><span class="n">lr_matches</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
+<span class="w">    </span><span class="sd">"""Returns ROIs matched across all timepoints, and IDs lost at each timepoint.</span>
+
 <span class="sd">    Takes a list of n_cells x 2 matrices, with each row taking an integer ROI</span>
 <span class="sd">    label from one set of labels to the other.</span>
 
 <span class="sd">    Input is as first output of correspond_rois.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">    stable_cells: a n_stable_cells x (len(lr_matches) + 1) matrix, where rows</span>
-<span class="sd">        represent different labels for the same real cells. Columns have the</span>
-<span class="sd">        set of stable cells IDs, labelled as the inputs are.</span>
+<span class="sd">        stable_cells: a n_stable_cells x (len(lr_matches) + 1) matrix, where rows</span>
+<span class="sd">            represent different labels for the same real cells. Columns have the</span>
+<span class="sd">            set of stable cells IDs, labelled as the inputs are.</span>
 
-<span class="sd">    new_lost: a (len(lr_matches) - 1) length list of IDs lost when matching</span>
-<span class="sd">        lr_matches[i] to lr_matches[i + 1]. only considers IDs that had</span>
-<span class="sd">        been stable across all previous pairs of matchings.</span>
+<span class="sd">        new_lost: a (len(lr_matches) - 1) length list of IDs lost when matching</span>
+<span class="sd">            lr_matches[i] to lr_matches[i + 1]. only considers IDs that had</span>
+<span class="sd">            been stable across all previous pairs of matchings.</span>
 <span class="sd">    """</span>
     <span class="c1"># TODO TODO also test in cases where lr_matches is greater than len 2</span>
     <span class="c1"># (at least len 3)</span>

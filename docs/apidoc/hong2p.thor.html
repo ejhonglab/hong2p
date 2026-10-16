@@ -140,10 +140,15 @@ them as the end of a slice.</p>
 <dt class="sig sig-object py" id="hong2p.thor.assign_frames_to_blocks">
 <span class="sig-prename descclassname"><span class="pre">hong2p.thor.</span></span><span class="sig-name descname"><span class="pre">assign_frames_to_blocks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">thorimage_dir</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/thor.html#assign_frames_to_blocks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.thor.assign_frames_to_blocks" title="Link to this definition"></a></dt>
 <dd><p>Takes ThorSync+Image data to (start, stop) indices for each block.</p>
-<p>Args:
-df: as output by <cite>load_thorsync_hdf5</cite></p>
-<p>thorimage_dir: path to a directory created by ThorImage</p>
-<p><a href="#id1"><span class="problematic" id="id2">**</span></a>kwargs: passed through to <cite>get_frame_times</cite></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> – as output by <cite>load_thorsync_hdf5</cite></p></li>
+<li><p><strong>thorimage_dir</strong> – path to a directory created by ThorImage</p></li>
+<li><p><strong>**kwargs</strong> – passed through to <cite>get_frame_times</cite></p></li>
+</ul>
+</dd>
+</dl>
 <p>See documentation of <cite>assign_frame_times_to_blocks</cite> for more details on the
 definition of blocks and the properties of the output.</p>
 </dd></dl>
@@ -618,60 +623,49 @@ each dataset, and why any are skipped</p></li>
 <dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
 </dd>
 </dl>
-<p>These HDF5 files have the following hierarchical structure, where leaves of
-this tree are “Datasets” and their parents are “Groups” (via inspection of a
-ThorSync 3.0 output):
-- Global:</p>
-<blockquote>
-<div><ul>
-<li><p>GCtr
-(from ThorSync 3.0 manual) “ThorSync records data into a table with
-clock cycles beginning with 0.  The time of acquisition can be
-determined by dividing the clock cycle by the frequency of the data
-collection set at 20 MHz. Thus, each sequential clock cycle represents
-an increment of 0.05 μs.”</p>
-<p>Note that this 20 MHz is not the same as the sampling rate specified in
-the ThorSync XML output. See commented example at end of this function.</p>
+<p>These HDF5 files have the following hierarchical structure, where leaves of this
+tree are “Datasets” and their parents are “Groups” (via inspection of a ThorSync 3.0
+output):</p>
+<ul>
+<li><p>Global:</p>
+<ul>
+<li><p>GCtr: from ThorSync 3.0 manual, “ThorSync records data into a table with clock
+cycles beginning with 0. The time of acquisition can be determined by dividing
+the clock cycle by the frequency of the data collection set at 20 MHz. Thus,
+each sequential clock cycle represents an increment of 0.05 μs.”</p>
+<p>Note that this 20 MHz is not the same as the sampling rate specified in the
+ThorSync XML output. See commented example at end of this function.</p>
 </li>
 </ul>
-</div></blockquote>
-<ul>
-<li><p>DI:
-- Frame In</p>
-<blockquote>
-<div><ul class="simple">
-<li><p>completely zero in the file I was exploring</p></li>
-</ul>
-</div></blockquote>
-<ul>
-<li><p>Frame Out
-- may have one high pulse (==2 for some reason; low==0) per frame
-- seems to only be low briefly before returning high again. perhaps just</p>
-<blockquote>
-<div><p>for one / a few samples?</p>
-</div></blockquote>
+</li>
+<li><p>DI:</p>
 <ul class="simple">
-<li><p>it may be possible there are cases where there are more high pulses
-here than there are frames in the movie, perhaps in cases with
-averaging or multiple separate acquisition periods.</p></li>
+<li><p>Frame In: completely zero in the file I was exploring.</p></li>
+<li><p>Frame Out: may have one high pulse (==2 for some reason; low==0) per frame.
+Seems to only be low briefly before returning high again (perhaps just for one
+/ a few samples?). It may be possible there are cases where there are more high
+pulses here than there are frames in the movie, perhaps in cases with averaging
+or multiple separate acquisition periods.</p></li>
+</ul>
+</li>
+<li><p>CI:</p>
+<ul class="simple">
+<li><p>Frame Counter</p></li>
+</ul>
+</li>
+<li><p>AI:</p>
+<ul class="simple">
+<li><p>(one entry for each user-configured analog input)</p></li>
 </ul>
 </li>
 </ul>
-</li>
-<li><p>CI:
-- Frame Counter</p></li>
-<li><p>AI:
-- &lt;one entry for each user-configured analog input&gt;</p></li>
-</ul>
-<p>Three changes will be made in translating HDF5 dataset names to DataFrame
-column names:
-1. If any dataset name is in the keys of <cite>rename_dict</cite>, it will be replaced</p>
-<blockquote>
-<div><p>with the corresponding value, unless <cite>skip_dict_rename</cite> is passed.</p>
-</div></blockquote>
-<ol class="arabic simple" start="2">
-<li><p>Names <em>except</em> those under the group ‘AI’ (mostly user configurable
-inputs) will be lowercased, unless <cite>skip_normalization</cite> is passed.</p></li>
+<p>Three changes will be made in translating HDF5 dataset names to DataFrame column
+names:</p>
+<ol class="arabic simple">
+<li><p>If any dataset name is in the keys of <cite>rename_dict</cite>, it will be replaced with
+the corresponding value, unless <cite>skip_dict_rename</cite> is passed.</p></li>
+<li><p>Names <em>except</em> those under the group ‘AI’ (mostly user configurable inputs) will
+be lowercased, unless <cite>skip_normalization</cite> is passed.</p></li>
 <li><p>All names will have any spaces converted to underscores, unless
 <cite>skip_normalization</cite> is passed.</p></li>
 </ol>

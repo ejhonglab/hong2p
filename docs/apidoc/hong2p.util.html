@@ -398,12 +398,12 @@ useful options.</p></li>
 </dl>
 <p>Each output is of the form:
 ((date, fly_num), (thorimage_dir&lt;i&gt;, thorsync_dir&lt;i&gt;))</p>
-<p class="rubric">Example</p>
-<p>pairs = date_fly_list2paired_thor_dirs([(‘2021-03-07’, 1), (‘2021-03-08’, 2)])
-for (date, fly_num), (thorimage_dir, thorsync_dir) in pairs:</p>
-<blockquote>
-<div><p>movie = thor.read_movie(thorimage_dir)</p>
-</div></blockquote>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pairs</span> <span class="o">=</span> <span class="n">date_fly_list2paired_thor_dirs</span><span class="p">([(</span><span class="s1">'2021-03-07'</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="s1">'2021-03-08'</span><span class="p">,</span> <span class="mi">2</span><span class="p">)])</span>
+<span class="k">for</span> <span class="p">(</span><span class="n">date</span><span class="p">,</span> <span class="n">fly_num</span><span class="p">),</span> <span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">thorsync_dir</span><span class="p">)</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">:</span>
+    <span class="n">movie</span> <span class="o">=</span> <span class="n">thor</span><span class="o">.</span><span class="n">read_movie</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="py function">
@@ -423,16 +423,17 @@ for (date, fly_num), (thorimage_dir, thorsync_dir) in pairs:</p>
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">df_to_odor_order</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_name1</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#df_to_odor_order"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.df_to_odor_order" title="Link to this definition"></a></dt>
 <dd><p>Takes a complex-mixture DataFrame to odor names in desired plot order.</p>
 <p>Order is from <cite>odor_set2order</cite>, with odor set determined via <cite>odorset_name</cite>.</p>
-<p>Args:
-df (pd.DataFrame): should have a ‘original_name1’ column, with names of</p>
-<blockquote>
-<div><p>odors from complex mixture experiments we have pre-defined odor orders
-for.</p>
-</div></blockquote>
-<dl class="simple">
-<dt>observed (bool): (optional, default=True) If True, only return odor names</dt><dd><p>in <cite>df</cite>.</p>
-</dd>
-<dt>return_name1 (bool): (optional, default=False) If True, corresponding</dt><dd><p>values in ‘name1’ will be returned for each value in ‘original_name1’.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pd.DataFrame</em>) – should have a ‘original_name1’ column, with names of
+odors from complex mixture experiments we have pre-defined odor orders
+for.</p></li>
+<li><p><strong>observed</strong> (<em>bool</em>) – (optional, default=True) If True, only return odor names
+in <cite>df</cite>.</p></li>
+<li><p><strong>return_name1</strong> (<em>bool</em>) – (optional, default=False) If True, corresponding
+values in ‘name1’ will be returned for each value in ‘original_name1’.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -666,13 +667,13 @@ a str with the formatted date.</p>
 <dt class="sig sig-object py" id="hong2p.util.format_mixture">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">format_mixture</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#format_mixture"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.format_mixture" title="Link to this definition"></a></dt>
 <dd><p>Returns <cite>str</cite> representing 2-component odor mixture.</p>
-<p>Input can be any of:
-- 2 <cite>str</cite> names
-- 2 names and concs (n1, n2, c1, c2)
-- a pandas.Series / dict with keys <cite>name1</cite>, <cite>name2</cite>, and (optionally)</p>
-<blockquote>
-<div><p><cite>log10_concvv&lt;1/2&gt;</cite></p>
-</div></blockquote>
+<p>Input can be any of:</p>
+<ul class="simple">
+<li><p>2 <cite>str</cite> names</p></li>
+<li><p>2 names and concs (n1, n2, c1, c2)</p></li>
+<li><p>a pandas.Series / dict with keys <cite>name1</cite>, <cite>name2</cite>, and (optionally)
+<cite>log10_concvv&lt;1/2&gt;</cite></p></li>
+</ul>
 </dd></dl>
 
 <dl class="py function">
@@ -981,7 +982,7 @@ the “sub-recordings” it can create.</p>
 <dt class="sig sig-object py" id="hong2p.util.latest_trace_pickles">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">latest_trace_pickles</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#latest_trace_pickles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.latest_trace_pickles" title="Link to this definition"></a></dt>
 <dd><p>Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.</p>
-<p>Searches ‘<a href="#id1"><span class="problematic" id="id2">*</span></a>.p’ files under <cite>&lt;analysis_output_root&gt;/trace_pickles</cite> (as written by
+<p>Searches <cite>*.p</cite> files under <cite>&lt;analysis_output_root&gt;/trace_pickles</cite> (as written by
 <cite>db.load_recording</cite>), which should be named like
 ‘&lt;YYYYMMDD&gt;_&lt;HHMM&gt;_&lt;YYYY-MM-DD&gt;_&lt;fly_num&gt;_&lt;thorimage_id&gt;.p’.</p>
 <p>Only returns rows for filenames that had the latest timestamp for the
@@ -1254,12 +1255,13 @@ useful options.</p></li>
 </dl>
 <p>Each output is of the form:
 ((date, fly_num), (thorimage_dir&lt;i&gt;, thorsync_dir&lt;i&gt;))</p>
-<p class="rubric">Example</p>
-<dl>
-<dt>for (date, fly_num), (thorimage_dir, thorsync_dir) in paired_thor_dirs(</dt><dd><p>matching_substrs=[‘diag’], start_date=’2021-03-07’):</p>
-<p>movie = thor.read_movie(thorimage_dir)</p>
-</dd>
-</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="p">(</span><span class="n">date</span><span class="p">,</span> <span class="n">fly_num</span><span class="p">),</span> <span class="p">(</span><span class="n">thorimage_dir</span><span class="p">,</span> <span class="n">thorsync_dir</span><span class="p">)</span> <span class="ow">in</span> <span class="n">paired_thor_dirs</span><span class="p">(</span>
+    <span class="n">matching_substrs</span><span class="o">=</span><span class="p">[</span><span class="s1">'diag'</span><span class="p">],</span> <span class="n">start_date</span><span class="o">=</span><span class="s1">'2021-03-07'</span><span class="p">):</span>
+
+    <span class="n">movie</span> <span class="o">=</span> <span class="n">thor</span><span class="o">.</span><span class="n">read_movie</span><span class="p">(</span><span class="n">thorimage_dir</span><span class="p">)</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="py function">
@@ -1550,28 +1552,27 @@ Can also take prep_date, fly_num, and thorimage_id.</p>
 <p>This method is based on the convolution of a scaled window with the signal (with
 <cite>np.convolve(…, mode=’same’)</cite>, so output is same length as input, and edges are
 effectively zero-padded).</p>
-<dl>
-<dt>input:</dt><dd><p>x: the input signal
-window_len: the dimension of the smoothing window; should be an odd</p>
-<blockquote>
-<div><p>integer</p>
-</div></blockquote>
-<dl class="simple">
-<dt>window: the type of window from ‘flat’, ‘hanning’, ‘hamming’,</dt><dd><p>‘bartlett’, ‘blackman’ flat window will produce a moving average
-smoothing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> – the input signal</p></li>
+<li><p><strong>window_len</strong> – the dimension of the smoothing window; should be an odd
+integer</p></li>
+<li><p><strong>window</strong> – the type of window from ‘flat’, ‘hanning’, ‘hamming’,
+‘bartlett’, ‘blackman’ flat window will produce a moving average
+smoothing.</p></li>
+</ul>
 </dd>
 </dl>
-</dd>
-<dt>output:</dt><dd><p>the smoothed signal</p>
-</dd>
-</dl>
-<p>example:</p>
-<p>t=linspace(-2,2,0.1)
-x=sin(t)+randn(len(t))*0.1
-y=smooth_1d(x)</p>
-<p>see also:</p>
-<p>numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
-scipy.signal.lfilter</p>
+<p>Returns the smoothed signal.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">50</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">))</span> <span class="o">*</span> <span class="mf">0.1</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">smooth_1d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>See also: numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman,
+numpy.convolve, scipy.signal.lfilter</p>
 <p>TODO: the window parameter could be the window itself if an array instead of
 a string</p>
 </dd></dl>
@@ -1780,16 +1781,12 @@ If not passed, <cite>stimfile_root()</cite> is used.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>path to YAML</p>
-<p>yaml_data (dict): loaded contents of <cite>yaml_path</cite></p>
-<dl class="simple">
-<dt>odor_lists (list-of-lists-of-dicts): each list this contains is a representation</dt><dd><p>of all the odors presented together on a given trial</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>yaml_path (Path)</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>yaml_path</strong> (<em>Path</em>) – path to YAML</p></li>
+<li><p><strong>yaml_data</strong> (<em>dict</em>) – loaded contents of <cite>yaml_path</cite></p></li>
+<li><p><strong>odor_lists</strong> (<em>list-of-lists-of-dicts</em>) – each list this contains is a representation
+of all the odors presented together on a given trial</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>

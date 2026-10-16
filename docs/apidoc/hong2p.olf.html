@@ -678,11 +678,11 @@ If passed, must also pass panel_order.</p></li>
 level(s) / column indicating which panel each odor belongs to. must have a
 matching key in <cite>panel2name_order</cite>. all data will be assumed to belong to
 this panel.</p></li>
-<li><p><strong>if_panel_missing</strong> – ‘warn’|’err’<a href="#id1"><span class="problematic" id="id2">|</span></a>None. what to do if a panel in data is not in
+<li><p><strong>if_panel_missing</strong> – ‘warn’, ‘err’, or None. what to do if a panel in data is not in
 <cite>panel2name_order</cite>. if not ‘err’, odors in those panels are sorted
 alphabetically, and those panels are sorted after those in <cite>panel_order</cite>.</p></li>
 <li><p><strong>axis</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – if None, detect which axes to sort (and may sort both). otherwise,
-expecting ‘columns’|’index’</p></li>
+expecting ‘columns’ or ‘index’</p></li>
 <li><p><strong>**kwargs</strong> – passed through to <a class="reference internal" href="#hong2p.olf.odor_index_sort_key" title="hong2p.olf.odor_index_sort_key"><code class="xref py py-func docutils literal notranslate"><span class="pre">odor_index_sort_key()</span></code></a>.</p></li>
 </ul>
 </dd>
@@ -690,8 +690,7 @@ expecting ‘columns’|’index’</p></li>
 <dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
 </dd>
 </dl>
-<p>Notes:
-Index and columns will be checked first, and any with odor levels will be sorted on
+<p>Index and columns will be checked first, and any with odor levels will be sorted on
 them (both may be sorted, e.g. for correlation matrices). If neither has odor
 levels, rows will be sorted on values of odor columns.</p>
 <p>Sorts by name, then concentration (by default). <cite>solvent_str</cite> is treated as less
@@ -706,15 +705,15 @@ precedence over ‘odor2’).</p>
 </div>
 <p>Names are sorted alphabetically by default, then within each name they are sorted by
 concentration. Pass <cite>sort_names=False</cite> to only sort on concentration, or
-<cite>names_first=False</cite> to sort on concentrations first.
-&gt;&gt;&gt; sort_odors(df)</p>
-<blockquote>
-<div><p>delta_f</p>
-</div></blockquote>
-<p>odor1  odor2
-A &#64; -3 solvent      0.9
-A &#64; -2 solvent      1.2
-B &#64; -2 solvent      1.1</p>
+<cite>names_first=False</cite> to sort on concentrations first.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+<span class="go">                delta_f</span>
+<span class="go">odor1  odor2</span>
+<span class="go">A @ -3 solvent      0.9</span>
+<span class="go">A @ -2 solvent      1.2</span>
+<span class="go">B @ -2 solvent      1.1</span>
+</pre></div>
+</div>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">name_order</span><span class="o">=</span><span class="p">[</span><span class="s1">'B'</span><span class="p">,</span><span class="s1">'A'</span><span class="p">])</span>
 <span class="go">                delta_f</span>
 <span class="go">odor1  odor2</span>
@@ -724,44 +723,38 @@ B &#64; -2 solvent      1.1</p>
 </pre></div>
 </div>
 <p>‘odor2’ is only used to break ties in ‘odor1’, and <cite>solvent_str</cite> sorts first in each
-level.
-&gt;&gt;&gt; df = pd.DataFrame({
-…     ‘odor1’: [‘A &#64; -2’, ‘solvent’, ‘A &#64; -2’, ‘B &#64; -3’],
-…     ‘odor2’: [‘B &#64; -3’, ‘solvent’, ‘solvent’, ‘solvent’],
-…     ‘delta_f’: [1.0, 0.1, 1.2, 0.9]
-… }).set_index([‘odor1’, ‘odor2’])
-&gt;&gt;&gt; sort_odors(df)</p>
-<blockquote>
-<div><p>delta_f</p>
-</div></blockquote>
-<p>odor1   odor2
-solvent solvent      0.1
-A &#64; -2  solvent      1.2</p>
-<blockquote>
-<div><p>B &#64; -3       1.0</p>
-</div></blockquote>
-<p>B &#64; -3  solvent      0.9</p>
-<p>With a ‘panel’ level, panels can be sorted, and odors sorted within each.
-&gt;&gt;&gt; df = pd.DataFrame({
-…     ‘panel’: [‘p1’, ‘p2’, ‘p2’, ‘p1’],
-…     ‘odor1’: [‘A &#64; -2’, ‘C &#64; -2’, ‘D &#64; -2’, ‘B &#64; -3’],
-…     ‘delta_f’: [1.0, 0.1, 1.2, 0.9]
-… }).set_index([‘panel’, ‘odor1’])
-&gt;&gt;&gt; sort_odors(df, panel_order=[‘p2’, ‘p1’],
-…     panel2name_order={‘p1’: [‘B’, ‘A’], ‘p2’: [‘D’, ‘C’]}
-… )</p>
-<blockquote>
-<div><p>delta_f</p>
-</div></blockquote>
-<p>panel odor1
-p2    D &#64; -2      1.2</p>
-<blockquote>
-<div><p>C &#64; -2      0.1</p>
-</div></blockquote>
-<dl class="simple">
-<dt>p1    B &#64; -3      0.9</dt><dd><p>A &#64; -2      1.0</p>
-</dd>
-</dl>
+level.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s1">'odor1'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'A @ -2'</span><span class="p">,</span> <span class="s1">'solvent'</span><span class="p">,</span> <span class="s1">'A @ -2'</span><span class="p">,</span> <span class="s1">'B @ -3'</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s1">'odor2'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'B @ -3'</span><span class="p">,</span> <span class="s1">'solvent'</span><span class="p">,</span> <span class="s1">'solvent'</span><span class="p">,</span> <span class="s1">'solvent'</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s1">'delta_f'</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">})</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s1">'odor1'</span><span class="p">,</span> <span class="s1">'odor2'</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+<span class="go">                 delta_f</span>
+<span class="go">odor1   odor2</span>
+<span class="go">solvent solvent      0.1</span>
+<span class="go">A @ -2  solvent      1.2</span>
+<span class="go">        B @ -3       1.0</span>
+<span class="go">B @ -3  solvent      0.9</span>
+</pre></div>
+</div>
+<p>With a ‘panel’ level, panels can be sorted, and odors sorted within each.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s1">'panel'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'p1'</span><span class="p">,</span> <span class="s1">'p2'</span><span class="p">,</span> <span class="s1">'p2'</span><span class="p">,</span> <span class="s1">'p1'</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s1">'odor1'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'A @ -2'</span><span class="p">,</span> <span class="s1">'C @ -2'</span><span class="p">,</span> <span class="s1">'D @ -2'</span><span class="p">,</span> <span class="s1">'B @ -3'</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s1">'delta_f'</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">})</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s1">'panel'</span><span class="p">,</span> <span class="s1">'odor1'</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">panel_order</span><span class="o">=</span><span class="p">[</span><span class="s1">'p2'</span><span class="p">,</span> <span class="s1">'p1'</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">panel2name_order</span><span class="o">=</span><span class="p">{</span><span class="s1">'p1'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'B'</span><span class="p">,</span> <span class="s1">'A'</span><span class="p">],</span> <span class="s1">'p2'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'D'</span><span class="p">,</span> <span class="s1">'C'</span><span class="p">]}</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="go">              delta_f</span>
+<span class="go">panel odor1</span>
+<span class="go">p2    D @ -2      1.2</span>
+<span class="go">      C @ -2      0.1</span>
+<span class="go">p1    B @ -3      0.9</span>
+<span class="go">      A @ -2      1.0</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="py function">

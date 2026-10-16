@@ -811,16 +811,15 @@
 <span class="sd">            matching key in `panel2name_order`. all data will be assumed to belong to</span>
 <span class="sd">            this panel.</span>
 
-<span class="sd">        if_panel_missing: 'warn'|'err'|None. what to do if a panel in data is not in</span>
+<span class="sd">        if_panel_missing: 'warn', 'err', or None. what to do if a panel in data is not in</span>
 <span class="sd">            `panel2name_order`. if not 'err', odors in those panels are sorted</span>
 <span class="sd">            alphabetically, and those panels are sorted after those in `panel_order`.</span>
 
 <span class="sd">        axis: if None, detect which axes to sort (and may sort both). otherwise,</span>
-<span class="sd">            expecting 'columns'|'index'</span>
+<span class="sd">            expecting 'columns' or 'index'</span>
 
 <span class="sd">        **kwargs: passed through to :func:`odor_index_sort_key`.</span>
 
-<span class="sd">    Notes:</span>
 <span class="sd">    Index and columns will be checked first, and any with odor levels will be sorted on</span>
 <span class="sd">    them (both may be sorted, e.g. for correlation matrices). If neither has odor</span>
 <span class="sd">    levels, rows will be sorted on values of odor columns.</span>
@@ -838,6 +837,7 @@
 <span class="sd">    Names are sorted alphabetically by default, then within each name they are sorted by</span>
 <span class="sd">    concentration. Pass `sort_names=False` to only sort on concentration, or</span>
 <span class="sd">    `names_first=False` to sort on concentrations first.</span>
+
 <span class="sd">    &gt;&gt;&gt; sort_odors(df)</span>
 <span class="sd">                    delta_f</span>
 <span class="sd">    odor1  odor2</span>
@@ -854,6 +854,7 @@
 
 <span class="sd">    'odor2' is only used to break ties in 'odor1', and `solvent_str` sorts first in each</span>
 <span class="sd">    level.</span>
+
 <span class="sd">    &gt;&gt;&gt; df = pd.DataFrame({</span>
 <span class="sd">    ...     'odor1': ['A @ -2', 'solvent', 'A @ -2', 'B @ -3'],</span>
 <span class="sd">    ...     'odor2': ['B @ -3', 'solvent', 'solvent', 'solvent'],</span>
@@ -868,6 +869,7 @@
 <span class="sd">    B @ -3  solvent      0.9</span>
 
 <span class="sd">    With a 'panel' level, panels can be sorted, and odors sorted within each.</span>
+
 <span class="sd">    &gt;&gt;&gt; df = pd.DataFrame({</span>
 <span class="sd">    ...     'panel': ['p1', 'p2', 'p2', 'p1'],</span>
 <span class="sd">    ...     'odor1': ['A @ -2', 'C @ -2', 'D @ -2', 'B @ -3'],</span>

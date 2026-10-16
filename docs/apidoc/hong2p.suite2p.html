@@ -275,7 +275,7 @@ run), LabelsNotModifiedError, or LabelsNotSelectiveError.</p>
 <dd><p>Returns suite2p ops dict.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ops_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></span>) – if path does not end with ‘<a href="#id1"><span class="problematic" id="id2">*</span></a>.npy’, assumed to be a directory
+<dd class="field-odd"><p><strong>ops_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></span>) – if path does not end with ‘.npy’, assumed to be a directory
 containing a file named ‘ops.npy’</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -303,21 +303,17 @@ above criteria.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>DataFrame w/ ROI numbers and extracted signals
-stat_dict: dict of ROI num -&gt; suite2ps “stat” ROI data
-ops: suite2p options
-merges: dict of ROI nums of ROIs created via merging pointing to a list of the</p>
-<blockquote>
-<div><p>ROI nums merged to create them. can be used for implementing your own
-merging strategies.</p>
-</div></blockquote>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>traces</p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
+<li><p><strong>traces</strong> – DataFrame w/ ROI numbers and extracted signals</p></li>
+<li><p><strong>stat_dict</strong> – dict of ROI num -&gt; suite2ps “stat” ROI data</p></li>
+<li><p><strong>ops</strong> – suite2p options</p></li>
+<li><p><strong>merges</strong> – dict of ROI nums of ROIs created via merging pointing to a list of the
+ROI nums merged to create them. can be used for implementing your own
+merging strategies.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
 <li><p><strong>IOError</strong> – if suite2p outputs did not exist</p></li>
 <li><p><a class="reference internal" href="#hong2p.suite2p.LabelsNotModifiedError" title="hong2p.suite2p.LabelsNotModifiedError"><strong>LabelsNotModifiedError</strong></a> – if <cite>err and good_only</cite> and the “cell / not cell” labels
     have not been modified.</p></li>
@@ -428,15 +424,11 @@ ROI (max value picked) for each merge output. defaults to range
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>input <cite>traces</cite>, w/ non-best merge input ROIs dropped</p>
-<dl class="simple">
-<dt>rois: DataArray of ROIs (from <cite>suite2p_stat2rois</cite>), w/ the same ROIs dropped,</dt><dd><p>and <cite>roi</cite> coordinate set to suite2p ROI nums</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>traces</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>traces</strong> – input <cite>traces</cite>, w/ non-best merge input ROIs dropped</p></li>
+<li><p><strong>rois</strong> – DataArray of ROIs (from <cite>suite2p_stat2rois</cite>), w/ the same ROIs dropped,
+and <cite>roi</cite> coordinate set to suite2p ROI nums</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>

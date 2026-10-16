@@ -1112,7 +1112,8 @@
 <span class="sd">    Each output is of the form:</span>
 <span class="sd">    ((date, fly_num), (thorimage_dir&lt;i&gt;, thorsync_dir&lt;i&gt;))</span>
 
-<span class="sd">    Example:</span>
+<span class="sd">    Example::</span>
+
 <span class="sd">        pairs = date_fly_list2paired_thor_dirs([('2021-03-07', 1), ('2021-03-08', 2)])</span>
 <span class="sd">        for (date, fly_num), (thorimage_dir, thorsync_dir) in pairs:</span>
 <span class="sd">            movie = thor.read_movie(thorimage_dir)</span>
@@ -1190,7 +1191,8 @@
 <span class="sd">    Each output is of the form:</span>
 <span class="sd">    ((date, fly_num), (thorimage_dir&lt;i&gt;, thorsync_dir&lt;i&gt;))</span>
 
-<span class="sd">    Example:</span>
+<span class="sd">    Example::</span>
+
 <span class="sd">        for (date, fly_num), (thorimage_dir, thorsync_dir) in paired_thor_dirs(</span>
 <span class="sd">            matching_substrs=['diag'], start_date='2021-03-07'):</span>
 
@@ -2355,15 +2357,15 @@
 <span class="sd">    Order is from `odor_set2order`, with odor set determined via `odorset_name`.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">    df (pd.DataFrame): should have a 'original_name1' column, with names of</span>
-<span class="sd">        odors from complex mixture experiments we have pre-defined odor orders</span>
-<span class="sd">        for.</span>
+<span class="sd">        df (pd.DataFrame): should have a 'original_name1' column, with names of</span>
+<span class="sd">            odors from complex mixture experiments we have pre-defined odor orders</span>
+<span class="sd">            for.</span>
 
-<span class="sd">    observed (bool): (optional, default=True) If True, only return odor names</span>
-<span class="sd">        in `df`.</span>
+<span class="sd">        observed (bool): (optional, default=True) If True, only return odor names</span>
+<span class="sd">            in `df`.</span>
 
-<span class="sd">    return_name1 (bool): (optional, default=False) If True, corresponding</span>
-<span class="sd">        values in 'name1' will be returned for each value in 'original_name1'.</span>
+<span class="sd">        return_name1 (bool): (optional, default=False) If True, corresponding</span>
+<span class="sd">            values in 'name1' will be returned for each value in 'original_name1'.</span>
 <span class="sd">    """</span>
     <span class="c1"># TODO might need to use name1 if original_name1 not there...</span>
     <span class="c1"># (for gui case)</span>
@@ -4227,27 +4229,26 @@
 <span class="sd">    `np.convolve(..., mode='same')`, so output is same length as input, and edges are</span>
 <span class="sd">    effectively zero-padded).</span>
 
-<span class="sd">    input:</span>
+<span class="sd">    Args:</span>
 <span class="sd">        x: the input signal</span>
+
 <span class="sd">        window_len: the dimension of the smoothing window; should be an odd</span>
 <span class="sd">            integer</span>
+
 <span class="sd">        window: the type of window from 'flat', 'hanning', 'hamming',</span>
 <span class="sd">            'bartlett', 'blackman' flat window will produce a moving average</span>
 <span class="sd">            smoothing.</span>
 
-<span class="sd">    output:</span>
-<span class="sd">        the smoothed signal</span>
+<span class="sd">    Returns the smoothed signal.</span>
 
-<span class="sd">    example:</span>
+<span class="sd">    Example::</span>
 
-<span class="sd">    t=linspace(-2,2,0.1)</span>
-<span class="sd">    x=sin(t)+randn(len(t))*0.1</span>
-<span class="sd">    y=smooth_1d(x)</span>
+<span class="sd">        t = np.linspace(-2, 2, 50)</span>
+<span class="sd">        x = np.sin(t) + np.random.randn(len(t)) * 0.1</span>
+<span class="sd">        y = smooth_1d(x)</span>
 
-<span class="sd">    see also:</span>
-
-<span class="sd">    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve</span>
-<span class="sd">    scipy.signal.lfilter</span>
+<span class="sd">    See also: numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman,</span>
+<span class="sd">    numpy.convolve, scipy.signal.lfilter</span>
 
 <span class="sd">    TODO: the window parameter could be the window itself if an array instead of</span>
 <span class="sd">    a string</span>
@@ -4439,6 +4440,7 @@
 <span class="w">    </span><span class="sd">"""Returns `str` representing 2-component odor mixture.</span>
 
 <span class="sd">    Input can be any of:</span>
+
 <span class="sd">    - 2 `str` names</span>
 <span class="sd">    - 2 names and concs (n1, n2, c1, c2)</span>
 <span class="sd">    - a pandas.Series / dict with keys `name1`, `name2`, and (optionally)</span>
@@ -5373,7 +5375,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">latest_trace_pickles</span><span class="p">():</span>
 <span class="w">    </span><span class="sd">"""Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.</span>
 
-<span class="sd">    Searches '*.p' files under `&lt;analysis_output_root&gt;/trace_pickles` (as written by</span>
+<span class="sd">    Searches `*.p` files under `&lt;analysis_output_root&gt;/trace_pickles` (as written by</span>
 <span class="sd">    `db.load_recording`), which should be named like</span>
 <span class="sd">    '&lt;YYYYMMDD&gt;_&lt;HHMM&gt;_&lt;YYYY-MM-DD&gt;_&lt;fly_num&gt;_&lt;thorimage_id&gt;.p'.</span>
 

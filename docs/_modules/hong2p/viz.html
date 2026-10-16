@@ -2997,23 +2997,20 @@
 
 <span class="sd">        round_tick_towards0_under_rtol: if vmin * increment &lt; nearest increment, by this</span>
 <span class="sd">            fraction of increment size, set the min tick to that nearest (closer to 0)</span>
-<span class="sd">            increment.</span>
+<span class="sd">            increment. For example::</span>
 
-<span class="sd">        For example:</span>
-<span class="sd">        ```</span>
-<span class="sd">        ipdb&gt; vmin</span>
-<span class="sd">        -0.35374016010182685</span>
-<span class="sd">        ipdb&gt; increment</span>
-<span class="sd">        0.05</span>
-<span class="sd">        ipdb&gt; vmin / increment</span>
-<span class="sd">        -7.074803202036537</span>
-<span class="sd">        ipdb&gt; np.round(vmin / increment)</span>
-<span class="sd">        -7.0</span>
-<span class="sd">        ipdb&gt; vmin / increment - np.round(vmin / increment)</span>
-<span class="sd">        -0.07480320203653701</span>
-<span class="sd">        ipdb&gt; np.isclose(vmin / increment, np.round(vmin / increment), atol=0.1)</span>
-<span class="sd">        True</span>
-<span class="sd">        ```</span>
+<span class="sd">                ipdb&gt; vmin</span>
+<span class="sd">                -0.35374016010182685</span>
+<span class="sd">                ipdb&gt; increment</span>
+<span class="sd">                0.05</span>
+<span class="sd">                ipdb&gt; vmin / increment</span>
+<span class="sd">                -7.074803202036537</span>
+<span class="sd">                ipdb&gt; np.round(vmin / increment)</span>
+<span class="sd">                -7.0</span>
+<span class="sd">                ipdb&gt; vmin / increment - np.round(vmin / increment)</span>
+<span class="sd">                -0.07480320203653701</span>
+<span class="sd">                ipdb&gt; np.isclose(vmin / increment, np.round(vmin / increment), atol=0.1)</span>
+<span class="sd">                True</span>
 <span class="sd">    """</span>
     <span class="k">assert</span> <span class="n">vmin</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'expected </span><span class="si">{</span><span class="n">vmin</span><span class="si">=}</span><span class="s1"> to be negative'</span>
     <span class="k">assert</span> <span class="n">increment</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'expected </span><span class="si">{</span><span class="n">increment</span><span class="si">=}</span><span class="s1"> to be positive'</span>
@@ -5116,16 +5113,22 @@
 <span class="sd">    where `df` is as returned by `db.load_recording`, and `cells` are the IDs of cells</span>
 <span class="sd">    to plot (from 'cell' column of `df`).</span>
 
-<span class="sd">    n (int): (default=20) Number of cells to plot traces for if cell_ids not</span>
-<span class="sd">        passed as second positional argument.</span>
-<span class="sd">    random (bool): (default=False) Whether the `n` cell ids should be selected</span>
-<span class="sd">        randomly. If False, the first `n` cells are used.</span>
-<span class="sd">    order_by (str): 'odors' or 'presentation_order'</span>
-<span class="sd">    scale_within (str): 'none', 'cell', or 'trial'</span>
-<span class="sd">    gridspec (None or matplotlib.gridspec.*): region of a parent figure</span>
-<span class="sd">        to draw this plot on.</span>
-<span class="sd">    linewidth (float): 0.25 seemed ok on CNMF data, but too small w/ clean</span>
-<span class="sd">    traces.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        n (int): (default=20) Number of cells to plot traces for if cell_ids not</span>
+<span class="sd">            passed as second positional argument.</span>
+
+<span class="sd">        random (bool): (default=False) Whether the `n` cell ids should be selected</span>
+<span class="sd">            randomly. If False, the first `n` cells are used.</span>
+
+<span class="sd">        order_by (str): 'odors' or 'presentation_order'</span>
+
+<span class="sd">        scale_within (str): 'none', 'cell', or 'trial'</span>
+
+<span class="sd">        gridspec (None or matplotlib.gridspec.*): region of a parent figure</span>
+<span class="sd">            to draw this plot on.</span>
+
+<span class="sd">        linewidth (float): 0.25 seemed ok on CNMF data, but too small w/ clean</span>
+<span class="sd">            traces.</span>
 <span class="sd">    """</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">tifffile</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
@@ -5804,19 +5807,12 @@
 <span class="sd">    Table is rendered (via `imgkit`) to 'natural_odors_pair_n.png' in current directory.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">    df (pd.DataFrame): DataFrame with columns:</span>
-<span class="sd">        - prep_date</span>
-<span class="sd">        - fly_num</span>
-<span class="sd">        - recording_from</span>
-<span class="sd">        - name1</span>
-<span class="sd">        - name2</span>
-<span class="sd">        Data already collected w/ odor pairs.</span>
+<span class="sd">        df (pd.DataFrame): data already collected w/ odor pairs. must have columns</span>
+<span class="sd">            'prep_date', 'fly_num', 'recording_from', 'name1', and 'name2'.</span>
 
-<span class="sd">    *args: optionally, odor_panel (pd.DataFrame), with columns:</span>
-<span class="sd">        - odor_1</span>
-<span class="sd">        - odor_2</span>
-<span class="sd">        - reason (maybe make this optional?)</span>
-<span class="sd">        The odor pairs experiments are supposed to collect data for.</span>
+<span class="sd">        *args: optionally, `odor_panel` (pd.DataFrame), with the odor pairs experiments</span>
+<span class="sd">            are supposed to collect data for. must have columns 'odor_1', 'odor_2', and</span>
+<span class="sd">            'reason' (maybe make this optional?).</span>
 <span class="sd">    """</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">imgkit</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">seaborn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sns</span>

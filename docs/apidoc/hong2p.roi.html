@@ -197,23 +197,17 @@ print debugging info for (see output of <cite>roi_jumps</cite>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>list of arrays matching ROIs in one timepoint to ROIs in the</dt><dd><p>next.</p>
-</dd>
-<dt>left_unmatched: list of arrays with ROI labels at time t,</dt><dd><p>without a match at time (t + 1)</p>
-</dd>
-</dl>
-<p>right_unmatched: same as left_unmatched, but for (t + 1) with respect to t.</p>
-<dl class="simple">
-<dt>total_costs: array of sums of costs from matching (with unmatched ROIs counted</dt><dd><p>as <cite>max_cost</cite>, and normalized by min number of ROIs in the pair).</p>
-</dd>
-<dt>fig: matplotlib figure handle to the figure with all ROIs on it,</dt><dd><p>for modification downstream. None if <cite>show=False</cite>.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>lr_matches</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>lr_matches</strong> – list of arrays matching ROIs in one timepoint to ROIs in the
+next.</p></li>
+<li><p><strong>left_unmatched</strong> – list of arrays with ROI labels at time t,
+without a match at time (t + 1)</p></li>
+<li><p><strong>right_unmatched</strong> – same as left_unmatched, but for (t + 1) with respect to t.</p></li>
+<li><p><strong>total_costs</strong> – array of sums of costs from matching (with unmatched ROIs counted
+as <cite>max_cost</cite>, and normalized by min number of ROIs in the pair).</p></li>
+<li><p><strong>fig</strong> – matplotlib figure handle to the figure with all ROIs on it,
+for modification downstream. None if <cite>show=False</cite>.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -233,15 +227,11 @@ print debugging info for (see output of <cite>roi_jumps</cite>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>cropped <cite>matrix</cite></p>
-<dl class="simple">
-<dt>bounds: ((x_min, x_max), (y_min, y_max)), inclusive bounds of <cite>cropped</cite> in</dt><dd><p><cite>matrix</cite>, where x is the first dimension</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>cropped</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>cropped</strong> – cropped <cite>matrix</cite></p></li>
+<li><p><strong>bounds</strong> – ((x_min, x_max), (y_min, y_max)), inclusive bounds of <cite>cropped</cite> in
+<cite>matrix</cite>, where x is the first dimension</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -376,13 +366,13 @@ accepted matches on (only shown if <cite>debug=True</cite> and <cite>_show_fit=T
 <li><p><strong>draw_bboxes</strong> (<em>bool</em>) – whether to draw template bounding boxes on <cite>draw_on</cite></p></li>
 <li><p><strong>draw_circles</strong> (<em>bool</em>) – whether to draw ROI circles on <cite>draw_on</cite></p></li>
 <li><p><strong>draw_nums</strong> (<em>bool</em>) – whether to draw ROI numbers on <cite>draw_on</cite></p></li>
-<li><p><strong>multiscale_strategy</strong> (<em>str</em>) – <p>how to order matches across scales.
-‘one_order’: all matches sorted together by (weighted) match value.
-‘fixed_scale_order’: all matches at each scale before the next, in order of</p>
-<blockquote>
-<div><p><cite>scale_order</cite>.</p>
-</div></blockquote>
-<p>’random’: next scale randomly sampled, with probabilities <cite>radii_px_ps</cite>.</p>
+<li><p><strong>multiscale_strategy</strong> (<em>str</em>) – <p>how to order matches across scales:</p>
+<ul>
+<li><p>’one_order’: all matches sorted together by (weighted) match value.</p></li>
+<li><p>’fixed_scale_order’: all matches at each scale before the next, in order
+of <cite>scale_order</cite>.</p></li>
+<li><p>’random’: next scale randomly sampled, with probabilities <cite>radii_px_ps</cite>.</p></li>
+</ul>
 </p></li>
 <li><p><strong>match_value_weights</strong> (<em>iterable</em><em> of </em><em>float</em>) – for ‘one_order’ strategy, factors to
 multiply match values of each scale by, before sorting</p></li>
@@ -394,15 +384,11 @@ indices</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>array of shape (n_rois, 2), with centers of ROIs (in coordinates of</dt><dd><p>original image)</p>
-</dd>
-</dl>
-<p>radii: array of shape (n_rois,), with radius (in pixels) of each ROI</p>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>centers</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>centers</strong> – array of shape (n_rois, 2), with centers of ROIs (in coordinates of
+original image)</p></li>
+<li><p><strong>radii</strong> – array of shape (n_rois,), with radius (in pixels) of each ROI</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -798,9 +784,10 @@ ROIs</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>integer indices (into input <cite>rois</cite>) of ROIs kept</p>
-<p>rois: subset of input, with ‘roi’ coordinate replaced by ‘roi_name’</p>
-</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>roi_indices</strong> – integer indices (into input <cite>rois</cite>) of ROIs kept</p></li>
+<li><p><strong>rois</strong> – subset of input, with ‘roi’ coordinate replaced by ‘roi_name’</p></li>
+</ul>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataArray</span></code></span></p>
@@ -825,12 +812,10 @@ between cell and template edge) keys, as from <cite>load_template_data</cite></p
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>resized template (copy of input if size unchanged)</p>
-<p>scaled_template_cell_diam_px: diameter of cell in scaled template (in pixels)</p>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>scaled_template</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>scaled_template</strong> – resized template (copy of input if size unchanged)</p></li>
+<li><p><strong>scaled_template_cell_diam_px</strong> – diameter of cell in scaled template (in pixels)</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -849,18 +834,20 @@ between cell and template edge) keys, as from <cite>load_template_data</cite></p
 <dl class="py function">
 <dt class="sig sig-object py" id="hong2p.roi.stable_rois">
 <span class="sig-prename descclassname"><span class="pre">hong2p.roi.</span></span><span class="sig-name descname"><span class="pre">stable_rois</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lr_matches</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/roi.html#stable_rois"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.roi.stable_rois" title="Link to this definition"></a></dt>
-<dd><p>Takes a list of n_cells x 2 matrices, with each row taking an integer ROI
+<dd><p>Returns ROIs matched across all timepoints, and IDs lost at each timepoint.</p>
+<p>Takes a list of n_cells x 2 matrices, with each row taking an integer ROI
 label from one set of labels to the other.</p>
 <p>Input is as first output of correspond_rois.</p>
-<p>Returns:
-stable_cells: a n_stable_cells x (len(lr_matches) + 1) matrix, where rows</p>
-<blockquote>
-<div><p>represent different labels for the same real cells. Columns have the
-set of stable cells IDs, labelled as the inputs are.</p>
-</div></blockquote>
-<dl class="simple">
-<dt>new_lost: a (len(lr_matches) - 1) length list of IDs lost when matching</dt><dd><p>lr_matches[i] to lr_matches[i + 1]. only considers IDs that had
-been stable across all previous pairs of matchings.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>stable_cells</strong> – a n_stable_cells x (len(lr_matches) + 1) matrix, where rows
+represent different labels for the same real cells. Columns have the
+set of stable cells IDs, labelled as the inputs are.</p></li>
+<li><p><strong>new_lost</strong> – a (len(lr_matches) - 1) length list of IDs lost when matching
+lr_matches[i] to lr_matches[i + 1]. only considers IDs that had
+been stable across all previous pairs of matchings.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>

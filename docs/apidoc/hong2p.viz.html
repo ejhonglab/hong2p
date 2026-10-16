@@ -616,16 +616,15 @@ from colors in dict palettes, though this isn’t checked)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>frame of same shape as <cite>df</cite>, with all values RGB 3-tuple colors.</p>
-<dl class="simple">
-<dt>for_legends: list of dicts, each with keyword arguments for a call to</dt><dd><p><cite>fig.legend</cite>. Can be passed to <cite>add_legends_and_colorbars</cite> argument of the
-same name.</p>
-</dd>
-<dt>for_cbars: list of dicts, each with keyword arguments for a call to</dt><dd><p><cite>fig.colorbar</cite>. Can be passed to <cite>add_legends_and_colorbars</cite> argument of the
-same name.</p>
-</dd>
-</dl>
-</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>color_df</strong> – frame of same shape as <cite>df</cite>, with all values RGB 3-tuple colors.</p></li>
+<li><p><strong>for_legends</strong> – list of dicts, each with keyword arguments for a call to
+<cite>fig.legend</cite>. Can be passed to <cite>add_legends_and_colorbars</cite> argument of the
+same name.</p></li>
+<li><p><strong>for_cbars</strong> – list of dicts, each with keyword arguments for a call to
+<cite>fig.colorbar</cite>. Can be passed to <cite>add_legends_and_colorbars</cite> argument of the
+same name.</p></li>
+</ul>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>]</span></p>
@@ -766,27 +765,27 @@ if within <cite>round_tick_towards0_under_rtol</cite>).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>vmin</strong> (<em>ipdb&gt;</em>) – minimum value of colorbar (and of data, if colormap is showing the full
+<li><p><strong>vmin</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – minimum value of colorbar (and of data, if colormap is showing the full
 range of the data). should be negative.</p></li>
-<li><p><strong>increment</strong> (<em>ipdb&gt; vmin /</em>) – minimum tick will be a multiple of this</p></li>
-<li><p><strong>round_tick_towards0_under_rtol</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – if vmin * increment &lt; nearest increment, by this
+<li><p><strong>increment</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – minimum tick will be a multiple of this</p></li>
+<li><p><strong>round_tick_towards0_under_rtol</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – <p>if vmin * increment &lt; nearest increment, by this
 fraction of increment size, set the min tick to that nearest (closer to 0)
-increment.</p></li>
-<li><p><strong>example</strong> (<em>For</em>)</p></li>
-<li><p><strong>```</strong> – </p></li>
-<li><p><strong>vmin</strong></p></li>
-<li><p><strong>-0.35374016010182685</strong></p></li>
-<li><p><strong>increment</strong></p></li>
-<li><p><strong>0.05</strong></p></li>
-<li><p><strong>increment</strong></p></li>
-<li><p><strong>-7.074803202036537</strong></p></li>
-<li><p><strong>np.round</strong> (<em>ipdb&gt; vmin / increment -</em>)</p></li>
-<li><p><strong>-7.0</strong></p></li>
-<li><p><strong>np.round</strong></p></li>
-<li><p><strong>-0.07480320203653701</strong></p></li>
-<li><p><strong>np.isclose</strong> (<em>ipdb&gt;</em>)</p></li>
-<li><p><strong>True</strong></p></li>
-<li><p><strong>```</strong> – </p></li>
+increment. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ipdb</span><span class="o">&gt;</span> <span class="n">vmin</span>
+<span class="o">-</span><span class="mf">0.35374016010182685</span>
+<span class="n">ipdb</span><span class="o">&gt;</span> <span class="n">increment</span>
+<span class="mf">0.05</span>
+<span class="n">ipdb</span><span class="o">&gt;</span> <span class="n">vmin</span> <span class="o">/</span> <span class="n">increment</span>
+<span class="o">-</span><span class="mf">7.074803202036537</span>
+<span class="n">ipdb</span><span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">vmin</span> <span class="o">/</span> <span class="n">increment</span><span class="p">)</span>
+<span class="o">-</span><span class="mf">7.0</span>
+<span class="n">ipdb</span><span class="o">&gt;</span> <span class="n">vmin</span> <span class="o">/</span> <span class="n">increment</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">vmin</span> <span class="o">/</span> <span class="n">increment</span><span class="p">)</span>
+<span class="o">-</span><span class="mf">0.07480320203653701</span>
+<span class="n">ipdb</span><span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">vmin</span> <span class="o">/</span> <span class="n">increment</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">vmin</span> <span class="o">/</span> <span class="n">increment</span><span class="p">),</span> <span class="n">atol</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+<span class="kc">True</span>
+</pre></div>
+</div>
+</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -869,25 +868,15 @@ otherwise, sorts on ‘order’ level (presentation order).</p></li>
 <span class="sig-prename descclassname"><span class="pre">hong2p.viz.</span></span><span class="sig-name descname"><span class="pre">plot_pair_n</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/viz.html#plot_pair_n"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.viz.plot_pair_n" title="Link to this definition"></a></dt>
 <dd><p>Saves table of odor1 X odor2 w/ counts of flies as entries.</p>
 <p>Table is rendered (via <cite>imgkit</cite>) to ‘natural_odors_pair_n.png’ in current directory.</p>
-<p>Args:
-df (pd.DataFrame): DataFrame with columns:</p>
-<blockquote>
-<div><ul class="simple">
-<li><p>prep_date</p></li>
-<li><p>fly_num</p></li>
-<li><p>recording_from</p></li>
-<li><p>name1</p></li>
-<li><p>name2</p></li>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pd.DataFrame</em>) – data already collected w/ odor pairs. must have columns
+‘prep_date’, ‘fly_num’, ‘recording_from’, ‘name1’, and ‘name2’.</p></li>
+<li><p><strong>*args</strong> – optionally, <cite>odor_panel</cite> (pd.DataFrame), with the odor pairs experiments
+are supposed to collect data for. must have columns ‘odor_1’, ‘odor_2’, and
+‘reason’ (maybe make this optional?).</p></li>
 </ul>
-<p>Data already collected w/ odor pairs.</p>
-</div></blockquote>
-<dl>
-<dt><a href="#id9"><span class="problematic" id="id10">*</span></a>args: optionally, odor_panel (pd.DataFrame), with columns:</dt><dd><ul class="simple">
-<li><p>odor_1</p></li>
-<li><p>odor_2</p></li>
-<li><p>reason (maybe make this optional?)</p></li>
-</ul>
-<p>The odor pairs experiments are supposed to collect data for.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -970,20 +959,22 @@ RuntimeError for any ROIs (e.g. if ROI had multiple disconnected parts).</p>
 <p>Called as either <cite>plot_traces(df, **kwargs)</cite> or <cite>plot_traces(df, cells, **kwargs)</cite>,
 where <cite>df</cite> is as returned by <cite>db.load_recording</cite>, and <cite>cells</cite> are the IDs of cells
 to plot (from ‘cell’ column of <cite>df</cite>).</p>
-<dl class="simple">
-<dt>n (int): (default=20) Number of cells to plot traces for if cell_ids not</dt><dd><p>passed as second positional argument.</p>
-</dd>
-<dt>random (bool): (default=False) Whether the <cite>n</cite> cell ids should be selected</dt><dd><p>randomly. If False, the first <cite>n</cite> cells are used.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> (<em>int</em>) – (default=20) Number of cells to plot traces for if cell_ids not
+passed as second positional argument.</p></li>
+<li><p><strong>random</strong> (<em>bool</em>) – (default=False) Whether the <cite>n</cite> cell ids should be selected
+randomly. If False, the first <cite>n</cite> cells are used.</p></li>
+<li><p><strong>order_by</strong> (<em>str</em>) – ‘odors’ or ‘presentation_order’</p></li>
+<li><p><strong>scale_within</strong> (<em>str</em>) – ‘none’, ‘cell’, or ‘trial’</p></li>
+<li><p><strong>gridspec</strong> (<em>None</em><em> or </em><em>matplotlib.gridspec.*</em>) – region of a parent figure
+to draw this plot on.</p></li>
+<li><p><strong>linewidth</strong> (<em>float</em>) – 0.25 seemed ok on CNMF data, but too small w/ clean
+traces.</p></li>
+</ul>
 </dd>
 </dl>
-<p>order_by (str): ‘odors’ or ‘presentation_order’
-scale_within (str): ‘none’, ‘cell’, or ‘trial’
-gridspec (None or matplotlib.gridspec.*): region of a parent figure</p>
-<blockquote>
-<div><p>to draw this plot on.</p>
-</div></blockquote>
-<p>linewidth (float): 0.25 seemed ok on CNMF data, but too small w/ clean
-traces.</p>
 </dd></dl>
 
 <dl class="py function">
