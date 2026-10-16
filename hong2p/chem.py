@@ -118,16 +118,16 @@ DEFAULT_CHEMFIG_OPTS: str = (
 # \listfiles for debugging package versions
 # https://tex.stackexchange.com/questions/13304/which-package-version-am-i-using
 CHEMFIG_STANDALONE = \
-"""\documentclass[border={border}]{{standalone}}
-\\listfiles
-\\usepackage{{chemfig}}
+r"""\documentclass[border={border}]{{standalone}}
+\listfiles
+\usepackage{{chemfig}}
 
-\\usepackage{{mol2chemfig}}
+\usepackage{{mol2chemfig}}
 
 \setchemfig{{{chemfig_opts}}}
-\\renewcommand*\printatom[1]{{{atom_fontsize}\ensuremath{{\mathrm{{#1}}}}}}
+\renewcommand*\printatom[1]{{{atom_fontsize}\ensuremath{{\mathrm{{#1}}}}}}
 
-\\begin{{document}}
+\begin{{document}}
 ${chemfig_tex}$
 \end{{document}}
 """
