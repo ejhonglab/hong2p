@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import re
+import warnings
+
 import pytest
 import numpy as np
 import pandas as pd
@@ -72,16 +75,24 @@ def test_subset_same_in_all_dicts():
 def test_moved_to_pandas_deprecated():
     import hong2p.pandas
 
-    for name in util._moved_to_pandas:
-        with pytest.warns(FutureWarning, match=f'hong2p.pandas.{name}'):
-            fn = getattr(util, name)
+    # Only calling the aliases should warn, not accessing / importing them.
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
 
-        assert fn is getattr(hong2p.pandas, name)
+        for name in util._moved_to_pandas:
+            assert hasattr(util, name)
+            assert name in dir(util)
+            assert getattr(util, name).__wrapped__ is getattr(hong2p.pandas, name)
 
-    with pytest.warns(FutureWarning, match='hong2p.pandas.addlevel'):
-        from hong2p.util import addlevel
+        from hong2p.util import num_null
 
-    assert addlevel is hong2p.pandas.addlevel
+    df = pd.DataFrame({'a': [1.0, np.nan]})
+    match = re.escape('hong2p.pandas.num_null')
+    with pytest.warns(FutureWarning, match=match) as record:
+        assert num_null(df) == 1
+
+    # Checking stacklevel attributes warning to caller, rather than to util.py
+    assert len(record) == 1 and record[0].filename == __file__
 
     with pytest.raises(AttributeError):
         util.not_a_real_attribute

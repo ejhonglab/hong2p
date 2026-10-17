@@ -4,7 +4,9 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from hong2p.pandas import subset_index, frame_pdist, addlevel, diff_dataframes
+from hong2p.pandas import (subset_index, frame_pdist, addlevel, diff_dataframes,
+    expand_array_cols, melt_symmetric, invert_melt_symmetric
+)
 from hong2p.olf import solvent_str
 
 
@@ -125,6 +127,44 @@ def test_addlevel():
     # TODO add tests where values contains something of length equal to the
     # corresponding axis, rather than just a single unique value (+ one test w/ a mix of
     # each)
+
+
+def test_expand_array_cols():
+    df = pd.DataFrame({
+        'x': ['a', 'b', 'c'],
+        'trace': [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]],
+    })
+    # So index has no 0 label (as after filtering), which used to cause a KeyError
+    df = df.iloc[1:]
+
+    out = expand_array_cols(df)
+
+    assert list(out['x']) == ['b', 'b', 'c', 'c']
+    assert list(out['trace']) == [2.0, 3.0, 4.0, 5.0]
+    assert out['trace'].dtype == np.float64
+
+    # Input should not have had list elements converted to arrays
+    assert all(type(t) is list for t in df['trace'])
+
+
+@pytest.mark.parametrize('suffixes', [('_a', '_b'), ('', '_b')])
+def test_invert_melt_symmetric(suffixes):
+    odors = pd.Index(['a', 'b', 'c'], name='odor')
+    df = pd.DataFrame([
+            [1.0, 0.5, 0.2],
+            [0.5, 1.0, 0.3],
+            [0.2, 0.3, 1.0],
+        ], index=odors, columns=odors
+    )
+    s0, s1 = suffixes
+
+    ser = melt_symmetric(df, suffixes=suffixes, keep_duplicate_values=True)
+    square = invert_melt_symmetric(ser, suffixes=suffixes)
+
+    # Levels ending in first suffix are unstacked into columns
+    assert square.columns.name == f'odor{s0}'
+    assert square.index.name == f'odor{s1}'
+    assert np.array_equal(square.values, df.values)
 
 
 diff_df = pd.DataFrame({

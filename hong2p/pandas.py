@@ -179,11 +179,16 @@ def expand_array_cols(df):
         raise ValueError('df did not appear to have any columns with all '
             'arraylike elements')
 
+    # Index is unnamed (checked above), so nothing lost by dropping it. Avoids label-based
+    # indexing below (e.g. in np.concatenate) failing if there is no 0 label, and also
+    # means converting array cols below won't modify the input.
+    df = df.reset_index(drop=True)
+
     orig_dtypes = df.dtypes.to_dict()
     for ac in array_cols:
         df[ac] = df[ac].apply(lambda x: np.array(x))
-        assert len(df[ac]) > 0 and len(df[ac][0]) > 0
-        orig_dtypes[ac] = df[ac][0][0].dtype
+        assert len(df[ac]) > 0 and len(df[ac].iloc[0]) > 0
+        orig_dtypes[ac] = df[ac].iloc[0][0].dtype
 
     non_array_cols = df.columns.difference(array_cols)
 
@@ -816,7 +821,8 @@ def invert_melt_symmetric(ser, suffixes=('_a', '_b')):
             continue
 
         if c.endswith(s0):
-            prefix = c[:-len(s0)]
+            # Not c[:-len(s0)], which is '' when s0 == ''
+            prefix = c[:len(c) - len(s0)]
             if (prefix + s1) in ser.index.names:
                 col_prefixes.append(prefix)
                 levels_to_drop.remove(prefix + s0)

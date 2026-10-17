@@ -48,8 +48,9 @@ from hong2p.olf import NO_ODOR
 # use them, to reduce the number of hard dependencies.
 
 
-# These were moved to `hong2p.pandas`, but are still accessible from here (with a
-# FutureWarning), via `__getattr__` below.
+# These were moved to `hong2p.pandas`, but are still accessible from here, as wrappers
+# that emit a FutureWarning when called. Warning on call (rather than on attribute
+# access, via module `__getattr__`) keeps `hasattr`/`dir`/unpickling from warning.
 _moved_to_pandas = (
     'num_null',
     'num_notnull',
@@ -77,19 +78,25 @@ _moved_to_pandas = (
     'suffix_index_names',
 )
 
-def __getattr__(name: str) -> Any:
-    """Returns deprecated `util.<name>` aliases for fns moved to `hong2p.pandas`.
-
-    Only called for names not otherwise defined in this module (see PEP 562).
+def _deprecated_pandas_alias(name: str):
+    """Returns wrapper of `hong2p.pandas.<name>` that warns (FutureWarning) when called.
     """
-    if name in _moved_to_pandas:
+    fn = getattr(hong_pd, name)
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
         warnings.warn(f'hong2p.util.{name} has moved to hong2p.pandas. change imports '
             f'to use hong2p.pandas.{name} instead (e.g. `from hong2p.pandas import '
             f'{name}`).', FutureWarning, stacklevel=2
         )
-        return getattr(hong_pd, name)
+        return fn(*args, **kwargs)
 
-    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    return wrapper
+
+for _name in _moved_to_pandas:
+    globals()[_name] = _deprecated_pandas_alias(_name)
+
+del _name
 
 
 # 1 to indicate computer is an acquisition computer, 0/unset otherwise.
