@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from scipy.cluster.vq import kmeans
 
 import ijroi
-from hong2p import util, thor, db, viz
+from hong2p import util, thor, viz
 from hong2p.roi import (crop_to_coord_bbox, contour2mask, autoroi_metadata_filename,
     get_circle_ijroi_input, fit_circle_rois, template_data_file, load_template_data,
     correspond_rois
@@ -221,9 +221,11 @@ def main():
         # against db contents into util + use in kc_mix_analysis
         print('Making template...')
 
-        conn = db.get_db_conn()
-        df = pd.read_sql_query('SELECT * FROM analysis_runs '
-            'WHERE ijroi_file_path IS NOT NULL', conn
+        # TODO restore by finding inputs (with ImageJ ROIs) some other way, or delete
+        # this branch (everything below depends on `df` from database query)
+        raise NotImplementedError('making a new template (rather than loading from '
+            f'{template_cache}) requires the postgres database, and hong2p.db has '
+            'been removed'
         )
         assert df.input_filename.notnull().all()
 

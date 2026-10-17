@@ -4915,7 +4915,8 @@ def plot_traces(*args, footprints=None, order_by='odors', scale_within='cell',
     """Plots traces for each (cell, trial), optionally with footprints.
 
     Called as either `plot_traces(df, **kwargs)` or `plot_traces(df, cells, **kwargs)`,
-    where `df` is as returned by `db.load_recording`, and `cells` are the IDs of cells
+    where `df` is as returned by since-removed `hong2p.db.load_recording`, and `cells`
+    are the IDs of cells
     to plot (from 'cell' column of `df`).
 
     Args:

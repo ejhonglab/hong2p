@@ -92,6 +92,12 @@ def addlevel(data: DataFrameOrSeries, names: Union[str, List[str]], values, *,
         names = [names]
         values = [values]
 
+    # (zip below would otherwise silently drop extra names/values)
+    elif len(names) != len(values):
+        raise ValueError(f'names and values must have same length. got {names=} and '
+            f'{values=}'
+        )
+
     for name, value in list(zip(names, values))[::-1]:
         data = pd.concat([data], names=[name], keys=[value], axis=axis)
 
@@ -159,7 +165,7 @@ def expand_array_cols(df):
     elements.
 
     Other columns have their values duplicated, to match the lengths of the
-    expanded array values.
+    expanded array values. Columns are in the same order as in `df`.
 
     Args:
     `df` (pd.DataFrame)
@@ -189,7 +195,8 @@ def expand_array_cols(df):
         df[ac] = df[ac].apply(lambda x: np.array(x))
         assert len(df[ac]) > 0 and len(df[ac].iloc[0]) > 0
 
-    non_array_cols = df.columns.difference(array_cols)
+    # (rather than df.columns.difference(...), which sorts)
+    non_array_cols = [c for c in df.columns if c not in array_cols]
 
     # TODO true vectorized way to do this?
     # is str.len (on either rows/columns) faster (+equiv)?
@@ -217,12 +224,10 @@ def expand_array_cols(df):
     data = np.concatenate((nac_data, ac_data), axis=1)
     assert data.shape[1] == df.shape[1]
 
-    new_cols = list(non_array_cols) + list(array_cols)
-    # TODO copy=False is fine here, right? measure the time difference?
-    out_df = pd.DataFrame(columns=new_cols, data=data).astype(orig_dtypes,
-        copy=False)
+    new_cols = non_array_cols + list(array_cols)
+    out_df = pd.DataFrame(columns=new_cols, data=data).astype(orig_dtypes)
 
-    return out_df
+    return out_df[df.columns]
 
 
 # TODO work with NaN in inputs? i don't want NaN != NaN being reported as a difference.
@@ -408,6 +413,36 @@ def pd_indices_equal(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     return True
 
 
+# TODO add flag to include bools too?
+# TODO rename is_floatlike or something? it is also checking shape for everything but
+# np.dtype input... is_scalar_floatlike?
+# TODO move to a more appropriate module? only here (rather than in util) so this module
+# does not need to import util (which imports this module)
+def is_scalar(x: Any) -> bool:
+    """Returns whether input is a float or int, or a numpy scalar float/int.
+
+    Also works with `np.dtype` input (e.g. from `df.values.dtype`).
+
+    Returns False for bools (including numpy scalar ones)
+    """
+    # TODO need to do anything separate for scalar xarray inputs? (e.g. .item(0)?)
+    # any other type conversion? test!
+    # NOTE: np.issubdtype doesn't accept tuple of types like isinstance does, but it
+    # does work with type(<np.[float|int]*>) and type(<int|float>)
+    if isinstance(x, np.dtype):
+        x_type = x
+    else:
+        x_type = type(x)
+
+    dtype_matches = [np.issubdtype(x_type, t) for t in (int, float)]
+    ret = any(dtype_matches)
+    if ret:
+        assert sum(dtype_matches) == 1, ('not expecting either int/float to be subdtype'
+            ' of other'
+        )
+    return ret
+
+
 # TODO add support for dtype mismatch (but where one can be cast to the other)?  maybe
 # also support for cols in diff orders? utility fns (maybe exposed behind verbose kwarg)
 # for printing differences between dtypes / etc? (use new dtypes_equal fn below for
@@ -438,9 +473,6 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
 
         **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)
     """
-    # not importing at module level, since util imports from this module
-    from hong2p.util import is_scalar
-
     a_scalar = is_scalar(a)
     b_scalar = is_scalar(b)
     # TODO or still want to consider equal if DataFrame/Series has one element with
@@ -462,8 +494,13 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     # Series don't have select_dtypes
     if isinstance(a, pd.DataFrame):
         a_obj = select_str_and_object_dtypes(a)
+        b_obj = select_str_and_object_dtypes(b)
+        # (e.g. if a column is numeric in one input and str in the other. column order
+        # is already known to match, from index check above)
+        if not a_obj.columns.equals(b_obj.columns):
+            return False
+
         if len(a_obj.columns) > 0:
-            b_obj = select_str_and_object_dtypes(b)
             if not a_obj.equals(b_obj):
                 return False
 
@@ -475,7 +512,8 @@ def pd_allclose(a: DataFrameOrSeries, b: DataFrameOrSeries, *,
     return np.allclose(a, b, **kwargs)
 
 
-def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
+def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs
+    ) -> DataFrameOrSeries:
     """Like `np.isclose`, but preserves input indices.
 
     Args:
@@ -483,14 +521,13 @@ def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
 
         **kwargs: passed thru to `np.isclose` (`equal_nan=True` may be the most useful)
 
+    Returns: bool DataFrame/Series, of same shape and with same indices as input.
+
     Raises ValueError if indices do not match.
     """
     # not sure what isclose behavior is if shapes mismatch, but only really imagine
     # using this fn for like-indexed stuff anyway
-    try:
-        pd_indices_equal(a, b, if_index_mismatch='err')
-    except ValueError:
-        raise
+    pd_indices_equal(a, b, if_index_mismatch='err')
 
     isclose = np.isclose(a, b, **kwargs)
 
@@ -504,7 +541,7 @@ def pd_isclose(a: DataFrameOrSeries, b: DataFrameOrSeries, **kwargs) -> bool:
 
 
 def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
-    cast: bool = True, verbose: bool = False) -> bool:
+    cast: bool = False, verbose: bool = False) -> bool:
     """Returns whether column dtypes of `a` and `b` are equal.
 
     Args:
@@ -513,10 +550,11 @@ def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
         reorder_cols: if True, `b` columns are reordered to match `a` before comparing.
             otherwise, asserts columns are in the same order.
 
-        cast: if True (and dtypes differ), tries casting `b` to dtypes of `a` before
-            comparing.
+        cast: if True, also returns True if dtypes differ, but `b` can be cast to dtypes
+            of `a` without changing any values (e.g. if `a` has an int column, where `b`
+            has a float column with only whole numbers)
 
-        verbose: if True, prints mismatching dtypes
+        verbose: if True, prints mismatching dtypes (if returning False)
     """
 
     # NOTE: Series do not seem to have dtypes available on a per-key basis anymore. just
@@ -533,16 +571,21 @@ def dtypes_equal(a: pd.DataFrame, b: pd.DataFrame, *, reorder_cols: bool = True,
             assert set(a.columns) == set(b.columns)
             b = b[a.columns]
 
-    if cast and not a.dtypes.equals(b.dtypes):
-        # TODO how will this fail if casting not possible? need to catch and return
-        # False?
-        b = b.astype(a.dtypes)
-
     equal = a.dtypes.equals(b.dtypes)
 
+    if cast and not equal:
+        try:
+            # casting back to the original dtypes, because .equals also checks dtypes
+            equal = b.astype(a.dtypes).astype(b.dtypes).equals(b)
+
+        # e.g. if `b` has NaN or str values, and `a` has an int column there
+        except (ValueError, TypeError):
+            pass
+
     if verbose and not equal:
+        mismatching = a.dtypes != b.dtypes
         print('mismatching dtypes:')
-        print(a.dtypes[a.dtypes != b.dtypes])
+        print(pd.DataFrame({'a': a.dtypes[mismatching], 'b': b.dtypes[mismatching]}))
 
     return equal
 

@@ -1,3 +1,5 @@
+import subprocess
+import sys
 
 import pytest
 
@@ -5,7 +7,8 @@ import numpy as np
 import pandas as pd
 
 from hong2p.pandas import (subset_index, frame_pdist, addlevel, diff_dataframes,
-    expand_array_cols, melt_symmetric, invert_melt_symmetric
+    expand_array_cols, melt_symmetric, invert_melt_symmetric, pd_allclose, pd_isclose,
+    dtypes_equal
 )
 from hong2p.olf import solvent_str
 
@@ -124,6 +127,13 @@ def test_addlevel():
     check_index(odf.index, n=n, v=v)
     check_index(odf.columns, n=n, v=v)
 
+    # (these used to silently drop extra names/values)
+    with pytest.raises(ValueError):
+        addlevel(df, names=['a', 'b'], values=[1])
+
+    with pytest.raises(ValueError):
+        addlevel(df, names=['a'], values='xy')
+
     # TODO add tests where values contains something of length equal to the
     # corresponding axis, rather than just a single unique value (+ one test w/ a mix of
     # each)
@@ -133,6 +143,9 @@ def test_expand_array_cols():
     df = pd.DataFrame({
         'x': ['a', 'b', 'c'],
         'trace': [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]],
+        # (non-array column after array one, and out of alphabetical order, to check
+        # output column order matches input)
+        'n': [3, 2, 1],
     })
     # So index has no 0 label (as after filtering), which used to cause a KeyError
     df = df.iloc[1:]
@@ -142,6 +155,8 @@ def test_expand_array_cols():
     assert list(out['x']) == ['b', 'b', 'c', 'c']
     assert list(out['trace']) == [2.0, 3.0, 4.0, 5.0]
     assert out['trace'].dtype == np.float64
+    assert list(out['n']) == [2, 2, 1, 1]
+    assert list(out.columns) == list(df.columns)
 
     # Input should not have had list elements converted to arrays
     assert all(type(t) is list for t in df['trace'])
@@ -151,6 +166,70 @@ def test_expand_array_cols():
     out = expand_array_cols(df)
     assert list(out['trace']) == [0.0, 1.0, 2.5, 3.5]
     assert out['trace'].dtype == np.float64
+
+
+def test_pd_allclose():
+    df = pd.DataFrame({'x': [1.0, 2.0], 's': ['a', 'b']})
+    assert pd_allclose(df, df.copy())
+
+    close = df.copy()
+    close['x'] += 1e-12
+    assert pd_allclose(df, close)
+
+    not_close = df.copy()
+    not_close['x'] += 1
+    assert not pd_allclose(df, not_close)
+
+    str_differs = df.copy()
+    str_differs['s'] = ['a', 'c']
+    assert not pd_allclose(df, str_differs)
+
+    # str column in only one input. should be False in either argument order (one order
+    # used to raise TypeError)
+    a = pd.DataFrame({'x': [1.0, 2.0]})
+    b = pd.DataFrame({'x': ['a', 'b']})
+    assert not pd_allclose(a, b)
+    assert not pd_allclose(b, a)
+
+
+def test_pd_isclose():
+    a = pd.DataFrame({'x': [1.0, 2.0], 'y': [3.0, 4.0]}, index=['i', 'j'])
+    b = a.copy()
+    b.loc['j', 'y'] += 1
+
+    isclose = pd_isclose(a, b)
+    assert isinstance(isclose, pd.DataFrame)
+    assert isclose.index.equals(a.index) and isclose.columns.equals(a.columns)
+    assert isclose.values.tolist() == [[True, True], [True, False]]
+
+    isclose = pd_isclose(a['y'], b['y'])
+    assert isinstance(isclose, pd.Series)
+    assert isclose.tolist() == [True, False]
+
+    with pytest.raises(ValueError):
+        pd_isclose(a, b.iloc[::-1])
+
+
+def test_dtypes_equal():
+    ints = pd.DataFrame({'x': [1, 2], 's': ['a', 'b']})
+    assert dtypes_equal(ints, ints.copy())
+
+    # (columns in different order)
+    assert dtypes_equal(ints, ints[['s', 'x']])
+
+    whole_floats = ints.astype({'x': float})
+    floats = whole_floats.copy()
+    floats['x'] = [1.5, 2.0]
+    nan_floats = whole_floats.copy()
+    nan_floats['x'] = [np.nan, 2.0]
+
+    # (cast=True used to be the default, and returned True for all of these)
+    assert not dtypes_equal(ints, whole_floats)
+    assert not dtypes_equal(ints, floats)
+
+    assert dtypes_equal(ints, whole_floats, cast=True)
+    assert not dtypes_equal(ints, floats, cast=True)
+    assert not dtypes_equal(ints, nan_floats, cast=True)
 
 
 @pytest.mark.parametrize('suffixes', [('_a', '_b'), ('', '_b')])
@@ -290,3 +369,17 @@ def test_diff_dataframes_arr_naneq():
     df1.loc[0, 'arr1'][1] = np.nan
     df2.loc[0, 'arr1'][1] = np.nan
     assert diff_dataframes(df1, df2) is None
+
+
+def test_does_not_import_util():
+    # hong2p.util imports this module, so this module importing hong2p.util (even inside
+    # a function) is a circular dependency. also checks hong2p/__init__.py doesn't import
+    # util (e.g. via cli_entry_points).
+    code = 'import sys, hong2p.pandas; assert "hong2p.util" not in sys.modules'
+    subprocess.run([sys.executable, '-c', code], check=True)
+
+    from hong2p import util
+    from hong2p.pandas import is_scalar
+    # should still be accessible from util (without the deprecation warning the other
+    # moved fns have)
+    assert util.is_scalar is is_scalar

@@ -36,8 +36,11 @@ import tifffile
 from tifffile import TiffFile
 from tqdm import tqdm
 
-from hong2p import matlab, db, thor, olf
+from hong2p import matlab, thor, olf
 from hong2p import pandas as hong_pd
+# Moved to hong2p.pandas (to avoid it importing from this module), but importing here
+# (without deprecation warning) so it is still accessible as `util.is_scalar`.
+from hong2p.pandas import is_scalar
 from hong2p.err import NoStimulusFile, TooManyStimulusFiles
 from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
     DataFrameOrDataArray
@@ -2418,8 +2421,7 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
     '''Returns a pandas.DataFrame with data on flies and MB team recordings.
 
     Missing ThorImage / ThorSync directory names are inferred from files on disk or
-    naming conventions. Result is cached for future calls. Also uploads fly data to
-    database (see `db.to_sql_with_duplicates`).
+    naming conventions. Result is cached for future calls.
 
     Args:
         use_cache: if True, loads sheet data from `.gsheet_cache.p` in current
@@ -2786,17 +2788,6 @@ def mb_team_gsheet(use_cache=False, natural_odors_only=False,
         print('\nDuplicated ThorSync directories after path inference:')
         print(df[duped_thorsync])
         raise
-
-    flies = sheets['fly_preps']
-    flies['date'] = flies['date'].fillna(method='ffill')
-    flies.dropna(subset=['date','fly_num'], inplace=True)
-
-    # TODO maybe flag to not update database? or just don't?
-    # TODO groups all inserts into transactions across tables, and as few as
-    # possible (i.e. only do this later)?
-    db.to_sql_with_duplicates(flies.rename(
-        columns={'date': 'prep_date'}), 'flies'
-    )
 
     # For manual sanity checking that important data isn't being excluded
     # inappropriately.
@@ -4766,7 +4757,7 @@ def latest_trace_pickles():
     """Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.
 
     Searches `*.p` files under `<analysis_output_root>/trace_pickles` (as written by
-    `db.load_recording`), which should be named like
+    since-removed `hong2p.db.load_recording`), which should be named like
     '<YYYYMMDD>_<HHMM>_<YYYY-MM-DD>_<fly_num>_<thorimage_id>.p'.
 
     Only returns rows for filenames that had the latest timestamp for the
@@ -5222,34 +5213,6 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
             # non-list/tuple case (which we don't support, and don't mention what to do
             # about in warning above)
             raise verr
-
-
-# TODO add flag to include bools too?
-# TODO rename is_floatlike or something? it is also checking shape for everything but
-# np.dtype input... is_scalar_floatlike?
-def is_scalar(x: Any) -> bool:
-    """Returns whether input is a float or int, or a numpy scalar float/int.
-
-    Also works with `np.dtype` input (e.g. from `df.values.dtype`).
-
-    Returns False for bools (including numpy scalar ones)
-    """
-    # TODO need to do anything separate for scalar xarray inputs? (e.g. .item(0)?)
-    # any other type conversion? test!
-    # NOTE: np.issubdtype doesn't accept tuple of types like isinstance does, but it
-    # does work with type(<np.[float|int]*>) and type(<int|float>)
-    if isinstance(x, np.dtype):
-        x_type = x
-    else:
-        x_type = type(x)
-
-    dtype_matches = [np.issubdtype(x_type, t) for t in (int, float)]
-    ret = any(dtype_matches)
-    if ret:
-        assert sum(dtype_matches) == 1, ('not expecting either int/float to be subdtype'
-            ' of other'
-        )
-    return ret
 
 
 # TODO define type w/ scalar (that also works w/ xarray/numpy length-0 shape stuff? or

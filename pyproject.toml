@@ -146,27 +146,23 @@ doc = [
 Repository = "https://github.com/ejhonglab/hong2p"
 
 [project.scripts]
-savedeps = "hong2p:save_requirements"
-# still required to add to __init__.py, now that i'm defining via pyproject.toml,
-# instead of old setup.py? (yup, at least as currently configured)
-# I define all of these in hong2p/cli_entry_points.py, and then modify
-# hong2p/__init__.py to import each of them explicitly.
-thor2tiff = "hong2p:thor2tiff_cli"
-showsync = "hong2p:showsync_cli"
-suite2p-params = "hong2p:suite2p_params_cli"
-thor-pairs = "hong2p:print_paired_thor_subdirs"
-thor-notes = "hong2p:print_thorimage_subdir_notes"
+savedeps = "hong2p.cli_entry_points:save_requirements"
+thor2tiff = "hong2p.cli_entry_points:thor2tiff_cli"
+showsync = "hong2p.cli_entry_points:showsync_cli"
+suite2p-params = "hong2p.cli_entry_points:suite2p_params_cli"
+thor-pairs = "hong2p.cli_entry_points:print_paired_thor_subdirs"
+thor-notes = "hong2p.cli_entry_points:print_thorimage_subdir_notes"
 # Mainly to support shell functions that cd to these directories, e.g
 # 2p() {
 #     cd "$(hong2p-data)"
 # }
-hong2p-data = "hong2p:print_data_root"
-hong2p-raw = "hong2p:print_raw_data_root"
-hong2p-analysis = "hong2p:print_analysis_intermediates_root"
-yaml2tex = "hong2p:yaml2tex_cli"
-cid2tex = "hong2p:cid2tex_cli"
+hong2p-data = "hong2p.cli_entry_points:print_data_root"
+hong2p-raw = "hong2p.cli_entry_points:print_raw_data_root"
+hong2p-analysis = "hong2p.cli_entry_points:print_analysis_intermediates_root"
+yaml2tex = "hong2p.cli_entry_points:yaml2tex_cli"
+cid2tex = "hong2p.cli_entry_points:cid2tex_cli"
 # rebuilds docs/ from docsrc/ and commits docs/. run from hong2p repo root.
-hong2p-docs = "hong2p:build_docs_cli"
+hong2p-docs = "hong2p.cli_entry_points:build_docs_cli"
 
 [tool.pytest.ini_options]
 minversion = "8.3.5"

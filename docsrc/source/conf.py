@@ -72,7 +72,6 @@ apidoc_output_dir = 'apidoc'
 apidoc_separate_modules = True
 # TODO maybe i should add modules here that i want to modify from prior apidoc outputs?
 apidoc_excluded_paths = [
-    'db.py',
     'matlab.py',
     'cli_entry_points.py',
 ]

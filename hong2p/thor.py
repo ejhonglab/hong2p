@@ -122,11 +122,25 @@ def get_thorimage_time(xml) -> datetime:
     """Takes ThorImage directory or etree XML root object to recording start time.
 
     XML object should be as returned by `get_thorimage_xmlroot`.
+
+    Returned time is in the local timezone of the computer running this code (as
+    `get_thorsync_time` is), which may differ from that of the acquisition computer.
     """
     date_ele = xml.find('Date')
+    # Local time of acquisition computer
     from_date = datetime.strptime(date_ele.attrib['date'], '%m/%d/%Y %H:%M:%S')
     from_utime = datetime.fromtimestamp(float(date_ele.attrib['uTime']))
-    assert (from_date - from_utime).total_seconds() < 1
+
+    # These should only differ by the difference in UTC offset between the acquisition
+    # computer and this one (+ <1s, from 'date' being truncated to seconds). All UTC
+    # offsets are multiples of 15 minutes, from -12h to +14h.
+    offset_s = (from_date - from_utime).total_seconds()
+    tz_quantum_s = 15 * 60
+    nearest_tz_offset_s = tz_quantum_s * round(offset_s / tz_quantum_s)
+    assert abs(offset_s - nearest_tz_offset_s) < 1 and abs(offset_s) <= 26 * 60 * 60, \
+        (f"ThorImage XML 'date' ({from_date}) and 'uTime' ({from_utime}, in local time)"
+        ' differ by more than a timezone offset'
+    )
     return from_utime
 
 
