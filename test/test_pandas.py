@@ -146,6 +146,12 @@ def test_expand_array_cols():
     # Input should not have had list elements converted to arrays
     assert all(type(t) is list for t in df['trace'])
 
+    # Output dtype should come from all values, not just first array (which is int here)
+    df = pd.DataFrame({'x': ['a', 'b'], 'trace': [[0, 1], [2.5, 3.5]]})
+    out = expand_array_cols(df)
+    assert list(out['trace']) == [0.0, 1.0, 2.5, 3.5]
+    assert out['trace'].dtype == np.float64
+
 
 @pytest.mark.parametrize('suffixes', [('_a', '_b'), ('', '_b')])
 def test_invert_melt_symmetric(suffixes):

@@ -141,3 +141,31 @@ def test_write_tiff(tmp_path):
         # little-endian input should be converted to big-endian (for MATLAB imread_big)
         assert tiff.byteorder == '>'
         assert np.array_equal(tiff.asarray(), movie)
+
+
+def test_load_stimfile(tmp_path, monkeypatch):
+    import pickle
+    from pathlib import Path
+
+    monkeypatch.setenv(util.STIMFILE_DIR_ENV_VAR, str(tmp_path))
+    data = {'odor_list': ['a', 'b']}
+    stimfile = tmp_path / 'stim.p'
+    stimfile.write_bytes(pickle.dumps(data))
+
+    # relative to stimfile_root(), absolute str, and absolute Path
+    for p in ('stim.p', str(stimfile), stimfile):
+        assert util.load_stimfile(p) == data
+
+    with pytest.raises(ValueError):
+        util.load_stimfile('missing.p')
+
+
+def test_equals_nested():
+    arr = np.array([1.0, 2.0])
+
+    kws = dict(allow_complex_type_seqs=True, _warn=False)
+    assert util.equals([[arr]], [[arr.copy()]], **kws)
+    assert not util.equals([[arr]], [[arr + 1]], **kws)
+
+    with pytest.raises(ValueError):
+        util.equals([[arr]], [[arr.copy()]])

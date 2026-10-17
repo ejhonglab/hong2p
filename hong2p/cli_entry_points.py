@@ -392,7 +392,7 @@ def save_requirements() -> None:
             editable_git_prefix = f'{editable_prefix}git+'
             # i was imagining changing auth strs for all of the editable ones below
             assert x.startswith(editable_git_prefix), (f'{repr(x)} did not start with '
-                '{repr(editable_git_prefix)}'
+                f'{repr(editable_git_prefix)}'
             )
 
             assert (
@@ -445,6 +445,8 @@ def save_requirements() -> None:
                 continue
 
             site_to_repo = f'{site}/{account}/{repo}'
+            # commit / egg suffixes are added back below (unless strip_commit)
+            new_x = f'{editable_git_prefix}{ssh_auth_str}{site_to_repo}'
             if switch_auth_to_https:
                 url = f'{https_auth_str}{site_to_repo}'
 
@@ -465,13 +467,14 @@ def save_requirements() -> None:
                     private_repo = r.status_code == 404
 
                 if not private_repo:
-                    x = f'{editable_git_prefix}{url}'
+                    new_x = f'{editable_git_prefix}{url}'
                 else:
-                    print('not replacing SSH auth with HTTPS for:\n{x}\n...because '
+                    print(f'not replacing SSH auth with HTTPS for:\n{x}\n...because '
                         f'repo seems to be private. getting 404 at {url}',
                         file=sys.stderr
                     )
 
+            x = new_x
             if not strip_commit:
                 # TODO want to strip egg_suffix? separate option to just strip that?
                 x += f'{commit_suffix}{egg_suffix}'

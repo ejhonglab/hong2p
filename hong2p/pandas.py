@@ -188,7 +188,6 @@ def expand_array_cols(df):
     for ac in array_cols:
         df[ac] = df[ac].apply(lambda x: np.array(x))
         assert len(df[ac]) > 0 and len(df[ac].iloc[0]) > 0
-        orig_dtypes[ac] = df[ac].iloc[0][0].dtype
 
     non_array_cols = df.columns.difference(array_cols)
 
@@ -211,6 +210,9 @@ def expand_array_cols(df):
     nac_data = np.concatenate(expanded_rows_list, axis=0)
 
     ac_data = df[array_cols].apply(np.concatenate)
+    # Using dtype of concatenated data, rather than that of the first array, so e.g.
+    # float values after int ones aren't truncated
+    orig_dtypes.update(ac_data.dtypes.to_dict())
     assert nac_data.shape[0] == ac_data.shape[0]
     data = np.concatenate((nac_data, ac_data), axis=1)
     assert data.shape[1] == df.shape[1]

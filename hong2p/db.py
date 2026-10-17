@@ -4,19 +4,21 @@ storing some experiment / analysis metadata.
 """
 
 import os
-from os.path import join, exists, getmtime
+from os.path import join, exists, getmtime, split
 import sys
 import socket
 from datetime import datetime
+from pprint import pprint
 import time
+import warnings
 
-from hong2p import util, thor
-from hong2p.roi import ijrois2masks
+import numpy as np
+import pandas as pd
+
+from hong2p import util, thor, matlab
+from hong2p.roi import ijrois2masks, extract_traces_bool_masks
 from hong2p.olf import NO_ODOR
 from hong2p.pandas import expand_array_cols
-
-# TODO test/check that all necessary imports were brought over in refactoring
-# (+ all refs to util.py fns below are prefixed w/ 'util.')
 
 
 db_hostname = os.getenv('HONG_POSTGRES_HOST', 'atlas')
@@ -327,7 +329,7 @@ def list_segmentations(tif_path):
     # TODO TODO should maybe trim all prefixes from input_filename before
     # uploading? unless i want to just figure out path from other variables each
     # time and use that to match (if NAS_PREFIX is diff, there will be no match)
-    prefix = analysis_output_root()
+    prefix = util.analysis_output_root()
     if tif_path.startswith(prefix):
         tif_path = tif_path[len(prefix):]
 
@@ -453,7 +455,7 @@ def merge_gsheet(df, *args, use_cache=False):
     Experiment.xml files on the NAS and loading them for this timestamp.
     """
     if len(args) == 0:
-        gsdf = mb_team_gsheet(use_cache=use_cache)
+        gsdf = util.mb_team_gsheet(use_cache=use_cache)
     elif len(args) == 1:
         # TODO maybe copy in this case?
         gsdf = args[0]
@@ -468,9 +470,9 @@ def merge_gsheet(df, *args, use_cache=False):
 
     gsdf['recording_from'] = pd.NaT
     for i, row in gsdf.iterrows():
-        date_dir = row.date.strftime(date_fmt_str)
+        date_dir = row.date.strftime(util.date_fmt_str)
         fly_num = str(int(row.fly_num))
-        image_dir = join(raw_data_root(),
+        image_dir = join(util.raw_data_root(),
             date_dir, fly_num, row.thorimage_dir
         )
         thorimage_xml_path = join(image_dir, 'Experiment.xml')
@@ -546,8 +548,8 @@ def accepted_blocks(analysis_run_at, verbose=False):
     # TODO TODO implement some kind of handling of sub-recordings in db
     # and get rid of this hack
     #print(input_filename)
-    if is_subrecording_tiff(input_filename):
-        first_block, last_block = subrecording_tiff_blocks(input_filename)
+    if util.is_subrecording_tiff(input_filename):
+        first_block, last_block = util.subrecording_tiff_blocks(input_filename)
 
         if verbose:
             print(input_filename, 'belonged to a sub-recording')
@@ -730,12 +732,12 @@ def latest_analysis(verbose=False):
             print(tif, end='')
 
         date_fly_keypart = '/'.join(tif.split('/')[:2])
-        thorimage_id = tiff_thorimage_id(tif)
+        thorimage_id = util.tiff_thorimage_id(tif)
         key = '{}/{}'.format(date_fly_keypart, thorimage_id)
         # Assuming this is 1:1 for now.
         key2tiff[key] = tif
         try:
-            parent_id = parent_recording_id(tif)
+            parent_id = util.parent_recording_id(tif)
             tiff_is_subrecording[tif] = True
             parent_key = '{}/{}'.format(date_fly_keypart, parent_id)
             has_subrecordings.add(parent_key)
@@ -779,7 +781,7 @@ def latest_analysis(verbose=False):
     latest_tif_analyses['is_subrecording'] = \
         latest_tif_analyses.index.map(tiff_is_subrecording)
 
-    subrec_blocks = latest_tif_analyses.apply(subrecording_tiff_blocks_df,
+    subrec_blocks = latest_tif_analyses.apply(util.subrecording_tiff_blocks_df,
         axis=1, result_type='expand')
     latest_tif_analyses[['first_block','last_block']] = subrec_blocks
 
@@ -1054,14 +1056,14 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
 
     # TODO test that all of this works w/ both raw & motion corrected tiffs
     # (named and placed according to convention)
-    keys = tiff_filename2keys(tiff)
-    recording_title = format_keys(*keys)
+    keys = util.tiff_filename2keys(tiff)
+    recording_title = util.format_keys(*keys)
     if verbose:
         print(recording_title)
 
     start = time.time()
 
-    mat = matfile(*keys)
+    mat = matlab.matfile(*keys)
     # For some of the older data, need to either modify scipy loadmat call or
     # revert to use_matlab_engine=True call.
     ti = matlab.load_mat_timing_info(mat)
@@ -1079,13 +1081,13 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
 
     # TODO TODO also store (the contents of this) in db?
     # This will return defaults if the YAML file is not found.
-    meta = metadata(*keys)
+    meta = util.load_metadata(util.thorimage_dir(*keys))
     drop_first_n_frames = meta['drop_first_n_frames']
     # TODO TODO err if this is past first odor onset (or probably even too
     # close)
     del meta
 
-    df = mb_team_gsheet()
+    df = util.mb_team_gsheet()
     recordings = df.loc[
         (df.date == keys.date) &
         (df.fly_num == keys.fly_num) &
@@ -1102,11 +1104,11 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     stimfile = recording['stimulus_data_file']
     first_block = recording['first_block']
     last_block = recording['last_block']
-    sync_dir = thorsync_dir(*keys[:2], recording['thorsync_dir'])
-    image_dir = thorimage_dir(*keys[:2], recording['thorimage_dir'])
+    sync_dir = util.thorsync_dir(*keys[:2], recording['thorsync_dir'])
+    image_dir = util.thorimage_dir(*keys[:2], recording['thorimage_dir'])
     del recording
 
-    data = load_odor_metadata(stimfile)
+    data = util.load_odor_metadata(stimfile)
     odor_list = data['odor_list']
     n_repeats = data['n_repeats']
     presentations_per_repeat = data['presentations_per_repeat']
@@ -1184,7 +1186,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
             (data['odors'] + [NO_ODOR])
         ])
         '''
-        odors = pd.DataFrame([split_odor_w_conc(x) for x in
+        odors = pd.DataFrame([util.split_odor_w_conc(x) for x in
             (list(set(data['odor_lists'])) + [NO_ODOR])
         ])
 
@@ -1227,7 +1229,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
         ]
         del o2c
     else:
-        odor1_ids = [db_odors.at[tuple(split_odor_w_conc(o)),
+        odor1_ids = [db_odors.at[tuple(util.split_odor_w_conc(o)),
             'odor_id'] for o in odor_list
         ]
 
@@ -1348,7 +1350,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     assert len(odor_ids) == len(odor_list)
 
     if verbose:
-        print_trial_odors(data, odor_onset_frames)
+        util.print_trial_odors(data, odor_onset_frames)
         print('')
 
     end = time.time()
@@ -1412,7 +1414,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     # TODO shouldn't i move this before movie loading if possible, as some of
     # the other prints? (flag to loading fn to do this?)
     if verbose:
-        print_block_frames(block_first_frames, block_last_frames)
+        util.print_block_frames(block_first_frames, block_last_frames)
 
     last_frame = block_last_frames[-1]
     # TODO TODO should they really not be considered part of the last block
@@ -1482,14 +1484,14 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
 
     # TODO delete this hardcode hack
     if len(movie.shape) == 4:
-        assert tiff.startswith(raw_data_root())
+        assert tiff.startswith(str(util.raw_data_root()))
         ijroiset_filename = join(image_dir, 'rois.zip')
         assert exists(ijroiset_filename)
     #
     else:
         # TODO maybe factor this getting roi filname, reading rois, making masks
         # [, extracting traces] into a fn?
-        ijroiset_filename = tiff_ijroi_filename(tiff)
+        ijroiset_filename = util.tiff_ijroi_filename(tiff)
         if ijroiset_filename is None:
             raise IOError('tiff_ijroi_filename returned None')
 
@@ -1507,7 +1509,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     raw_f = extract_traces_bool_masks(movie, footprints)
     #n_footprints = raw_f.shape[1]
 
-    df_over_f = calculate_df_over_f(raw_f, trial_start_frames,
+    df_over_f = util.calculate_df_over_f(raw_f, trial_start_frames,
         odor_onset_frames, trial_stop_frames
     )
 
@@ -1967,7 +1969,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     df_filename = (ijroiset_mtime.strftime('%Y%m%d_%H%M_') +
         recording_title.replace('/','_') + '.p'
     )
-    df_filename = join(analysis_output_root(), 'trace_pickles',
+    df_filename = join(util.analysis_output_root(), 'trace_pickles',
         df_filename
     )
 
