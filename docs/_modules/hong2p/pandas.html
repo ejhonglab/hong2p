@@ -277,11 +277,16 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'df did not appear to have any columns with all '</span>
             <span class="s1">'arraylike elements'</span><span class="p">)</span>
 
+    <span class="c1"># Index is unnamed (checked above), so nothing lost by dropping it. Avoids label-based</span>
+    <span class="c1"># indexing below (e.g. in np.concatenate) failing if there is no 0 label, and also</span>
+    <span class="c1"># means converting array cols below won't modify the input.</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
     <span class="n">orig_dtypes</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">dtypes</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">ac</span> <span class="ow">in</span> <span class="n">array_cols</span><span class="p">:</span>
         <span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
-        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span>
-        <span class="n">orig_dtypes</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="n">orig_dtypes</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span>
 
     <span class="n">non_array_cols</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">array_cols</span><span class="p">)</span>
 
@@ -953,7 +958,8 @@
             <span class="k">continue</span>
 
         <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">s0</span><span class="p">):</span>
-            <span class="n">prefix</span> <span class="o">=</span> <span class="n">c</span><span class="p">[:</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">s0</span><span class="p">)]</span>
+            <span class="c1"># Not c[:-len(s0)], which is '' when s0 == ''</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="n">c</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">s0</span><span class="p">)]</span>
             <span class="k">if</span> <span class="p">(</span><span class="n">prefix</span> <span class="o">+</span> <span class="n">s1</span><span class="p">)</span> <span class="ow">in</span> <span class="n">ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
                 <span class="n">col_prefixes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span>
                 <span class="n">levels_to_drop</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">prefix</span> <span class="o">+</span> <span class="n">s0</span><span class="p">)</span>

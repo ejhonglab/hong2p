@@ -120,8 +120,9 @@
 <span class="c1"># use them, to reduce the number of hard dependencies.</span>
 
 
-<span class="c1"># These were moved to `hong2p.pandas`, but are still accessible from here (with a</span>
-<span class="c1"># FutureWarning), via `__getattr__` below.</span>
+<span class="c1"># These were moved to `hong2p.pandas`, but are still accessible from here, as wrappers</span>
+<span class="c1"># that emit a FutureWarning when called. Warning on call (rather than on attribute</span>
+<span class="c1"># access, via module `__getattr__`) keeps `hasattr`/`dir`/unpickling from warning.</span>
 <span class="n">_moved_to_pandas</span> <span class="o">=</span> <span class="p">(</span>
     <span class="s1">'num_null'</span><span class="p">,</span>
     <span class="s1">'num_notnull'</span><span class="p">,</span>
@@ -149,19 +150,25 @@
     <span class="s1">'suffix_index_names'</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Returns deprecated `util.&lt;name&gt;` aliases for fns moved to `hong2p.pandas`.</span>
-
-<span class="sd">    Only called for names not otherwise defined in this module (see PEP 562).</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_deprecated_pandas_alias</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Returns wrapper of `hong2p.pandas.&lt;name&gt;` that warns (FutureWarning) when called.</span>
 <span class="sd">    """</span>
-    <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">_moved_to_pandas</span><span class="p">:</span>
+    <span class="n">fn</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">hong_pd</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+    <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">'hong2p.util.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1"> has moved to hong2p.pandas. change imports '</span>
             <span class="sa">f</span><span class="s1">'to use hong2p.pandas.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1"> instead (e.g. `from hong2p.pandas import '</span>
             <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">`).'</span><span class="p">,</span> <span class="ne">FutureWarning</span><span class="p">,</span> <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span>
         <span class="p">)</span>
-        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">hong_pd</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fn</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
-    <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'module </span><span class="si">{</span><span class="vm">__name__</span><span class="si">!r}</span><span class="s1"> has no attribute </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="k">for</span> <span class="n">_name</span> <span class="ow">in</span> <span class="n">_moved_to_pandas</span><span class="p">:</span>
+    <span class="nb">globals</span><span class="p">()[</span><span class="n">_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">_deprecated_pandas_alias</span><span class="p">(</span><span class="n">_name</span><span class="p">)</span>
+
+<span class="k">del</span> <span class="n">_name</span>
 
 
 <span class="c1"># 1 to indicate computer is an acquisition computer, 0/unset otherwise.</span>
