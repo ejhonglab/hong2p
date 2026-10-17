@@ -13,6 +13,7 @@ import time
 from hong2p import util, thor
 from hong2p.roi import ijrois2masks
 from hong2p.olf import NO_ODOR
+from hong2p.pandas import expand_array_cols
 
 # TODO test/check that all necessary imports were brought over in refactoring
 # (+ all refs to util.py fns below are prefixed w/ 'util.')
@@ -1957,7 +1958,7 @@ def load_recording(tiff, allow_gsheet_to_restrict_blocks=True,
     comparison_df.drop(columns='temp_presentation_id', inplace=True)
     del presentation_df
 
-    comparison_df = util.expand_array_cols(comparison_df)
+    comparison_df = expand_array_cols(comparison_df)
 
     # TODO TODO make this optional
     # (and probably move to upload where fig gets saved.

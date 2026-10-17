@@ -56,6 +56,7 @@ import ijroi
 import chemutils as cu
 
 from hong2p import util, matlab, db, thor, viz
+from hong2p.pandas import expand_array_cols
 from hong2p.roi import (crop_to_nonzero, py2imagej_coords, db_row2footprint,
     db_footprints2array, ijrois2masks, footprints_to_flat_cnmf_dims,
     extract_traces_bool_masks
@@ -2603,7 +2604,7 @@ class Segmentation(QWidget):
             comparison_df.drop(columns='temp_presentation_id', inplace=True)
             del presentation_df
 
-            comparison_df = util.expand_array_cols(comparison_df)
+            comparison_df = expand_array_cols(comparison_df)
 
             # TODO TODO make this optional
             # (and probably move to upload where fig gets saved.

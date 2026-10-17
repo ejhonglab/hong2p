@@ -11,8 +11,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from hong2p.util import suffix_index_names
-from hong2p.pandas import subset_index
+from hong2p.pandas import subset_index, suffix_index_names
 
 
 # TODO switch to h5netcdf? docs say it can sometimes be faster. is it, for me?
@@ -422,7 +421,7 @@ def odor_corr_frame_to_dataarray(df: pd.DataFrame,
     """Converts (odor X odor) correlation DataFrame to DataArray.
 
     Output has dims ('odor', 'odor_b'), with column index level names suffixed with
-    '_b' (via `util.suffix_index_names`).
+    '_b' (via `hong2p.pandas.suffix_index_names`).
 
     Args:
         df: square correlation DataFrame, with same index level names on rows and
@@ -444,7 +443,7 @@ def odor_corr_frame_to_dataarray(df: pd.DataFrame,
         for k in metadata.keys():
             assert k not in df.index.names, f'metadata key {k} already in index'
 
-    # Since util.suffix_index_names is currently inplace
+    # Since suffix_index_names is currently inplace
     df = df.copy()
 
     # Adds '_b' to end of all column names

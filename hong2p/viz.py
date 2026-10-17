@@ -56,6 +56,7 @@ from hong2p import roi as hong_roi
 #from hong2p.roi import is_ijroi_certain
 #
 from hong2p.olf import remove_consecutive_repeats
+from hong2p.pandas import df_map, is_str_or_object_dtype, index2dict_list
 # TODO use Color/CMap/Palette
 from hong2p.types import (DataFrameOrDataArray, ParamDict, CMap, Axis, Color, CMap,
     Palette, Figsize, ArrayLike, MplRotation
@@ -359,7 +360,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
         # TODO handle bool differently depending on whether we are using a dict
         # palette or not? (previously was only checking dtype('O') here)
         # (have only tested bool dtype w/ dict palette so far)
-        if util.is_str_or_object_dtype(dtype) or dtype == bool:
+        if is_str_or_object_dtype(dtype) or dtype == bool:
             make_legend = True
 
         elif dtype == int or dtype == float:
@@ -385,7 +386,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
                     # between 0 and max (inclusive)
                     unique_values = range(vmin, vmax + 1)
                 else:
-                    assert util.is_str_or_object_dtype(dtype), f'unrecognized {dtype=}'
+                    assert is_str_or_object_dtype(dtype), f'unrecognized {dtype=}'
                     unique_values = set()
                     for c in values.columns:
                         # TODO assert values are str? (maybe w/ some None/NaN allowed?)
@@ -425,7 +426,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
                 # palette has), and recommend palettes like hsl/husl?
                 raise ValueError(f'{var_names=}: duplicate colors in {palette=}')
 
-            colors = util.df_map(values,
+            colors = df_map(values,
                 # now we can use color strings for both dict values and na_color, b/c
                 # to_rgb. to_rgb will not change input that is already a RGB tuple
                 lambda x: to_rgb(value2color[x] if pd.notna(x) else na_color)
@@ -490,7 +491,7 @@ def map_each_series_to_rgb(df: pd.DataFrame, *, axis: Axis = 'index',
             # set_[over|under] and check we get those if i  call w/ 1+eps or 0-eps,
             # but colors at 1 / 0?
 
-            colors = util.df_map(normed, palette)
+            colors = df_map(normed, palette)
             if not make_cbar:
                 del palette
 
@@ -740,7 +741,7 @@ def rgb_tuple_df_to_3d_array(color_df: pd.DataFrame) -> np.ndarray:
     assert (color_df.apply(lambda x: x.str.len()) == n_channels).all().all()
     channels = []
     for i in range(n_channels):
-        channels.append(util.df_map(color_df, lambda x: x[i]))
+        channels.append(df_map(color_df, lambda x: x[i]))
 
     arr = np.stack(channels, axis=-1)
     assert arr.shape == color_df.shape + (n_channels,)
@@ -2502,7 +2503,7 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
         if not levels_from_labels:
             # TODO need to handle case where we might transpose (e.g. via
             # transpose_sort_key?) (or maybe delete support for transpose_sort_key?)
-            hline_levels = [hline_level_fn(x) for x in util.index2dict_list(df.index)]
+            hline_levels = [hline_level_fn(x) for x in index2dict_list(df.index)]
         else:
             hline_levels = [hline_level_fn(x) for x in yticklabels]
 
@@ -2516,7 +2517,7 @@ def matshow(df: DataFrameOrDataArray, *, title: Optional[str] = None,
             print(f'{vline_level_fn=}')
 
         if not levels_from_labels:
-            vline_levels = [vline_level_fn(x) for x in util.index2dict_list(df.columns)]
+            vline_levels = [vline_level_fn(x) for x in index2dict_list(df.columns)]
         else:
             vline_levels = [vline_level_fn(x) for x in xticklabels]
 

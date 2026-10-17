@@ -19,7 +19,7 @@ import pandas as pd
 import yaml
 from platformdirs import user_data_path
 
-from hong2p import util
+from hong2p.pandas import is_str_or_object_dtype, addlevel
 from hong2p.types import Pathlike, ExperimentOdors, SingleTrialOdors
 
 
@@ -472,7 +472,7 @@ def odor_index_sort_key(level: pd.Index, sort_names: bool = True,
     # mask dictating where assignment should happen must have been all False...
     # (pandas >= 3.0 infers 'str' dtype for these levels, where older versions had
     # object dtype)
-    if not util.is_str_or_object_dtype(level.dtype):
+    if not is_str_or_object_dtype(level.dtype):
         return level
 
     # converting to object ndarray, since for pandas>=3.0 'str' dtype, .values would be
@@ -1591,7 +1591,7 @@ def pad_odor_index_to_n_components(df: pd.DataFrame, n: int) -> pd.DataFrame:
         # the +1
         new_name = f'{component_level_prefix}{i+1}'
         assert new_name not in df.index.names
-        df = util.addlevel(df, new_name, solvent_str)
+        df = addlevel(df, new_name, solvent_str)
         new_names.append(new_name)
 
     new_names.extend(old_names[(last_idx + 1):])
