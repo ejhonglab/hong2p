@@ -214,11 +214,25 @@
 <span class="w">    </span><span class="sd">"""Takes ThorImage directory or etree XML root object to recording start time.</span>
 
 <span class="sd">    XML object should be as returned by `get_thorimage_xmlroot`.</span>
+
+<span class="sd">    Returned time is in the local timezone of the computer running this code (as</span>
+<span class="sd">    `get_thorsync_time` is), which may differ from that of the acquisition computer.</span>
 <span class="sd">    """</span>
     <span class="n">date_ele</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">'Date'</span><span class="p">)</span>
+    <span class="c1"># Local time of acquisition computer</span>
     <span class="n">from_date</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">strptime</span><span class="p">(</span><span class="n">date_ele</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">'date'</span><span class="p">],</span> <span class="s1">'%m/</span><span class="si">%d</span><span class="s1">/%Y %H:%M:%S'</span><span class="p">)</span>
     <span class="n">from_utime</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">date_ele</span><span class="o">.</span><span class="n">attrib</span><span class="p">[</span><span class="s1">'uTime'</span><span class="p">]))</span>
-    <span class="k">assert</span> <span class="p">(</span><span class="n">from_date</span> <span class="o">-</span> <span class="n">from_utime</span><span class="p">)</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mi">1</span>
+
+    <span class="c1"># These should only differ by the difference in UTC offset between the acquisition</span>
+    <span class="c1"># computer and this one (+ &lt;1s, from 'date' being truncated to seconds). All UTC</span>
+    <span class="c1"># offsets are multiples of 15 minutes, from -12h to +14h.</span>
+    <span class="n">offset_s</span> <span class="o">=</span> <span class="p">(</span><span class="n">from_date</span> <span class="o">-</span> <span class="n">from_utime</span><span class="p">)</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span>
+    <span class="n">tz_quantum_s</span> <span class="o">=</span> <span class="mi">15</span> <span class="o">*</span> <span class="mi">60</span>
+    <span class="n">nearest_tz_offset_s</span> <span class="o">=</span> <span class="n">tz_quantum_s</span> <span class="o">*</span> <span class="nb">round</span><span class="p">(</span><span class="n">offset_s</span> <span class="o">/</span> <span class="n">tz_quantum_s</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">abs</span><span class="p">(</span><span class="n">offset_s</span> <span class="o">-</span> <span class="n">nearest_tz_offset_s</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">offset_s</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">26</span> <span class="o">*</span> <span class="mi">60</span> <span class="o">*</span> <span class="mi">60</span><span class="p">,</span> \
+        <span class="p">(</span><span class="sa">f</span><span class="s2">"ThorImage XML 'date' (</span><span class="si">{</span><span class="n">from_date</span><span class="si">}</span><span class="s2">) and 'uTime' (</span><span class="si">{</span><span class="n">from_utime</span><span class="si">}</span><span class="s2">, in local time)"</span>
+        <span class="s1">' differ by more than a timezone offset'</span>
+    <span class="p">)</span>
     <span class="k">return</span> <span class="n">from_utime</span></div>
 
 

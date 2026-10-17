@@ -108,8 +108,11 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">tifffile</span><span class="w"> </span><span class="kn">import</span> <span class="n">TiffFile</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">matlab</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">thor</span><span class="p">,</span> <span class="n">olf</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">matlab</span><span class="p">,</span> <span class="n">thor</span><span class="p">,</span> <span class="n">olf</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">pandas</span> <span class="k">as</span> <span class="n">hong_pd</span>
+<span class="c1"># Moved to hong2p.pandas (to avoid it importing from this module), but importing here</span>
+<span class="c1"># (without deprecation warning) so it is still accessible as `util.is_scalar`.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_scalar</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.err</span><span class="w"> </span><span class="kn">import</span> <span class="n">NoStimulusFile</span><span class="p">,</span> <span class="n">TooManyStimulusFiles</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">Pathlike</span><span class="p">,</span> <span class="n">PathPair</span><span class="p">,</span> <span class="n">Datelike</span><span class="p">,</span> <span class="n">FlyNum</span><span class="p">,</span> <span class="n">DateAndFlyNum</span><span class="p">,</span>
     <span class="n">DataFrameOrDataArray</span>
@@ -2651,8 +2654,7 @@
 <span class="w">    </span><span class="sd">'''Returns a pandas.DataFrame with data on flies and MB team recordings.</span>
 
 <span class="sd">    Missing ThorImage / ThorSync directory names are inferred from files on disk or</span>
-<span class="sd">    naming conventions. Result is cached for future calls. Also uploads fly data to</span>
-<span class="sd">    database (see `db.to_sql_with_duplicates`).</span>
+<span class="sd">    naming conventions. Result is cached for future calls.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        use_cache: if True, loads sheet data from `.gsheet_cache.p` in current</span>
@@ -3019,17 +3021,6 @@
         <span class="nb">print</span><span class="p">(</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Duplicated ThorSync directories after path inference:'</span><span class="p">)</span>
         <span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">duped_thorsync</span><span class="p">])</span>
         <span class="k">raise</span>
-
-    <span class="n">flies</span> <span class="o">=</span> <span class="n">sheets</span><span class="p">[</span><span class="s1">'fly_preps'</span><span class="p">]</span>
-    <span class="n">flies</span><span class="p">[</span><span class="s1">'date'</span><span class="p">]</span> <span class="o">=</span> <span class="n">flies</span><span class="p">[</span><span class="s1">'date'</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s1">'ffill'</span><span class="p">)</span>
-    <span class="n">flies</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s1">'date'</span><span class="p">,</span><span class="s1">'fly_num'</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-
-    <span class="c1"># TODO maybe flag to not update database? or just don't?</span>
-    <span class="c1"># TODO groups all inserts into transactions across tables, and as few as</span>
-    <span class="c1"># possible (i.e. only do this later)?</span>
-    <span class="n">db</span><span class="o">.</span><span class="n">to_sql_with_duplicates</span><span class="p">(</span><span class="n">flies</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span>
-        <span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s1">'date'</span><span class="p">:</span> <span class="s1">'prep_date'</span><span class="p">}),</span> <span class="s1">'flies'</span>
-    <span class="p">)</span>
 
     <span class="c1"># For manual sanity checking that important data isn't being excluded</span>
     <span class="c1"># inappropriately.</span>
@@ -5149,7 +5140,7 @@
 <span class="w">    </span><span class="sd">"""Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.</span>
 
 <span class="sd">    Searches `*.p` files under `&lt;analysis_output_root&gt;/trace_pickles` (as written by</span>
-<span class="sd">    `db.load_recording`), which should be named like</span>
+<span class="sd">    since-removed `hong2p.db.load_recording`), which should be named like</span>
 <span class="sd">    '&lt;YYYYMMDD&gt;_&lt;HHMM&gt;_&lt;YYYY-MM-DD&gt;_&lt;fly_num&gt;_&lt;thorimage_id&gt;.p'.</span>
 
 <span class="sd">    Only returns rows for filenames that had the latest timestamp for the</span>
@@ -5623,37 +5614,6 @@
             <span class="c1"># non-list/tuple case (which we don't support, and don't mention what to do</span>
             <span class="c1"># about in warning above)</span>
             <span class="k">raise</span> <span class="n">verr</span></div>
-
-
-
-<span class="c1"># TODO add flag to include bools too?</span>
-<span class="c1"># TODO rename is_floatlike or something? it is also checking shape for everything but</span>
-<span class="c1"># np.dtype input... is_scalar_floatlike?</span>
-<div class="viewcode-block" id="is_scalar">
-<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.is_scalar">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">is_scalar</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Returns whether input is a float or int, or a numpy scalar float/int.</span>
-
-<span class="sd">    Also works with `np.dtype` input (e.g. from `df.values.dtype`).</span>
-
-<span class="sd">    Returns False for bools (including numpy scalar ones)</span>
-<span class="sd">    """</span>
-    <span class="c1"># TODO need to do anything separate for scalar xarray inputs? (e.g. .item(0)?)</span>
-    <span class="c1"># any other type conversion? test!</span>
-    <span class="c1"># NOTE: np.issubdtype doesn't accept tuple of types like isinstance does, but it</span>
-    <span class="c1"># does work with type(&lt;np.[float|int]*&gt;) and type(&lt;int|float&gt;)</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">):</span>
-        <span class="n">x_type</span> <span class="o">=</span> <span class="n">x</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">x_type</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
-
-    <span class="n">dtype_matches</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">x_type</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)]</span>
-    <span class="n">ret</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span><span class="n">dtype_matches</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">ret</span><span class="p">:</span>
-        <span class="k">assert</span> <span class="nb">sum</span><span class="p">(</span><span class="n">dtype_matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="s1">'not expecting either int/float to be subdtype'</span>
-            <span class="s1">' of other'</span>
-        <span class="p">)</span>
-    <span class="k">return</span> <span class="n">ret</span></div>
 
 
 

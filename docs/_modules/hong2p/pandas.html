@@ -175,6 +175,12 @@
         <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="n">names</span><span class="p">]</span>
         <span class="n">values</span> <span class="o">=</span> <span class="p">[</span><span class="n">values</span><span class="p">]</span>
 
+    <span class="c1"># (zip below would otherwise silently drop extra names/values)</span>
+    <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">values</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'names and values must have same length. got </span><span class="si">{</span><span class="n">names</span><span class="si">=}</span><span class="s1"> and '</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">values</span><span class="si">=}</span><span class="s1">'</span>
+        <span class="p">)</span>
+
     <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">values</span><span class="p">))[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">data</span><span class="p">],</span> <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="n">name</span><span class="p">],</span> <span class="n">keys</span><span class="o">=</span><span class="p">[</span><span class="n">value</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
 
@@ -257,7 +263,7 @@
 <span class="sd">    elements.</span>
 
 <span class="sd">    Other columns have their values duplicated, to match the lengths of the</span>
-<span class="sd">    expanded array values.</span>
+<span class="sd">    expanded array values. Columns are in the same order as in `df`.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">    `df` (pd.DataFrame)</span>
@@ -287,7 +293,8 @@
         <span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
         <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">ac</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span>
 
-    <span class="n">non_array_cols</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">array_cols</span><span class="p">)</span>
+    <span class="c1"># (rather than df.columns.difference(...), which sorts)</span>
+    <span class="n">non_array_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">array_cols</span><span class="p">]</span>
 
     <span class="c1"># TODO true vectorized way to do this?</span>
     <span class="c1"># is str.len (on either rows/columns) faster (+equiv)?</span>
@@ -315,12 +322,10 @@
     <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">nac_data</span><span class="p">,</span> <span class="n">ac_data</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
     <span class="k">assert</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
-    <span class="n">new_cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">non_array_cols</span><span class="p">)</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="n">array_cols</span><span class="p">)</span>
-    <span class="c1"># TODO copy=False is fine here, right? measure the time difference?</span>
-    <span class="n">out_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">new_cols</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">orig_dtypes</span><span class="p">,</span>
-        <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">new_cols</span> <span class="o">=</span> <span class="n">non_array_cols</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="n">array_cols</span><span class="p">)</span>
+    <span class="n">out_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">new_cols</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">orig_dtypes</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">out_df</span></div>
+    <span class="k">return</span> <span class="n">out_df</span><span class="p">[</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span></div>
 
 
 
@@ -519,6 +524,39 @@
 
 
 
+<span class="c1"># TODO add flag to include bools too?</span>
+<span class="c1"># TODO rename is_floatlike or something? it is also checking shape for everything but</span>
+<span class="c1"># np.dtype input... is_scalar_floatlike?</span>
+<span class="c1"># TODO move to a more appropriate module? only here (rather than in util) so this module</span>
+<span class="c1"># does not need to import util (which imports this module)</span>
+<div class="viewcode-block" id="is_scalar">
+<a class="viewcode-back" href="../../apidoc/hong2p.pandas.html#hong2p.pandas.is_scalar">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_scalar</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns whether input is a float or int, or a numpy scalar float/int.</span>
+
+<span class="sd">    Also works with `np.dtype` input (e.g. from `df.values.dtype`).</span>
+
+<span class="sd">    Returns False for bools (including numpy scalar ones)</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO need to do anything separate for scalar xarray inputs? (e.g. .item(0)?)</span>
+    <span class="c1"># any other type conversion? test!</span>
+    <span class="c1"># NOTE: np.issubdtype doesn't accept tuple of types like isinstance does, but it</span>
+    <span class="c1"># does work with type(&lt;np.[float|int]*&gt;) and type(&lt;int|float&gt;)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">):</span>
+        <span class="n">x_type</span> <span class="o">=</span> <span class="n">x</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">x_type</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+    <span class="n">dtype_matches</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">x_type</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)]</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span><span class="n">dtype_matches</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ret</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">sum</span><span class="p">(</span><span class="n">dtype_matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="s1">'not expecting either int/float to be subdtype'</span>
+            <span class="s1">' of other'</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">ret</span></div>
+
+
+
 <span class="c1"># TODO add support for dtype mismatch (but where one can be cast to the other)?  maybe</span>
 <span class="c1"># also support for cols in diff orders? utility fns (maybe exposed behind verbose kwarg)</span>
 <span class="c1"># for printing differences between dtypes / etc? (use new dtypes_equal fn below for</span>
@@ -551,9 +589,6 @@
 
 <span class="sd">        **kwargs: passed thru to `np.allclose` (`equal_nan=True` may be the most useful)</span>
 <span class="sd">    """</span>
-    <span class="c1"># not importing at module level, since util imports from this module</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_scalar</span>
-
     <span class="n">a_scalar</span> <span class="o">=</span> <span class="n">is_scalar</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
     <span class="n">b_scalar</span> <span class="o">=</span> <span class="n">is_scalar</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
     <span class="c1"># TODO or still want to consider equal if DataFrame/Series has one element with</span>
@@ -575,8 +610,13 @@
     <span class="c1"># Series don't have select_dtypes</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
         <span class="n">a_obj</span> <span class="o">=</span> <span class="n">select_str_and_object_dtypes</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+        <span class="n">b_obj</span> <span class="o">=</span> <span class="n">select_str_and_object_dtypes</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+        <span class="c1"># (e.g. if a column is numeric in one input and str in the other. column order</span>
+        <span class="c1"># is already known to match, from index check above)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">a_obj</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">b_obj</span><span class="o">.</span><span class="n">columns</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">a_obj</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">b_obj</span> <span class="o">=</span> <span class="n">select_str_and_object_dtypes</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">a_obj</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">b_obj</span><span class="p">):</span>
                 <span class="k">return</span> <span class="kc">False</span>
 
@@ -591,7 +631,8 @@
 
 <div class="viewcode-block" id="pd_isclose">
 <a class="viewcode-back" href="../../apidoc/hong2p.pandas.html#hong2p.pandas.pd_isclose">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">pd_isclose</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">DataFrameOrSeries</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">DataFrameOrSeries</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">pd_isclose</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">DataFrameOrSeries</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">DataFrameOrSeries</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataFrameOrSeries</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Like `np.isclose`, but preserves input indices.</span>
 
 <span class="sd">    Args:</span>
@@ -599,14 +640,13 @@
 
 <span class="sd">        **kwargs: passed thru to `np.isclose` (`equal_nan=True` may be the most useful)</span>
 
+<span class="sd">    Returns: bool DataFrame/Series, of same shape and with same indices as input.</span>
+
 <span class="sd">    Raises ValueError if indices do not match.</span>
 <span class="sd">    """</span>
     <span class="c1"># not sure what isclose behavior is if shapes mismatch, but only really imagine</span>
     <span class="c1"># using this fn for like-indexed stuff anyway</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">pd_indices_equal</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">if_index_mismatch</span><span class="o">=</span><span class="s1">'err'</span><span class="p">)</span>
-    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-        <span class="k">raise</span>
+    <span class="n">pd_indices_equal</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">if_index_mismatch</span><span class="o">=</span><span class="s1">'err'</span><span class="p">)</span>
 
     <span class="n">isclose</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
@@ -623,7 +663,7 @@
 <div class="viewcode-block" id="dtypes_equal">
 <a class="viewcode-back" href="../../apidoc/hong2p.pandas.html#hong2p.pandas.dtypes_equal">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">dtypes_equal</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">reorder_cols</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="n">cast</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="n">cast</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Returns whether column dtypes of `a` and `b` are equal.</span>
 
 <span class="sd">    Args:</span>
@@ -632,10 +672,11 @@
 <span class="sd">        reorder_cols: if True, `b` columns are reordered to match `a` before comparing.</span>
 <span class="sd">            otherwise, asserts columns are in the same order.</span>
 
-<span class="sd">        cast: if True (and dtypes differ), tries casting `b` to dtypes of `a` before</span>
-<span class="sd">            comparing.</span>
+<span class="sd">        cast: if True, also returns True if dtypes differ, but `b` can be cast to dtypes</span>
+<span class="sd">            of `a` without changing any values (e.g. if `a` has an int column, where `b`</span>
+<span class="sd">            has a float column with only whole numbers)</span>
 
-<span class="sd">        verbose: if True, prints mismatching dtypes</span>
+<span class="sd">        verbose: if True, prints mismatching dtypes (if returning False)</span>
 <span class="sd">    """</span>
 
     <span class="c1"># NOTE: Series do not seem to have dtypes available on a per-key basis anymore. just</span>
@@ -652,16 +693,21 @@
             <span class="k">assert</span> <span class="nb">set</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
             <span class="n">b</span> <span class="o">=</span> <span class="n">b</span><span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
 
-    <span class="k">if</span> <span class="n">cast</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">a</span><span class="o">.</span><span class="n">dtypes</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">dtypes</span><span class="p">):</span>
-        <span class="c1"># TODO how will this fail if casting not possible? need to catch and return</span>
-        <span class="c1"># False?</span>
-        <span class="n">b</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtypes</span><span class="p">)</span>
-
     <span class="n">equal</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">dtypes</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">dtypes</span><span class="p">)</span>
 
+    <span class="k">if</span> <span class="n">cast</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">equal</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># casting back to the original dtypes, because .equals also checks dtypes</span>
+            <span class="n">equal</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtypes</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">dtypes</span><span class="p">)</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+
+        <span class="c1"># e.g. if `b` has NaN or str values, and `a` has an int column there</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="k">pass</span>
+
     <span class="k">if</span> <span class="n">verbose</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">equal</span><span class="p">:</span>
+        <span class="n">mismatching</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">dtypes</span> <span class="o">!=</span> <span class="n">b</span><span class="o">.</span><span class="n">dtypes</span>
         <span class="nb">print</span><span class="p">(</span><span class="s1">'mismatching dtypes:'</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtypes</span><span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">dtypes</span> <span class="o">!=</span> <span class="n">b</span><span class="o">.</span><span class="n">dtypes</span><span class="p">])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">'a'</span><span class="p">:</span> <span class="n">a</span><span class="o">.</span><span class="n">dtypes</span><span class="p">[</span><span class="n">mismatching</span><span class="p">],</span> <span class="s1">'b'</span><span class="p">:</span> <span class="n">b</span><span class="o">.</span><span class="n">dtypes</span><span class="p">[</span><span class="n">mismatching</span><span class="p">]}))</span>
 
     <span class="k">return</span> <span class="n">equal</span></div>
 

@@ -165,7 +165,7 @@ the same length.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hong2p.pandas.dtypes_equal">
-<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">dtypes_equal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reorder_cols</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cast</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#dtypes_equal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.dtypes_equal" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">dtypes_equal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reorder_cols</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cast</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#dtypes_equal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.dtypes_equal" title="Link to this definition"></a></dt>
 <dd><p>Returns whether column dtypes of <cite>a</cite> and <cite>b</cite> are equal.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -173,9 +173,10 @@ the same length.</p></li>
 <li><p><strong>a</strong><strong>|</strong><strong>b</strong> – DataFrames to compare. must have same set of columns.</p></li>
 <li><p><strong>reorder_cols</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, <cite>b</cite> columns are reordered to match <cite>a</cite> before comparing.
 otherwise, asserts columns are in the same order.</p></li>
-<li><p><strong>cast</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True (and dtypes differ), tries casting <cite>b</cite> to dtypes of <cite>a</cite> before
-comparing.</p></li>
-<li><p><strong>verbose</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, prints mismatching dtypes</p></li>
+<li><p><strong>cast</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, also returns True if dtypes differ, but <cite>b</cite> can be cast to dtypes
+of <cite>a</cite> without changing any values (e.g. if <cite>a</cite> has an int column, where <cite>b</cite>
+has a float column with only whole numbers)</p></li>
+<li><p><strong>verbose</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, prints mismatching dtypes (if returning False)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -195,7 +196,7 @@ arrays.</p>
 the length (should be common in each input row) of each set of list/array
 elements.</p>
 <p>Other columns have their values duplicated, to match the lengths of the
-expanded array values.</p>
+expanded array values. Columns are in the same order as in <cite>df</cite>.</p>
 <p>Args:
 <cite>df</cite> (pd.DataFrame)</p>
 <p>Returns:
@@ -255,6 +256,19 @@ columns.</p>
 suffix) are unstacked into columns. Levels without such a pair are dropped. Only
 values in <cite>ser</cite> are filled, so output will have NaN in other triangle, if <cite>ser</cite> only
 has one triangle (as by default in <cite>melt_symmetric</cite>).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.is_scalar">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">is_scalar</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#is_scalar"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.is_scalar" title="Link to this definition"></a></dt>
+<dd><p>Returns whether input is a float or int, or a numpy scalar float/int.</p>
+<p>Also works with <cite>np.dtype</cite> input (e.g. from <cite>df.values.dtype</cite>).</p>
+<p>Returns False for bools (including numpy scalar ones)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -389,9 +403,10 @@ raise ValueError (‘err’) if either row/column indices do not match</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
 </dd>
 </dl>
+<p>Returns: bool DataFrame/Series, of same shape and with same indices as input.</p>
 <p>Raises ValueError if indices do not match.</p>
 </dd></dl>
 

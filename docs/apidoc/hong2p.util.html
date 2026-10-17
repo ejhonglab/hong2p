@@ -780,19 +780,6 @@ Can also take prep_date, fly_num, thorimage_id.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="hong2p.util.is_scalar">
-<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">is_scalar</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#is_scalar"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.is_scalar" title="Link to this definition"></a></dt>
-<dd><p>Returns whether input is a float or int, or a numpy scalar float/int.</p>
-<p>Also works with <cite>np.dtype</cite> input (e.g. from <cite>df.values.dtype</cite>).</p>
-<p>Returns False for bools (including numpy scalar ones)</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.util.is_subrecording">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">is_subrecording</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">thorimage_id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#is_subrecording"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.is_subrecording" title="Link to this definition"></a></dt>
 <dd><p>Returns whether a recording id matches my GUIs naming convention for the
@@ -811,7 +798,7 @@ the “sub-recordings” it can create.</p>
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">latest_trace_pickles</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#latest_trace_pickles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.latest_trace_pickles" title="Link to this definition"></a></dt>
 <dd><p>Returns (date, fly, id) indexed DataFrame w/ filename and timestamp cols.</p>
 <p>Searches <cite>*.p</cite> files under <cite>&lt;analysis_output_root&gt;/trace_pickles</cite> (as written by
-<cite>db.load_recording</cite>), which should be named like
+since-removed <cite>hong2p.db.load_recording</cite>), which should be named like
 ‘&lt;YYYYMMDD&gt;_&lt;HHMM&gt;_&lt;YYYY-MM-DD&gt;_&lt;fly_num&gt;_&lt;thorimage_id&gt;.p’.</p>
 <p>Only returns rows for filenames that had the latest timestamp for the
 combination of index values.</p>
@@ -856,8 +843,7 @@ In some cases, this can overwrite the loaded values.</p>
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">mb_team_gsheet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">use_cache</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">natural_odors_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">drop_nonexistant_dirs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_inferred_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_excluded_on_disk</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#mb_team_gsheet"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.mb_team_gsheet" title="Link to this definition"></a></dt>
 <dd><p>Returns a pandas.DataFrame with data on flies and MB team recordings.</p>
 <p>Missing ThorImage / ThorSync directory names are inferred from files on disk or
-naming conventions. Result is cached for future calls. Also uploads fly data to
-database (see <cite>db.to_sql_with_duplicates</cite>).</p>
+naming conventions. Result is cached for future calls.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

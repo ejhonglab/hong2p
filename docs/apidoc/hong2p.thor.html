@@ -423,6 +423,8 @@ will return the same number regardless of without_flyback.</p></li>
 <span class="sig-prename descclassname"><span class="pre">hong2p.thor.</span></span><span class="sig-name descname"><span class="pre">get_thorimage_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xml</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/thor.html#get_thorimage_time"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.thor.get_thorimage_time" title="Link to this definition"></a></dt>
 <dd><p>Takes ThorImage directory or etree XML root object to recording start time.</p>
 <p>XML object should be as returned by <cite>get_thorimage_xmlroot</cite>.</p>
+<p>Returned time is in the local timezone of the computer running this code (as
+<cite>get_thorsync_time</cite> is), which may differ from that of the acquisition computer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">datetime</span></code></span></p>
