@@ -99,7 +99,9 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.colors</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">Normalize</span><span class="p">,</span> <span class="n">CenteredNorm</span><span class="p">,</span> <span class="n">TwoSlopeNorm</span><span class="p">,</span> <span class="n">to_rgb</span><span class="p">,</span>
     <span class="n">ListedColormap</span><span class="p">,</span> <span class="n">LinearSegmentedColormap</span><span class="p">,</span> <span class="n">SymLogNorm</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Collection</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.lines</span><span class="w"> </span><span class="kn">import</span> <span class="n">Line2D</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.path</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span> <span class="k">as</span> <span class="n">MplPath</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">patches</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="kn">import</span> <span class="n">Patch</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.patheffects</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">PathEffects</span>
@@ -3650,15 +3652,14 @@
             <span class="p">)</span>
         <span class="p">]</span>
 
-        <span class="c1"># TODO delete</span>
-        <span class="c1">#print(f'{type(mpl_contour)=}')</span>
-
-        <span class="c1"># TODO TODO why do docs make it seem like .set should be availaible directly on what</span>
-        <span class="c1"># ax.contour returns? version thing?</span>
-        <span class="c1">#mpl_contour.set(path_effects=path_effects)</span>
         <span class="c1"># https://matplotlib.org/stable/gallery/misc/tickedstroke_demo.html</span>
-        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">mpl_contour</span><span class="o">.</span><span class="n">collections</span><span class="p">:</span>
-            <span class="n">c</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">path_effects</span><span class="o">=</span><span class="n">path_effects</span><span class="p">)</span>
+        <span class="c1"># ContourSet is itself a Collection in matplotlib &gt;= 3.8 (and</span>
+        <span class="c1"># ContourSet.collections was removed in 3.10)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mpl_contour</span><span class="p">,</span> <span class="n">Collection</span><span class="p">):</span>
+            <span class="n">mpl_contour</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">path_effects</span><span class="o">=</span><span class="n">path_effects</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">mpl_contour</span><span class="o">.</span><span class="n">collections</span><span class="p">:</span>
+                <span class="n">c</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">path_effects</span><span class="o">=</span><span class="n">path_effects</span><span class="p">)</span>
 
     <span class="c1"># TODO delete</span>
     <span class="c1"># (assuming i can set dash params via linestyles=[offset, (dash on, dash off)]`</span>
@@ -3777,11 +3778,11 @@
 <span class="sd">        '''</span>
         <span class="c1">#</span>
 
-    <span class="c1"># TODO which of these is actually &gt; 1 in multiple comps case?</span>
-    <span class="c1"># handle that one approp w/ err_on_multiple_comps!</span>
-    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">mpl_contour</span><span class="o">.</span><span class="n">collections</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
-
-    <span class="n">paths</span> <span class="o">=</span> <span class="n">mpl_contour</span><span class="o">.</span><span class="n">collections</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_paths</span><span class="p">()</span>
+    <span class="c1"># One list of (n, 2) vertex arrays per contour level, with one array per</span>
+    <span class="c1"># disconnected component (in matplotlib before and after 3.8, unlike `.collections`</span>
+    <span class="c1"># and `.get_paths()`)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">mpl_contour</span><span class="o">.</span><span class="n">allsegs</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="n">paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">MplPath</span><span class="p">(</span><span class="n">segment</span><span class="p">)</span> <span class="k">for</span> <span class="n">segment</span> <span class="ow">in</span> <span class="n">mpl_contour</span><span class="o">.</span><span class="n">allsegs</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
     <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">paths</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
 
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">paths</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>

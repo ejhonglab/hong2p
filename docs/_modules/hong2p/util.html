@@ -3289,7 +3289,7 @@
         <span class="c1"># TODO also load single odors (or maybe other trial structures) from stuff like</span>
         <span class="c1"># this, so analysis does not need my own pickle based stim format</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">metadata_file</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">)</span> <span class="k">as</span> <span class="n">mdf</span><span class="p">:</span>
-            <span class="n">yaml_metadata</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">mdf</span><span class="p">)</span>
+            <span class="n">yaml_metadata</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">mdf</span><span class="p">)</span>
 
         <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
             <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">yaml_metadata</span><span class="p">:</span>
@@ -3530,7 +3530,7 @@
 <span class="sd">            order), and converts to big-endian if needed. otherwise, only converts</span>
 <span class="sd">            float64 to float32.</span>
 
-<span class="sd">        dims: may or may not have the same meaning as `tifffile.imsave` `axes` kwarg.</span>
+<span class="sd">        dims: may or may not have the same meaning as `tifffile.imwrite` `axes` kwarg.</span>
 <span class="sd">            characters must be among 'TZCYX'. defaults to 'TYX' or 'TZYX', depending on</span>
 <span class="sd">            number of dimensions of `movie`.</span>
 <span class="sd">    """</span>
@@ -3553,7 +3553,7 @@
         <span class="c1"># able to discern the byteorder.</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">dtype</span><span class="o">.</span><span class="n">byteorder</span> <span class="o">==</span> <span class="s1">'&lt;'</span> <span class="ow">or</span>
             <span class="p">(</span><span class="n">dtype</span><span class="o">.</span><span class="n">byteorder</span> <span class="o">==</span> <span class="s1">'='</span> <span class="ow">and</span> <span class="n">sys</span><span class="o">.</span><span class="n">byteorder</span> <span class="o">==</span> <span class="s1">'little'</span><span class="p">)):</span>
-            <span class="n">movie</span> <span class="o">=</span> <span class="n">movie</span><span class="o">.</span><span class="n">byteswap</span><span class="p">()</span><span class="o">.</span><span class="n">newbyteorder</span><span class="p">()</span>
+            <span class="n">movie</span> <span class="o">=</span> <span class="n">movie</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="o">.</span><span class="n">newbyteorder</span><span class="p">(</span><span class="s1">'&gt;'</span><span class="p">))</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">assert</span> <span class="n">dtype</span><span class="o">.</span><span class="n">byteorder</span> <span class="o">==</span> <span class="s1">'&gt;'</span>
 
@@ -3621,7 +3621,7 @@
 
     <span class="c1"># TODO delete?</span>
     <span class="k">if</span> <span class="n">_debug</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'right before imsave: </span><span class="si">{</span><span class="n">movie</span><span class="o">.</span><span class="n">shape</span><span class="si">=}</span><span class="s1">'</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'right before imwrite: </span><span class="si">{</span><span class="n">movie</span><span class="o">.</span><span class="n">shape</span><span class="si">=}</span><span class="s1">'</span><span class="p">)</span>
     <span class="c1">#</span>
 
     <span class="c1"># some docs (suite2p?) say bigtiff is not supported w/ imagej=True, and switching to</span>
@@ -3631,18 +3631,18 @@
     <span class="c1"># memory issues for Sam), and w/o the warning about truncating for large inputs.</span>
     <span class="c1"># round trip tests still passing (for at least 2 test files from Sam, one old and</span>
     <span class="c1"># one new) after switching from imagej=True to ome=True</span>
-    <span class="c1"># TODO try just removing all kwargs to imsave?</span>
+    <span class="c1"># TODO try just removing all kwargs to imwrite?</span>
     <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
         <span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s1">'error'</span><span class="p">,</span> <span class="n">category</span><span class="o">=</span><span class="ne">UserWarning</span><span class="p">,</span>
             <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s1">'.*truncating ImageJ file'</span>
         <span class="p">)</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="n">tifffile</span><span class="o">.</span><span class="n">imsave</span><span class="p">(</span><span class="n">tiff_filename</span><span class="p">,</span> <span class="n">movie</span><span class="p">,</span> <span class="n">imagej</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">tifffile</span><span class="o">.</span><span class="n">imwrite</span><span class="p">(</span><span class="n">tiff_filename</span><span class="p">,</span> <span class="n">movie</span><span class="p">,</span> <span class="n">imagej</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">UserWarning</span><span class="p">:</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">'saving TIFF with ome=True, because ImageJ TIFF would have '</span>
                 <span class="s1">'been truncated'</span>
             <span class="p">)</span>
-            <span class="n">tifffile</span><span class="o">.</span><span class="n">imsave</span><span class="p">(</span><span class="n">tiff_filename</span><span class="p">,</span> <span class="n">movie</span><span class="p">,</span> <span class="n">ome</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+            <span class="n">tifffile</span><span class="o">.</span><span class="n">imwrite</span><span class="p">(</span><span class="n">tiff_filename</span><span class="p">,</span> <span class="n">movie</span><span class="p">,</span> <span class="n">ome</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
 
