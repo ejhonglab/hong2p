@@ -128,3 +128,16 @@ def test_const_ranges():
     assert rs == [('a', 0, 1), ('b', 2, 3), ('a', 4, 5)]
     rs = util.const_ranges(vs)
     assert rs == [(0, 1), (2, 3), (4, 5)]
+
+
+def test_write_tiff(tmp_path):
+    import tifffile
+
+    movie = np.arange(2 * 4 * 5, dtype='<u2').reshape(2, 4, 5)
+    tiff_path = tmp_path / 'movie.tif'
+    util.write_tiff(tiff_path, movie)
+
+    with tifffile.TiffFile(tiff_path) as tiff:
+        # little-endian input should be converted to big-endian (for MATLAB imread_big)
+        assert tiff.byteorder == '>'
+        assert np.array_equal(tiff.asarray(), movie)

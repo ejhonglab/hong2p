@@ -907,7 +907,7 @@ def get_thorsync_samplerate_hz(thorsync_dir):
     # (maybe that data is in thorimage config actually?)
 
     active_device = None
-    for device in devices.getchildren():
+    for device in devices:
         attrib = device.attrib
 
         if attrib['type'] == 'Simulator' or attrib['devID'] == 'NONE':

@@ -8,7 +8,7 @@ from pathlib import Path
 from shutil import copy2
 import subprocess
 import sys
-from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
 from tqdm import tqdm
 from typing import List, Optional
 import warnings
@@ -651,11 +651,11 @@ def save_requirements() -> None:
 
     backup_msg = None
     if path.is_file():
-        temp = NamedTemporaryFile(suffix=f'_{name}')
-        temp_path = Path(temp.name, delete=False)
-        temp_path.write_text(txt)
-        unchanged = files_match(path, temp_path)
-        temp.close()
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir) / name
+            temp_path.write_text(txt)
+            unchanged = files_match(path, temp_path)
+
         if unchanged:
             print(f'{path} contents match current output. not making a backup or '
                 'writing anything', file=sys.stderr

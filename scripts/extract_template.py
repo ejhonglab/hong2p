@@ -530,7 +530,7 @@ def main():
         baselined = template - template.min()
         u16_template = (u16_max * baselined / baselined.max()
             ).astype(np.uint16)
-        tifffile.imsave(template_tiff_path, u16_template)
+        tifffile.imwrite(template_tiff_path, u16_template)
 
         margin = 0
         center = (template.shape[0] // 2,) * 2

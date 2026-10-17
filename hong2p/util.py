@@ -3038,7 +3038,7 @@ def load_metadata(*args):
         # TODO also load single odors (or maybe other trial structures) from stuff like
         # this, so analysis does not need my own pickle based stim format
         with open(metadata_file, 'r') as mdf:
-            yaml_metadata = yaml.load(mdf)
+            yaml_metadata = yaml.safe_load(mdf)
 
         for k in metadata.keys():
             if k in yaml_metadata:
@@ -3246,7 +3246,7 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
             order), and converts to big-endian if needed. otherwise, only converts
             float64 to float32.
 
-        dims: may or may not have the same meaning as `tifffile.imsave` `axes` kwarg.
+        dims: may or may not have the same meaning as `tifffile.imwrite` `axes` kwarg.
             characters must be among 'TZCYX'. defaults to 'TYX' or 'TZYX', depending on
             number of dimensions of `movie`.
     """
@@ -3269,7 +3269,7 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
         # able to discern the byteorder.
         if (dtype.byteorder == '<' or
             (dtype.byteorder == '=' and sys.byteorder == 'little')):
-            movie = movie.byteswap().newbyteorder()
+            movie = movie.astype(dtype.newbyteorder('>'))
         else:
             assert dtype.byteorder == '>'
 
@@ -3337,7 +3337,7 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
 
     # TODO delete?
     if _debug:
-        print(f'right before imsave: {movie.shape=}')
+        print(f'right before imwrite: {movie.shape=}')
     #
 
     # some docs (suite2p?) say bigtiff is not supported w/ imagej=True, and switching to
@@ -3347,18 +3347,18 @@ def write_tiff(tiff_filename: Pathlike, movie: np.ndarray, strict_dtype=True,
     # memory issues for Sam), and w/o the warning about truncating for large inputs.
     # round trip tests still passing (for at least 2 test files from Sam, one old and
     # one new) after switching from imagej=True to ome=True
-    # TODO try just removing all kwargs to imsave?
+    # TODO try just removing all kwargs to imwrite?
     with warnings.catch_warnings():
         warnings.filterwarnings('error', category=UserWarning,
             message=f'.*truncating ImageJ file'
         )
         try:
-            tifffile.imsave(tiff_filename, movie, imagej=True)
+            tifffile.imwrite(tiff_filename, movie, imagej=True)
         except UserWarning:
             warnings.warn('saving TIFF with ome=True, because ImageJ TIFF would have '
                 'been truncated'
             )
-            tifffile.imsave(tiff_filename, movie, ome=True)
+            tifffile.imwrite(tiff_filename, movie, ome=True)
 
 
 def full_frame_avg_trace(movie):

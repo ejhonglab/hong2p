@@ -27,7 +27,9 @@ from matplotlib.axis import Axis
 from matplotlib.colors import (Normalize, CenteredNorm, TwoSlopeNorm, to_rgb,
     ListedColormap, LinearSegmentedColormap, SymLogNorm
 )
+from matplotlib.collections import Collection
 from matplotlib.lines import Line2D
+from matplotlib.path import Path as MplPath
 import matplotlib.patches as patches
 from matplotlib.patches import Patch
 import matplotlib.patheffects as PathEffects
@@ -3480,15 +3482,14 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
             )
         ]
 
-        # TODO delete
-        #print(f'{type(mpl_contour)=}')
-
-        # TODO TODO why do docs make it seem like .set should be availaible directly on what
-        # ax.contour returns? version thing?
-        #mpl_contour.set(path_effects=path_effects)
         # https://matplotlib.org/stable/gallery/misc/tickedstroke_demo.html
-        for c in mpl_contour.collections:
-            c.set(path_effects=path_effects)
+        # ContourSet is itself a Collection in matplotlib >= 3.8 (and
+        # ContourSet.collections was removed in 3.10)
+        if isinstance(mpl_contour, Collection):
+            mpl_contour.set(path_effects=path_effects)
+        else:
+            for c in mpl_contour.collections:
+                c.set(path_effects=path_effects)
 
     # TODO delete
     # (assuming i can set dash params via linestyles=[offset, (dash on, dash off)]`
@@ -3607,11 +3608,11 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
         '''
         #
 
-    # TODO which of these is actually > 1 in multiple comps case?
-    # handle that one approp w/ err_on_multiple_comps!
-    assert len(mpl_contour.collections) == 1
-
-    paths = mpl_contour.collections[0].get_paths()
+    # One list of (n, 2) vertex arrays per contour level, with one array per
+    # disconnected component (in matplotlib before and after 3.8, unlike `.collections`
+    # and `.get_paths()`)
+    assert len(mpl_contour.allsegs) == 1
+    paths = [MplPath(segment) for segment in mpl_contour.allsegs[0]]
     assert len(paths) > 0
 
     if len(paths) != 1:

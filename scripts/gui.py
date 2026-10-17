@@ -1025,8 +1025,6 @@ class Segmentation(QWidget):
         # TODO try other metadata as necessary
         # metadata={'axes': 'TZCYX', 'spacing': 3.1, 'unit': 'um'} for example
         # resolution=(float, float)
-        # TODO so is this an old version of tifffile if it seems to say in the
-        # docs online that imsave has been renamed to imwrite? upgrade?
         # TODO i remember typing (end_frame + 1) before 4002e4a commit,
         # but now it's not here... so did i just accidentally undo, or
         # did i erroneously add this somewhere it doesn't belong?
@@ -1035,7 +1033,7 @@ class Segmentation(QWidget):
             print('\nSaving to TIFF {}...'.format(tiff_path), flush=True,
                 end=''
             )
-            tifffile.imsave(tiff_path, sliced_movie, imagej=True)
+            tifffile.imwrite(tiff_path, sliced_movie, imagej=True)
             print(' done\n')
 
         avg_tiff_path = join(analysis_dir, 'tif_stacks', 'AVG',
@@ -1045,7 +1043,7 @@ class Segmentation(QWidget):
         if not exists(avg_tiff_path):
             print('\nSaving average TIFF to {}'.format(avg_tiff_path))
             sliced_movie_avg = np.mean(sliced_movie, axis=0)
-            tifffile.imsave(avg_tiff_path, sliced_movie_avg, imagej=True)
+            tifffile.imwrite(avg_tiff_path, sliced_movie_avg, imagej=True)
 
         # TODO if for some reason i *do* continue doing it this way, rather than
         # refactoring sub-recording handling, probably also automate editing the

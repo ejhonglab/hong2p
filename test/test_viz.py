@@ -323,3 +323,25 @@ def test_callable_ticklabels():
             _check_ticklabels(roi_index, odor_index, roi_index, odor_index,
                 xticklabels=True, yticklabels=True
             )
+
+
+def test_plot_closed_contours():
+    import matplotlib.pyplot as plt
+
+    footprint = np.zeros((20, 20))
+    footprint[3:8, 3:8] = 1
+
+    fig, ax = plt.subplots()
+    # non-default linestyles and label, to also test setting path effects / drawing label
+    contour = viz.plot_closed_contours(footprint, ax=ax, label='a', linestyles='solid')
+
+    # contour is at 0.5 level, halfway between positive pixels and their zero neighbors
+    assert contour.shape[1] == 2
+    assert np.array_equal(contour.min(axis=0), [2.5, 2.5])
+    assert np.array_equal(contour.max(axis=0), [7.5, 7.5])
+
+    footprint[12:16, 12:16] = 1
+    with pytest.raises(RuntimeError):
+        viz.plot_closed_contours(footprint, ax=ax)
+
+    plt.close(fig)

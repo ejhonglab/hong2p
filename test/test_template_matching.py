@@ -425,7 +425,7 @@ def test_ijrois2masks():
     '''
     u16_img = np.round((img - img.min()) / img.max()).astype(np.uint16)
     tiff_fname = f'{w}x{h}_asymmetric_center.tif'
-    tifffile.imsave(tiff_fname, u16_img)
+    tifffile.imwrite(tiff_fname, u16_img)
     import ipdb; ipdb.set_trace()
     '''
 
@@ -555,7 +555,7 @@ def check_ijroi_circle_center_coords():
     # Current type of float64 led to a TIFF unreadable by ImageJ.
     baselined = img_with_rois - img_with_rois.min()
     u16_img = (u16_max * baselined / baselined.max()).astype(np.uint16)
-    tifffile.imsave(img_tiff_path, u16_img)
+    tifffile.imwrite(img_tiff_path, u16_img)
 
     ax = axs[1]
     draw_on = np.zeros_like(img_with_rois)
