@@ -91,7 +91,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">platformdirs</span><span class="w"> </span><span class="kn">import</span> <span class="n">user_data_path</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">util</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_str_or_object_dtype</span><span class="p">,</span> <span class="n">addlevel</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">ExperimentOdors</span><span class="p">,</span> <span class="n">SingleTrialOdors</span>
 
 
@@ -573,7 +573,7 @@
     <span class="c1"># mask dictating where assignment should happen must have been all False...</span>
     <span class="c1"># (pandas &gt;= 3.0 infers 'str' dtype for these levels, where older versions had</span>
     <span class="c1"># object dtype)</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">util</span><span class="o">.</span><span class="n">is_str_or_object_dtype</span><span class="p">(</span><span class="n">level</span><span class="o">.</span><span class="n">dtype</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_str_or_object_dtype</span><span class="p">(</span><span class="n">level</span><span class="o">.</span><span class="n">dtype</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">level</span>
 
     <span class="c1"># converting to object ndarray, since for pandas&gt;=3.0 'str' dtype, .values would be</span>
@@ -1749,7 +1749,7 @@
         <span class="c1"># the +1</span>
         <span class="n">new_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">component_level_prefix</span><span class="si">}{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">assert</span> <span class="n">new_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span>
-        <span class="n">df</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">addlevel</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">new_name</span><span class="p">,</span> <span class="n">solvent_str</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">addlevel</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">new_name</span><span class="p">,</span> <span class="n">solvent_str</span><span class="p">)</span>
         <span class="n">new_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_name</span><span class="p">)</span>
 
     <span class="n">new_names</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">old_names</span><span class="p">[(</span><span class="n">last_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):])</span>

@@ -83,8 +83,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">suffix_index_names</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">subset_index</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">subset_index</span><span class="p">,</span> <span class="n">suffix_index_names</span>
 
 
 <span class="c1"># TODO switch to h5netcdf? docs say it can sometimes be faster. is it, for me?</span>
@@ -532,7 +531,7 @@
 <span class="w">    </span><span class="sd">"""Converts (odor X odor) correlation DataFrame to DataArray.</span>
 
 <span class="sd">    Output has dims ('odor', 'odor_b'), with column index level names suffixed with</span>
-<span class="sd">    '_b' (via `util.suffix_index_names`).</span>
+<span class="sd">    '_b' (via `hong2p.pandas.suffix_index_names`).</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        df: square correlation DataFrame, with same index level names on rows and</span>
@@ -554,7 +553,7 @@
         <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
             <span class="k">assert</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'metadata key </span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s1"> already in index'</span>
 
-    <span class="c1"># Since util.suffix_index_names is currently inplace</span>
+    <span class="c1"># Since suffix_index_names is currently inplace</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
     <span class="c1"># Adds '_b' to end of all column names</span>

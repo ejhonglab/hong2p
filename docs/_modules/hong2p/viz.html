@@ -128,6 +128,7 @@
 <span class="c1">#from hong2p.roi import is_ijroi_certain</span>
 <span class="c1">#</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.olf</span><span class="w"> </span><span class="kn">import</span> <span class="n">remove_consecutive_repeats</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">df_map</span><span class="p">,</span> <span class="n">is_str_or_object_dtype</span><span class="p">,</span> <span class="n">index2dict_list</span>
 <span class="c1"># TODO use Color/CMap/Palette</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">DataFrameOrDataArray</span><span class="p">,</span> <span class="n">ParamDict</span><span class="p">,</span> <span class="n">CMap</span><span class="p">,</span> <span class="n">Axis</span><span class="p">,</span> <span class="n">Color</span><span class="p">,</span> <span class="n">CMap</span><span class="p">,</span>
     <span class="n">Palette</span><span class="p">,</span> <span class="n">Figsize</span><span class="p">,</span> <span class="n">ArrayLike</span><span class="p">,</span> <span class="n">MplRotation</span>
@@ -442,7 +443,7 @@
         <span class="c1"># TODO handle bool differently depending on whether we are using a dict</span>
         <span class="c1"># palette or not? (previously was only checking dtype('O') here)</span>
         <span class="c1"># (have only tested bool dtype w/ dict palette so far)</span>
-        <span class="k">if</span> <span class="n">util</span><span class="o">.</span><span class="n">is_str_or_object_dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="ow">or</span> <span class="n">dtype</span> <span class="o">==</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">is_str_or_object_dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span> <span class="ow">or</span> <span class="n">dtype</span> <span class="o">==</span> <span class="nb">bool</span><span class="p">:</span>
             <span class="n">make_legend</span> <span class="o">=</span> <span class="kc">True</span>
 
         <span class="k">elif</span> <span class="n">dtype</span> <span class="o">==</span> <span class="nb">int</span> <span class="ow">or</span> <span class="n">dtype</span> <span class="o">==</span> <span class="nb">float</span><span class="p">:</span>
@@ -468,7 +469,7 @@
                     <span class="c1"># between 0 and max (inclusive)</span>
                     <span class="n">unique_values</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">vmin</span><span class="p">,</span> <span class="n">vmax</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="k">assert</span> <span class="n">util</span><span class="o">.</span><span class="n">is_str_or_object_dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">),</span> <span class="sa">f</span><span class="s1">'unrecognized </span><span class="si">{</span><span class="n">dtype</span><span class="si">=}</span><span class="s1">'</span>
+                    <span class="k">assert</span> <span class="n">is_str_or_object_dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">),</span> <span class="sa">f</span><span class="s1">'unrecognized </span><span class="si">{</span><span class="n">dtype</span><span class="si">=}</span><span class="s1">'</span>
                     <span class="n">unique_values</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
                     <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">values</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
                         <span class="c1"># TODO assert values are str? (maybe w/ some None/NaN allowed?)</span>
@@ -508,7 +509,7 @@
                 <span class="c1"># palette has), and recommend palettes like hsl/husl?</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">var_names</span><span class="si">=}</span><span class="s1">: duplicate colors in </span><span class="si">{</span><span class="n">palette</span><span class="si">=}</span><span class="s1">'</span><span class="p">)</span>
 
-            <span class="n">colors</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">df_map</span><span class="p">(</span><span class="n">values</span><span class="p">,</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="n">df_map</span><span class="p">(</span><span class="n">values</span><span class="p">,</span>
                 <span class="c1"># now we can use color strings for both dict values and na_color, b/c</span>
                 <span class="c1"># to_rgb. to_rgb will not change input that is already a RGB tuple</span>
                 <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">to_rgb</span><span class="p">(</span><span class="n">value2color</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">else</span> <span class="n">na_color</span><span class="p">)</span>
@@ -573,7 +574,7 @@
             <span class="c1"># set_[over|under] and check we get those if i  call w/ 1+eps or 0-eps,</span>
             <span class="c1"># but colors at 1 / 0?</span>
 
-            <span class="n">colors</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">df_map</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">palette</span><span class="p">)</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="n">df_map</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">palette</span><span class="p">)</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">make_cbar</span><span class="p">:</span>
                 <span class="k">del</span> <span class="n">palette</span>
 
@@ -829,7 +830,7 @@
     <span class="k">assert</span> <span class="p">(</span><span class="n">color_df</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">len</span><span class="p">())</span> <span class="o">==</span> <span class="n">n_channels</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
     <span class="n">channels</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_channels</span><span class="p">):</span>
-        <span class="n">channels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">util</span><span class="o">.</span><span class="n">df_map</span><span class="p">(</span><span class="n">color_df</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+        <span class="n">channels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">df_map</span><span class="p">(</span><span class="n">color_df</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
 
     <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">channels</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
     <span class="k">assert</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">color_df</span><span class="o">.</span><span class="n">shape</span> <span class="o">+</span> <span class="p">(</span><span class="n">n_channels</span><span class="p">,)</span>
@@ -2645,7 +2646,7 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">levels_from_labels</span><span class="p">:</span>
             <span class="c1"># TODO need to handle case where we might transpose (e.g. via</span>
             <span class="c1"># transpose_sort_key?) (or maybe delete support for transpose_sort_key?)</span>
-            <span class="n">hline_levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">hline_level_fn</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">util</span><span class="o">.</span><span class="n">index2dict_list</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)]</span>
+            <span class="n">hline_levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">hline_level_fn</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">index2dict_list</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)]</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">hline_levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">hline_level_fn</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">yticklabels</span><span class="p">]</span>
 
@@ -2659,7 +2660,7 @@
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">vline_level_fn</span><span class="si">=}</span><span class="s1">'</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">levels_from_labels</span><span class="p">:</span>
-            <span class="n">vline_levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">vline_level_fn</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">util</span><span class="o">.</span><span class="n">index2dict_list</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)]</span>
+            <span class="n">vline_levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">vline_level_fn</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">index2dict_list</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)]</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">vline_levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">vline_level_fn</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xticklabels</span><span class="p">]</span>
 

@@ -97,6 +97,339 @@
              
   <section id="module-hong2p.pandas">
 <span id="hong2p-pandas-module"></span><h1>hong2p.pandas module<a class="headerlink" href="#module-hong2p.pandas" title="Link to this heading"></a></h1>
+<p>Utility functions for working with pandas objects (DataFrames, Series, and their indices)</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.addlevel">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">addlevel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'index'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#addlevel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.addlevel" title="Link to this definition"></a></dt>
+<dd><p>Add level(s) to pandas MultiIndex. Does not change input.</p>
+<p>Intended to be an inverse to pandas.DataFrame.droplevel. pandas.DataFrame.set_index
+with <cite>append=True</cite> would work <em>except</em> that there is no <cite>axis</cite> kwarg to that
+function, so it does not work for the columns. pandas.DataFrame.unstack is almost
+what I would want, but it can seemingly arbitrarily change order of rows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span>) – DataFrame/Series to add MultiIndex levels to</p></li>
+<li><p><strong>names</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – <cite>str</cite>/sequence-of-<cite>str</cite> name(s) for the new levels</p></li>
+<li><p><strong>values</strong> – values for the new levels. If <cite>names</cite> is a sequence, this should be of
+the same length.</p></li>
+<li><p><strong>axis</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Literal</span></code>[<span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="s1"><span class="pre">'columns'</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="s1"><span class="pre">'index'</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="s1"><span class="pre">'rows'</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="mi"><span class="pre">0</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="mi"><span class="pre">1</span></span></code></span>]</span>) – 0/’index’ or 1/’columns’, defauling to ‘index’ as in pandas</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+<p>Returns: DataFrame with MultiIndex containing names/levels from input</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.arraylike_cols">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">arraylike_cols</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#arraylike_cols"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.arraylike_cols" title="Link to this definition"></a></dt>
+<dd><p>Returns a list of columns that have only lists or arrays as elements.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.check_index_vals_unique">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">check_index_vals_unique</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#check_index_vals_unique"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.check_index_vals_unique" title="Link to this definition"></a></dt>
+<dd><p>Raises AssertionError if any duplicates in column/index indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.df_map">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">df_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fn</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#df_map"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.df_map" title="Link to this definition"></a></dt>
+<dd><p>Applies <cite>fn</cite> elementwise. <cite>DataFrame.map</cite> if available, else <cite>.applymap</cite>.</p>
+<p><cite>DataFrame.map</cite> was added in pandas 2.1 (and <cite>.applymap</cite> removed in 3.0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.diff_dataframes">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">diff_dataframes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#diff_dataframes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.diff_dataframes" title="Link to this definition"></a></dt>
+<dd><p>Returns a DataFrame summarizing input differences, or None if no differences.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.dtypes_equal">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">dtypes_equal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reorder_cols</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cast</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#dtypes_equal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.dtypes_equal" title="Link to this definition"></a></dt>
+<dd><p>Returns whether column dtypes of <cite>a</cite> and <cite>b</cite> are equal.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong><strong>|</strong><strong>b</strong> – DataFrames to compare. must have same set of columns.</p></li>
+<li><p><strong>reorder_cols</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, <cite>b</cite> columns are reordered to match <cite>a</cite> before comparing.
+otherwise, asserts columns are in the same order.</p></li>
+<li><p><strong>cast</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True (and dtypes differ), tries casting <cite>b</cite> to dtypes of <cite>a</cite> before
+comparing.</p></li>
+<li><p><strong>verbose</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, prints mismatching dtypes</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.expand_array_cols">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">expand_array_cols</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#expand_array_cols"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.expand_array_cols" title="Link to this definition"></a></dt>
+<dd><p>Expands any list/array entries, with new rows for each entry.</p>
+<p>For any columns in <cite>df</cite> that have all list/array elements (at each row),
+the column in <cite>out_df</cite> will have the type of single elements from those
+arrays.</p>
+<p>The length of <cite>out_df</cite> will be the length of the input <cite>df</cite>, multiplied by
+the length (should be common in each input row) of each set of list/array
+elements.</p>
+<p>Other columns have their values duplicated, to match the lengths of the
+expanded array values.</p>
+<p>Args:
+<cite>df</cite> (pd.DataFrame)</p>
+<p>Returns:
+<cite>out_df</cite> (pd.DataFrame)</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.first_group">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">first_group</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_cols</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#first_group"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.first_group" title="Link to this definition"></a></dt>
+<dd><p>Returns key tuple and df of first group, grouping df on group_cols.</p>
+<p>Just for ease of interactively testing out functions on DataFrames of a
+groupby.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.frame_pdist">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">frame_pdist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">metric</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'euclidean'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#frame_pdist"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.frame_pdist" title="Link to this definition"></a></dt>
+<dd><p>Returns a DataFrame matrix of all pairwise distances between input rows.</p>
+<p>Returns output of same shape as DataFrame.corr() (calculating distances between
+all pairs of input <em>rows</em>), so output rows and columns will be same as input
+columns.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.get_axis_index">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">get_axis_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#get_axis_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.get_axis_index" title="Link to this definition"></a></dt>
+<dd><p>Returns <cite>df.index</cite> (axis=0/’index’) or <cite>df.columns</cite> (axis=1/’columns’).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.index2dict_list">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">index2dict_list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">index</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#index2dict_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.index2dict_list" title="Link to this definition"></a></dt>
+<dd><p>Returns list of dicts, each with <cite>index.names</cite> keys and index values.</p>
+<p>Raises ValueError if <cite>index.names</cite> elements are not all of type <cite>str</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.invert_melt_symmetric">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">invert_melt_symmetric</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suffixes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('_a',</span> <span class="pre">'_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#invert_melt_symmetric"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.invert_melt_symmetric" title="Link to this definition"></a></dt>
+<dd><p>Takes Series (as output by <cite>melt_symmetric</cite>) back to a square DataFrame.</p>
+<p>Levels ending in first suffix (that have a matching level ending in the second
+suffix) are unstacked into columns. Levels without such a pair are dropped. Only
+values in <cite>ser</cite> are filled, so output will have NaN in other triangle, if <cite>ser</cite> only
+has one triangle (as by default in <cite>melt_symmetric</cite>).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.is_str_or_object_dtype">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">is_str_or_object_dtype</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dtype</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#is_str_or_object_dtype"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.is_str_or_object_dtype" title="Link to this definition"></a></dt>
+<dd><p>Returns whether dtype is <cite>object</cite> or a pandas string dtype.</p>
+<p>pandas &gt;= 3.0 infers <cite>str</cite> dtype (a <cite>pd.StringDtype</cite>) for string data, where older
+versions would use <cite>object</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.melt_symmetric">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">melt_symmetric</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symmetric_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">drop_constant_levels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suffixes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('_a',</span> <span class="pre">'_b')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_duplicate_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#melt_symmetric"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.melt_symmetric" title="Link to this definition"></a></dt>
+<dd><p>Takes a symmetric DataFrame to a tidy Series with unique values.</p>
+<p>Symmetric means the row and columns indices are equal, and values should
+be a symmetric matrix.</p>
+<p>Output index has levels from both row and column indices, suffixed with <cite>suffixes</cite>
+(unless they already were).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>symmetric_df</strong> – data to melt. rows/columns that are all NaN are dropped.</p></li>
+<li><p><strong>drop_constant_levels</strong> – if True, drops (MultiIndex) levels with only one value</p></li>
+<li><p><strong>suffixes</strong> – added to row and column index level names, respectively</p></li>
+<li><p><strong>name</strong> – name of output Series</p></li>
+<li><p><strong>keep_duplicate_values</strong> – if False, only upper triangle (including diagonal) is
+kept. otherwise, all values are kept.</p></li>
+</ul>
+</dd>
+</dl>
+<p>See <cite>invert_melt_symmetric</cite> for inverse.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.num_notnull">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">num_notnull</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#num_notnull"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.num_notnull" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.num_null">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">num_null</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#num_null"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.num_null" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.pd_allclose">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">pd_allclose</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_index_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#pd_allclose"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.pd_allclose" title="Link to this definition"></a></dt>
+<dd><p>Like <cite>np.allclose</cite>, but also checks pandas indices are equal.</p>
+<p>Scalars and numpy arrays are also supported (compared with <cite>np.isclose</cite> /
+<cite>np.allclose</cite>). str/object columns of DataFrames are compared for exact equality.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong><strong>|</strong><strong>b</strong> – inputs to compare. must both be either DataFrames or Series.</p></li>
+<li><p><strong>if_index_mismatch</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – passed to <cite>pd_indices_equal</cite></p></li>
+<li><p><strong>**kwargs</strong> – passed thru to <cite>np.allclose</cite> (<cite>equal_nan=True</cite> may be the most useful)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.pd_index_equal">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">pd_index_equal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'index'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">only_check_shared_levels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">assert_no_dupes_in_shared_levels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_index_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#pd_index_equal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.pd_index_equal" title="Link to this definition"></a></dt>
+<dd><p>Returns whether <cite>a</cite> and <cite>b</cite> have equal indices along <cite>axis</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong><strong>|</strong><strong>b</strong> – DataFrames / Series to compare indices of</p></li>
+<li><p><strong>axis</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – ‘index’ or ‘columns’</p></li>
+<li><p><strong>only_check_shared_levels</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, will only check level names shared
+between both indices, but requires that they share at least one level.
+see <cite>assert_no_dupes_in_shared_levels</cite>.</p></li>
+<li><p><strong>assert_no_dupes_in_shared_levels</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, will assert shared levels do not have
+duplicates in either input index (so that they could be a valid index on
+their own, otherwise, the equality may not mean as much). only relevant if
+<cite>only_check_shared_levels=True</cite></p></li>
+<li><p><strong>if_index_mismatch</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – None (just return False), ‘warn’ (warn and return False), or
+‘err’ (raise ValueError) if indices do not match</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.pd_indices_equal">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">pd_indices_equal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_index_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#pd_indices_equal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.pd_indices_equal" title="Link to this definition"></a></dt>
+<dd><p>Returns whether row indices (and column indices, for DataFrames) are equal.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong><strong>|</strong><strong>b</strong> – inputs to compare. must both be either DataFrames or Series.</p></li>
+<li><p><strong>if_index_mismatch</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – whether to return False (None), warn (and return False), or
+raise ValueError (‘err’) if either row/column indices do not match</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.pd_isclose">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">pd_isclose</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#pd_isclose"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.pd_isclose" title="Link to this definition"></a></dt>
+<dd><p>Like <cite>np.isclose</cite>, but preserves input indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>a</strong><strong>|</strong><strong>b</strong> – inputs to compare. must both be either DataFrames or Series.</p></li>
+<li><p><strong>**kwargs</strong> – passed thru to <cite>np.isclose</cite> (<cite>equal_nan=True</cite> may be the most useful)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+<p>Raises ValueError if indices do not match.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.reindex">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">reindex</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#reindex"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.reindex" title="Link to this definition"></a></dt>
+<dd><p>Reindexes data to index, after checking index is unique (to avoid surprises).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span>) – data to reindex</p></li>
+<li><p><strong>index</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code></span>) – <p>index to conform data to. The output index (or output column index,
+if <cite>x</cite> is a DataFrame and <cite>axis=’columns’</cite>) will equal this index.</p>
+<p>Will raise AssertionError if this index contains any duplicates.</p>
+</p></li>
+<li><p><strong>checks</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, checks output index equals <cite>index</cite>, and that the other index
+(for DataFrames) is unchanged</p></li>
+<li><p><strong>**kwargs</strong> – passed thru to <cite>&lt;x&gt;.reindex(…)</cite></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.select_str_and_object_dtypes">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">select_str_and_object_dtypes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#select_str_and_object_dtypes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.select_str_and_object_dtypes" title="Link to this definition"></a></dt>
+<dd><p>Like <cite>df.select_dtypes(include=’object’)</cite> (<cite>exclude=…</cite> if <cite>exclude=True</cite>),
+but also including pandas &gt;= 3.0 <cite>str</cite> dtype columns, without a deprecation warning.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="hong2p.pandas.subset_index">
 <span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">subset_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">check_unique</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#subset_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.subset_index" title="Link to this definition"></a></dt>
@@ -115,6 +448,29 @@ subsetting levels.</p></li>
 </dd>
 </dl>
 <p>Raises KeyError if not all <cite>names</cite> in <cite>index.names</cite></p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.subset_levels">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">subset_levels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#subset_levels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.subset_levels" title="Link to this definition"></a></dt>
+<dd><p>Returns MultiIndex with only levels named in <cite>subset</cite> (see also
+<cite>subset_index</cite>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.pandas.suffix_index_names">
+<span class="sig-prename descclassname"><span class="pre">hong2p.pandas.</span></span><span class="sig-name descname"><span class="pre">suffix_index_names</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suffix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'_b'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'columns'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/pandas.html#suffix_index_names"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.pandas.suffix_index_names" title="Link to this definition"></a></dt>
+<dd><p>Adds <cite>suffix</cite> to all level names of index along <cite>axis</cite> (inplace).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
