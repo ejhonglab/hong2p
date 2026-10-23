@@ -378,38 +378,18 @@ def reset_all_multiindex(arr: xr.DataArray) -> xr.DataArray:
 # TODO rename index->indices?
 # TODO allow passing in str list of order for them to be in (could also be the subset of
 # names to use as new index, assuming there would be any value add over set_index)
-# TODO TODO give more sensible error when this is called w/ input that has scalar
-# coordinate values (not associated w/ dims). currently get:
-# TypeError: unhashable type: 'numpy.ndarray'
-# on this input:
-# <xarray.DataArray (stim: 2, glomerulus: 3, time_s: 4)>
-# array([[[13.26, 13.26, 13.26, 13.26],
-#         [13.26, 13.26, 13.26, 13.26],
-#         [13.26, 13.26, 13.26, 13.26]],
-#
-#        [[13.26, 13.26, 13.26, 13.26],
-#         [13.26, 13.26, 13.26, 13.26],
-#         [13.26, 13.26, 13.26, 13.26]]])
-# Coordinates:
-#   * stim        (stim) MultiIndex
-#   - panel       (stim) object 'megamat' 'megamat'
-#   - odor        (stim) object '2h @ -3' 'IaA @ -3'
-#   * time_s      (time_s) float64 -0.4995 -0.499 -0.4985 -0.498
-#   * glomerulus  (glomerulus) object 'D' 'DA1' 'DA2'
-#     x           int64 1
-# TODO test
 def move_all_coords_to_index(arr: xr.DataArray) -> xr.DataArray:
     """Returns array with all coord variables associated with a dim to index on that dim
+
+    Scalar coordinates (e.g. from `.sel(<dim>=<scalar>)`) are left as they are.
     """
     arr = reset_all_multiindex(arr)
 
     dim2coords = dict()
     for dim_name in arr.dims:
-        # Of type DataArrayCoordinates
+        # Of type DataArrayCoordinates (also includes any scalar coordinates)
         dim_coords = arr[dim_name].coords
-        # Iterating over the coordinates just gives us the names of each, like a
-        # iterating over a dict would just give us the keys
-        dim_coord_names = list(dim_coords)
+        dim_coord_names = [k for k, v in dim_coords.items() if v.dims == (dim_name,)]
         dim2coords[dim_name] = dim_coord_names
 
     arr = arr.set_index(dim2coords)

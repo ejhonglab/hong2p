@@ -59,5 +59,14 @@ def test_coords_equal(orns):
 # idempotent?)
 
 
+def test_move_all_coords_to_index_scalar_coords(orns):
+    # scalar 'x' (assigned) and 'glomerulus' (from isel) should be left as they are
+    expected = orns.assign_coords({'x': 1}).isel(glomerulus=0)
+    assert expected.coords['glomerulus'].dims == tuple()
+
+    arr = move_all_coords_to_index(expected.reset_index('stim'))
+    assert arr.identical(expected)
+
+
 # TODO test series2xarray_like by converting back to series? existing methods for that?
 
