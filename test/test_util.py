@@ -160,6 +160,18 @@ def test_load_stimfile(tmp_path, monkeypatch):
         util.load_stimfile('missing.p')
 
 
+def test_equals_float_seqs():
+    x = [np.float64(0.0020470390512931803), 1.0]
+    y = [np.float64(0.0020470390512931807), 1.0]
+    assert not util.equals(x, y)
+    assert util.equals(x, y, check_float_with_allclose=True)
+    assert util.equals(tuple(x), np.array(y), check_float_with_allclose=True)
+
+    assert not util.equals(x, [y[0], 1.1], check_float_with_allclose=True)
+    assert not util.equals(x, y[:1], check_float_with_allclose=True)
+    assert not util.equals(x, y[0], check_float_with_allclose=True)
+
+
 def test_equals_nested():
     arr = np.array([1.0, 2.0])
 

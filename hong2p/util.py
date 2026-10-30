@@ -5094,7 +5094,7 @@ def thor2tiff(image_dir: Pathlike, *, output_name=None, output_basename=None,
 
 
 def is_all_float(xs: Any) -> bool:
-    """Returns whether input array/DataFrame/Series/float/etc is all floats.
+    """Returns whether input array/DataFrame/Series/float/list/tuple is all floats.
 
     Returns False for anything not in types listed above.
     """
@@ -5111,6 +5111,9 @@ def is_all_float(xs: Any) -> bool:
     # TODO or still use issubdtype here?
     elif isinstance(xs, float):
         all_floats = True
+
+    elif isinstance(xs, (list, tuple)):
+        all_floats = len(xs) > 0 and all(isinstance(x, (float, np.floating)) for x in xs)
 
     return all_floats
 
@@ -5156,6 +5159,13 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
         # TODO TODO warn here (if !_warn?)? (maybe only if not equals, only ever doing
         # this check second?)
         if x_all_float and y_all_float:
+            # (pd_allclose does not support lists/tuples)
+            if isinstance(x, (list, tuple)) or isinstance(y, (list, tuple)):
+                x = np.asarray(x)
+                y = np.asarray(y)
+                if x.shape != y.shape:
+                    return False
+
             # TODO fallback to below if this errs? (assuming i keep this before other
             # check, and always do it first)
             return hong_pd.pd_allclose(x, y, **kwargs)
