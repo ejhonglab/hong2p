@@ -7,7 +7,7 @@
 # Keep in sync with exact-requirements.txt if that changes.
 attrs==21.2.0
 backcall==0.2.0
-certifi==2026.2.25
+certifi==2026.10.18
 cftime==1.6.4.post1
 charset-normalizer==3.4.6
 colorcet==3.1.0
