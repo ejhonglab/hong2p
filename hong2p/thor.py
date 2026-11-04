@@ -2307,7 +2307,7 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
         print('onset to first odor frame (s):',
             curr_frame_times[curr_first_odor_frames] - odor_onset_times
         )
-        import ipdb; ipdb.set_trace()
+        breakpoint()
         '''
 
         start_frames.append(curr_start_frames + curr_index_offset)
@@ -2347,7 +2347,7 @@ def assign_frames_to_odor_presentations(thorsync_input, thorimage_dir,
             print(f'{thorimage_dir=}')
             print(f'{len(frame_times[indices])=}')
             print(f'{len(frame_times)=}')
-            import ipdb; ipdb.set_trace()
+            breakpoint()
         '''
         #
 

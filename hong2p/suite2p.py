@@ -9,6 +9,9 @@ import warnings
 from pprint import pformat
 from typing import Dict, Any
 
+from hong2p.err import require_optional_deps
+require_optional_deps(__name__, 'matplotlib')
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt

@@ -62,6 +62,9 @@ def _make_df(rng, odor1, odor2=None, odors_in_index=True, panel=None):
 
 
 def test_frame_pdist(rng):
+    # optional dependency (`hong2p[all]`), so this is skipped in tox `core` env
+    pytest.importorskip('scipy')
+
     odors = ['a', 'b', 'c']
 
     # df1 and df2 will have different randomly-generated data

@@ -6,7 +6,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import warnings
 
-from importlib_resources import files
+# importlib.resources.files was added in python 3.9. backport only for python 3.8.
+try:
+    from importlib.resources import files
+except ImportError:
+    from importlib_resources import files
+
+from hong2p.err import require_optional_deps
+require_optional_deps(__name__, 'xarray', 'netCDF4')
+
 import numpy as np
 import pandas as pd
 import xarray as xr

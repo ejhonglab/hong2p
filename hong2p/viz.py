@@ -17,6 +17,11 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, U
 # TODO replace w/ logging.warning?
 import warnings
 
+from hong2p.err import require_optional_deps
+require_optional_deps(__name__, 'xarray', 'colorcet', 'matplotlib',
+    'matplotlib_scalebar'
+)
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -25,7 +30,7 @@ import matplotlib as mpl
 from matplotlib.axes import Axes
 from matplotlib.axis import Axis
 from matplotlib.colors import (Normalize, CenteredNorm, TwoSlopeNorm, to_rgb,
-    ListedColormap, LinearSegmentedColormap, SymLogNorm
+    Colormap, ListedColormap, LinearSegmentedColormap, SymLogNorm
 )
 from matplotlib.collections import Collection
 from matplotlib.lines import Line2D
@@ -992,7 +997,7 @@ def _palettable_diverging_cmaps():
     # (hopefully all could be provided to plt.get_cmap?, so we can check cmap.name
     # against a set from these names)
     pprint(all_diverging_palettes)
-    import ipdb; ipdb.set_trace()
+    breakpoint()
 '''
 
 def get_cmap_name(cmap: CMap) -> str:
@@ -1032,7 +1037,7 @@ def is_cmap_diverging(cmap: CMap) -> bool:
     plt.plot(xs, saturations)
     plt.title(cmap.name)
     plt.show()
-    import ipdb; ipdb.set_trace()
+    breakpoint()
     '''
     #
 
@@ -3413,7 +3418,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
             plt.show()
             # TODO TODO TODO does zoom keep size same?
             # need to fix if not...
-            import ipdb; ipdb.set_trace()
+            breakpoint()
         '''
         #
 
@@ -3497,7 +3502,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
     # https://stackoverflow.com/questions/12434426
     for c in mpl_contour.collections:
         c.set_dashes([(0, (2.0, 2.0))])
-    import ipdb; ipdb.set_trace()
+    breakpoint()
     '''
 
     if label is not None:
@@ -3604,7 +3609,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
         print(f'{tbox=}')
 
         plt.show()
-        import ipdb; ipdb.set_trace()
+        breakpoint()
         '''
         #
 
@@ -3661,7 +3666,7 @@ def plot_closed_contours(footprint, if_multiple: str = 'err', _pad=True,
                 plt.figure()
                 plt.imshow(footprint)
                 plt.show()
-                import ipdb; ipdb.set_trace()
+                breakpoint()
                 '''
                 if path_sum > largest_sum:
                     largest_sum = path_sum

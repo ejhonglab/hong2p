@@ -5,6 +5,7 @@ import filecmp
 import os
 from os.path import isdir, exists, join, getmtime
 from pathlib import Path
+import re
 from shutil import copy2
 import subprocess
 import sys
@@ -13,15 +14,15 @@ from tqdm import tqdm
 from typing import List, Optional
 import warnings
 
-import requests
 import pandas as pd
-from git import Repo
 
 from hong2p import util, thor
-from hong2p.suite2p import print_suite2p_params
 from hong2p.util import format_date, run_cmd
-from hong2p.viz import showsync
 from hong2p.olf import load_input_yaml
+
+# NOTE: imports of optional dependencies (`hong2p[all]`), and hong2p modules requiring
+# them (e.g. viz/suite2p), should be inside the functions that use them, so the CLIs
+# that only need the core dependencies still work without them.
 
 
 # NOTE: to add additional endpoints:
@@ -95,6 +96,7 @@ def showsync_cli():
     exclude_datasets = False if args.all else None
     datasets = None if not args.datasets else ['gctr'] + args.datasets.split(',')
 
+    from hong2p.viz import showsync
     showsync(thorsync_dir, verbose=verbose, exclude_datasets=exclude_datasets,
         datasets=datasets
     )
@@ -111,6 +113,8 @@ def suite2p_params_cli():
         'shape (for picking registration block size, batch size, etc)'
     )
     args = parser.parse_args()
+
+    from hong2p.suite2p import print_suite2p_params
     print_suite2p_params(args.thorimage_dir, print_movie_shape=args.shape)
 
 
@@ -247,6 +251,12 @@ def save_requirements() -> None:
     parser.add_argument(*exclude_flags, action='store', type=str, default='',
         help='comma separated list of package (/repo) names to exclude from output'
     )
+    extras_flags = ('-E', '--extras')
+    parser.add_argument(*extras_flags, action='append', default=[],
+        metavar='SPEC', help='adds extras to the output line for a package '
+        "(which `pip freeze` does not record), e.g. -E 'hong2p[all]'. can be passed "
+        'multiple times.'
+    )
     # don't need to include either of these last two in summary of flags used
     parser.add_argument('-d', '--dry-run', action='store_true',
         help='if passed, no files will be written, but -v/--verbose is implied'
@@ -261,6 +271,7 @@ def save_requirements() -> None:
     strip_commit = args.strip_commit
     git_for_file = args.git_url_for_file
     exclude = args.exclude
+    extras_specs = args.extras
     dry_run = args.dry_run
     verbose = args.verbose
 
@@ -290,6 +301,41 @@ def save_requirements() -> None:
 
     if exclude:
         args_used.append('/'.join(exclude_flags) + f' {exclude}')
+
+    def normalize_name(name: str) -> str:
+        # https://packaging.python.org/en/latest/specifications/name-normalization
+        return re.sub(r'[-_.]+', '-', name).lower()
+
+    # normalized package name -> extras str (e.g. 'all', or 'a,b')
+    package2extras = dict()
+    for spec in extras_specs:
+        args_used.append('/'.join(extras_flags) + f" '{spec}'")
+
+        match = re.fullmatch(r'([A-Za-z0-9._-]+)\[([A-Za-z0-9._,-]+)\]', spec.strip())
+        if match is None:
+            raise ValueError(f'invalid {"/".join(extras_flags)} value {spec!r}. should '
+                "be like 'hong2p[all]'"
+            )
+        package2extras[normalize_name(match.group(1))] = match.group(2)
+
+    def add_extras(x: str, package: str, *, prefixed: bool = True) -> str:
+        """Returns line `x` with any -E/--extras for `package` added.
+
+        Args:
+            prefixed: whether `x` starts with `package` (e.g. 'hong2p @ git+...'). If
+                False, `x` should be a bare URL, and '<package>[<extras>] @ ' is
+                prepended.
+        """
+        extras = package2extras.pop(normalize_name(package), None)
+        if extras is None:
+            return x
+
+        if not prefixed:
+            return f'{package}[{extras}] @ {x}'
+
+        assert normalize_name(x[:len(package)]) == normalize_name(package), \
+            f'{x=} did not start with {package=}'
+        return f'{x[:len(package)]}[{extras}]{x[len(package):]}'
 
     args_used_str = ' '.join(args_used)
 
@@ -460,6 +506,7 @@ def save_requirements() -> None:
                     # NameResolutionError("<urllib3.connection.HTTPSConnection object at
                     # 0x7fd47577b970>: Failed to resolve ...
                     # ```
+                    import requests
                     r = requests.get(url)
                     # or could be a typo or something, but given it's installed,
                     # probably not. maybe something where package name doesn't match
@@ -482,6 +529,20 @@ def save_requirements() -> None:
             if strip_editable:
                 x = x[len(editable_prefix):]
 
+                if normalize_name(repo) in package2extras:
+                    # egg fragment would be redundant with (and might conflict with)
+                    # the '<package>[<extras>] @ ' prefix
+                    if x.endswith(egg_suffix) and len(egg_suffix) > 0:
+                        x = x[:-len(egg_suffix)]
+
+                    x = add_extras(x, repo, prefixed=False)
+
+            elif normalize_name(repo) in package2extras:
+                raise NotImplementedError(f'{"/".join(extras_flags)} not supported for '
+                    f'editable package {repo!r} with '
+                    f'{"/".join(no_strip_editable_flags)}'
+                )
+
             editable.append(x)
 
         elif noneditable_git_substr in x:
@@ -498,6 +559,8 @@ def save_requirements() -> None:
 
             if strip_commit:
                 x = '@'.join(parts[:-1])
+
+            x = add_extras(x, package)
 
             # TODO do i actually want to keep the '<package> @ ' prefix?
             # it would definitely work without that, right?
@@ -518,6 +581,7 @@ def save_requirements() -> None:
                 repo_path = Path(parts[1][len(file_uri_prefix):])
                 assert repo_path.is_dir(), f'{repo_path=} was not a directory'
 
+                from git import Repo
                 repo = Repo(repo_path)
 
                 remote = None
@@ -561,6 +625,10 @@ def save_requirements() -> None:
                     # TODO any reason to add the egg suffix too?
                     x += f'@{repo.head.commit.hexsha}'
 
+                x = add_extras(x, package, prefixed=False)
+            else:
+                x = add_extras(x, package)
+
             # TODO still want to process file_lines in git_only case? they are
             # technically associated w/ git repos typically... (olfsysm is only one that
             # should be there, and there should be a way to find the repo and the url)
@@ -573,7 +641,13 @@ def save_requirements() -> None:
             if package in packages_to_exclude:
                 continue
 
+            x = add_extras(x, package)
             regular.append(x)
+
+    if len(package2extras) > 0:
+        warnings.warn(f'packages from {"/".join(extras_flags)} not found in (non-'
+            f'excluded) `pip freeze` output: {list(package2extras.keys())}'
+        )
 
     lines = ['# generated with savedeps CLI installed with hong2p']
     lines.append(f'# using args: {args_used_str}')

@@ -22,8 +22,8 @@ import re
 import hashlib
 import functools
 from itertools import product
-from typing import (Any, Collection, Dict, Generator, List, Optional, Sequence, Tuple,
-    Union
+from typing import (TYPE_CHECKING, Any, Collection, Dict, Generator, List, Optional,
+    Sequence, Tuple, Union
 )
 import xml.etree.ElementTree as etree
 from urllib.error import URLError
@@ -31,7 +31,6 @@ from urllib.error import URLError
 import numpy as np
 import pandas as pd
 import yaml
-import matplotlib.pyplot as plt
 import tifffile
 from tifffile import TiffFile
 from tqdm import tqdm
@@ -46,6 +45,11 @@ from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
     DataFrameOrDataArray
 )
 from hong2p.olf import NO_ODOR
+
+# optional dependency (`hong2p[all]`). only for resolving forward references in
+# hong2p.types aliases (e.g. DataFrameOrDataArray), e.g. when building docs.
+if TYPE_CHECKING:
+    import xarray as xr
 
 # Note: many imports were pushed down into the beginnings of the functions that
 # use them, to reduce the number of hard dependencies.
@@ -4158,6 +4162,9 @@ def u8_color(draw_on):
     # TODO figure out why background looks lighter here than in other
     # imshows of same input (w/o converting manually)
     draw_on = draw_on - np.min(draw_on)
+    # matplotlib is an optional dependency (`hong2p[all]`)
+    import matplotlib.pyplot as plt
+
     draw_on = draw_on / np.max(draw_on)
     cmap = plt.get_cmap('gray') #, lut=256)
     # (throwing away alpha coord w/ last slice)

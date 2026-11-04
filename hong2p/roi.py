@@ -11,6 +11,9 @@ from typing import Optional, Union, List
 import warnings
 from zipfile import BadZipFile
 
+from hong2p.err import require_optional_deps
+require_optional_deps(__name__, 'xarray', 'matplotlib', 'ijroi')
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -623,7 +626,7 @@ def merge_single_plane_rois(rois, min_overlap_frac=0.3, n_dilations=1):
     outputs.
     """
     raise NotImplementedError
-    import ipdb; ipdb.set_trace()
+    breakpoint()
 
 
 # TODO TODO refactor this + hong2p.suite2p.remerge_suite2p_merged to share core code
@@ -1653,7 +1656,7 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
 
                     # TODO TODO TODO fit(?) to find match value weight that
                     # produces same fraction of pixels above threshold
-                    import ipdb; ipdb.set_trace()
+                    breakpoint()
                     '''
                 #
 
@@ -1748,7 +1751,7 @@ def greedy_roi_packing(match_images, ds, radii_px, thresholds=None, ns=None,
             print(chead)
             print('correct tail:')
             print(ctail)
-            import ipdb; ipdb.set_trace()
+            breakpoint()
         #
         '''
 
@@ -3528,7 +3531,7 @@ def renumber_rois(matches_list, centers_list, debug_points=None, max_cost=None):
                 # shouldn't happen?
                 if roi_id not in curr_ids:
                     print('not in curr_ids')
-                    import ipdb; ipdb.set_trace()
+                    breakpoint()
                 #
 
                 if roi_id in matches1[:,0]:

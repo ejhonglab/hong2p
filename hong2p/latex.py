@@ -8,6 +8,9 @@ from pathlib import Path
 from os.path import abspath, dirname
 from typing import Optional
 
+from hong2p.err import require_optional_deps
+require_optional_deps(__name__, 'jinja2', 'latex')
+
 from jinja2.loaders import PackageLoader, FileSystemLoader
 from latex import build_pdf, escape, LatexBuildError
 from latex.jinja2 import make_env

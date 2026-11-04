@@ -1,16 +1,21 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import (Any, Dict, Hashable, Literal, NewType, Optional, Sequence, Tuple,
-    Union
+from typing import (TYPE_CHECKING, Any, Dict, Hashable, Literal, NewType, Optional,
+    Sequence, Tuple, Union
 )
 
 import numpy.typing as npt
 # TODO replace usage of np w/ npt?
 import numpy as np
 import pandas as pd
-import xarray as xr
-from matplotlib.colors import Colormap
+
+# Only for type checkers (and docs). These are optional dependencies (`hong2p[all]`),
+# so aliases below reference them via strings (forward references), letting this
+# module (and the light modules that use it, e.g. thor/olf) import without them.
+if TYPE_CHECKING:
+    import xarray as xr
+    from matplotlib.colors import Colormap
 
 
 # In general, want to use *like types (e.g. Pathlike) at *input* to functions, and use
@@ -61,9 +66,9 @@ SeriesOrIndex = Union[pd.Series, pd.Index]
 # TODO also include numpy.ndarrays? xr.datasets (some subclass relationship to dataarray
 # / better check for both?)? maybe in another type?
 # TODO i once was wrapper the args to Union with Type[...]. did that serve a purpose?
-DataFrameOrDataArray = Union[pd.DataFrame, xr.DataArray]
+DataFrameOrDataArray = Union[pd.DataFrame, 'xr.DataArray']
 # TODO use Arraylike instead of any of this?
-NumpyOrXArray = Union[np.ndarray, xr.DataArray]
+NumpyOrXArray = Union[np.ndarray, 'xr.DataArray']
 ArrayLike = npt.ArrayLike
 
 # TODO this Literal behaving as expected?
@@ -87,7 +92,7 @@ Color = Union[
 
 # TODO use in viz?
 # TODO also something in mpl >=3.8 typing for this?
-CMap = Union[str, Colormap]
+CMap = Union[str, 'Colormap']
 
 # TODO use more places
 Palette = Union[CMap, Dict[Hashable, Color]]

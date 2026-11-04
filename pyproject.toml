@@ -20,85 +20,19 @@ name = "hong2p"
 # make this exactly 3.8 (i've been using 3.8.12)?
 # (want to expand support to newer versions tho)
 requires-python = ">= 3.8"
+# Core dependencies, enough to import hong2p.{err,types,pandas,olf,thor,util,matlab,chem,
+# cli_entry_points} (see test/test_core_imports.py, and the tox `core` env below). Other
+# modules (viz, roi, suite2p, xarray, latex), the CLIs using them, and some functions in
+# the core modules (which import what they need inside the function) require the `all`
+# extra below.
 dependencies = [
-    # TODO should this one be in build deps? even required? delete?
-    # This one might not be strictly necessary. The errs that seemed to
-    # happen during pip install w/o it might not be fatal, assuming other
-    # installation options exist besides the .whl format (like sdists).
-    "wheel",
-
-    # or can i use stdlib one now (importlib.resources)? maybe not while i'm still on
-    # 3.8?
-    "importlib_resources",
-
     "h5py",
     "numpy",
-
-    # technically just need >=1.8 for scipy.sparse.coo_array, but installed 1.10.1
-    # in al_analysis, and may need some features added after 1.8 in there
-    "scipy>=1.8",
-
-    "tifffile",
-
     "pandas",
-    "xarray",
-    # so I can always use this backend for writing xarray files, rather than potentially
-    # falling back to scipy, which only supports version 3
-    # TODO or is there reason to want to use h5netcdf?
-    "netCDF4",
-
-    "PyQt5",
-    "pyqtgraph",
-
-    "matplotlib",
-    "seaborn",
-    # https://github.com/ppinard/matplotlib-scalebar
-    "matplotlib-scalebar",
-
-    "scikit-learn",
-    "gitpython",
-
-    "PyYAML",
-
-    "jinja2",
-    # How does what PyLaTeX offers compare? As of 2023, PyLaTeX last updated 2021,
-    # while [mbr/]latex was last updated 2019.
-    "latex",
-
     "platformdirs",
+    "PyYAML",
+    "tifffile",
     "tqdm",
-    "colorcet",
-
-    # TODO could add to optional CLI deps. only used by savedeps CLI
-    "requests",
-
-    # was using 1.6.0
-    # just for rendering CID -> chemfig latex structures in hong2p.chem.
-    # also manually copied mol2chemfig.sty to this repo from (I believe) the CTAN
-    # package mol2chemfig, which is required so we can also render those .tex
-    # outputs into standalone PDFs
-    "mol2chemfigPy3",
-
-    "ipdb",
-
-    # https://stackoverflow.com/questions/32688688
-    # TODO move all imports of this to top-level, since i dont think it is heavy
-    # enough to warrant conditional imports
-    # TODO any way to get this to not conflict w/ al_analysis, if it's also
-    # specified in a requirements.txt generated in al_analysis venv? version appears the
-    # same, but it still conflicts...
-    # ```
-    # ERROR: Cannot install -r git-requirements.txt (line 8) and hong2p 0.0.0 (from
-    # git+https://github.com/ejhonglab/hong2p@a7968919d3bf...#egg=hong2p)
-    # because these package versions have conflicting dependencies.
-    #
-    # The conflict is caused by:
-    # The user requested hong2p 0.0.0 (from
-    # git+https://github.com/ejhonglab/hong2p@a7968919d3bf...#egg=hong2p)
-    # natmix 0.0.0 depends on hong2p 0.0.0 (from
-    # git+https://github.com/ejhonglab/hong2p)
-    # ```
-    "ijroi @ git+https://github.com/tom-f-oconnell/ijroi",
 ]
 # TODO TODO see what happens with this
 # (it probably isn't doing anything by itself. prob need to also refer to it in separte
@@ -125,7 +59,73 @@ description = "Functions for working with data from Hong olfaction imaging data"
 readme = "README.md"
 
 [project.optional-dependencies]
+# Everything else. Install with `pip install 'hong2p[all]'` (or
+# `pip install 'hong2p[all] @ git+https://github.com/ejhonglab/hong2p'`)
+all = [
+    # importlib.resources.files (used in hong2p.xarray) was added in python 3.9.
+    # backport only needed for python 3.8.
+    "importlib_resources; python_version < '3.9'",
+
+    # technically just need >=1.8 for scipy.sparse.coo_array, but installed 1.10.1
+    # in al_analysis, and may need some features added after 1.8 in there
+    "scipy>=1.8",
+
+    "xarray",
+    # so I can always use this backend for writing xarray files, rather than potentially
+    # falling back to scipy, which only supports version 3
+    # TODO or is there reason to want to use h5netcdf?
+    "netCDF4",
+
+    "PyQt5",
+    "pyqtgraph",
+
+    "matplotlib",
+    "seaborn",
+    # https://github.com/ppinard/matplotlib-scalebar
+    "matplotlib-scalebar",
+    "colorcet",
+
+    "scikit-learn",
+    "gitpython",
+
+    "jinja2",
+    # How does what PyLaTeX offers compare? As of 2023, PyLaTeX last updated 2021,
+    # while [mbr/]latex was last updated 2019.
+    "latex",
+
+    # only used by savedeps CLI
+    "requests",
+
+    # was using 1.6.0
+    # just for rendering CID -> chemfig latex structures in hong2p.chem.
+    # also manually copied mol2chemfig.sty to this repo from (I believe) the CTAN
+    # package mol2chemfig, which is required so we can also render those .tex
+    # outputs into standalone PDFs
+    "mol2chemfigPy3",
+
+    # https://stackoverflow.com/questions/32688688
+    # TODO any way to get this to not conflict w/ al_analysis, if it's also
+    # specified in a requirements.txt generated in al_analysis venv? version appears the
+    # same, but it still conflicts...
+    # ```
+    # ERROR: Cannot install -r git-requirements.txt (line 8) and hong2p 0.0.0 (from
+    # git+https://github.com/ejhonglab/hong2p@a7968919d3bf...#egg=hong2p)
+    # because these package versions have conflicting dependencies.
+    #
+    # The conflict is caused by:
+    # The user requested hong2p 0.0.0 (from
+    # git+https://github.com/ejhonglab/hong2p@a7968919d3bf...#egg=hong2p)
+    # natmix 0.0.0 depends on hong2p 0.0.0 (from
+    # git+https://github.com/ejhonglab/hong2p)
+    # ```
+    "ijroi @ git+https://github.com/tom-f-oconnell/ijroi",
+]
 dev = [
+    # tests cover modules requiring the optional deps too
+    "hong2p[all]",
+    # pytest addopts below use IPython debugger (installed w/ ipdb), and some tests /
+    # scripts call ipdb.set_trace()
+    "ipdb",
     # TODO some way to not need to repeat this (across here and minversion below)?
     "pytest >= 8.3.5",
     # for running tests across multiple python/dependency versions (`tox`)
@@ -135,6 +135,8 @@ dev = [
 # for building documentation (under docsrc/) via `hong2p-docs` (see README).
 # latest versions as of 2026-10 (sphinx 9.1 requires python >= 3.12).
 doc = [
+    # autodoc imports all modules
+    "hong2p[all]",
     "sphinx==9.1.0",
     "sphinx-rtd-theme==3.1.0",
     "sphinxcontrib-apidoc==0.6.0",
@@ -216,7 +218,32 @@ env_run_base = { pass_env = ["HONG2P_DATA", "HONG_NAS"] }
 [tool.tox.env.py38]
 base_python = ["python3.8"]
 deps = ["-r requirements-py38-test.txt"]
+# for the optional deps not pinned above (e.g. importlib_resources, mol2chemfigPy3)
+extras = ["all"]
 commands = [["pytest", { replace = "posargs", extend = true }]]
+
+# Only the core dependencies (no extras), to check they are sufficient for the core
+# modules (see test/test_core_imports.py), their tests, and their doctests.
+# Run separately (`tox -e core`); not in env_list above.
+[tool.tox.env.core]
+deps = ["pytest >= 8.3.5"]
+commands = [["pytest", { replace = "posargs", extend = true, default = [
+    "test/test_core_imports.py",
+    "test/test_thor_xml.py",
+    "test/test_olf.py",
+    "test/test_pandas.py",
+    "test/test_util.py",
+    "hong2p/__init__.py",
+    "hong2p/err.py",
+    "hong2p/types.py",
+    "hong2p/pandas.py",
+    "hong2p/olf.py",
+    "hong2p/thor.py",
+    "hong2p/util.py",
+    "hong2p/matlab.py",
+    "hong2p/chem.py",
+    "hong2p/cli_entry_points.py",
+] }]]
 
 # The existing ./venv, as-is (tox does not install anything into it)
 [tool.tox.env.current]
