@@ -89,6 +89,11 @@
 <span class="c1"># TODO replace w/ logging.warning?</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.err</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_optional_deps</span>
+<span class="n">require_optional_deps</span><span class="p">(</span><span class="vm">__name__</span><span class="p">,</span> <span class="s1">'xarray'</span><span class="p">,</span> <span class="s1">'colorcet'</span><span class="p">,</span> <span class="s1">'matplotlib'</span><span class="p">,</span>
+    <span class="s1">'matplotlib_scalebar'</span>
+<span class="p">)</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
@@ -97,7 +102,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.axes</span><span class="w"> </span><span class="kn">import</span> <span class="n">Axes</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.axis</span><span class="w"> </span><span class="kn">import</span> <span class="n">Axis</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.colors</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">Normalize</span><span class="p">,</span> <span class="n">CenteredNorm</span><span class="p">,</span> <span class="n">TwoSlopeNorm</span><span class="p">,</span> <span class="n">to_rgb</span><span class="p">,</span>
-    <span class="n">ListedColormap</span><span class="p">,</span> <span class="n">LinearSegmentedColormap</span><span class="p">,</span> <span class="n">SymLogNorm</span>
+    <span class="n">Colormap</span><span class="p">,</span> <span class="n">ListedColormap</span><span class="p">,</span> <span class="n">LinearSegmentedColormap</span><span class="p">,</span> <span class="n">SymLogNorm</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Collection</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.lines</span><span class="w"> </span><span class="kn">import</span> <span class="n">Line2D</span>
@@ -1100,7 +1105,7 @@
 <span class="sd">    # (hopefully all could be provided to plt.get_cmap?, so we can check cmap.name</span>
 <span class="sd">    # against a set from these names)</span>
 <span class="sd">    pprint(all_diverging_palettes)</span>
-<span class="sd">    import ipdb; ipdb.set_trace()</span>
+<span class="sd">    breakpoint()</span>
 <span class="sd">'''</span>
 
 <div class="viewcode-block" id="get_cmap_name">
@@ -1145,7 +1150,7 @@
 <span class="sd">    plt.plot(xs, saturations)</span>
 <span class="sd">    plt.title(cmap.name)</span>
 <span class="sd">    plt.show()</span>
-<span class="sd">    import ipdb; ipdb.set_trace()</span>
+<span class="sd">    breakpoint()</span>
 <span class="sd">    '''</span>
     <span class="c1">#</span>
 
@@ -3583,7 +3588,7 @@
 <span class="sd">            plt.show()</span>
 <span class="sd">            # TODO TODO TODO does zoom keep size same?</span>
 <span class="sd">            # need to fix if not...</span>
-<span class="sd">            import ipdb; ipdb.set_trace()</span>
+<span class="sd">            breakpoint()</span>
 <span class="sd">        '''</span>
         <span class="c1">#</span>
 
@@ -3667,7 +3672,7 @@
 <span class="sd">    # https://stackoverflow.com/questions/12434426</span>
 <span class="sd">    for c in mpl_contour.collections:</span>
 <span class="sd">        c.set_dashes([(0, (2.0, 2.0))])</span>
-<span class="sd">    import ipdb; ipdb.set_trace()</span>
+<span class="sd">    breakpoint()</span>
 <span class="sd">    '''</span>
 
     <span class="k">if</span> <span class="n">label</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -3774,7 +3779,7 @@
 <span class="sd">        print(f'{tbox=}')</span>
 
 <span class="sd">        plt.show()</span>
-<span class="sd">        import ipdb; ipdb.set_trace()</span>
+<span class="sd">        breakpoint()</span>
 <span class="sd">        '''</span>
         <span class="c1">#</span>
 
@@ -3831,7 +3836,7 @@
 <span class="sd">                plt.figure()</span>
 <span class="sd">                plt.imshow(footprint)</span>
 <span class="sd">                plt.show()</span>
-<span class="sd">                import ipdb; ipdb.set_trace()</span>
+<span class="sd">                breakpoint()</span>
 <span class="sd">                '''</span>
                 <span class="k">if</span> <span class="n">path_sum</span> <span class="o">&gt;</span> <span class="n">largest_sum</span><span class="p">:</span>
                     <span class="n">largest_sum</span> <span class="o">=</span> <span class="n">path_sum</span>

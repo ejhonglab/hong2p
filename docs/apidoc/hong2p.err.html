@@ -109,6 +109,26 @@
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.err.require_optional_deps">
+<span class="sig-prename descclassname"><span class="pre">hong2p.err.</span></span><span class="sig-name descname"><span class="pre">require_optional_deps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">import_names</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/err.html#require_optional_deps"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.err.require_optional_deps" title="Link to this definition"></a></dt>
+<dd><p>Raises ModuleNotFoundError (suggesting <cite>hong2p[all]</cite>) if any aren’t installed.</p>
+<p>For use at the top of hong2p modules that require optional dependencies, before
+importing them.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>module_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – name of the hong2p module requiring the dependencies (<cite>__name__</cite>)</p></li>
+<li><p><strong>*import_names</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – top-level names the dependencies are imported by (e.g.
+‘matplotlib’, not ‘matplotlib.pyplot’)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 

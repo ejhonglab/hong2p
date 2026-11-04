@@ -94,8 +94,8 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">product</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">Any</span><span class="p">,</span> <span class="n">Collection</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span>
-    <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Collection</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span>
+    <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 <span class="p">)</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xml.etree.ElementTree</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">etree</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">urllib.error</span><span class="w"> </span><span class="kn">import</span> <span class="n">URLError</span>
@@ -103,7 +103,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">tifffile</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tifffile</span><span class="w"> </span><span class="kn">import</span> <span class="n">TiffFile</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
@@ -118,6 +117,11 @@
     <span class="n">DataFrameOrDataArray</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.olf</span><span class="w"> </span><span class="kn">import</span> <span class="n">NO_ODOR</span>
+
+<span class="c1"># optional dependency (`hong2p[all]`). only for resolving forward references in</span>
+<span class="c1"># hong2p.types aliases (e.g. DataFrameOrDataArray), e.g. when building docs.</span>
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 
 <span class="c1"># Note: many imports were pushed down into the beginnings of the functions that</span>
 <span class="c1"># use them, to reduce the number of hard dependencies.</span>
@@ -4511,6 +4515,9 @@
     <span class="c1"># TODO figure out why background looks lighter here than in other</span>
     <span class="c1"># imshows of same input (w/o converting manually)</span>
     <span class="n">draw_on</span> <span class="o">=</span> <span class="n">draw_on</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">draw_on</span><span class="p">)</span>
+    <span class="c1"># matplotlib is an optional dependency (`hong2p[all]`)</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
     <span class="n">draw_on</span> <span class="o">=</span> <span class="n">draw_on</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">draw_on</span><span class="p">)</span>
     <span class="n">cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">get_cmap</span><span class="p">(</span><span class="s1">'gray'</span><span class="p">)</span> <span class="c1">#, lut=256)</span>
     <span class="c1"># (throwing away alpha coord w/ last slice)</span>
@@ -5492,7 +5499,7 @@
 <div class="viewcode-block" id="is_all_float">
 <a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.is_all_float">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">is_all_float</span><span class="p">(</span><span class="n">xs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Returns whether input array/DataFrame/Series/float/etc is all floats.</span>
+<span class="w">    </span><span class="sd">"""Returns whether input array/DataFrame/Series/float/list/tuple is all floats.</span>
 
 <span class="sd">    Returns False for anything not in types listed above.</span>
 <span class="sd">    """</span>
@@ -5509,6 +5516,9 @@
     <span class="c1"># TODO or still use issubdtype here?</span>
     <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
         <span class="n">all_floats</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+        <span class="n">all_floats</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">floating</span><span class="p">))</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xs</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">all_floats</span></div>
 
@@ -5557,6 +5567,13 @@
         <span class="c1"># TODO TODO warn here (if !_warn?)? (maybe only if not equals, only ever doing</span>
         <span class="c1"># this check second?)</span>
         <span class="k">if</span> <span class="n">x_all_float</span> <span class="ow">and</span> <span class="n">y_all_float</span><span class="p">:</span>
+            <span class="c1"># (pd_allclose does not support lists/tuples)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+
             <span class="c1"># TODO fallback to below if this errs? (assuming i keep this before other</span>
             <span class="c1"># check, and always do it first)</span>
             <span class="k">return</span> <span class="n">hong_pd</span><span class="o">.</span><span class="n">pd_allclose</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>

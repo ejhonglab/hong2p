@@ -70,7 +70,9 @@
            <div itemprop="articleBody">
              
   <h1>Source code for hong2p.err</h1><div class="highlight"><pre>
-<span></span>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_spec</span>
+
+
 <span class="c1"># TODO maybe move to errors-only module / thor?</span>
 <div class="viewcode-block" id="TooManyStimulusFiles">
 <a class="viewcode-back" href="../../apidoc/hong2p.err.html#hong2p.err.TooManyStimulusFiles">[docs]</a>
@@ -85,6 +87,27 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">NoStimulusFile</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
     <span class="k">pass</span></div>
 
+
+
+<div class="viewcode-block" id="require_optional_deps">
+<a class="viewcode-back" href="../../apidoc/hong2p.err.html#hong2p.err.require_optional_deps">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">require_optional_deps</span><span class="p">(</span><span class="n">module_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="n">import_names</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Raises ModuleNotFoundError (suggesting `hong2p[all]`) if any aren't installed.</span>
+
+<span class="sd">    For use at the top of hong2p modules that require optional dependencies, before</span>
+<span class="sd">    importing them.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        module_name: name of the hong2p module requiring the dependencies (`__name__`)</span>
+<span class="sd">        *import_names: top-level names the dependencies are imported by (e.g.</span>
+<span class="sd">            'matplotlib', not 'matplotlib.pyplot')</span>
+<span class="sd">    """</span>
+    <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">import_names</span> <span class="k">if</span> <span class="n">find_spec</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ModuleNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">module_name</span><span class="si">}</span><span class="s1"> requires optional dependencies that '</span>
+            <span class="sa">f</span><span class="s2">"are not installed (</span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">). Install with: "</span>
+            <span class="s2">"pip install 'hong2p[all]'"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">missing</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="p">)</span></div>
 
 </pre></div>
 

@@ -218,6 +218,7 @@ directly, or anything other than <cite>save_dataarray</cite>.</p>
 <dt class="sig sig-object py" id="hong2p.xarray.move_all_coords_to_index">
 <span class="sig-prename descclassname"><span class="pre">hong2p.xarray.</span></span><span class="sig-name descname"><span class="pre">move_all_coords_to_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/xarray.html#move_all_coords_to_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.xarray.move_all_coords_to_index" title="Link to this definition"></a></dt>
 <dd><p>Returns array with all coord variables associated with a dim to index on that dim</p>
+<p>Scalar coordinates (e.g. from <cite>.sel(&lt;dim&gt;=&lt;scalar&gt;)</cite>) are left as they are.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataArray</span></code></span></p>

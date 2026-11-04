@@ -78,7 +78,15 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">importlib_resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+<span class="c1"># importlib.resources.files was added in python 3.9. backport only for python 3.8.</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">importlib_resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.err</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_optional_deps</span>
+<span class="n">require_optional_deps</span><span class="p">(</span><span class="vm">__name__</span><span class="p">,</span> <span class="s1">'xarray'</span><span class="p">,</span> <span class="s1">'netCDF4'</span><span class="p">)</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
@@ -483,40 +491,20 @@
 <span class="c1"># TODO rename index-&gt;indices?</span>
 <span class="c1"># TODO allow passing in str list of order for them to be in (could also be the subset of</span>
 <span class="c1"># names to use as new index, assuming there would be any value add over set_index)</span>
-<span class="c1"># TODO TODO give more sensible error when this is called w/ input that has scalar</span>
-<span class="c1"># coordinate values (not associated w/ dims). currently get:</span>
-<span class="c1"># TypeError: unhashable type: 'numpy.ndarray'</span>
-<span class="c1"># on this input:</span>
-<span class="c1"># &lt;xarray.DataArray (stim: 2, glomerulus: 3, time_s: 4)&gt;</span>
-<span class="c1"># array([[[13.26, 13.26, 13.26, 13.26],</span>
-<span class="c1">#         [13.26, 13.26, 13.26, 13.26],</span>
-<span class="c1">#         [13.26, 13.26, 13.26, 13.26]],</span>
-<span class="c1">#</span>
-<span class="c1">#        [[13.26, 13.26, 13.26, 13.26],</span>
-<span class="c1">#         [13.26, 13.26, 13.26, 13.26],</span>
-<span class="c1">#         [13.26, 13.26, 13.26, 13.26]]])</span>
-<span class="c1"># Coordinates:</span>
-<span class="c1">#   * stim        (stim) MultiIndex</span>
-<span class="c1">#   - panel       (stim) object 'megamat' 'megamat'</span>
-<span class="c1">#   - odor        (stim) object '2h @ -3' 'IaA @ -3'</span>
-<span class="c1">#   * time_s      (time_s) float64 -0.4995 -0.499 -0.4985 -0.498</span>
-<span class="c1">#   * glomerulus  (glomerulus) object 'D' 'DA1' 'DA2'</span>
-<span class="c1">#     x           int64 1</span>
-<span class="c1"># TODO test</span>
 <div class="viewcode-block" id="move_all_coords_to_index">
 <a class="viewcode-back" href="../../apidoc/hong2p.xarray.html#hong2p.xarray.move_all_coords_to_index">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">move_all_coords_to_index</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Returns array with all coord variables associated with a dim to index on that dim</span>
+
+<span class="sd">    Scalar coordinates (e.g. from `.sel(&lt;dim&gt;=&lt;scalar&gt;)`) are left as they are.</span>
 <span class="sd">    """</span>
     <span class="n">arr</span> <span class="o">=</span> <span class="n">reset_all_multiindex</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
 
     <span class="n">dim2coords</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">dim_name</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">dims</span><span class="p">:</span>
-        <span class="c1"># Of type DataArrayCoordinates</span>
+        <span class="c1"># Of type DataArrayCoordinates (also includes any scalar coordinates)</span>
         <span class="n">dim_coords</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">dim_name</span><span class="p">]</span><span class="o">.</span><span class="n">coords</span>
-        <span class="c1"># Iterating over the coordinates just gives us the names of each, like a</span>
-        <span class="c1"># iterating over a dict would just give us the keys</span>
-        <span class="n">dim_coord_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">dim_coords</span><span class="p">)</span>
+        <span class="n">dim_coord_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">dim_coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">dims</span> <span class="o">==</span> <span class="p">(</span><span class="n">dim_name</span><span class="p">,)]</span>
         <span class="n">dim2coords</span><span class="p">[</span><span class="n">dim_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">dim_coord_names</span>
 
     <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="n">dim2coords</span><span class="p">)</span>

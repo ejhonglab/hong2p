@@ -83,6 +83,9 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">zipfile</span><span class="w"> </span><span class="kn">import</span> <span class="n">BadZipFile</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.err</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_optional_deps</span>
+<span class="n">require_optional_deps</span><span class="p">(</span><span class="vm">__name__</span><span class="p">,</span> <span class="s1">'xarray'</span><span class="p">,</span> <span class="s1">'matplotlib'</span><span class="p">,</span> <span class="s1">'ijroi'</span><span class="p">)</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
@@ -748,7 +751,7 @@
 <span class="sd">    outputs.</span>
 <span class="sd">    """</span>
     <span class="k">raise</span> <span class="ne">NotImplementedError</span>
-    <span class="kn">import</span><span class="w"> </span><span class="nn">ipdb</span><span class="p">;</span> <span class="n">ipdb</span><span class="o">.</span><span class="n">set_trace</span><span class="p">()</span></div>
+    <span class="nb">breakpoint</span><span class="p">()</span></div>
 
 
 
@@ -1817,7 +1820,7 @@
 
 <span class="sd">                    # TODO TODO TODO fit(?) to find match value weight that</span>
 <span class="sd">                    # produces same fraction of pixels above threshold</span>
-<span class="sd">                    import ipdb; ipdb.set_trace()</span>
+<span class="sd">                    breakpoint()</span>
 <span class="sd">                    '''</span>
                 <span class="c1">#</span>
 
@@ -1912,7 +1915,7 @@
 <span class="sd">            print(chead)</span>
 <span class="sd">            print('correct tail:')</span>
 <span class="sd">            print(ctail)</span>
-<span class="sd">            import ipdb; ipdb.set_trace()</span>
+<span class="sd">            breakpoint()</span>
 <span class="sd">        #</span>
 <span class="sd">        '''</span>
 
@@ -3734,7 +3737,7 @@
 <span class="sd">                # shouldn't happen?</span>
 <span class="sd">                if roi_id not in curr_ids:</span>
 <span class="sd">                    print('not in curr_ids')</span>
-<span class="sd">                    import ipdb; ipdb.set_trace()</span>
+<span class="sd">                    breakpoint()</span>
 <span class="sd">                #</span>
 
 <span class="sd">                if roi_id in matches1[:,0]:</span>
