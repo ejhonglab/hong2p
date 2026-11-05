@@ -119,8 +119,9 @@
 <span class="c1"># TODO get package + author name from setup.py / package metadata?</span>
 <span class="c1"># TODO log we are using this directory (at least at debug level)</span>
 <span class="c1">#</span>
-<span class="c1"># ensure_exists=True will make it if needed</span>
-<span class="n">_cache_dir</span> <span class="o">=</span> <span class="n">user_data_path</span><span class="p">(</span><span class="s1">'hong2p'</span><span class="p">,</span> <span class="s1">'tom-f-oconnell'</span><span class="p">,</span> <span class="n">ensure_exists</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="c1"># Only made when the cache is saved (`save_odor2abbrev_cache`), so importing this module</span>
+<span class="c1"># also works without a writable home directory (e.g. in a read-only container).</span>
+<span class="n">_cache_dir</span> <span class="o">=</span> <span class="n">user_data_path</span><span class="p">(</span><span class="s1">'hong2p'</span><span class="p">,</span> <span class="s1">'tom-f-oconnell'</span><span class="p">)</span>
 <span class="n">odor2abbrev_cache</span> <span class="o">=</span> <span class="n">_cache_dir</span> <span class="o">/</span> <span class="s1">'odor2abbrev_cache.p'</span>
 <span class="k">if</span> <span class="n">odor2abbrev_cache</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
     <span class="n">_odor2abbrev_from_cache</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">odor2abbrev_cache</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span>
@@ -129,7 +130,11 @@
 <span class="c1"># TODO log (info/debug?) when we override something from cache?</span>
 <span class="c1"># TODO fns for adding to this / overriding</span>
 <span class="c1"># TODO load/supplement from (union of?) abbrevs included in configs, if possible</span>
-<span class="n">_hardcoded_odor2abbrev</span> <span class="o">=</span> <span class="p">{</span>
+<span class="c1">#</span>
+<span class="c1"># Abbreviations for odors whose YAML entries don't specify one ('abbrev'). Unlike</span>
+<span class="c1"># `odor2abbrev`, this does not depend on the cache (i.e. on what has been loaded before,</span>
+<span class="c1"># on this computer).</span>
+<span class="n">hardcoded_odor2abbrev</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s1">'hexyl hexanoate'</span><span class="p">:</span> <span class="s1">'hh'</span><span class="p">,</span>
     <span class="s1">'furfural'</span><span class="p">:</span> <span class="s1">'fur'</span><span class="p">,</span>
 
@@ -185,7 +190,7 @@
     <span class="c1"># Another name for 'valeric acid', but the one Remy had used.</span>
     <span class="s1">'pentanoic acid'</span><span class="p">:</span> <span class="s1">'va'</span><span class="p">,</span>
 <span class="p">}</span>
-<span class="n">odor2abbrev</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">_hardcoded_odor2abbrev</span><span class="p">)</span>
+<span class="n">odor2abbrev</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">hardcoded_odor2abbrev</span><span class="p">)</span>
 
 <span class="n">_initial_odor2abbrev</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">odor2abbrev</span><span class="p">)</span>
 <div class="viewcode-block" id="save_odor2abbrev_cache">
@@ -197,6 +202,7 @@
 <span class="sd">    """</span>
     <span class="c1"># TODO log debug/info that we are writing this (/ that it was unchanged)</span>
     <span class="k">if</span> <span class="n">odor2abbrev</span> <span class="o">!=</span> <span class="n">_initial_odor2abbrev</span><span class="p">:</span>
+        <span class="n">_cache_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">odor2abbrev_cache</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">odor2abbrev</span><span class="p">))</span></div>
 
 

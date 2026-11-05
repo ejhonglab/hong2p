@@ -296,17 +296,17 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_get_zstage</span><span class="p">(</span><span class="n">xml</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Returns first 'ZStage' XML element (asserting only one has a 'name' attribute).</span>
+<span class="w">    </span><span class="sd">"""Returns the 'ZStage' XML element with a 'name' attribute (asserting only one has).</span>
 <span class="sd">    """</span>
-    <span class="c1"># TODO assert there is only one ZStage object? is it always only primary (assumed</span>
-    <span class="c1"># piezo) saved into xml, even if there is a stepper secondary z-axis too?</span>
-    <span class="n">zstage</span> <span class="o">=</span> <span class="n">xml</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">'ZStage'</span><span class="p">)</span>
-
-    <span class="c1"># TODO replace .find w/ findall(...)[0]?</span>
+    <span class="c1"># TODO is it always only primary (assumed piezo) saved into xml w/ a name, even if</span>
+    <span class="c1"># there is a stepper secondary z-axis too?</span>
     <span class="c1">#</span>
     <span class="c1"># yang's test XML she sent has multiple ZStage elements, but only one with name</span>
-    <span class="c1"># defined (='ThorZPiezo')</span>
-    <span class="k">assert</span> <span class="nb">len</span><span class="p">([</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xml</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s1">'ZStage'</span><span class="p">)</span> <span class="k">if</span> <span class="s1">'name'</span> <span class="ow">in</span> <span class="n">x</span><span class="o">.</span><span class="n">attrib</span><span class="p">])</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="c1"># defined (='ThorZPiezo'). In ~50 of ~1400 of our recordings, there is a second</span>
+    <span class="c1"># ZStage without a name (the named one first, in all of those).</span>
+    <span class="n">named</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xml</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s1">'ZStage'</span><span class="p">)</span> <span class="k">if</span> <span class="s1">'name'</span> <span class="ow">in</span> <span class="n">x</span><span class="o">.</span><span class="n">attrib</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">named</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'expected 1 ZStage with a name, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">named</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span>
+    <span class="n">zstage</span> <span class="o">=</span> <span class="n">named</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="c1"># TODO and if fastZ is enabled, is that sufficient evidence it is piezo?</span>
     <span class="c1"># NO! (at least it's possible to misconfigure downstairs system so that non-piezo</span>
