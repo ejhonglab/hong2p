@@ -1,4 +1,7 @@
 
+import os
+import subprocess
+import sys
 from typing import List
 
 import pytest
@@ -6,7 +9,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from hong2p.olf import solvent_str, sort_odors
+from hong2p.olf import format_mix_from_strs, solvent_str, sort_odors
 
 
 # TODO move to conftest.py? share w/ test_util.py where i copied some of this to?
@@ -267,3 +270,28 @@ def test_sort_odors(rng):
     # other keys before / after sorting on odors, test that here too
     # (could probably just do sequential sorts w/ a stable sort. actually, not if i want
     # to sort on something with higher lexsort priority than sorting on odors...)
+
+
+def test_format_mix_from_strs():
+    assert format_mix_from_strs(['va @ -3', solvent_str]) == 'va @ -3'
+    assert format_mix_from_strs([solvent_str, 'ea @ -2', 'va @ -3']) == 'ea @ -2 + va @ -3'
+    assert format_mix_from_strs([solvent_str, solvent_str]) == solvent_str
+
+
+def test_import_makes_no_cache_dir(tmp_path):
+    # platformdirs uses XDG_DATA_HOME on Linux (not on macOS/Windows)
+    code = ('import sys; from hong2p import olf; print(olf.odor2abbrev_cache); '
+        'print(olf._cache_dir.exists()); olf.odor2abbrev["x"] = "y"'
+    )
+    env = {**os.environ, 'XDG_DATA_HOME': str(tmp_path / 'data')}
+    proc = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
+        env=env
+    )
+    assert proc.returncode == 0, proc.stderr
+    cache_path, made_on_import = proc.stdout.split()
+    if not cache_path.startswith(str(tmp_path)):
+        pytest.skip('platformdirs does not use XDG_DATA_HOME on this platform')
+
+    assert made_on_import == 'False'
+    # odor2abbrev changed, so it is saved at exit, making the directory then
+    assert os.path.exists(cache_path)

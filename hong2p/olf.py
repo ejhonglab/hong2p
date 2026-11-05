@@ -47,8 +47,9 @@ odor2abbrev: Dict[str, str] = dict()
 # TODO get package + author name from setup.py / package metadata?
 # TODO log we are using this directory (at least at debug level)
 #
-# ensure_exists=True will make it if needed
-_cache_dir = user_data_path('hong2p', 'tom-f-oconnell', ensure_exists=True)
+# Only made when the cache is saved (`save_odor2abbrev_cache`), so importing this module
+# also works without a writable home directory (e.g. in a read-only container).
+_cache_dir = user_data_path('hong2p', 'tom-f-oconnell')
 odor2abbrev_cache = _cache_dir / 'odor2abbrev_cache.p'
 if odor2abbrev_cache.exists():
     _odor2abbrev_from_cache = pickle.loads(odor2abbrev_cache.read_bytes())
@@ -57,7 +58,11 @@ if odor2abbrev_cache.exists():
 # TODO log (info/debug?) when we override something from cache?
 # TODO fns for adding to this / overriding
 # TODO load/supplement from (union of?) abbrevs included in configs, if possible
-_hardcoded_odor2abbrev = {
+#
+# Abbreviations for odors whose YAML entries don't specify one ('abbrev'). Unlike
+# `odor2abbrev`, this does not depend on the cache (i.e. on what has been loaded before,
+# on this computer).
+hardcoded_odor2abbrev: Dict[str, str] = {
     'hexyl hexanoate': 'hh',
     'furfural': 'fur',
 
@@ -113,7 +118,7 @@ _hardcoded_odor2abbrev = {
     # Another name for 'valeric acid', but the one Remy had used.
     'pentanoic acid': 'va',
 }
-odor2abbrev.update(_hardcoded_odor2abbrev)
+odor2abbrev.update(hardcoded_odor2abbrev)
 
 _initial_odor2abbrev = dict(odor2abbrev)
 def save_odor2abbrev_cache():
@@ -123,6 +128,7 @@ def save_odor2abbrev_cache():
     """
     # TODO log debug/info that we are writing this (/ that it was unchanged)
     if odor2abbrev != _initial_odor2abbrev:
+        _cache_dir.mkdir(parents=True, exist_ok=True)
         odor2abbrev_cache.write_bytes(pickle.dumps(odor2abbrev))
 
 atexit.register(save_odor2abbrev_cache)

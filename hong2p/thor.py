@@ -197,17 +197,17 @@ def is_fast_z_enabled_xml(xml) -> bool:
 
 
 def _get_zstage(xml):
-    """Returns first 'ZStage' XML element (asserting only one has a 'name' attribute).
+    """Returns the 'ZStage' XML element with a 'name' attribute (asserting only one has).
     """
-    # TODO assert there is only one ZStage object? is it always only primary (assumed
-    # piezo) saved into xml, even if there is a stepper secondary z-axis too?
-    zstage = xml.find('ZStage')
-
-    # TODO replace .find w/ findall(...)[0]?
+    # TODO is it always only primary (assumed piezo) saved into xml w/ a name, even if
+    # there is a stepper secondary z-axis too?
     #
     # yang's test XML she sent has multiple ZStage elements, but only one with name
-    # defined (='ThorZPiezo')
-    assert len([x for x in xml.findall('ZStage') if 'name' in x.attrib]) == 1
+    # defined (='ThorZPiezo'). In ~50 of ~1400 of our recordings, there is a second
+    # ZStage without a name (the named one first, in all of those).
+    named = [x for x in xml.findall('ZStage') if 'name' in x.attrib]
+    assert len(named) == 1, f'expected 1 ZStage with a name, got {len(named)}'
+    zstage = named[0]
 
     # TODO and if fastZ is enabled, is that sufficient evidence it is piezo?
     # NO! (at least it's possible to misconfigure downstairs system so that non-piezo
