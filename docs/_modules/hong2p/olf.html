@@ -1549,9 +1549,14 @@
 <span class="w">    </span><span class="sd">"""Returns odor str with concentration information removed.</span>
 
 <span class="sd">    Works with input representing either single components or air mixtures of multiple.</span>
+<span class="sd">    Input without any concentration is returned as-is. `olf.solvent_str` components are</span>
+<span class="sd">    dropped (as in `format_mix_from_strs`).</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        **kwargs: passed thru to `format_odor`</span>
+
+<span class="sd">    Raises ValueError if some components of a mixture have a concentration, but other</span>
+<span class="sd">    (non-solvent) components do not.</span>
 
 <span class="sd">    &gt;&gt;&gt; strip_concs_from_odor_str('A @ -3 + B @ -2')</span>
 <span class="sd">    'A + B'</span>
@@ -1562,6 +1567,16 @@
         <span class="k">return</span> <span class="n">odor_str</span>
 
     <span class="c1"># TODO thread thru component delim (delim= kwarg) here?</span>
+    <span class="n">components</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">odor_str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">component_delim</span><span class="p">)]</span>
+    <span class="c1"># these would otherwise be parsed as having log10_conc=None, which format_odor would</span>
+    <span class="c1"># turn into solvent_str (dropping them from the output)</span>
+    <span class="n">without_conc</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">components</span> <span class="k">if</span> <span class="n">conc_delimiter</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span> <span class="ow">and</span> <span class="n">x</span> <span class="o">!=</span> <span class="n">solvent_str</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">without_conc</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">odor_str</span><span class="si">=}</span><span class="s1"> has components without a concentration '</span>
+            <span class="sa">f</span><span class="s1">'(</span><span class="si">{</span><span class="n">without_conc</span><span class="si">}</span><span class="s1">), though others have one. each component of a mixture '</span>
+            <span class="sa">f</span><span class="s1">'should have one (&lt;name&gt; </span><span class="si">{</span><span class="n">conc_delimiter</span><span class="si">}</span><span class="s1"> &lt;log10_conc&gt;).'</span>
+        <span class="p">)</span>
+
     <span class="n">odor_list</span> <span class="o">=</span> <span class="n">parse_odor_list</span><span class="p">(</span><span class="n">odor_str</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">format_odor_list</span><span class="p">(</span><span class="n">odor_list</span><span class="p">,</span> <span class="n">conc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
 

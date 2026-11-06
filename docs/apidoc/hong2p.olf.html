@@ -761,7 +761,9 @@ level.</p>
 <dt class="sig sig-object py" id="hong2p.olf.strip_concs_from_odor_str">
 <span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">strip_concs_from_odor_str</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">odor_str</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#strip_concs_from_odor_str"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.strip_concs_from_odor_str" title="Link to this definition"></a></dt>
 <dd><p>Returns odor str with concentration information removed.</p>
-<p>Works with input representing either single components or air mixtures of multiple.</p>
+<p>Works with input representing either single components or air mixtures of multiple.
+Input without any concentration is returned as-is. <cite>olf.solvent_str</cite> components are
+dropped (as in <cite>format_mix_from_strs</cite>).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>**kwargs</strong> – passed thru to <cite>format_odor</cite></p>
@@ -770,6 +772,8 @@ level.</p>
 <dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
 </dd>
 </dl>
+<p>Raises ValueError if some components of a mixture have a concentration, but other
+(non-solvent) components do not.</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">strip_concs_from_odor_str</span><span class="p">(</span><span class="s1">'A @ -3 + B @ -2'</span><span class="p">)</span>
 <span class="go">'A + B'</span>
 </pre></div>
