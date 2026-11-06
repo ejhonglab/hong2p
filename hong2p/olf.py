@@ -1403,9 +1403,14 @@ def strip_concs_from_odor_str(odor_str: str, **kwargs) -> str:
     """Returns odor str with concentration information removed.
 
     Works with input representing either single components or air mixtures of multiple.
+    Input without any concentration is returned as-is. `olf.solvent_str` components are
+    dropped (as in `format_mix_from_strs`).
 
     Args:
         **kwargs: passed thru to `format_odor`
+
+    Raises ValueError if some components of a mixture have a concentration, but other
+    (non-solvent) components do not.
 
     >>> strip_concs_from_odor_str('A @ -3 + B @ -2')
     'A + B'
@@ -1416,6 +1421,16 @@ def strip_concs_from_odor_str(odor_str: str, **kwargs) -> str:
         return odor_str
 
     # TODO thread thru component delim (delim= kwarg) here?
+    components = [x.strip() for x in odor_str.split(component_delim)]
+    # these would otherwise be parsed as having log10_conc=None, which format_odor would
+    # turn into solvent_str (dropping them from the output)
+    without_conc = [x for x in components if conc_delimiter not in x and x != solvent_str]
+    if len(without_conc) > 0:
+        raise ValueError(f'{odor_str=} has components without a concentration '
+            f'({without_conc}), though others have one. each component of a mixture '
+            f'should have one (<name> {conc_delimiter} <log10_conc>).'
+        )
+
     odor_list = parse_odor_list(odor_str)
     return format_odor_list(odor_list, conc=False, **kwargs)
 

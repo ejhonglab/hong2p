@@ -9,7 +9,9 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from hong2p.olf import format_mix_from_strs, solvent_str, sort_odors
+from hong2p.olf import (format_mix_from_strs, solvent_str, sort_odors,
+    strip_concs_from_odor_str
+)
 
 
 # TODO move to conftest.py? share w/ test_util.py where i copied some of this to?
@@ -295,3 +297,16 @@ def test_import_makes_no_cache_dir(tmp_path):
     assert made_on_import == 'False'
     # odor2abbrev changed, so it is saved at exit, making the directory then
     assert os.path.exists(cache_path)
+
+
+def test_strip_concs_from_odor_str():
+    assert strip_concs_from_odor_str('A @ -3') == 'A'
+    assert strip_concs_from_odor_str('A @ -3 + B @ -2') == 'A + B'
+    assert strip_concs_from_odor_str(f'A @ -3 + {solvent_str}') == 'A'
+    # no concentrations at all: returned as-is
+    assert strip_concs_from_odor_str('cmix') == 'cmix'
+    assert strip_concs_from_odor_str('A + B') == 'A + B'
+
+    # B used to be silently dropped (parsed as solvent)
+    with pytest.raises(ValueError, match='without a concentration'):
+        strip_concs_from_odor_str('A @ -3 + B')
