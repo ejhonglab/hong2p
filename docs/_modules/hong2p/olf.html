@@ -92,7 +92,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">platformdirs</span><span class="w"> </span><span class="kn">import</span> <span class="n">user_data_path</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_str_or_object_dtype</span><span class="p">,</span> <span class="n">addlevel</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">ExperimentOdors</span><span class="p">,</span> <span class="n">SingleTrialOdors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Axis</span><span class="p">,</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">ExperimentOdors</span><span class="p">,</span> <span class="n">SingleTrialOdors</span>
 
 
 <span class="n">solvent_str</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'solvent'</span>
@@ -1189,6 +1189,254 @@
         <span class="n">panel2order</span><span class="p">[</span><span class="n">panel</span><span class="p">]</span> <span class="o">=</span> <span class="n">mix_strs</span>
 
     <span class="k">return</span> <span class="n">panel2order</span></div>
+
+
+
+<span class="n">diag_panel_str</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'glomeruli_diagnostics'</span>
+
+<span class="c1"># Odor name orders for each of the lab's standard panels, and the order of the panels</span>
+<span class="c1"># themselves, as used by `sort_odors_by_panel`.</span>
+<span class="c1">#</span>
+<span class="c1"># 'kiwi' and 'control' (and their order) are the same as `natmix.panel2name_order` /</span>
+<span class="c1"># `natmix.panel_order` (natmix depends on hong2p, so it can't be imported here). Keep</span>
+<span class="c1"># them in sync (al_analysis tests that they match).</span>
+<span class="c1">#</span>
+<span class="c1"># TODO clarify how these behave if something is missing (in comment)</span>
+<span class="n">panel2name_order</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'kiwi'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'pfo'</span><span class="p">,</span> <span class="s1">'EtOH'</span><span class="p">,</span> <span class="s1">'IAol'</span><span class="p">,</span> <span class="s1">'IaA'</span><span class="p">,</span> <span class="s1">'ea'</span><span class="p">,</span> <span class="s1">'eb'</span><span class="p">,</span> <span class="s1">'ea+eb'</span><span class="p">,</span> <span class="s1">'ea+eb (air mix)'</span><span class="p">,</span>
+        <span class="s1">'eb+ea (air mix)'</span><span class="p">,</span> <span class="s1">'~kiwi'</span><span class="p">,</span> <span class="s1">'kmix'</span><span class="p">,</span> <span class="s1">'kmix0'</span><span class="p">,</span> <span class="s1">'kmix-1'</span><span class="p">,</span> <span class="s1">'kmix-2'</span>
+    <span class="p">],</span>
+    <span class="s1">'control'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'pfo'</span><span class="p">,</span> <span class="s1">'ms'</span><span class="p">,</span> <span class="s1">'va'</span><span class="p">,</span> <span class="s1">'fur'</span><span class="p">,</span> <span class="s1">'2h'</span><span class="p">,</span> <span class="s1">'oct'</span><span class="p">,</span> <span class="s1">'1o3ol'</span><span class="p">,</span> <span class="s1">'1o3ol+2h'</span><span class="p">,</span>
+        <span class="s1">'2h+oct (air mix)'</span><span class="p">,</span> <span class="s1">'2h+1o3ol (air mix)'</span><span class="p">,</span> <span class="s1">'1o3ol+2h (air mix)'</span><span class="p">,</span> <span class="s1">'control mix'</span><span class="p">,</span>
+        <span class="s1">'cmix'</span><span class="p">,</span> <span class="s1">'cmix0'</span><span class="p">,</span> <span class="s1">'cmix-1'</span><span class="p">,</span> <span class="s1">'cmix-2'</span>
+    <span class="p">],</span>
+<span class="p">}</span>
+<span class="n">panel_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'kiwi'</span><span class="p">,</span> <span class="s1">'control'</span><span class="p">]</span>
+
+<span class="c1"># TODO any reason for this order (i think it might be same as order in yaml [which more</span>
+<span class="c1"># or less goes from odors activating glomeruli in higher planes to lower planes], so</span>
+<span class="c1"># maybe could load from there now?)? just use order loaded from config /</span>
+<span class="c1"># glomeruli_diagnostics.yaml?</span>
+<span class="c1">#</span>
+<span class="c1"># TODO actually load from generator config (union of all loaded w/ this panel?)</span>
+<span class="c1"># -&gt; use associated glomeruli keys of odors to sort</span>
+<span class="c1">#</span>
+<span class="c1"># Sorted manually to roughly alphabetically sort by names of glomeruli we are trying to</span>
+<span class="c1"># target with these diagnostics.</span>
+<span class="n">panel2name_order</span><span class="p">[</span><span class="n">diag_panel_str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">'3mtp'</span><span class="p">,</span>
+    <span class="s1">'va'</span><span class="p">,</span>
+    <span class="c1"># DL5</span>
+    <span class="s1">'t2h'</span><span class="p">,</span>
+    <span class="s1">'ms'</span><span class="p">,</span>
+    <span class="s1">'a-terp'</span><span class="p">,</span>
+    <span class="s1">'geos'</span><span class="p">,</span>
+    <span class="c1"># DM5</span>
+    <span class="s1">'e3hb'</span><span class="p">,</span>
+    <span class="s1">'mhex'</span><span class="p">,</span>
+    <span class="c1"># DM4</span>
+    <span class="s1">'ma'</span><span class="p">,</span>
+    <span class="c1"># DM1</span>
+    <span class="s1">'ea'</span><span class="p">,</span>
+    <span class="c1"># VM7d</span>
+    <span class="s1">'2-but'</span><span class="p">,</span>
+    <span class="s1">'2h'</span><span class="p">,</span>
+    <span class="s1">'ga'</span><span class="p">,</span>
+    <span class="s1">'HCl'</span><span class="p">,</span>
+    <span class="s1">'carene'</span><span class="p">,</span>
+    <span class="s1">'farn'</span><span class="p">,</span>
+    <span class="s1">'4h-ol'</span><span class="p">,</span>
+    <span class="s1">'2but'</span><span class="p">,</span>
+    <span class="c1"># VA2</span>
+    <span class="s1">'2,3-b'</span><span class="p">,</span>
+    <span class="s1">'p-cre'</span><span class="p">,</span>
+    <span class="s1">'aphe'</span><span class="p">,</span>
+
+    <span class="c1"># TODO was this working before? didn't i have my own abbrev as 6ol? or did something</span>
+    <span class="c1"># else overwrite that?</span>
+    <span class="s1">'1-6ol'</span><span class="p">,</span>
+    <span class="s1">'paa'</span><span class="p">,</span>
+    <span class="s1">'fench'</span><span class="p">,</span>
+    <span class="s1">'CO2'</span><span class="p">,</span>
+
+    <span class="c1"># VM2/VA2/?</span>
+    <span class="s1">'ecrot'</span><span class="p">,</span>
+
+    <span class="c1"># VC4 (+VA2)</span>
+    <span class="s1">'elac'</span><span class="p">,</span>
+    <span class="c1"># ~VM3</span>
+    <span class="s1">'acetoin'</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="n">panel_order</span> <span class="o">=</span> <span class="p">[</span><span class="n">diag_panel_str</span><span class="p">]</span> <span class="o">+</span> <span class="n">panel_order</span>
+
+<span class="c1"># TODO get order from yaml files if not specified? per-panel flag to do this?</span>
+<span class="c1"># TODO (as w/ other stuff), load from either generated or generator-input YAMLs</span>
+<span class="c1"># (in this case, tom_olfactometer_configs/megamat0.yaml) (should have code for initial</span>
+<span class="c1"># part of this now)</span>
+<span class="n">panel2name_order</span><span class="p">[</span><span class="s1">'megamat'</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">'2h'</span><span class="p">,</span> <span class="s1">'IaA'</span><span class="p">,</span> <span class="s1">'pa'</span><span class="p">,</span> <span class="s1">'2-but'</span><span class="p">,</span> <span class="s1">'eb'</span><span class="p">,</span> <span class="s1">'ep'</span><span class="p">,</span> <span class="s1">'aa'</span><span class="p">,</span> <span class="s1">'va'</span><span class="p">,</span> <span class="s1">'B-cit'</span><span class="p">,</span> <span class="s1">'Lin'</span><span class="p">,</span> <span class="s1">'6al'</span><span class="p">,</span>
+    <span class="s1">'t2h'</span><span class="p">,</span> <span class="s1">'1-8ol'</span><span class="p">,</span> <span class="s1">'1-5ol'</span><span class="p">,</span> <span class="s1">'1-6ol'</span><span class="p">,</span> <span class="s1">'benz'</span><span class="p">,</span> <span class="s1">'ms'</span>
+<span class="p">]</span>
+<span class="c1"># Putting this before my 'control' panel, so that shared odors are plotted in correct</span>
+<span class="c1"># order for this data</span>
+<span class="n">panel_order</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'megamat'</span><span class="p">)</span>
+
+<span class="n">panel_order</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'validation2'</span><span class="p">)</span>
+<span class="c1"># TODO TODO which of these did i actually want? check all odors match up in my data</span>
+<span class="c1"># (maybe fix some of my abbrevs to match remy's?)</span>
+<span class="n">panel2name_order</span><span class="p">[</span><span class="s1">'validation2'</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s1">'+pul'</span><span class="p">,</span>
+    <span class="s1">'menth'</span><span class="p">,</span>
+    <span class="s1">'long'</span><span class="p">,</span>
+    <span class="s1">'sab'</span><span class="p">,</span>
+    <span class="s1">'-bCar'</span><span class="p">,</span>
+    <span class="s1">'-aPine'</span><span class="p">,</span>
+    <span class="s1">'euc'</span><span class="p">,</span>
+    <span class="s1">'2-mib'</span><span class="p">,</span>
+    <span class="s1">'geos'</span><span class="p">,</span>
+    <span class="s1">'guai'</span><span class="p">,</span>
+    <span class="s1">'mchav'</span><span class="p">,</span>
+    <span class="s1">'PEA'</span><span class="p">,</span>
+
+    <span class="c1"># NOTE: diff from remy's 'PAA'</span>
+    <span class="s1">'paa'</span><span class="p">,</span>
+    <span class="s1">'PAA'</span><span class="p">,</span>
+
+    <span class="s1">'bbenz'</span><span class="p">,</span>
+    <span class="s1">'B-myr'</span><span class="p">,</span>
+    <span class="s1">'ger'</span><span class="p">,</span>
+
+    <span class="c1"># NOTE: diff from remy's '1-prop'</span>
+    <span class="s1">'1-3ol'</span><span class="p">,</span>
+    <span class="s1">'1-prop'</span><span class="p">,</span>
+
+    <span class="s1">'1p3one'</span><span class="p">,</span>
+    <span class="s1">'1o3one'</span><span class="p">,</span>
+    <span class="s1">'EtOct'</span><span class="p">,</span>
+    <span class="s1">'2-mba'</span><span class="p">,</span>
+    <span class="s1">'Z4-7al'</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="c1"># TODO also let this take a list of odors? or somehow use output + input to do something</span>
+<span class="c1"># that is effectively like an argsort, and use that to index some other type of object</span>
+<span class="c1"># (where we convert it to a DataFrame just for sorting)</span>
+<span class="c1"># TODO sort_odors allow specifying axis?</span>
+<span class="c1"># TODO TODO how to get this to not sort control panel '2h @ -5 + oct @ -3' (air</span>
+<span class="c1"># mix, using odor2 level) right after '2h @ -5'? (and same for kiwi)</span>
+<span class="c1"># TODO can input/output also be a series?</span>
+<div class="viewcode-block" id="sort_odors_by_panel">
+<a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.sort_odors_by_panel">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sort_odors_by_panel</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">add_panel</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Sorts odors by panel, using this module's `panel_order` and `panel2name_order`.</span>
+
+<span class="sd">    (`al_analysis.al_util.sort_odors`)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        add_panel: if passed, first adds a 'panel' row index level with this value</span>
+<span class="sd">            (only works if odors are in row index)</span>
+
+<span class="sd">        **kwargs: passed to `sort_odors`</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO TODO check in here whether panel(s) are in panel2name_order (rather than</span>
+    <span class="c1"># requiring that check many other places)</span>
+
+    <span class="c1"># TODO add to whichever axis has odor info automatically? or too complicated.</span>
+    <span class="c1"># currently doesn't work if odors are in columns.</span>
+    <span class="k">if</span> <span class="n">add_panel</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">add_panel</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span>
+        <span class="c1"># TODO assert 'panel' not already in (relevant axis) index level names</span>
+        <span class="c1"># (or just ignore if it is, at least if already there)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">addlevel</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="s1">'panel'</span><span class="p">,</span> <span class="n">add_panel</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">panel_order</span><span class="o">=</span><span class="n">panel_order</span><span class="p">,</span>
+        <span class="c1"># TODO what does if_panel_missing=None do? comment explaining (/ change code to</span>
+        <span class="c1"># not require an explanation...)</span>
+        <span class="n">panel2name_order</span><span class="o">=</span><span class="n">panel2name_order</span><span class="p">,</span> <span class="n">if_panel_missing</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="c1"># TODO refactor (duped in pn_convergence_vs_hallem_corr.py)</span>
+<span class="c1"># (and may want to use elsewhere in here for picking odors to use for constructing dF/F</span>
+<span class="c1"># -&gt; spike rate fn)</span>
+<span class="c1"># TODO TODO hardcode abbrevs for all hallem odors (or at least all we've ever used?)</span>
+<span class="c1"># in olf.odor2abbrev, so they can all be found here (input names could be diff from what</span>
+<span class="c1"># we routinely use) (in the meantime, check all odors i have decent data for are NOT in</span>
+<span class="c1"># hallem)</span>
+<span class="c1"># TODO fn to combine this w/ loading of hallem data (-&gt; only use that wrapper)?</span>
+<span class="c1"># TODO can input/output also be Series?</span>
+<div class="viewcode-block" id="abbrev_hallem_odor_index">
+<a class="viewcode-back" href="../../apidoc/hong2p.olf.html#hong2p.olf.abbrev_hallem_odor_index">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">abbrev_hallem_odor_index</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">axis</span><span class="p">:</span> <span class="n">Axis</span> <span class="o">=</span> <span class="s1">'index'</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Abbreviates Hallem odor names in single-level index (rows, by default).</span>
+
+<span class="sd">    First renames some Hallem odor names to the versions in `odor2abbrev`,</span>
+<span class="sd">    then abbreviates using that mapping.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        axis: which index to rename ('index' or 'columns')</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO assert some got replaced (as a check axis was correct)</span>
+
+    <span class="c1"># - a-terp (a-terpineol)</span>
+    <span class="c1"># - 3mtp (3-methylthio-1-propanol)</span>
+    <span class="c1"># - carene ((1S)-(+)-3-carene)</span>
+    <span class="c1">#</span>
+    <span class="c1"># - (don't currently have data, but may soon) o-cre (2-methylphenol)</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">rename</span><span class="p">({</span>
+            <span class="c1"># TODO just move all these into olf.odor2abbrev</span>
+            <span class="s1">'b-citronellol'</span><span class="p">:</span> <span class="s1">'B-citronellol'</span><span class="p">,</span>
+            <span class="s1">'isopentyl acetate'</span><span class="p">:</span> <span class="s1">'isoamyl acetate'</span><span class="p">,</span>
+            <span class="s1">'E2-hexenal'</span><span class="p">:</span> <span class="s1">'trans-2-hexenal'</span><span class="p">,</span>
+            <span class="s1">'a-terpineol'</span><span class="p">:</span> <span class="s1">'alpha-terpineol'</span><span class="p">,</span>
+            <span class="s1">'3-methylthio-1-propanol'</span><span class="p">:</span> <span class="s1">'3-methylthiopropanol'</span><span class="p">,</span>
+            <span class="s1">'(1S)-(+)-3-carene'</span><span class="p">:</span> <span class="s1">'(1S)-(+)-carene'</span><span class="p">,</span>
+            <span class="s1">'2-methylphenol'</span><span class="p">:</span> <span class="s1">'o-cresol'</span><span class="p">,</span>
+
+            <span class="c1"># these should be the only 7 odors in validation2 panel that are in Hallem,</span>
+            <span class="c1"># courtesy of what Remy sent me on slack 2024-02-12.</span>
+            <span class="c1"># already abbreviated (concentration in validation2 panel in parens):</span>
+            <span class="c1"># 1-propanol (-3), ethyl octanoate (-2), geraniol (-2),</span>
+            <span class="c1"># phenylacetaldehyde (-4)</span>
+            <span class="c1">#</span>
+            <span class="c1"># (-2)</span>
+            <span class="s1">'b-myrcene'</span><span class="p">:</span> <span class="s1">'beta-myrcene'</span><span class="p">,</span>
+            <span class="c1"># (-1.5)</span>
+            <span class="s1">'a-pinene'</span><span class="p">:</span> <span class="s1">'(-)-alpha-pinene'</span><span class="p">,</span>
+            <span class="c1"># (-3)</span>
+            <span class="s1">'(-)-trans-caryophyllene'</span><span class="p">:</span> <span class="s1">'(-)-beta-caryophyllene'</span><span class="p">,</span>
+
+            <span class="c1"># TODO restore -&gt; re-run hallem modelling -&gt; check nothing broke</span>
+            <span class="c1"># (-&gt; maybe remove some/all other hacks to odor abbrev handling in creation</span>
+            <span class="c1"># of my versions of 2E plot)</span>
+            <span class="c1">#</span>
+            <span class="c1">## abbreviations Remy uses in some of 2E data she sent me.</span>
+            <span class="c1">## (for the 24 - 17 odors she is had some data for, beyond megamat17).</span>
+            <span class="c1">## all should be in hallem.</span>
+            <span class="c1">## I already had an abbreviation for the 7th ('1-penten-3-ol' -&gt; '1p3ol').</span>
+            <span class="c1">#'eugenol': 'eug',</span>
+            <span class="c1">#'ethyl cinnamate': 'ECin',</span>
+            <span class="c1">#'propyl acetate': 'PropAc',</span>
+            <span class="c1">## these two had full names w/ 'gamma'/'delta' prefix in some of Remy's</span>
+            <span class="c1">## things, but these LHS values are what I need to convert from in my Hallem</span>
+            <span class="c1">## representation.</span>
+            <span class="c1">#'g-hexalactone': 'g-6lac',</span>
+            <span class="c1">#'d-decalactone': 'd-dlac',</span>
+            <span class="c1">## TODO TODO might need 'moct' -&gt; 'MethOct' (assuming my abbrev has</span>
+            <span class="c1">## already been applied [it prob wasn't, considering it's called below...].</span>
+            <span class="c1">## how have i been handling any other existing abbrev conflicts? are there</span>
+            <span class="c1">## any others?)</span>
+            <span class="c1">## TODO TODO how do i want to handle this? leaning towards just renaming</span>
+            <span class="c1">## to 'moct' when loading remy's 2e data...</span>
+            <span class="c1">##'methyl octanoate': 'MethOct',</span>
+        <span class="p">},</span>
+        <span class="n">axis</span><span class="o">=</span><span class="n">axis</span>
+    <span class="p">)</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">odor2abbrev</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">df</span></div>
+
 
 
 

@@ -50,6 +50,7 @@
 <li class="toctree-l3 current"><a class="reference internal" href="hong2p.html#submodules">Submodules</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="hong2p.chem.html">hong2p.chem module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="hong2p.err.html">hong2p.err module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.io.html">hong2p.io module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="hong2p.latex.html">hong2p.latex module</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">hong2p.olf module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="hong2p.pandas.html">hong2p.pandas module</a></li>
@@ -134,6 +135,22 @@ concentration is preserved. NOTE: parsing still uses <cite>olf.conc_delimiter</c
 <span class="go">'ea @ -2 + hh @ -3'</span>
 </pre></div>
 </div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.abbrev_hallem_odor_index">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">abbrev_hallem_odor_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'index'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#abbrev_hallem_odor_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.abbrev_hallem_odor_index" title="Link to this definition"></a></dt>
+<dd><p>Abbreviates Hallem odor names in single-level index (rows, by default).</p>
+<p>First renames some Hallem odor names to the versions in <cite>odor2abbrev</cite>,
+then abbreviates using that mapping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>axis</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Literal</span></code>[<span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="s1"><span class="pre">'columns'</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="s1"><span class="pre">'index'</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="s1"><span class="pre">'rows'</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="mi"><span class="pre">0</span></span></code></span>, <span class="highlight sphinx_autodoc_typehints-value"><code class="docutils literal notranslate"><span class="mi"><span class="pre">1</span></span></code></span>]</span>) – which index to rename (‘index’ or ‘columns’)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -755,6 +772,25 @@ level.</p>
 <span class="go">      A @ -2      1.0</span>
 </pre></div>
 </div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.olf.sort_odors_by_panel">
+<span class="sig-prename descclassname"><span class="pre">hong2p.olf.</span></span><span class="sig-name descname"><span class="pre">sort_odors_by_panel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_panel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/olf.html#sort_odors_by_panel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.olf.sort_odors_by_panel" title="Link to this definition"></a></dt>
+<dd><p>Sorts odors by panel, using this module’s <cite>panel_order</cite> and <cite>panel2name_order</cite>.</p>
+<p>(<cite>al_analysis.al_util.sort_odors</cite>)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>add_panel</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – if passed, first adds a ‘panel’ row index level with this value
+(only works if odors are in row index)</p></li>
+<li><p><strong>**kwargs</strong> – passed to <cite>sort_odors</cite></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">

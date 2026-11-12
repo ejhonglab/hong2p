@@ -1056,6 +1056,45 @@
     <span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">x</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s1">'</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">]</span></div>
 
     <span class="c1"># TODO make not inplace?</span>
+
+
+<div class="viewcode-block" id="stack_keep_na">
+<a class="viewcode-back" href="../../apidoc/hong2p.pandas.html#hong2p.pandas.stack_keep_na">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">stack_keep_na</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataFrameOrSeries</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns `df.stack(**kwargs)`, without dropping any NaN.</span>
+
+<span class="sd">    Equivalent to `df.stack(dropna=False, **kwargs)` in pandas &lt; 3.0, where that kwarg</span>
+<span class="sd">    was removed (and the new stack implementation never drops NaN).</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">dropna</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="c1"># pandas &gt;= 3.0: "ValueError: dropna must be unspecified as the new implementation</span>
+    <span class="c1"># does not introduce rows of NA values..."</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="stack_drop_na">
+<a class="viewcode-back" href="../../apidoc/hong2p.pandas.html#hong2p.pandas.stack_drop_na">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">stack_drop_na</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataFrameOrSeries</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns `df.stack(*args, **kwargs)`, dropping all-NaN rows like pandas &lt; 3.0.</span>
+
+<span class="sd">    The default `dropna=True` behavior of `DataFrame.stack` in pandas &lt; 3.0 dropped</span>
+<span class="sd">    rows that were all NaN in the output, and the new stack implementation (the only</span>
+<span class="sd">    one in pandas &gt;= 3.0) never drops NaN.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">dropna</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="c1"># pandas &gt;= 3.0: "ValueError: dropna must be unspecified as the new implementation</span>
+    <span class="c1"># does not introduce rows of NA values..."</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="n">stacked</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stacked</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">stacked</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">how</span><span class="o">=</span><span class="s1">'all'</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">stacked</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span></div>
+
 </pre></div>
 
            </div>

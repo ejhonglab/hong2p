@@ -1,0 +1,1679 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.io &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">hong2p.io</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for hong2p.io</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""</span>
+<span class="sd">Writing analysis outputs (CSVs, parquet, pickles, JSON, figures), and reading them back.</span>
+
+<span class="sd">Paths written via functions wrapped with `produces_output` (e.g. `to_csv`) and via</span>
+<span class="sd">`savefig` are recorded for the rest of the process, and writing the same path twice</span>
+<span class="sd">raises `MultipleSavesPerRunException` (usually a mistake). With `check_outputs_unchanged`</span>
+<span class="sd">set (e.g. by the -c flag added by `add_check_outputs_unchanged_CLI_flag_and_parse_args`),</span>
+<span class="sd">an existing output is compared to what would replace it, raising an error if it would</span>
+<span class="sd">change.</span>
+
+<span class="sd">Settings are module attributes, read when the functions are called (e.g. set</span>
+<span class="sd">`hong2p.io.verbose = True` on the module, not on a name imported from it): `verbose`,</span>
+<span class="sd">`check_outputs_unchanged`, `prompt_if_changed`, `ignore_existing` (see</span>
+<span class="sd">`should_ignore_existing`), `save_figs`, `plot_fmt` and `exit_after_saving_fig_containing`</span>
+<span class="sd">(see `savefig`).</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">namedtuple</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">difflib</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">wraps</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">filecmp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">inspect</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">os.path</span><span class="w"> </span><span class="kn">import</span> <span class="n">getmtime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pprint</span><span class="w"> </span><span class="kn">import</span> <span class="n">pformat</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tempfile</span><span class="w"> </span><span class="kn">import</span> <span class="n">NamedTemporaryFile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Set</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.err</span><span class="w"> </span><span class="kn">import</span> <span class="n">require_optional_deps</span>
+<span class="n">require_optional_deps</span><span class="p">(</span><span class="vm">__name__</span><span class="p">,</span> <span class="s1">'matplotlib'</span><span class="p">)</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.figure</span><span class="w"> </span><span class="kn">import</span> <span class="n">Figure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.testing.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageComparisonFailure</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">util</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.olf</span><span class="w"> </span><span class="kn">import</span> <span class="n">solvent_str</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">pd_allclose</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">DataFrameOrSeries</span>
+<span class="c1"># read_json not used here, but available from this module alongside the writers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.util</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">read_json</span><span class="p">,</span> <span class="n">to_json</span> <span class="k">as</span> <span class="n">_to_json</span><span class="p">,</span> <span class="n">warn</span><span class="p">,</span> <span class="n">format_mtime</span><span class="p">,</span> <span class="n">fly_cols</span><span class="p">,</span>
+    <span class="n">flyroi_cols</span>
+<span class="p">)</span>
+
+
+<span class="c1"># if True, paths of saved figures are printed (and al_analysis / its model code use this</span>
+<span class="c1"># as their general verbosity flag, e.g. set by `al-analysis -v`)</span>
+<span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+
+
+<span class="c1"># TODO factor (/rename) into something that also adds the -v/--verbose flag, and sets</span>
+<span class="c1"># `verbose` accordingly? (lots of scripts just unconditionally set that true, so</span>
+<span class="c1"># prob not)</span>
+<div class="viewcode-block" id="add_check_outputs_unchanged_CLI_flag_and_parse_args">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.add_check_outputs_unchanged_CLI_flag_and_parse_args">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">add_check_outputs_unchanged_CLI_flag_and_parse_args</span><span class="p">(</span><span class="n">parser</span><span class="p">:</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span> <span class="n">check_nonmain_option</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">Namespace</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Adds -c/-P (and optionally -C) CLI args, parses args, and sets module settings.</span>
+
+<span class="sd">    Sets (in this module):</span>
+<span class="sd">    - `check_outputs_unchanged` (True/False, or 'nonmain' if -C passed)</span>
+<span class="sd">    - `check_nonmain_outputs_unchanged` (only if `check_nonmain_option=True`)</span>
+<span class="sd">    - `prompt_if_changed`</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        check_nonmain_option: if True, also adds -C/--check-nonmain-outputs-unchanged</span>
+<span class="sd">            (mutually exclusive w/ -c), which only checks outputs not saved under</span>
+<span class="sd">            `main()`</span>
+
+<span class="sd">    Returns args as from `parser.parse_args()`</span>
+
+<span class="sd">    Will raise `argparse.ArgumentError` if trying to add any args already defined.</span>
+<span class="sd">    """</span>
+    <span class="k">global</span> <span class="n">check_outputs_unchanged</span>
+    <span class="k">global</span> <span class="n">check_nonmain_outputs_unchanged</span>
+    <span class="k">global</span> <span class="n">prompt_if_changed</span>
+
+    <span class="k">if</span> <span class="n">check_nonmain_option</span><span class="p">:</span>
+        <span class="n">add_to</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">add_to</span> <span class="o">=</span> <span class="n">parser</span>
+
+    <span class="c1"># TODO option to warn but not err as well?</span>
+    <span class="c1"># TODO warn in cases like sensitivity_analysis's deletion of it's root output folder</span>
+    <span class="c1"># before starting (invalidating these checks...) (err if any folder would be</span>
+    <span class="c1"># deleted when we have this flag?)</span>
+    <span class="c1"># TODO maybe this should prompt for pickles/csvs by default (w/ option to</span>
+    <span class="c1"># approve single or all?)? maybe backup ones that would be replaced too?</span>
+    <span class="n">add_to</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'-c'</span><span class="p">,</span> <span class="s1">'--check-outputs-unchanged'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span>
+        <span class="c1"># TODO update doc? is it actually true there are any plot formats i don't</span>
+        <span class="c1"># support? or at least, this isn't the reason anymore, right? now it should just</span>
+        <span class="c1"># be anything that mpl fn i'm using (which converts things to png i think) works</span>
+        <span class="c1"># w/?</span>
+        <span class="c1"># TODO specifically call out which formats this will/won't work for (png?)</span>
+        <span class="c1"># work for PDF? implement some kind of image based diffing to support those?</span>
+        <span class="c1"># TODO or maybe just err if this is passed with an unsupported plot format being</span>
+        <span class="c1"># requested</span>
+        <span class="c1"># TODO doc whether pickles (or other outputs saved via produces_output wrapper)</span>
+        <span class="c1"># are checked for exact file equality (i assume that is the only default</span>
+        <span class="c1"># implementation)</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">'For CSVs/pickles/plots (saved with my to_[csv|pickle]/savefig wrappers, '</span>
+        <span class="s1">'or anything save function wrapped by `@produces_output` decorator), check new '</span>
+        <span class="s1">'outputs against any existing outputs they would overwrite. If there is a '</span>
+        <span class="s1">'discrepancy, exit with an error. Currently do not support certain plot '</span>
+        <span class="s1">'formats (where metadata includes things like file creation time, so same '</span>
+        <span class="s1">'strategy can not be used to check files for equality).'</span>
+    <span class="p">)</span>
+    <span class="n">flags_added</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'-c'</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">check_nonmain_option</span><span class="p">:</span>
+        <span class="n">add_to</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'-C'</span><span class="p">,</span> <span class="s1">'--check-nonmain-outputs-unchanged'</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s1">'Like -c, but excludes outputs saved in main() '</span>
+            <span class="s1">'from checks, so that per-panel analysis outputs can be checked separately.'</span>
+            <span class="s1">' Outputs that would trigger a warning with this flag will not be '</span>
+            <span class="s1">'overwritten.'</span>
+        <span class="p">)</span>
+        <span class="n">flags_added</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'-C'</span><span class="p">)</span>
+
+    <span class="n">flags_str</span> <span class="o">=</span> <span class="s1">'/'</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">flags_added</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'-P'</span><span class="p">,</span> <span class="s1">'--prompt-if-changed'</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s1">'store_true'</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s1">'If </span><span class="si">{</span><span class="n">flags_str</span><span class="si">}</span><span class="s1"> would trigger an error because a file changed, will '</span>
+        <span class="s1">'instead prompt about the would-be change, and pause execution until user '</span>
+        <span class="s1">'indicates whether the file should be overwritten.'</span>
+    <span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">check_outputs_unchanged</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">check_outputs_unchanged</span>
+
+    <span class="k">if</span> <span class="n">check_nonmain_option</span><span class="p">:</span>
+        <span class="n">check_nonmain_outputs_unchanged</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">check_nonmain_outputs_unchanged</span>
+        <span class="k">if</span> <span class="n">check_nonmain_outputs_unchanged</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="n">check_outputs_unchanged</span>
+            <span class="n">check_outputs_unchanged</span> <span class="o">=</span> <span class="s1">'nonmain'</span>
+
+    <span class="n">prompt_if_changed</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">prompt_if_changed</span>
+    <span class="k">if</span> <span class="n">prompt_if_changed</span><span class="p">:</span>
+        <span class="c1"># TODO raise an argument error in arg parsing instead?</span>
+        <span class="k">assert</span> <span class="n">check_outputs_unchanged</span> <span class="o">!=</span> <span class="kc">False</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'-P can only be passed if </span><span class="si">{</span><span class="n">flags_str</span><span class="si">}</span><span class="s1">'</span>
+
+    <span class="k">return</span> <span class="n">args</span></div>
+
+
+
+<span class="c1"># TODO doc what this does in a comment (are any outputs actually written, or all just</span>
+<span class="c1"># written to temp paths and compared to any existing current outputs at same paths?)</span>
+<span class="c1"># True|False|'nonmain'</span>
+<span class="n">check_outputs_unchanged</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="c1"># hack so al_analysis can edit this to add functions i currently have defined under main</span>
+<span class="c1"># (e.g. save_method_csvs)</span>
+<span class="c1"># TODO just for -c/-C right? explain better the need for this</span>
+<span class="n">_consider_as_main</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="c1"># TODO unit test?</span>
+<span class="c1">#</span>
+<span class="c1"># TODO default verbose=None and try to use default of wrapped fn then</span>
+<span class="c1"># (or True otherwise?)</span>
+<span class="c1"># (still need to test behavior when wrapped fn has existing verbose kwarg)</span>
+<span class="n">_fn_name2seen_inputs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+<span class="n">_fn_name2wrapped_fn</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Callable</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+<span class="c1"># TODO also include savefig plots in these (partially to make replacing custom logic in</span>
+<span class="c1"># there w/ wrapping it w/ @produces_output easier later)</span>
+<span class="n">_all_seen_inputs</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="n">CodeContext</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">'CodeContext'</span><span class="p">,</span> <span class="s1">'filename lineno fn_name'</span><span class="p">)</span>
+<span class="n">_saved_path2last_save_code_context</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">CodeContext</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+<span class="c1"># TODO what is _fn for again? keep?</span>
+<div class="viewcode-block" id="produces_output">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.produces_output">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">produces_output</span><span class="p">(</span><span class="n">_fn</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Decorator for fns saving `data` to `path`, called as `fn(data, path, **kwargs)`</span>
+
+<span class="sd">    Can be used either as `@produces_output` or `@produces_output(verbose=False)`.</span>
+
+<span class="sd">    The wrapped fn:</span>
+<span class="sd">    - also accepts any `Pathlike` for `path`</span>
+
+<span class="sd">    - raises `MultipleSavesPerRunException` if the same (resolved) path is written more</span>
+<span class="sd">      than once in a run (by any wrapped fn), unless `multiple_saves_per_run_ok=True`</span>
+
+<span class="sd">    - if `check_outputs_unchanged` (set by -c/-C CLI flags) and `path` exists,</span>
+<span class="sd">      checks that the new output would not change it (not writing it, if unchanged).</span>
+<span class="sd">      See `ignore_output_change_check` for how changes are handled.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        _fn: the fn to wrap, when used without parentheses (`@produces_output`)</span>
+
+<span class="sd">        verbose: default for `verbose` kwarg of wrapped fn (whether to print path before</span>
+<span class="sd">            writing)</span>
+<span class="sd">    """</span>
+    <span class="c1"># for how to make a decorator with optional  arg:</span>
+    <span class="c1"># https://realpython.com/primer-on-python-decorators</span>
+
+    <span class="c1"># TODO what would be a good name for this?</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper_helper</span><span class="p">(</span><span class="n">fn</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Returns `fn` wrapped as described in `produces_output` docstring.</span>
+<span class="sd">        """</span>
+        <span class="k">assert</span> <span class="n">fn</span><span class="o">.</span><span class="vm">__name__</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_fn_name2seen_inputs</span><span class="p">,</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">fn</span><span class="o">.</span><span class="vm">__name__</span><span class="si">=}</span><span class="s1"> seen set would have been overwritten'</span>
+        <span class="p">)</span>
+        <span class="c1"># TODO some reason to use lists like i was in savefig? was that just for easier</span>
+        <span class="c1"># use in multiprocessing access (no set equiv of IPC data type?)?</span>
+        <span class="c1"># that matter anymore?</span>
+        <span class="n">_fn_name2seen_inputs</span><span class="p">[</span><span class="n">fn</span><span class="o">.</span><span class="vm">__name__</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+        <span class="nd">@wraps</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+        <span class="c1"># TODO delete *args (if assertion it's unused passes for a wihle)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">wrapped_fn</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">verbose</span><span class="p">,</span>
+            <span class="n">ignore_output_change_check</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="n">multiple_saves_per_run_ok</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">"""</span>
+<span class="sd">            Args:</span>
+<span class="sd">                verbose: if True, prints `path` before writing it</span>
+
+<span class="sd">                ignore_output_change_check: only relevant if checking outputs are</span>
+<span class="sd">                    unchanged (-c/-C). if True, silently overwrites changed outputs. if</span>
+<span class="sd">                    'warn', warns before overwriting. if False, raises an error (or</span>
+<span class="sd">                    prompts, if -P was passed).</span>
+
+<span class="sd">                multiple_saves_per_run_ok: if False, will raise</span>
+<span class="sd">                    MultipleSavesPerRunException if same absolute path is written to</span>
+<span class="sd">                    twice in one run (which is assumed to usually be a programming</span>
+<span class="sd">                    mistake)</span>
+
+<span class="sd">                **kwargs: passed to wrapped fn</span>
+<span class="sd">            """</span>
+            <span class="c1"># TODO delete (probably delete *args in sig above if so)</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+            <span class="c1">#</span>
+
+            <span class="k">assert</span> <span class="n">ignore_output_change_check</span> <span class="ow">in</span> <span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="s1">'warn'</span><span class="p">)</span>
+
+            <span class="c1"># TODO easy to check type of matching positional arg is Path/Pathlike</span>
+            <span class="c1"># (if specified)?</span>
+            <span class="c1"># see: https://stackoverflow.com/questions/71082545 for one way</span>
+
+            <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+            <span class="c1"># so that no matter how input is specified, check on whether we already</span>
+            <span class="c1"># wrote to it (via `seen_inputs`) not have any false negatives.</span>
+            <span class="c1">#</span>
+            <span class="c1"># from `Path.resolve` docs:</span>
+            <span class="c1"># "Make the path absolute, resolving any symlinks."</span>
+            <span class="c1"># "'..' components are also eliminated"</span>
+            <span class="n">normalized_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+
+            <span class="c1"># TODO add option (for use during debugging) that checks outputs</span>
+            <span class="c1"># have not changed since last run (to the extent the format allows it...)</span>
+            <span class="c1"># (currently have this via global `check_outputs_unchanged`. do i actually</span>
+            <span class="c1"># want it to specifically be a kwarg added by the wrapper instead?)</span>
+
+            <span class="k">assert</span> <span class="n">fn</span><span class="o">.</span><span class="vm">__name__</span> <span class="ow">in</span> <span class="n">_fn_name2seen_inputs</span>
+            <span class="c1"># TODO probably don't want different fns to be able to save to same path</span>
+            <span class="c1"># either tho... (not that they currently would). maybe seen_inputs should be</span>
+            <span class="c1"># one global?</span>
+            <span class="n">seen_inputs</span> <span class="o">=</span> <span class="n">_fn_name2seen_inputs</span><span class="p">[</span><span class="n">fn</span><span class="o">.</span><span class="vm">__name__</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">multiple_saves_per_run_ok</span> <span class="ow">and</span> <span class="p">(</span>
+                <span class="p">(</span><span class="n">normalized_path</span> <span class="ow">in</span> <span class="n">seen_inputs</span> <span class="ow">or</span> <span class="n">normalized_path</span> <span class="ow">in</span> <span class="n">_all_seen_inputs</span><span class="p">)</span>
+                <span class="p">):</span>
+                <span class="n">context</span> <span class="o">=</span> <span class="n">_saved_path2last_save_code_context</span><span class="p">[</span><span class="n">normalized_path</span><span class="p">]</span>
+                <span class="k">raise</span> <span class="n">MultipleSavesPerRunException</span><span class="p">(</span><span class="s1">'would have overwritten output '</span>
+                    <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="se">\n</span><span class="s1">previously written elsewhere in this run, at:</span><span class="se">\n</span><span class="s1">'</span>
+                    <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">context</span><span class="o">.</span><span class="n">filename</span><span class="si">}</span><span class="s1">, line </span><span class="si">{</span><span class="n">context</span><span class="o">.</span><span class="n">lineno</span><span class="si">}</span><span class="s1"> (in </span><span class="si">{</span><span class="n">context</span><span class="o">.</span><span class="n">fn_name</span><span class="si">}</span><span class="s1">)'</span>
+                    <span class="s1">'</span><span class="se">\n</span><span class="s1">add multiple_saves_per_run_ok=True to call to override, but this'</span>
+                    <span class="s1">' is likely a mistake'</span>
+                <span class="p">)</span>
+
+            <span class="c1"># TODO TODO try to only add these after successfully saving</span>
+            <span class="n">seen_inputs</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">)</span>
+            <span class="c1"># TODO why did i need a fn specific cache anyway? paths should be unique</span>
+            <span class="c1"># across all fns anyway, right? i don't want two fns overwriting each others</span>
+            <span class="c1"># outputs within a run... simplify by replacing all fn specific sets w/ this</span>
+            <span class="c1"># one global one?</span>
+            <span class="n">_all_seen_inputs</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">)</span>
+
+            <span class="n">last_frame</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">currentframe</span><span class="p">()</span><span class="o">.</span><span class="n">f_back</span>
+            <span class="c1"># "index" (last argument) is "the index of the current line being executed</span>
+            <span class="c1"># in the code_context list", but not sure what that means, and don't seem to</span>
+            <span class="c1"># need it for what i want</span>
+            <span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">fn_name</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getframeinfo</span><span class="p">(</span><span class="n">last_frame</span><span class="p">)</span>
+            <span class="n">_saved_path2last_save_code_context</span><span class="p">[</span><span class="n">normalized_path</span><span class="p">]</span> <span class="o">=</span> <span class="n">CodeContext</span><span class="p">(</span>
+                <span class="n">filename</span><span class="o">=</span><span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="o">=</span><span class="n">lineno</span><span class="p">,</span> <span class="n">fn_name</span><span class="o">=</span><span class="n">fn_name</span>
+            <span class="p">)</span>
+
+            <span class="n">write_output</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">if</span> <span class="n">check_outputs_unchanged</span> <span class="ow">and</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">_check_output_would_not_change</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">fn</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="k">return</span>
+
+                <span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+                    <span class="c1"># TODO also need to apply this logic in savefig? or just replace</span>
+                    <span class="c1"># savefig w/ a simpler version (wrapped w/ @produces_output)?</span>
+                    <span class="c1"># no plots really saved directly under main (at least not</span>
+                    <span class="c1"># unconditionally...)</span>
+                    <span class="n">calling_fn</span> <span class="o">=</span> <span class="n">caller_info</span><span class="p">()</span><span class="o">.</span><span class="n">name</span>
+                    <span class="k">if</span> <span class="n">calling_fn</span> <span class="o">==</span> <span class="s1">'main'</span> <span class="ow">or</span> <span class="n">calling_fn</span> <span class="ow">in</span> <span class="n">_consider_as_main</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">check_outputs_unchanged</span> <span class="o">==</span> <span class="s1">'nonmain'</span><span class="p">:</span>
+                            <span class="c1"># TODO refactor to share mtime/etc parts of message w/ other</span>
+                            <span class="c1"># main places similar message (w/ 'would have changed')</span>
+                            <span class="c1"># defined? not sure it matters enough here...</span>
+                            <span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1"> would have changed!</span><span class="se">\n</span><span class="s1">not failing because -C '</span>
+                                <span class="s1">'passed (instead of -c), and this output saved directly'</span>
+                                <span class="s1">' in main().</span><span class="se">\n</span><span class="s1">remove -C/-c and re-run to overwrite.'</span>
+                            <span class="p">)</span>
+                            <span class="c1"># TODO option to not return (which would allow the `fn` call</span>
+                            <span class="c1"># below to overwrite this output)?</span>
+                            <span class="k">return</span>
+
+                        <span class="k">elif</span> <span class="n">check_outputs_unchanged</span> <span class="o">==</span> <span class="kc">True</span><span class="p">:</span>
+                            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">err</span><span class="o">.</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+                            <span class="n">curr_msg</span> <span class="o">=</span> <span class="n">err</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                            <span class="n">err</span> <span class="o">=</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">curr_msg</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">or pass -C instead of '</span>
+                                <span class="s1">'-c, to ignore outputs (like this one) saved directly '</span>
+                                <span class="s1">'from main()'</span>
+                            <span class="p">)</span>
+
+                    <span class="c1"># TODO add kwarg to only ignore if diff matches a certain value?</span>
+                    <span class="n">_warn_only</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">if</span> <span class="n">ignore_output_change_check</span> <span class="ow">and</span> <span class="n">check_outputs_unchanged</span> <span class="o">!=</span> <span class="kc">False</span><span class="p">:</span>
+                        <span class="n">_warn_only</span> <span class="o">=</span> <span class="kc">True</span>
+
+                    <span class="c1"># 'warn'|False will still enter this conditional</span>
+                    <span class="k">if</span> <span class="n">ignore_output_change_check</span> <span class="o">!=</span> <span class="kc">True</span><span class="p">:</span>
+                        <span class="n">write_output</span> <span class="o">=</span> <span class="n">_output_change_prompt_or_err</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span>
+                            <span class="n">_warn_only</span><span class="o">=</span><span class="n">_warn_only</span>
+                        <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">write_output</span><span class="p">:</span>
+                <span class="c1"># TODO test! (and test arg kwarg actually useable on wrapped fn, whether</span>
+                <span class="c1"># or not already wrapped fn has this kwarg. can start by assuming it</span>
+                <span class="c1"># doesn't have this kwarg tho...)!</span>
+                <span class="c1">#</span>
+                <span class="c1"># (have already manually tested cases where wrapped fns do not have</span>
+                <span class="c1"># existin verbose= kwarg. just need to test case where wrapped fn DOES</span>
+                <span class="c1"># have existing verbose= kwarg now.)</span>
+                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'writing </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+
+                <span class="n">fn</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="n">_fn_name2wrapped_fn</span><span class="p">[</span><span class="n">fn</span><span class="o">.</span><span class="vm">__name__</span><span class="p">]</span> <span class="o">=</span> <span class="n">wrapped_fn</span>
+        <span class="k">return</span> <span class="n">wrapped_fn</span>
+
+    <span class="c1"># TODO what is this for again?</span>
+    <span class="k">if</span> <span class="n">_fn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">wrapper_helper</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">wrapper_helper</span><span class="p">(</span><span class="n">_fn</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># if one output would get written two twice in one run of this script.</span>
+<span class="c1"># for most outputs, we only intend to write them once, and this indicates an error.</span>
+<div class="viewcode-block" id="MultipleSavesPerRunException">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.MultipleSavesPerRunException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MultipleSavesPerRunException</span><span class="p">(</span><span class="ne">IOError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<span class="c1"># set True by al_analysis if -P passed as CLI arg</span>
+<span class="n">prompt_if_changed</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_output_change_prompt_or_err</span><span class="p">(</span><span class="n">err</span><span class="p">:</span> <span class="ne">RuntimeError</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">_warn_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns whether `path` should be written to with new version.</span>
+
+<span class="sd">    If `prompt_if_changed = True`, prompts user to choose what to do with file</span>
+<span class="sd">    (whether to overwrite/skip/exit). If `prompt_if_changed = False`, raises</span>
+<span class="sd">    `err` passed in.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        _warn_only: if True, just warns with message of `err` and returns True (no</span>
+<span class="sd">            prompt or error)</span>
+<span class="sd">    """</span>
+    <span class="k">assert</span> <span class="n">err</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">prompt_if_changed</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_warn_only</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">err</span>
+
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">err</span><span class="o">.</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="n">msg</span> <span class="o">=</span> <span class="n">err</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="c1"># TODO still show lineno (of fn calling wrapped_fn) in this case?</span>
+    <span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">_warn_only</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># TODO try to have Ctrl-c behave same as 'n'?</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># TODO option to accept all future prompts too? (would still want to warn for</span>
+        <span class="c1"># each)</span>
+        <span class="c1"># TODO maybe for anything &lt;= current rms (prompting again if new max)?</span>
+        <span class="c1"># TODO option to start debugger here (to step up and inspect difference)?</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="sa">f</span><span class="s1">'overwrite </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">?</span><span class="se">\n</span><span class="s1">[y]es / [n]o (quit) / [s]kip (continue) '</span>
+            <span class="s1">'(press enter after selection)'</span>
+        <span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">response</span> <span class="o">==</span> <span class="s1">'y'</span><span class="p">:</span>
+            <span class="n">overwrite</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">break</span>
+
+        <span class="k">elif</span> <span class="n">response</span> <span class="o">==</span> <span class="s1">'n'</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">err</span>
+
+        <span class="c1"># [s]kip</span>
+        <span class="k">elif</span> <span class="n">response</span> <span class="o">==</span> <span class="s1">'s'</span><span class="p">:</span>
+            <span class="n">overwrite</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">break</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">'invalid response. expected y/n/s.'</span><span class="p">)</span>
+
+    <span class="k">assert</span> <span class="n">overwrite</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">overwrite</span>
+
+
+<div class="viewcode-block" id="caller_info">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.caller_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">caller_info</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">traceback</span><span class="o">.</span><span class="n">FrameSummary</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns FrameSummary for the caller of the fn that calls `caller_info`.</span>
+
+<span class="sd">    FrameSummary objects have attributes: filename, lineno, name, line (as well as</span>
+<span class="sd">    locals).</span>
+<span class="sd">    """</span>
+    <span class="n">stack</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">extract_stack</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">4</span>
+    <span class="c1"># NOTE: .name of each element is the function name of that element</span>
+    <span class="c1"># of the stack. if at module level (not within a function), .name</span>
+    <span class="c1"># should be (literal, not w/ actual module name) '&lt;module&gt;'. not necessarily the</span>
+    <span class="c1"># first element, as e.g. `python -m pytest` will have runpy frames before that.</span>
+    <span class="k">assert</span> <span class="nb">any</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s1">'&lt;module&gt;'</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">stack</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s1">'caller_info'</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s1">'caller_info'</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">stack</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="c1"># n_levels_up=1 would just put us in the caller of caller_info, which is not useful.</span>
+    <span class="c1"># we want the caller of caller_info's caller.</span>
+    <span class="c1"># TODO expose as kwarg? no use less than 2 tho</span>
+    <span class="n">n_levels_up</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">frame_summary</span> <span class="o">=</span> <span class="n">stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span> <span class="o">-</span> <span class="n">n_levels_up</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">frame_summary</span></div>
+
+
+
+<div class="viewcode-block" id="to_csv">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.to_csv">[docs]</a>
+<span class="nd">@produces_output</span>
+<span class="c1"># input could be at least Series|DataFrame</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_csv</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">DataFrameOrSeries</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Writes `data` to CSV at `path` (which must end in '.csv'), via `data.to_csv`.</span>
+
+<span class="sd">    NOTE: `produces_output` wrapper modifies fn to allow `Pathlike` for path arg</span>
+<span class="sd">    """</span>
+    <span class="k">assert</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s1">'.csv'</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2"> should be '.csv'"</span>
+    <span class="n">data</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<span class="n">_SERIES_NAME_PLACEHOLDER</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'__UNNAMED-SERIES'</span>
+<span class="c1"># TODO some nice way to make a list of all these fns and then redef all of them w/</span>
+<span class="c1"># wrapper? or too meta-programmy (don't want to eval...)?</span>
+<div class="viewcode-block" id="read_parquet">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.read_parquet">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">squeeze</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataFrameOrSeries</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Reads parquet written by `to_parquet`, undoing its conversions.</span>
+
+<span class="sd">    Moves any sequence-valued first column (from a tuple-valued last index level, e.g.</span>
+<span class="sd">    bouton IDs) back to a final index level of tuples, and converts column MultiIndex</span>
+<span class="sd">    level values back to numeric / datetime, where possible.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        squeeze: if True, returns a Series if data has only one column. Series written</span>
+<span class="sd">            without a name are returned as (unnamed) Series either way.</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO try changing default engine (='fastparquet'? or ='pyarrow'? latter should be</span>
+    <span class="c1"># default, if both installed [at least in pandas 3.0...])? that fix any of column</span>
+    <span class="c1"># level type handling i add below?</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="c1"># TODO need an outer need len check? prob not practically, but maybe for some edge</span>
+    <span class="c1"># cases, if trying to support saving empty stuff?</span>
+    <span class="c1"># TODO refactor to share w/ similar code in to_parquet?</span>
+    <span class="n">move_first_column_to_index</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">i00</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="c1"># TODO also exclude anything that isn't explicitly a sequence of float/int?</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">i00</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">i00</span><span class="p">)</span>
+            <span class="n">move_first_column_to_index</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">str</span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'has no len()'</span><span class="p">)</span>
+    <span class="c1">#</span>
+
+    <span class="c1"># TODO assert no sequence values in index already? (would not be possible here, b/c</span>
+    <span class="c1"># read_parquet above would fail. may want something like that in to_parquet)</span>
+
+    <span class="k">if</span> <span class="n">move_first_column_to_index</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">,</span> \
+            <span class="s1">'still need some columns left after moving one to index'</span>
+
+        <span class="n">c0</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># we need to make sequences hashable to move to index. tuple is the way i had</span>
+        <span class="c1"># done this with bouton_ids, and the most straightforward.</span>
+        <span class="n">data</span><span class="p">[</span><span class="n">c0</span><span class="p">]</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">c0</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="n">c0</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># TODO do for non-MultIndex indices as well? (only [currently] converting levels on</span>
+    <span class="c1"># save for MultiIndex)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="p">):</span>
+        <span class="n">index_arrays</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
+            <span class="n">xs</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+            <span class="c1"># TODO anything other types besides numeric/datetime?</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># seems to automatically convert to int if it can (haven't tested float,</span>
+                <span class="c1"># especially not with NaN, but assume that would remain float too)</span>
+                <span class="n">xs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+
+            <span class="c1"># ValueError: Unable to parse string &lt;x&gt; at position &lt;n&gt;</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">xs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+
+            <span class="c1"># each will still have .name defined</span>
+            <span class="n">index_arrays</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+
+        <span class="n">data</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="o">.</span><span class="n">from_arrays</span><span class="p">(</span><span class="n">index_arrays</span><span class="p">)</span>
+
+    <span class="c1"># all Series written with to_parquet above (if they had None for .name), should have</span>
+    <span class="c1"># this as last column</span>
+    <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">_SERIES_NAME_PLACEHOLDER</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+
+    <span class="c1"># TODO remove kwarg? always squeeze? would then prob want to assert no DataFrame</span>
+    <span class="c1"># inputs with only one column (which there probably aren't...)</span>
+    <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">squeeze</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">data</span></div>
+
+
+
+<div class="viewcode-block" id="to_parquet">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.to_parquet">[docs]</a>
+<span class="nd">@produces_output</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_parquet</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">DataFrameOrSeries</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">check</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Write `data` to parquet at `path`, with default check loaded value matches input.</span>
+
+<span class="sd">    Supports some data parquet can't directly store, converting it in ways that</span>
+<span class="sd">    `read_parquet` undoes: Series (including those without a name), non-str column</span>
+<span class="sd">    MultiIndex level values (converted to str), and a tuple-valued last index level</span>
+<span class="sd">    (moved to first column).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        check: if True, reads output back (via `read_parquet`) and checks it matches</span>
+<span class="sd">            `data`</span>
+<span class="sd">    """</span>
+    <span class="k">assert</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s1">'.parquet'</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2"> should be '.parquet'"</span>
+    <span class="c1"># TODO make check=False the default eventually?</span>
+    <span class="k">if</span> <span class="n">check</span><span class="p">:</span>
+        <span class="n">orig</span> <span class="o">=</span> <span class="n">data</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s1">'to_parquet'</span><span class="p">)</span>
+        <span class="c1"># since DataFrame.to_parquet(...) requires str column names, but we often have</span>
+        <span class="c1"># Series with .name == None.</span>
+        <span class="c1"># Not planning to support non-str for column names other than just a single</span>
+        <span class="c1"># missing Series name.</span>
+        <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">to_frame</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">_SERIES_NAME_PLACEHOLDER</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">to_frame</span><span class="p">()</span>
+
+    <span class="c1"># TODO remove outer len check?</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">i00</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># TODO also exclude anything that isn't explicitly a sequence of float/int?</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">i00</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">i00</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'data already had sequence elements in first column. '</span>
+                    <span class="s1">'would be inferred as a final tuple-of-int index level with current'</span>
+                    <span class="s1">' scheme'</span>
+                <span class="p">)</span>
+            <span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="nb">str</span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'has no len()'</span><span class="p">)</span>
+
+    <span class="c1"># pd.MultiIndex objects have levels. non-MultiIndex pd.Index objects do NOT.</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="s1">'levels'</span><span class="p">):</span>
+        <span class="n">str_levels</span> <span class="o">=</span> <span class="p">[</span><span class="nb">all</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xs</span><span class="p">)</span> <span class="k">for</span> <span class="n">xs</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">levels</span><span class="p">]</span>
+
+        <span class="c1"># TODO some way to avoid the copy here? (without changing input)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># TODO assert all non-str are all int/float? (basically, some list of types we</span>
+        <span class="c1"># should be able to detect and convert back on read)</span>
+        <span class="c1"># TODO try to support datetime/Timestamp here too? anything else?</span>
+        <span class="n">data</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">xs</span><span class="p">:</span>
+            <span class="nb">tuple</span><span class="p">(</span><span class="n">x</span> <span class="k">if</span> <span class="n">was_str</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">was_str</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">str_levels</span><span class="p">))</span>
+        <span class="p">)</span>
+        <span class="c1"># TODO  assert no already-str levels would be detected convertible to int/float</span>
+        <span class="c1"># (/whatever other types we are converting in read) here?</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># NOTE: currently assuming any non-MultIndex input will already just have str</span>
+        <span class="c1"># columns (could implement without too much effort)</span>
+        <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+
+    <span class="c1"># TODO how would this interact with MultiIndex columns? assert we don't have both?</span>
+    <span class="c1"># test some cases there?</span>
+    <span class="c1">#</span>
+    <span class="c1"># currently only planning on supporting automatic tuple-of-int (index) &lt;-&gt;</span>
+    <span class="c1"># array-of-int (column, as supported by my current pd.read_parquet) conversion for a</span>
+    <span class="c1"># final index level (e.g. bouton_id, which I'm currently assuming will always be</span>
+    <span class="c1"># last level, when present).</span>
+    <span class="c1">#</span>
+    <span class="c1"># I assume that, for anything more complicated than one level at the end of index,</span>
+    <span class="c1"># the easiest thing to do will be to add an argument to allow caller to specify</span>
+    <span class="c1"># which columns to convert (and probably need another one for column order, at least</span>
+    <span class="c1"># so long as I'm doing automated round trip checks, since how else will we know what</span>
+    <span class="c1"># order to put columns back into index in?)</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span> <span class="ow">is</span> <span class="nb">tuple</span><span class="p">:</span>
+        <span class="c1"># moving last index level to first column</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">level</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># TODO accept engine argument here? changing engine actually avoid any of my current</span>
+    <span class="c1"># need for custom conversions in to_parquet/read_parquet?</span>
+    <span class="n">data</span><span class="o">.</span><span class="n">to_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">check</span><span class="p">:</span>
+        <span class="n">d2</span> <span class="o">=</span> <span class="n">read_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">d2</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">orig</span><span class="p">)</span>
+        <span class="c1"># TODO TODO was i doing this was just b/c of need for isclose in index? why can</span>
+        <span class="c1"># we assert values are equal and not just close then?</span>
+        <span class="k">except</span> <span class="ne">AssertionError</span><span class="p">:</span>
+            <span class="c1"># TODO warn here?</span>
+
+            <span class="c1"># TODO also convert indices to frames and check those w/ allclose (like</span>
+            <span class="c1"># columns)? or is parquet MultiIndex reading not broken for those? i had to</span>
+            <span class="c1"># add manual type conversions for MultiIndex column level values in my</span>
+            <span class="c1"># read_parquet fn.</span>
+            <span class="k">assert</span> <span class="n">d2</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">orig</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+
+            <span class="n">c1</span> <span class="o">=</span> <span class="n">orig</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">to_frame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">c2</span> <span class="o">=</span> <span class="n">d2</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">to_frame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="c1"># TODO handle case where date is datetime64[ns] in one, and object in the</span>
+            <span class="c1"># other. (now that i added datetime column level handling in read_parquet,</span>
+            <span class="c1"># should be fine. delete)</span>
+            <span class="c1"># TODO is it just float levels that are allclose that are causing failure</span>
+            <span class="c1"># for claws_sims_[sums|maxs]? (seems so, yes)</span>
+            <span class="k">assert</span> <span class="n">pd_allclose</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="n">c1</span><span class="p">)</span>
+
+            <span class="c1"># TODO TODO fix. failing w/ consensus_df saving w/:</span>
+            <span class="c1"># ./al_analysis.py -d pebbled -n 6f -t 2023-04-22 -e 2024-01-05 -s corr,intensity,ijroi,model-seeds,model-sensitivity -v -i model -M</span>
+            <span class="c1"># (equal_nan=True here seems to fix it, but pd_allclose(d2, orig,</span>
+            <span class="c1"># equal_nan=True) does *not* work? how come?)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">d2</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">orig</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">equal_nan</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">AssertionError</span><span class="p">:</span>
+                <span class="nb">breakpoint</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="to_pickle">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.to_pickle">[docs]</a>
+<span class="nd">@produces_output</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="c1"># input could be at least Series|DataFrame</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_pickle</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Writes input to pickle at `path`.</span>
+
+<span class="sd">    NOTE: `produces_output` wrapper modifies fn to allow `Pathlike` for path arg</span>
+<span class="sd">    """</span>
+    <span class="c1"># just checking we aren't accidentally calling to_pickle with a path we intend for</span>
+    <span class="c1"># one of the other calls</span>
+    <span class="k">assert</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">'.csv'</span><span class="p">,</span> <span class="s1">'.parquet'</span><span class="p">,</span> <span class="s1">'.nc'</span><span class="p">,</span> <span class="s1">'.json'</span><span class="p">)</span>
+
+    <span class="c1"># (only checking for xarray objects if xarray was already imported, as data can not</span>
+    <span class="c1"># be a DataArray otherwise)</span>
+    <span class="n">xr</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'xarray'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">xr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">):</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="c1"># read via: pickle.loads(path.read_bytes())</span>
+        <span class="c1"># (note lack of need to specify protocol)</span>
+        <span class="c1"># just specifying protocol b/c docs say it is (sometimes?) much faster</span>
+        <span class="n">path</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">protocol</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span>
+        <span class="k">return</span>
+
+    <span class="c1"># NOTE: objects with a `to_pickle` method (e.g. DataFrame/Series) used to also be</span>
+    <span class="c1"># written via that method first, but that output was always overwritten here</span>
+    <span class="n">path</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">data</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="read_pickle">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.read_pickle">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span></div>
+
+
+
+<div class="viewcode-block" id="to_json">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.to_json">[docs]</a>
+<span class="nd">@produces_output</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_json</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">check</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Write `data` to JSON at `path`, with default round trip check.</span>
+<span class="sd">    """</span>
+    <span class="n">_to_json</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">check</span><span class="o">=</span><span class="n">check</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="np_save">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.np_save">[docs]</a>
+<span class="nd">@produces_output</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">np_save</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># TODO add check=True option to round trip test load the data?</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    NOTE: opposite order of args to `np.save`, which has path first and data second.</span>
+<span class="sd">    necessary to work w/ my `produces_output` wrapper.</span>
+<span class="sd">    """</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># name of the JSON al_analysis writes alongside its response CSVs (e.g.</span>
+<span class="c1"># `ij_certain-roi_stats.csv`), with the parameters of the response calculation</span>
+<span class="n">response_calc_params_json_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'response_calc_params.json'</span>
+
+
+<span class="c1"># TODO maybe don't require is_pair? panel?</span>
+<span class="c1"># TODO rename?</span>
+<span class="c1">#</span>
+<span class="c1"># can have more 'odor&lt;x&gt;' row index levels if there are multiple odors presented at once</span>
+<span class="c1"># (via air mixing). will have a number of levels equal to maximum presented at once.</span>
+<span class="n">required_index_levels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'panel'</span><span class="p">,</span> <span class="s1">'is_pair'</span><span class="p">,</span> <span class="s1">'odor1'</span><span class="p">,</span> <span class="s1">'repeat'</span><span class="p">]</span>
+
+<span class="c1"># TODO provide fn to invert zero filling i had done for some new outputs (dropping</span>
+<span class="c1"># glomeruli w/ all 0s or NaN)</span>
+
+<div class="viewcode-block" id="drop_old_odor_index_levels">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.drop_old_odor_index_levels">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">drop_old_odor_index_levels</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">warn_</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Drops binary-mixture-experiment index levels, if they are uninformative.</span>
+
+<span class="sd">    Drops 'is_pair' level if it is all False, and 'odor2' level if it is all</span>
+<span class="sd">    `solvent_str`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        warn_: if True, warns if either level is present but can't be dropped</span>
+
+<span class="sd">    Returns `df`, which is also modified in place.</span>
+<span class="sd">    """</span>
+    <span class="c1"># for dropping metadata intended for binary mixture experiments</span>
+    <span class="n">to_drop</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="s1">'is_pair'</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">'is_pair'</span><span class="p">))</span> <span class="o">==</span> <span class="p">{</span><span class="kc">False</span><span class="p">}:</span>
+            <span class="n">to_drop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'is_pair'</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">warn_</span><span class="p">:</span>
+                <span class="n">warn</span><span class="p">(</span><span class="s1">'index had some is_pair=True entries! not dropping is_pair level!'</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s1">'odor2'</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">'odor2'</span><span class="p">))</span> <span class="o">==</span> <span class="p">{</span><span class="n">solvent_str</span><span class="p">}:</span>
+            <span class="n">to_drop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'odor2'</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">warn_</span><span class="p">:</span>
+                <span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">'index had some odor2 != </span><span class="si">{</span><span class="n">solvent_str</span><span class="si">}</span><span class="s1"> entries! not dropping '</span>
+                    <span class="s1">'odor2 level!'</span>
+                <span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">to_drop</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">droplevel</span><span class="p">(</span><span class="n">to_drop</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">df</span></div>
+
+
+
+<span class="c1"># TODO rename to include dff in name? or antennal? it's not just the counterpart to my</span>
+<span class="c1"># wrapped to_csv fn, which is intended to writing general CSVs, not just this specific</span>
+<span class="c1"># format of them</span>
+<span class="c1"># TODO (delete?) tho should i test this fn can read CSVs written by my to_csv fn?</span>
+<span class="c1"># TODO can it also be a series? should output be DataFrameOrSeries?</span>
+<div class="viewcode-block" id="read_csv">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.read_csv">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_csv</span><span class="p">(</span><span class="n">csv</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">drop_old_odor_levels</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">check_vs_pickle</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">warn_</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Loads CSV of responses (e.g. `ij_certain-roi_stats.csv`), of odor X fly-ROI shape</span>
+
+<span class="sd">    Returns DataFrame with row index levels like ['panel', 'is_pair', 'odor1', 'odor2',</span>
+<span class="sd">    'repeat'] ('odor&lt;N&gt;' levels after 'odor1' only for air-mixed components), and column</span>
+<span class="sd">    levels `flyroi_cols` ('date' parsed to datetime, 'fly_num' to int). E.g.:</span>
+
+<span class="sd">    date                                           2024-09-03</span>
+<span class="sd">    fly_num                                                 1</span>
+<span class="sd">    roi                                                     D    DA1    DA2</span>
+<span class="sd">    panel                 odor1     odor2   repeat</span>
+<span class="sd">    glomeruli_diagnostics 3mtp @ -5 solvent 0          -0.062 -0.025 -0.189</span>
+<span class="sd">                                            1           0.065 -0.003 -0.072</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        drop_old_odor_levels: if True, drops 'is_pair' / 'odor2' levels when they are</span>
+<span class="sd">            uninformative (via `drop_old_odor_index_levels`)</span>
+
+<span class="sd">        check_vs_pickle: if True, and a pickle with the same name (but '.p' suffix)</span>
+<span class="sd">            exists alongside CSV, checks loaded data matches it</span>
+
+<span class="sd">        warn_: passed to `drop_old_odor_index_levels`, if called</span>
+
+<span class="sd">        verbose: if True, prints path and modification time of CSV (and result of any</span>
+<span class="sd">            pickle check)</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO does this work on both ij_certain-roi_stats.csv and ij_roi_stats.csv outputs?</span>
+
+    <span class="n">csv</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">csv</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">csv</span><span class="o">.</span><span class="n">exists</span><span class="p">(),</span> <span class="sa">f</span><span class="s1">'CSV </span><span class="si">{</span><span class="n">csv</span><span class="si">}</span><span class="s1"> did not exist!'</span>
+
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'loading </span><span class="si">{</span><span class="n">csv</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'modified </span><span class="si">{</span><span class="n">format_mtime</span><span class="p">(</span><span class="n">getmtime</span><span class="p">(</span><span class="n">csv</span><span class="p">),</span><span class="w"> </span><span class="n">year</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+
+    <span class="c1"># this line will start with the level names for the row index, e.g.</span>
+    <span class="c1"># ['panel', 'is_pair', 'odor1', 'repeat', nan, ...]</span>
+    <span class="c1"># (for data with a maximum of one odor component mixed-in-air)</span>
+    <span class="c1">#</span>
+    <span class="c1"># if there are additional components, there will be additional 'odor&lt;N&gt;' index</span>
+    <span class="c1"># levels, up to the maximum # of components presented at once (via air mixing. odors</span>
+    <span class="c1"># mixed in vial are represented by their own unique name, not via separate levels).</span>
+    <span class="c1"># most I've ever used (via air mixing) is 2.</span>
+    <span class="c1">#</span>
+    <span class="c1"># not sure if there might be data after these level names, or if it will always be</span>
+    <span class="c1"># NaN for everything else in that row (but doesn't matter for this).</span>
+    <span class="n">index_row</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">csv</span><span class="p">,</span> <span class="n">skiprows</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">nrows</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+    <span class="c1"># 'repeat' should always be the last level, so if we find that, we know we only have</span>
+    <span class="c1"># to read index_col up to there (in next read_csv call)</span>
+    <span class="n">eq_repeat</span> <span class="o">=</span> <span class="n">index_row</span> <span class="o">==</span> <span class="s1">'repeat'</span>
+    <span class="c1"># TODO TODO why failing now?</span>
+    <span class="k">assert</span> <span class="n">eq_repeat</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">eq_repeat</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="si">=}</span><span class="s1">'</span>
+    <span class="c1"># index starts at 0, so we will need to read 1 more index_col level past this</span>
+    <span class="n">repeat_idx</span> <span class="o">=</span> <span class="n">eq_repeat</span><span class="o">.</span><span class="n">idxmax</span><span class="p">()</span>
+    <span class="n">n_index_col_levels</span> <span class="o">=</span> <span class="n">repeat_idx</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">csv</span><span class="p">,</span>
+        <span class="c1"># can't pass list of names here when specifying column MultiIndex via header.</span>
+        <span class="c1"># trying raises ValueError to that effect.</span>
+        <span class="n">index_col</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">n_index_col_levels</span><span class="p">)),</span>
+
+        <span class="c1"># doesn't take list of str, and names= seems to only set column level names,</span>
+        <span class="c1"># rather than finding them by name.</span>
+        <span class="n">header</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">flyroi_cols</span><span class="p">)))</span>
+    <span class="p">)</span>
+    <span class="c1"># this is assumed in section above that determines how many index levels there are</span>
+    <span class="k">assert</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'repeat'</span>
+
+    <span class="k">assert</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span> <span class="o">==</span> <span class="n">flyroi_cols</span>
+    <span class="k">assert</span> <span class="nb">set</span><span class="p">(</span><span class="n">required_index_levels</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span> <span class="o">==</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="c1"># the only row index levels not in required_index_levels should be extra air-mix</span>
+    <span class="c1"># components (with names in 'odor&lt;N&gt;' form)</span>
+    <span class="n">prefix</span> <span class="o">=</span> <span class="s1">'odor'</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">required_index_levels</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">x</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">component_num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">prefix</span><span class="p">):])</span>
+        <span class="c1"># only intending to catch int parsing failure like:</span>
+        <span class="c1"># ValueError: invalid literal for int() with base 10: ...</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="c1"># TODO include better message about malformed index level name</span>
+            <span class="k">raise</span>
+
+        <span class="c1"># TODO assert all contiguous?</span>
+        <span class="k">assert</span> <span class="n">component_num</span> <span class="o">&gt;=</span> <span class="mi">1</span>
+
+    <span class="c1"># TODO refactor?</span>
+    <span class="k">assert</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">fly_cols</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">set_levels</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">levels</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="n">level</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">verify_integrity</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="k">assert</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">fly_cols</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">set_levels</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">levels</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span> <span class="n">level</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">verify_integrity</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">check_vs_pickle</span><span class="p">:</span>
+        <span class="c1"># just some checking i was doing against a parallel pickle version i had, mainly</span>
+        <span class="c1"># to make sure i was loading CSV correctly (with same dtype info)</span>
+        <span class="n">pickle_path</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s1">'.p'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pickle_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">pdf</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">pickle_path</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="n">pd_allclose</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">pdf</span><span class="p">,</span> <span class="n">equal_nan</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'CSV data matches pickle </span><span class="si">{</span><span class="n">pickle_path</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'no pickle at </span><span class="si">{</span><span class="n">pickle_path</span><span class="si">}</span><span class="s1">. could not check against CSV.</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">drop_old_odor_levels</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">drop_old_odor_index_levels</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">warn_</span><span class="o">=</span><span class="n">warn_</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">df</span></div>
+
+
+
+<span class="c1"># TODO unit test this?</span>
+<div class="viewcode-block" id="text_diff">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.text_diff">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">text_diff</span><span class="p">(</span><span class="n">f1</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">f2</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns unified diff (w/o context lines) between text of files `f1` and `f2`.</span>
+<span class="sd">    """</span>
+    <span class="n">lines1</span> <span class="o">=</span> <span class="n">f1</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">(</span><span class="n">keepends</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">lines2</span> <span class="o">=</span> <span class="n">f2</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">(</span><span class="n">keepends</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># TODO add git diff style coloring (would conflict w/ how current output is returned</span>
+    <span class="c1"># as a str which gets often displayed via a `warn` call that already colors output</span>
+    <span class="c1"># yellow. could return to calling sys.stderr.writelines in here, but would</span>
+    <span class="c1"># complicate keeping style consistent w/ warning in general)?</span>
+    <span class="c1">#</span>
+    <span class="c1"># for reference, default ubuntu diff output on same two files as below:</span>
+    <span class="c1"># $ diff .../params.csv /tmp/tmph87sfj7j.csv</span>
+    <span class="c1"># 10c10</span>
+    <span class="c1"># &lt; used_model_cache,True</span>
+    <span class="c1"># ---</span>
+    <span class="c1"># &gt; used_model_cache,False</span>
+    <span class="c1">#</span>
+    <span class="c1"># example output:</span>
+    <span class="c1"># --- .../params.csv</span>
+    <span class="c1"># +++ /tmp/tmph87sfj7j.csv</span>
+    <span class="c1"># @@ -10 +10 @@</span>
+    <span class="c1"># -used_model_cache,True</span>
+    <span class="c1"># +used_model_cache,False</span>
+    <span class="c1">#</span>
+    <span class="c1"># TODO also populate fromdate [+todate?] fields? (w/ mtime? what format?)</span>
+    <span class="c1"># (seems they take str, so pre-formatted as i want)</span>
+    <span class="c1">#</span>
+    <span class="c1"># NOTE: do need to convert path to str for fromfile/tofile</span>
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">difflib</span><span class="o">.</span><span class="n">unified_diff</span><span class="p">(</span><span class="n">lines1</span><span class="p">,</span> <span class="n">lines2</span><span class="p">,</span> <span class="n">fromfile</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">f1</span><span class="p">),</span> <span class="n">tofile</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">f2</span><span class="p">),</span> <span class="n">n</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># elements in `diff` seem to already have linesep chars at end, so don't need</span>
+    <span class="c1"># '\n'.join(diff)</span>
+    <span class="k">return</span> <span class="s1">''</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span></div>
+
+
+
+<span class="n">_save_fn_name2diff_fn</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'to_csv'</span><span class="p">:</span> <span class="n">text_diff</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="c1"># TODO TODO unit test all combinations of changed/unchanged w/ CSV / pickle / some plot</span>
+<span class="c1"># formats</span>
+<span class="c1"># TODO option to use np.isclose or something instead of exact file comparison?</span>
+<span class="c1"># (mainly thinking for CSVs, where the specific way the computation is done might change</span>
+<span class="c1"># and just lead to a non-important numerical change. hasn't been an issue so far though)</span>
+<span class="c1"># TODO change so save_fn is the optional one (rather than data) and automatically use</span>
+<span class="c1"># .savefig if that positional argument has that attribute (or is a Figure/FacetGrid?</span>
+<span class="c1"># checking for savefig attr probably better...)</span>
+<span class="c1"># TODO also support objects w/ .save(path) method? (e.g. statsmodels models)</span>
+<span class="c1"># TODO option to touch files-that-would-be-unchanged to have mtime as if they were just</span>
+<span class="c1"># written?</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_output_would_not_change</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">save_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span>
+    <span class="n">data</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Raises RuntimeError if output would change.</span>
+
+<span class="sd">    Saves new output to a temporary file (via `save_fn`), and compares that to existing</span>
+<span class="sd">    `path`: exact file comparison (falling back to comparing loaded data, for pickles),</span>
+<span class="sd">    or matplotlib image comparison, if `save_fn` is a `savefig`. If output would</span>
+<span class="sd">    change, temporary file is kept, and error message includes a diff (for CSVs) or</span>
+<span class="sd">    the temporary file path.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path: must already exist (raises IOError if not)</span>
+
+<span class="sd">        data: if passed, will be 1st `save_fn` argument, otherwise file path is 1st</span>
+<span class="sd">            argument, and it's assumed that the data to save is in `kwargs`</span>
+
+<span class="sd">        **kwargs: passed to `save_fn`</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO also raise if not file? don't think anything below is equipped to handle e.g.</span>
+    <span class="c1"># a directory</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1"> did not exist!'</span><span class="p">)</span>
+
+    <span class="c1"># TODO derive name in deterministic way from path, so that same input will always</span>
+    <span class="c1"># overwrite any pre-existing temp outputs? not a huge priority, just some temp files</span>
+    <span class="c1"># could get left around as-is (which is probably fine. generally get deleted on</span>
+    <span class="c1"># reboot)</span>
+    <span class="c1">#</span>
+    <span class="c1"># TODO test w/ input where output filename doesn't already have suffix?</span>
+    <span class="c1"># support that?</span>
+    <span class="c1"># (if input doesn't have '.' in name, suffix is ''. if input name starts with '.',</span>
+    <span class="c1"># and there isn't another '.', suffix is also '')</span>
+    <span class="c1">#</span>
+    <span class="c1"># need to use existing suffix when savefig is matplotlib Figure.savefig, as it will</span>
+    <span class="c1"># save to `temp_file + '.png'` instead of `temp_file`.</span>
+    <span class="c1"># path.suffix for e.g. Path('x/y/z.pdf') is '.pdf'.</span>
+    <span class="n">temp_file</span> <span class="o">=</span> <span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="p">)</span>
+    <span class="c1"># also includes directory</span>
+    <span class="n">temp_file_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">temp_file</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="c1"># TODO move some/all of use_mpl_comparison/is_pickle def to just before conditional</span>
+    <span class="c1"># (as part of factoring out a file comparison fn from within this)</span>
+    <span class="n">use_mpl_comparison</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="c1"># for save_fn input like:</span>
+    <span class="c1"># &lt;bound method Figure.savefig of &lt;Figure size 1920x1440 with 1 Axes&gt;&gt;</span>
+    <span class="c1"># I wasn't actually seeing __name__ in dir(save_fn) for that, but accessing</span>
+    <span class="c1"># .__name__ still worked (providing 'savefig'). __func__ / __self__ may be the</span>
+    <span class="c1"># function and bound instance, but not sure, and this seems like it might work ok.</span>
+    <span class="c1">#</span>
+    <span class="c1"># TODO test w/ seaborn input</span>
+    <span class="k">if</span> <span class="n">save_fn</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">==</span> <span class="s1">'savefig'</span><span class="p">:</span>
+        <span class="n">use_mpl_comparison</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="n">is_pickle</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s1">'.p'</span><span class="p">:</span>
+        <span class="c1"># TODO could also check if save_fn is to_pickle (or has 'pickle' in name, or</span>
+        <span class="c1"># name split on '_'?). i always name pickles w/ .p, but if anyone else uses this</span>
+        <span class="c1"># fn (for pickles), might matter.</span>
+        <span class="c1"># TODO more generally, check if there is a read_&lt;x&gt; fn defined in same scope as</span>
+        <span class="c1"># input to_&lt;x&gt; fn name (-&gt; use read fn to compare if filecmp fails). or accept</span>
+        <span class="c1"># read fn as optional input?</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="n">use_mpl_comparison</span>
+        <span class="n">is_pickle</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="c1"># TODO set verbose=False if save_fn already had that?</span>
+    <span class="c1"># assuming we don't need to for now. any other issues w/ calling wrapped</span>
+    <span class="c1"># fn twice?</span>
+    <span class="c1"># TODO possible to refactor to not need to check data (maybe using *args, and</span>
+    <span class="c1"># changing all fns using produces_output to swap order of data and path args?)?</span>
+    <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">save_fn</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">temp_file_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># TODO assert use_mpl_comparison here (and only here?)? (should be only case i'm</span>
+        <span class="c1"># currently not passing in data, and no real plans for that to change)</span>
+        <span class="n">save_fn</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="n">temp_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="c1"># TODO assert some bytes have been written to file?</span>
+    <span class="c1"># (would have caught save_fn appending suffix issue before i was using existing</span>
+    <span class="c1"># suffix)</span>
+
+    <span class="n">to_delete</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">mtime_str</span> <span class="o">=</span> <span class="n">format_mtime</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">year</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">seconds</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">err_msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="n">mtime_str</span><span class="si">}</span><span class="s1">) would have changed! (run without -c/-C to ignore)'</span>
+
+    <span class="c1"># TODO factor out file comparison fn(s) from this?</span>
+    <span class="c1"># (-&gt; use to check certain key outputs same as what is committed to repo, e.g.</span>
+    <span class="c1"># CSVs w/ model responses in data/sent_to_anoop vs current ones)</span>
+    <span class="c1"># TODO + make available as CLI?</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">use_mpl_comparison</span><span class="p">:</span>
+        <span class="c1"># https://stackoverflow.com/questions/1072569</span>
+        <span class="n">unchanged</span> <span class="o">=</span> <span class="n">filecmp</span><span class="o">.</span><span class="n">cmp</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">temp_file_path</span><span class="p">,</span> <span class="n">shallow</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="c1"># could also *always* do this comparison, instead of filecmp above, but I'm</span>
+        <span class="c1"># assuming actually loading the pickles is more expensive than the above.</span>
+        <span class="c1"># if the filecmp approach *usually* works for pickles (as it seems to), then</span>
+        <span class="c1"># it's probably better to only load+compare the pickles if that check fails.</span>
+        <span class="k">if</span> <span class="n">is_pickle</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">unchanged</span><span class="p">:</span>
+            <span class="c1"># TODO these read_pickle fns always return output consistent w/</span>
+            <span class="c1"># pd.read_pickle (in only case checked so far, yes)?</span>
+            <span class="n">old</span> <span class="o">=</span> <span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="n">new</span> <span class="o">=</span> <span class="n">read_pickle</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
+
+            <span class="c1"># TODO TODO refactor to use my hong2p.util.equals now?</span>
+            <span class="c1"># TODO what about if new has 'equals' and old doesn't (could still get</span>
+            <span class="c1"># ValueError about truth value ambiguous, if new is series?)</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">old</span><span class="p">,</span> <span class="s1">'equals'</span><span class="p">):</span>
+                <span class="n">unchanged</span> <span class="o">=</span> <span class="n">old</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">new</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># TODO also catch possible ValueError here</span>
+                <span class="c1"># (why need cast to bool in some but not all cases? Series vs</span>
+                <span class="c1"># DataFrames?)</span>
+                <span class="c1"># (this was b/c old and new were both dicts w/ some values that were</span>
+                <span class="c1"># pd.Series in old and np.array in new)</span>
+                <span class="c1"># (also got it when new was Series and old was np.array)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">unchanged</span> <span class="o">=</span> <span class="n">old</span> <span class="o">==</span> <span class="n">new</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="c1"># TODO delete</span>
+                    <span class="nb">print</span><span class="p">()</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">old</span><span class="p">)</span><span class="si">=}</span><span class="s1">'</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">new</span><span class="p">)</span><span class="si">=}</span><span class="s1">'</span><span class="p">)</span>
+                    <span class="kn">import</span><span class="w"> </span><span class="nn">ipdb</span><span class="p">;</span> <span class="n">ipdb</span><span class="o">.</span><span class="n">set_trace</span><span class="p">()</span>
+                    <span class="c1">#</span>
+
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">unchanged</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">unchanged</span><span class="p">)</span>
+
+                <span class="c1"># will trigger if old/new are like numpy arrays, like:</span>
+                <span class="c1"># ValueError: The truth value of an array with more than one element is</span>
+                <span class="c1"># ambiguous. Use a.any() or a.all()</span>
+                <span class="c1">#</span>
+                <span class="c1"># even though the `old.equals(new)` check above should be used for</span>
+                <span class="c1"># pandas objects (and probably anything else that would have this type</span>
+                <span class="c1"># of error...), a similarly worded error would be emitted if trying to</span>
+                <span class="c1"># coerce pandas elementwise comparisons to a single bool. e.g.</span>
+                <span class="c1"># ValueError: The truth value of a DataFrame is ambiguous. Use a.empty,</span>
+                <span class="c1"># a.bool(), a.item(), a.any() or a.all().</span>
+                <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+                    <span class="c1"># TODO also filter on err msg, only trying to coerce check w/ .all()</span>
+                    <span class="c1"># if msg matches [some parts of] expected err msg?</span>
+                    <span class="n">unchanged</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">unchanged</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># TODO need to install something else for this, in a new env?</span>
+        <span class="c1"># (might have manually installed before in current one...)</span>
+        <span class="c1"># (and not sure i've tested this path in a fresh install, since import is</span>
+        <span class="c1"># conditional)</span>
+        <span class="c1"># TODO TODO add unit test that hits this path</span>
+        <span class="c1"># TODO when factoring out file comparison fn, def use_mpl_comparison from</span>
+        <span class="c1"># conditional import for this b/c it can hang sometimes (for unclear reasons).</span>
+        <span class="c1"># see comment by original import up top (was there up to f1b56dc4). not sure if</span>
+        <span class="c1"># the hanging will ever come up again, or how to repro.</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare</span> <span class="k">as</span> <span class="n">mpl_compare</span>
+
+        <span class="c1"># whether extension is in `mpl_compare.comparable_formats()`?</span>
+        <span class="c1"># (currently ['png', 'pdf', 'eps', 'svg'])</span>
+        <span class="c1">#</span>
+        <span class="c1"># TODO can i remove this? what happens if compare_images gets an input w/ a</span>
+        <span class="c1"># non-comparable format?</span>
+        <span class="k">assert</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">mpl_compare</span><span class="o">.</span><span class="n">comparable_formats</span><span class="p">()</span>
+
+        <span class="c1"># TODO want to actually use tolerance &gt; 0 ever? (reading mpl's code, if tol is</span>
+        <span class="c1"># 0, np.array_equal is used, rather than mpl_compare.calculate_rms)</span>
+        <span class="c1">#</span>
+        <span class="c1"># 2025-02-19: getting some PDFs i can't visually tell apart, w/ rms ~3.84</span>
+        <span class="c1"># (mb_modeling/hist_hallem.pdf)</span>
+        <span class="n">tolerance</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># TODO keep something like this? worried it'd also miss a point meaningfully</span>
+        <span class="c1"># moving around / similar... (as opposed to weird text spacing changes that</span>
+        <span class="c1"># seemed non-deterministic)</span>
+        <span class="c1">#tolerance = 15</span>
+
+        <span class="c1"># TODO fix ImageComparisonFailure (can i repro?):</span>
+        <span class="c1"># ...</span>
+        <span class="c1">#   File "./al_analysis.py", line 4095, in plot_corr</span>
+        <span class="c1">#     savefig(fig, plot_dir, prefix, bbox_inches='tight', debug=verbose, **_save_kws)</span>
+        <span class="c1">#   File "./al_analysis.py", line 2988, in savefig</span>
+        <span class="c1">#     _check_output_would_not_change(fig_path, save_fn, **kwargs)</span>
+        <span class="c1">#   File "./al_analysis.py", line 2503, in _check_output_would_not_change</span>
+        <span class="c1">#     diff_dict = mpl_compare.compare_images(path, str(temp_file_path), tolerance,</span>
+        <span class="c1">#   File "/home/tom/src/al_analysis/venv/lib/python3.8/site-packages/matplotlib/testing/compare.py", line 466, in compare_images</span>
+        <span class="c1">#     rms = calculate_rms(expected_image, actual_image)</span>
+        <span class="c1">#   File "/home/tom/src/al_analysis/venv/lib/python3.8/site-packages/matplotlib/testing/compare.py", line 363, in calculate_rms</span>
+        <span class="c1">#     raise ImageComparisonFailure(</span>
+        <span class="c1"># matplotlib.testing.exceptions.ImageComparisonFailure: Image sizes do not match expected size: (359, 382, 3) actual size (359, 383, 3)</span>
+
+        <span class="c1"># compare_images seems to save a png alongside input image, and i don't think</span>
+        <span class="c1"># there are options to not do that, so i'm just deleting those files after</span>
+        <span class="c1">#</span>
+        <span class="c1"># https://matplotlib.org/devdocs/api/testing_api.html#module-matplotlib.testing.compare</span>
+        <span class="c1">#</span>
+        <span class="n">unchanged</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># from docs: "Return None if the images are equal within the given</span>
+            <span class="c1"># tolerance."</span>
+            <span class="n">diff_dict</span> <span class="o">=</span> <span class="n">mpl_compare</span><span class="o">.</span><span class="n">compare_images</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">),</span> <span class="n">tolerance</span><span class="p">,</span>
+                <span class="c1"># TODO remove this, since i couldn't really use it to find files to</span>
+                <span class="c1"># delete anyway (since it's None if no diff)?</span>
+                <span class="n">in_decorator</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+
+        <span class="k">except</span> <span class="n">ImageComparisonFailure</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="c1"># TODO fix</span>
+            <span class="n">warn</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+            <span class="c1">#</span>
+            <span class="n">unchanged</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="c1"># paths in diff_dict (for temp_file_path=/tmp/tmpdcsvhhzb.pdf) should look like:</span>
+        <span class="c1"># 'actual': '/tmp/tmpdcsvhhzb_pdf.png',</span>
+        <span class="c1"># 'diff': '/tmp/tmpdcsvhhzb_pdf-failed-diff.png',</span>
+        <span class="c1"># 'expected': 'pebbled_6f/pdf/ijroi/mb_modeling/hist_hallem_pdf.png',</span>
+
+        <span class="c1"># TODO try to move the to_delete handling to after this conditional</span>
+        <span class="c1"># (so i can factor this whole conditional, w/ some of earlier stuff, into fn for</span>
+        <span class="c1"># just comparing files, not doing any of the temp file creation / cleanup)</span>
+
+        <span class="c1"># bit more flexible than Path.with_suffix (how so? just extra '.' chars?</span>
+        <span class="c1"># delete?)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">with_suffix</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">suffix</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">filepath</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">filepath</span><span class="o">.</span><span class="n">stem</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s1">'</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">temp_with_suffix</span><span class="p">(</span><span class="n">suffix</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">with_suffix</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">,</span> <span class="n">suffix</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">plot_fmt</span> <span class="o">!=</span> <span class="s1">'png'</span><span class="p">:</span>
+            <span class="c1"># don't think i need to worry about these two if plot_fmt == 'png'</span>
+            <span class="n">to_delete</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span>
+                <span class="n">temp_with_suffix</span><span class="p">(</span><span class="sa">f</span><span class="s1">'_</span><span class="si">{</span><span class="n">plot_fmt</span><span class="si">}</span><span class="s1">.png'</span><span class="p">),</span>
+                <span class="n">with_suffix</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'_</span><span class="si">{</span><span class="n">plot_fmt</span><span class="si">}</span><span class="s1">.png'</span><span class="p">)</span>
+            <span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">unchanged</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">diff_dict</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">unchanged</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># NOTE: &lt;x&gt;_failed-diff[_&lt;plot-format&gt;].png created in this case, but we</span>
+                <span class="c1"># probably want to keep it for inspection, so not adding to to_delete</span>
+                <span class="n">unchanged</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="n">err_msg</span> <span class="o">+=</span> <span class="p">(</span><span class="s1">'</span><span class="se">\n\n</span><span class="s1">matplotlib.testing.compare.compare_images output:</span><span class="se">\n</span><span class="s1">'</span>
+                    <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">pformat</span><span class="p">(</span><span class="n">diff_dict</span><span class="p">)</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">diff image kept for inspection'</span>
+                <span class="p">)</span>
+                <span class="c1"># TODO assert diff_dict['actual'] is same as temp_file_path?</span>
+
+                <span class="c1"># TODO also open up (xdg-open / whatever) temp png matplotlib wrote (the</span>
+                <span class="c1"># diff image)?</span>
+                <span class="c1"># (and yes, it does convert everything to PNG for this, named like</span>
+                <span class="c1"># /tmp/tmpa3hi5nxy_pdf-failed-diff.png (for diff),</span>
+                <span class="c1"># /tmp/tmpa3hi5nxy_pdf.png)</span>
+
+    <span class="c1"># want to leave this file around if changed, so we can compare to existing output</span>
+    <span class="k">if</span> <span class="n">unchanged</span><span class="p">:</span>
+        <span class="n">to_delete</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">temp_file_path</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">temp_path</span> <span class="ow">in</span> <span class="n">to_delete</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">temp_path</span><span class="o">.</span><span class="n">exists</span><span class="p">(),</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">temp_path</span><span class="si">=}</span><span class="s1"> did not exist!'</span>
+        <span class="n">temp_path</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">unchanged</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1"> would be unchanged'</span><span class="p">)</span>
+
+        <span class="k">return</span>
+
+    <span class="c1"># TODO (delete?) move temp file into place, if DOESN'T match (after warning)</span>
+    <span class="c1"># (would need new value for -c, to warn instead of err. not sure i want)?</span>
+    <span class="c1"># (also, would have to handle in callers)</span>
+
+    <span class="n">save_fn_name</span> <span class="o">=</span> <span class="n">save_fn</span><span class="o">.</span><span class="vm">__name__</span>
+    <span class="k">if</span> <span class="n">save_fn_name</span> <span class="ow">in</span> <span class="n">_save_fn_name2diff_fn</span><span class="p">:</span>
+        <span class="n">diff_fn</span> <span class="o">=</span> <span class="n">_save_fn_name2diff_fn</span><span class="p">[</span><span class="n">save_fn_name</span><span class="p">]</span>
+        <span class="n">diff_str</span> <span class="o">=</span> <span class="n">diff_fn</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">temp_file_path</span><span class="p">)</span>
+        <span class="n">err_msg</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">'</span><span class="se">\n\n</span><span class="si">{</span><span class="n">diff_str</span><span class="si">}</span><span class="s1">'</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">err_msg</span> <span class="o">+=</span> <span class="p">(</span><span class="s1">'</span><span class="se">\n\n</span><span class="s1">compare with what would have been new output, saved at: '</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">temp_file_path</span><span class="si">}</span><span class="s1">'</span>
+        <span class="p">)</span>
+
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
+
+
+<span class="c1"># changed in al_analysis.main (exposed as command line arguments)</span>
+<span class="c1"># (to a set of strings)</span>
+<span class="n">ignore_existing</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="c1"># TODO distinguish between these two in CLI doc (or delete blanket -i)</span>
+<span class="c1"># TODO should i even have a blanket '-i' option?</span>
+<span class="n">ignore_if_explicitly_requested</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'json'</span><span class="p">,)</span>
+<span class="n">also_ignore_if_ignore_existing_true</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'nonroi'</span><span class="p">,</span> <span class="s1">'ijroi'</span><span class="p">,</span> <span class="s1">'suite2p'</span><span class="p">,</span> <span class="s1">'dff2spiking'</span><span class="p">,</span>
+    <span class="s1">'model'</span>
+<span class="p">)</span>
+<span class="n">ignore_existing_options</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">ignore_if_explicitly_requested</span> <span class="o">+</span> <span class="n">also_ignore_if_ignore_existing_true</span>
+<span class="p">)</span>
+
+<div class="viewcode-block" id="should_ignore_existing">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.should_ignore_existing">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">should_ignore_existing</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">explicit_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns whether existing outputs of step `name` should be ignored (recomputed).</span>
+
+<span class="sd">    Based on `ignore_existing` (set by `-i` CLI arg in `al_analysis.py`). Steps</span>
+<span class="sd">    in `ignore_if_explicitly_requested` are only recomputed if explicitly requested</span>
+<span class="sd">    (i.e. not when `ignore_existing == True`).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        name: step to check whether it should be recomputed.</span>
+<span class="sd">            see `ignore_existing_options`.</span>
+
+<span class="sd">        explicit_only: currently unused (see `ignore_if_explicitly_requested` instead)</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">ignore_existing</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">bool</span><span class="p">:</span>
+
+        <span class="c1"># Some steps are unlikely enough to need recomputation, we will only do so if we</span>
+        <span class="c1"># explicitly request that step be recomputed.</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">ignore_if_explicitly_requested</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="n">ignore_existing</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">ignore_existing_options</span>
+        <span class="c1"># (if it's not a bool, it should be guaranteed to be a set-of-str here)</span>
+        <span class="k">return</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">ignore_existing</span> <span class="c1"># pylint: disable=unsupported-membership-test</span></div>
+
+
+
+<span class="c1"># TODO test still works when used from al_analysis (al_analysis fns still using this</span>
+<span class="c1"># _dirs_to_delete_if_empty, referring to it w/ `hong2p.io.` prefix now)</span>
+<span class="n">_dirs_to_delete_if_empty</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="c1"># TODO add test confirming it also makes parents (i think that was the whole point of</span>
+<span class="c1"># using os.makedirs)</span>
+<div class="viewcode-block" id="makedirs">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.makedirs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">makedirs</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Make directory if it does not exist, and register for deletion if empty.</span>
+<span class="sd">    """</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="c1"># TODO make sure if we make a directory as well as some of its parent directories,</span>
+    <span class="c1"># that if (all) the leaf dirs are empty, the whole empty tree gets deleted</span>
+    <span class="c1"># TODO shortcircuit to returning if we already made it this run, to avoid the checks</span>
+    <span class="c1"># on subsequent calls? they probably aren't a big deal though...</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="c1"># TODO only do this if we actually made the directory in the above call?</span>
+    <span class="c1"># not sure we really care for empty dirs in any circumstances tho...</span>
+    <span class="n">_dirs_to_delete_if_empty</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">path</span></div>
+
+
+
+<span class="n">save_figs</span> <span class="o">=</span> <span class="kc">True</span>
+
+<span class="c1"># TODO support multiple (don't know if i want this to be default though, cause extra</span>
+<span class="c1"># time)</span>
+<span class="c1"># TODO add CLI arg to override this?</span>
+<span class="n">plot_fmt</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'plot_fmt'</span><span class="p">,</span> <span class="s1">'pdf'</span><span class="p">)</span>
+
+<span class="n">exit_after_saving_fig_containing</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="c1"># TODO CLI flag to (or just always?) warn if there are old figs in any/some of the dirs</span>
+<span class="c1"># we saved figs in (would only want if very verbose...)?</span>
+<span class="c1"># TODO maybe refactor to automatically prefix path with '{plot_fmt}/' in here?</span>
+<span class="c1">#</span>
+<span class="c1"># Especially running process_recording in parallel, the many-figures-open memory</span>
+<span class="c1"># warning will get tripped at the default setting, hence `close=True`.</span>
+<span class="c1">#</span>
+<span class="c1"># TODO why Type[sns.axisgrid.Grid] instead of just sns.axisgrid.Grid?</span>
+<span class="c1"># (is below comment why? i assume so...)</span>
+<span class="c1"># sns.FacetGrid and sns.ClusterGrid should both be subclasses of sns.axisgrid.Grid</span>
+<span class="c1"># (can't seem to import sns.ClusterGrid anyway... maybe it's somewhere else?)</span>
+<span class="c1"># TODO TODO try to replace logic w/ this decorator</span>
+<span class="c1">#@produces_output(verbose=False)</span>
+<span class="n">_savefig_seen_paths</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="c1"># TODO possible to use verbose kwarg alongside global verbose?</span>
+<span class="c1"># (for using this fn in other scripts, would rather have kwarg, but also don't want to</span>
+<span class="c1"># have to pass verbose=verbose everywhere in here, nor use global as default kwarg,</span>
+<span class="c1"># which wouldn't be update by CLI arg correctly...)</span>
+<span class="c1"># TODO try to restore type hint w/ seaborn type. commenting for now to try to be able to</span>
+<span class="c1"># not import sns, to use some extra C++ debugging tools that it (and scipy) are</span>
+<span class="c1"># incompatible with</span>
+<span class="c1">#def savefig(fig_or_seaborngrid: Union[Figure, Type[sns.axisgrid.Grid]],</span>
+<div class="viewcode-block" id="savefig">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.savefig">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">savefig</span><span class="p">(</span><span class="n">fig_or_seaborngrid</span><span class="p">,</span>
+    <span class="n">fig_dir</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">,</span> <span class="n">desc</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">close</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">normalize_fname</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">debug</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">multiple_saves_per_run_ok</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">ignore_output_change_check</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">fmt</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Saves figure (or seaborn grid) to `&lt;fig_dir&gt;/&lt;desc&gt;.&lt;fmt&gt;`, returning that path.</span>
+
+<span class="sd">    Creates `fig_dir` if needed. Only saves if `save_figs`. Exits after saving,</span>
+<span class="sd">    if path contains `exit_after_saving_fig_containing` (set by `al_analysis.py</span>
+<span class="sd">    -F` CLI arg).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        desc: name for plot. converted to a valid filename (via</span>
+<span class="sd">            `hong2p.util.to_filename`), unless `normalize_fname=False`.</span>
+
+<span class="sd">        close: if True, closes figure after saving</span>
+
+<span class="sd">        debug: if True, prints path to saved figure (otherwise only printed if</span>
+<span class="sd">            `verbose`)</span>
+
+<span class="sd">        multiple_saves_per_run_ok: if False, raises `MultipleSavesPerRunException` if</span>
+<span class="sd">            the same path is saved to twice in one run</span>
+
+<span class="sd">        ignore_output_change_check: if True, skips checking output would not change</span>
+<span class="sd">            (only checked if `check_outputs_unchanged`, set by -c/-C CLI args)</span>
+
+<span class="sd">        fmt: if None, defaults to `plot_fmt` (typically 'pdf')</span>
+
+<span class="sd">        **kwargs: passed to `savefig` method of `fig_or_seaborngrid`</span>
+<span class="sd">    """</span>
+    <span class="k">global</span> <span class="n">exit_after_saving_fig_containing</span>
+
+    <span class="k">if</span> <span class="n">fmt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="n">plot_fmt</span>
+
+    <span class="k">if</span> <span class="n">fmt</span> <span class="o">==</span> <span class="s1">'pdf'</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s1">'metadata'</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="c1"># TODO delete? test whether this actually improves reproducibility of output</span>
+            <span class="c1"># files? other blockers on that?</span>
+            <span class="c1"># TODO anything similar i want for svg, now that i'm also trying that?</span>
+            <span class="c1"># even needed in current mpl? not referenced in current docs, and not</span>
+            <span class="c1"># obviously in settings current mpl testing code enforces for tests</span>
+            <span class="s1">'creationDate'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+
+            <span class="c1"># TODO some other way to specify (doesn't seem so)? delete</span>
+            <span class="c1"># matplotlib doesn't seem to set this by default (grepping an example PDF</span>
+            <span class="c1"># does contain CreationDate, but nothing case-insensitive matching "interp".</span>
+            <span class="c1"># hopefully this makes the viewers I typically use behave better when</span>
+            <span class="c1"># rending imshow/matshow plots with many small cells (so I don't need to</span>
+            <span class="c1"># make huge figures to even have a chance, e.g. 650 inches tall in current</span>
+            <span class="c1"># plot_aligned_dynamics plot. for that particular plot, this alone didn't</span>
+            <span class="c1"># seem to help me reduce size. or maybe my reader is ignoring this flag, as</span>
+            <span class="c1"># apparently they are free to do)</span>
+            <span class="c1"># https://stackoverflow.com/questions/27512326</span>
+            <span class="c1"># if trying to specify this way, get</span>
+            <span class="c1"># Warning: Unknown infodict keyword: 'interpolate'. Must be one of {'Title',</span>
+            <span class="c1"># 'ModDate', 'Keywords', 'Trapped', 'CreationDate', 'Author', 'Producer',</span>
+            <span class="c1"># 'Creator', 'Subject'}.</span>
+            <span class="c1"># and there is no interpolate=&lt;bool&gt; kwarg</span>
+            <span class="c1">#'interpolate': False</span>
+        <span class="p">}</span>
+    <span class="c1">#</span>
+
+    <span class="k">if</span> <span class="n">normalize_fname</span><span class="p">:</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">to_filename</span><span class="p">(</span><span class="n">desc</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># util.to_filename in branch above adds a '.' suffix by default</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">desc</span><span class="si">}</span><span class="s1">.'</span>
+
+    <span class="n">basename</span> <span class="o">=</span> <span class="n">prefix</span> <span class="o">+</span> <span class="n">fmt</span>
+
+    <span class="n">makedirs</span><span class="p">(</span><span class="n">fig_dir</span><span class="p">)</span>
+    <span class="n">fig_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fig_dir</span><span class="p">)</span> <span class="o">/</span> <span class="n">basename</span>
+
+    <span class="c1"># TODO share logic w/ to_csv above (meaning also want to resolve() in</span>
+    <span class="c1"># produces_output? or no? already doing that?)</span>
+    <span class="n">abs_fig_path</span> <span class="o">=</span> <span class="n">fig_path</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+
+    <span class="c1"># duped from produces_output</span>
+    <span class="n">last_frame</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">currentframe</span><span class="p">()</span><span class="o">.</span><span class="n">f_back</span>
+    <span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">fn_name</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getframeinfo</span><span class="p">(</span><span class="n">last_frame</span><span class="p">)</span>
+    <span class="n">_saved_path2last_save_code_context</span><span class="p">[</span><span class="n">abs_fig_path</span><span class="p">]</span> <span class="o">=</span> <span class="n">CodeContext</span><span class="p">(</span>
+        <span class="n">filename</span><span class="o">=</span><span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="o">=</span><span class="n">lineno</span><span class="p">,</span> <span class="n">fn_name</span><span class="o">=</span><span class="n">fn_name</span>
+    <span class="p">)</span>
+    <span class="n">_all_seen_inputs</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">abs_fig_path</span><span class="p">)</span>
+    <span class="c1">#</span>
+
+    <span class="c1"># TODO (option to) also save traceback at each, for easier debugging?</span>
+    <span class="c1"># TODO some way to patch avoid this for testing? (support plot_dir=None?</span>
+    <span class="c1"># have everything reset _savefig_seen_paths for each offending call? actually</span>
+    <span class="c1"># just save all figs into distinct plot dirs, even for testing...?)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">multiple_saves_per_run_ok</span> <span class="ow">and</span> <span class="n">abs_fig_path</span> <span class="ow">in</span> <span class="n">_savefig_seen_paths</span><span class="p">:</span>
+        <span class="c1"># TODO (delete?) fix:</span>
+        <span class="c1"># no uncertain ROIs. not generating uncertain_by_max_resp fig</span>
+        <span class="c1"># done</span>
+        <span class="c1"># Warning: correlation shapes unequal (in plot_corrs input)! shapes-&gt;counts: {(33, 33): 10, (72, 72): 5}</span>
+        <span class="c1"># some mean correlations will have more N than others!</span>
+        <span class="c1"># PREFIX DRIVER/INDICATOR IF I CAN (WORTH PASSING? COMPUTE FROM DIR)</span>
+        <span class="c1"># RESTORE CSV SAVING (AFTER DE-DUPING...)</span>
+        <span class="c1"># writing pebbled_6f/pdf/ijroi/corr_certain_only/control_flies.csv</span>
+        <span class="c1"># PREFIX DRIVER/INDICATOR IF I CAN (WORTH PASSING? COMPUTE FROM DIR)</span>
+        <span class="c1"># RESTORE CSV SAVING (AFTER DE-DUPING...)</span>
+        <span class="c1"># writing pebbled_6f/pdf/ijroi/corr_certain_only/kiwi_flies.csv</span>
+        <span class="c1"># abs_fig_path=PosixPath('/home/tom/src/al_analysis/pebbled_6f/pdf/ijroi/corr_certain_only/kiwi/2024-09-03_1.pdf')</span>
+        <span class="c1"># desc='2024-09-03_1'</span>
+        <span class="c1"># &gt; /home/tom/src/al_analysis/al_analysis.py(2581)savefig()</span>
+        <span class="c1"># -&gt; 2581     _savefig_seen_paths.add(abs_fig_path)</span>
+        <span class="c1"># ipdb&gt; u</span>
+        <span class="c1"># &gt; /home/tom/src/al_analysis/al_analysis.py(8313)plot_corrs()</span>
+        <span class="c1"># -&gt; 8313         fig_path = savefig(fig, panel_dir, fly_plot_prefix)</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="n">_saved_path2last_save_code_context</span><span class="p">[</span><span class="n">abs_fig_path</span><span class="p">]</span>
+        <span class="c1"># TODO maybe i do need more context (previous stack frames).</span>
+        <span class="c1"># current issue is same line in two calls to the same fn.</span>
+        <span class="k">raise</span> <span class="n">MultipleSavesPerRunException</span><span class="p">(</span><span class="s1">'would have overwritten output '</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">fig_path</span><span class="si">}</span><span class="se">\n</span><span class="s1">previously written elsewhere in this run, at:</span><span class="se">\n</span><span class="s1">'</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">context</span><span class="o">.</span><span class="n">filename</span><span class="si">}</span><span class="s1">, line </span><span class="si">{</span><span class="n">context</span><span class="o">.</span><span class="n">lineno</span><span class="si">}</span><span class="s1"> (in </span><span class="si">{</span><span class="n">context</span><span class="o">.</span><span class="n">fn_name</span><span class="si">}</span><span class="s1">)'</span>
+            <span class="s1">'</span><span class="se">\n</span><span class="s1">add multiple_saves_per_run_ok=True to call to override, but this'</span>
+            <span class="s1">' is likely a mistake'</span>
+        <span class="p">)</span>
+    <span class="c1">#</span>
+    <span class="n">_savefig_seen_paths</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">abs_fig_path</span><span class="p">)</span>
+
+    <span class="n">_skip_saving</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="c1"># TODO delete if i manage to restore use of produces_output wrapper around savefig</span>
+    <span class="c1"># TODO still warn at least, if ignore_output_change_check=True (just wrap this fn in</span>
+    <span class="c1"># produces_output finally, to not duplicate effort?)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">ignore_output_change_check</span> <span class="ow">and</span> <span class="n">check_outputs_unchanged</span> <span class="ow">and</span> <span class="n">fig_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">save_fn</span> <span class="o">=</span> <span class="n">fig_or_seaborngrid</span><span class="o">.</span><span class="n">savefig</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># TODO wrapper kwarg (that would be added to some/all decorations)</span>
+            <span class="c1"># for disabling this for some calls? e.g. for formats where they can</span>
+            <span class="c1"># change for uninteresting reasons, like creation time</span>
+            <span class="n">_check_output_would_not_change</span><span class="p">(</span><span class="n">fig_path</span><span class="p">,</span> <span class="n">save_fn</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="n">_skip_saving</span> <span class="o">=</span> <span class="kc">True</span>
+
+        <span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="n">overwrite</span> <span class="o">=</span> <span class="n">_output_change_prompt_or_err</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="n">fig_path</span><span class="p">)</span>
+            <span class="n">_skip_saving</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">overwrite</span>
+    <span class="c1">#</span>
+
+    <span class="c1"># TODO should i be passing metadata={'creationDate': None} in pdf case?</span>
+    <span class="c1"># would that help make diffing easier / more reliable? still needed?</span>
+    <span class="c1"># https://matplotlib.org/2.1.1/users/whats_new.html#reproducible-ps-pdf-and-svg-output</span>
+    <span class="k">if</span> <span class="n">save_figs</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_skip_saving</span><span class="p">:</span>
+        <span class="n">fig_or_seaborngrid</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">fig_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="n">fig</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fig_or_seaborngrid</span><span class="p">,</span> <span class="n">Figure</span><span class="p">):</span>
+        <span class="n">fig</span> <span class="o">=</span> <span class="n">fig_or_seaborngrid</span>
+
+    <span class="c1"># TODO any other types of seaborn objects we might want to support? don't think i've</span>
+    <span class="c1"># encounterd any so far...</span>
+    <span class="c1"># (only checking for seaborn objects if seaborn was already imported, as the input</span>
+    <span class="c1"># can not be one otherwise)</span>
+    <span class="k">elif</span> <span class="p">(</span><span class="s1">'seaborn'</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span> <span class="ow">and</span>
+        <span class="nb">isinstance</span><span class="p">(</span><span class="n">fig_or_seaborngrid</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">[</span><span class="s1">'seaborn'</span><span class="p">]</span><span class="o">.</span><span class="n">axisgrid</span><span class="o">.</span><span class="n">Grid</span><span class="p">)):</span>
+        <span class="n">fig</span> <span class="o">=</span> <span class="n">fig_or_seaborngrid</span><span class="o">.</span><span class="n">fig</span>
+
+    <span class="k">assert</span> <span class="n">fig</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span> <span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span><span class="si">=}</span><span class="s1"> may not have been an instance of '</span>
+        <span class="s1">'Figure or sns.axisgrid.Grid (above) (or somehow otherwise fig was None)'</span>
+    <span class="p">)</span>
+
+    <span class="c1"># verbose flag set True/False by CLI in al_analysis.main</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">verbose</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_skip_saving</span><span class="p">)</span> <span class="ow">or</span> <span class="n">debug</span><span class="p">:</span>
+        <span class="c1"># TODO may shorten to remove first two components of path by default</span>
+        <span class="c1"># (&lt;driver&gt;_&lt;indicator&gt;/&lt;fmt&gt; in most/all cases)?</span>
+        <span class="n">color</span> <span class="o">=</span> <span class="s1">'light_blue'</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">util</span><span class="o">.</span><span class="n">_colored</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">fig_path</span><span class="p">),</span> <span class="n">color</span><span class="p">))</span>
+
+    <span class="c1"># TODO move this into produces_output, and work on all filetypes saved w/ that</span>
+    <span class="c1"># wrapper?</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">exit_after_saving_fig_containing</span> <span class="ow">and</span>
+        <span class="n">exit_after_saving_fig_containing</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">fig_path</span><span class="p">)):</span>
+
+        <span class="n">warn</span><span class="p">(</span><span class="s1">'exiting after saving fig matching '</span>
+            <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">exit_after_saving_fig_containing</span><span class="si">}</span><span class="s2">':</span><span class="se">\n</span><span class="si">{</span><span class="n">fig_path</span><span class="si">}</span><span class="s2">"</span>
+        <span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">()</span>
+
+    <span class="c1"># TODO warn if any figs are wider than would fit in a sheet of paper?</span>
+    <span class="c1"># at least for a subset of figs marked as for publications?</span>
+    <span class="c1"># (e.g. diagnostic example plot_rois fig i'm working on now)</span>
+
+    <span class="k">if</span> <span class="n">close</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">fig</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s1">'cannot close unknown plot object of type=</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">fig_or_seaborngrid</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span>
+            <span class="p">)</span>
+
+        <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fig_path</span></div>
+
+
+
+<span class="c1"># TODO TODO use in fn to check whether outputs werer created since proc start</span>
+<div class="viewcode-block" id="curr_proc_start_time">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.curr_proc_start_time">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">curr_proc_start_time</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns float start time of current process, comparable to `time.time()`</span>
+<span class="sd">    """</span>
+    <span class="c1"># seems like this should be in same format/offset as time.time(). creator of package</span>
+    <span class="c1"># uses it as time.strftime(..., time.localtime(p.create_time())) in an example:</span>
+    <span class="c1"># https://stackoverflow.com/questions/2598145</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">psutil</span>
+
+    <span class="n">proc</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">()</span>
+    <span class="c1"># TODO module-level cache?</span>
+    <span class="n">create_time</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">create_time</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">create_time</span> <span class="o">&lt;</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">create_time</span></div>
+
+
+
+<div class="viewcode-block" id="written_since_proc_start">
+<a class="viewcode-back" href="../../apidoc/hong2p.io.html#hong2p.io.written_since_proc_start">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">written_since_proc_start</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Pathlike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns whether path was written since start of current process.</span>
+
+<span class="sd">    Also returns False if path does not exist.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="c1"># getmtime output should also be comparable to time.time()</span>
+    <span class="k">return</span> <span class="n">getmtime</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">curr_proc_start_time</span><span class="p">()</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

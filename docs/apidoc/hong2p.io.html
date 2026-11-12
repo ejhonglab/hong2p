@@ -1,0 +1,475 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.io module &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="hong2p.latex module" href="hong2p.latex.html" />
+    <link rel="prev" title="hong2p.err module" href="hong2p.err.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">hong2p</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="hong2p.html">hong2p package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="hong2p.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="hong2p.chem.html">hong2p.chem module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.err.html">hong2p.err module</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">hong2p.io module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.latex.html">hong2p.latex module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.olf.html">hong2p.olf module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.pandas.html">hong2p.pandas module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.roi.html">hong2p.roi module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.suite2p.html">hong2p.suite2p module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.thor.html">hong2p.thor module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.types.html">hong2p.types module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.util.html">hong2p.util module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.viz.html">hong2p.viz module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.xarray.html">hong2p.xarray module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="hong2p.html#module-hong2p">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">hong2p</a></li>
+          <li class="breadcrumb-item"><a href="hong2p.html">hong2p package</a></li>
+      <li class="breadcrumb-item active">hong2p.io module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/apidoc/hong2p.io.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-hong2p.io">
+<span id="hong2p-io-module"></span><h1>hong2p.io module<a class="headerlink" href="#module-hong2p.io" title="Link to this heading"></a></h1>
+<p>Writing analysis outputs (CSVs, parquet, pickles, JSON, figures), and reading them back.</p>
+<p>Paths written via functions wrapped with <cite>produces_output</cite> (e.g. <cite>to_csv</cite>) and via
+<cite>savefig</cite> are recorded for the rest of the process, and writing the same path twice
+raises <cite>MultipleSavesPerRunException</cite> (usually a mistake). With <cite>check_outputs_unchanged</cite>
+set (e.g. by the -c flag added by <cite>add_check_outputs_unchanged_CLI_flag_and_parse_args</cite>),
+an existing output is compared to what would replace it, raising an error if it would
+change.</p>
+<p>Settings are module attributes, read when the functions are called (e.g. set
+<cite>hong2p.io.verbose = True</cite> on the module, not on a name imported from it): <cite>verbose</cite>,
+<cite>check_outputs_unchanged</cite>, <cite>prompt_if_changed</cite>, <cite>ignore_existing</cite> (see
+<cite>should_ignore_existing</cite>), <cite>save_figs</cite>, <cite>plot_fmt</cite> and <cite>exit_after_saving_fig_containing</cite>
+(see <cite>savefig</cite>).</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="hong2p.io.CodeContext">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">CodeContext</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lineno</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fn_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#hong2p.io.CodeContext" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hong2p.io.CodeContext.filename">
+<span class="sig-name descname"><span class="pre">filename</span></span><a class="headerlink" href="#hong2p.io.CodeContext.filename" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hong2p.io.CodeContext.fn_name">
+<span class="sig-name descname"><span class="pre">fn_name</span></span><a class="headerlink" href="#hong2p.io.CodeContext.fn_name" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hong2p.io.CodeContext.lineno">
+<span class="sig-name descname"><span class="pre">lineno</span></span><a class="headerlink" href="#hong2p.io.CodeContext.lineno" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="hong2p.io.MultipleSavesPerRunException">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">MultipleSavesPerRunException</span></span><a class="reference internal" href="../_modules/hong2p/io.html#MultipleSavesPerRunException"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.MultipleSavesPerRunException" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">OSError</span></code></p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.add_check_outputs_unchanged_CLI_flag_and_parse_args">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">add_check_outputs_unchanged_CLI_flag_and_parse_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">check_nonmain_option</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#add_check_outputs_unchanged_CLI_flag_and_parse_args"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.add_check_outputs_unchanged_CLI_flag_and_parse_args" title="Link to this definition"></a></dt>
+<dd><p>Adds -c/-P (and optionally -C) CLI args, parses args, and sets module settings.</p>
+<p>Sets (in this module):
+- <cite>check_outputs_unchanged</cite> (True/False, or ‘nonmain’ if -C passed)
+- <cite>check_nonmain_outputs_unchanged</cite> (only if <cite>check_nonmain_option=True</cite>)
+- <cite>prompt_if_changed</cite></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>check_nonmain_option</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, also adds -C/–check-nonmain-outputs-unchanged
+(mutually exclusive w/ -c), which only checks outputs not saved under
+<cite>main()</cite></p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Namespace</span></code></span></p>
+</dd>
+</dl>
+<p>Returns args as from <cite>parser.parse_args()</cite></p>
+<p>Will raise <cite>argparse.ArgumentError</cite> if trying to add any args already defined.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.caller_info">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">caller_info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#caller_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.caller_info" title="Link to this definition"></a></dt>
+<dd><p>Returns FrameSummary for the caller of the fn that calls <cite>caller_info</cite>.</p>
+<p>FrameSummary objects have attributes: filename, lineno, name, line (as well as
+locals).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameSummary</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.curr_proc_start_time">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">curr_proc_start_time</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#curr_proc_start_time"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.curr_proc_start_time" title="Link to this definition"></a></dt>
+<dd><p>Returns float start time of current process, comparable to <cite>time.time()</cite></p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.drop_old_odor_index_levels">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">drop_old_odor_index_levels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">warn_</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#drop_old_odor_index_levels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.drop_old_odor_index_levels" title="Link to this definition"></a></dt>
+<dd><p>Drops binary-mixture-experiment index levels, if they are uninformative.</p>
+<p>Drops ‘is_pair’ level if it is all False, and ‘odor2’ level if it is all
+<cite>solvent_str</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>warn_</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, warns if either level is present but can’t be dropped</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+<p>Returns <cite>df</cite>, which is also modified in place.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.makedirs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">makedirs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#makedirs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.makedirs" title="Link to this definition"></a></dt>
+<dd><p>Make directory if it does not exist, and register for deletion if empty.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.np_save">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">np_save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#np_save"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.np_save" title="Link to this definition"></a></dt>
+<dd><p>NOTE: opposite order of args to <cite>np.save</cite>, which has path first and data second.
+necessary to work w/ my <cite>produces_output</cite> wrapper.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.produces_output">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">produces_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">_fn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#produces_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.produces_output" title="Link to this definition"></a></dt>
+<dd><p>Decorator for fns saving <cite>data</cite> to <cite>path</cite>, called as <cite>fn(data, path, **kwargs)</cite></p>
+<p>Can be used either as <cite>&#64;produces_output</cite> or <cite>&#64;produces_output(verbose=False)</cite>.</p>
+<p>The wrapped fn:
+- also accepts any <cite>Pathlike</cite> for <cite>path</cite></p>
+<ul class="simple">
+<li><p>raises <cite>MultipleSavesPerRunException</cite> if the same (resolved) path is written more
+than once in a run (by any wrapped fn), unless <cite>multiple_saves_per_run_ok=True</cite></p></li>
+<li><p>if <cite>check_outputs_unchanged</cite> (set by -c/-C CLI flags) and <cite>path</cite> exists,
+checks that the new output would not change it (not writing it, if unchanged).
+See <cite>ignore_output_change_check</cite> for how changes are handled.</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>_fn</strong> – the fn to wrap, when used without parentheses (<cite>&#64;produces_output</cite>)</p></li>
+<li><p><strong>verbose</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – default for <cite>verbose</cite> kwarg of wrapped fn (whether to print path before
+writing)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.read_csv">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">read_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">csv</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">drop_old_odor_levels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">check_vs_pickle</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">warn_</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#read_csv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.read_csv" title="Link to this definition"></a></dt>
+<dd><p>Loads CSV of responses (e.g. <cite>ij_certain-roi_stats.csv</cite>), of odor X fly-ROI shape</p>
+<p>Returns DataFrame with row index levels like [‘panel’, ‘is_pair’, ‘odor1’, ‘odor2’,
+‘repeat’] (‘odor&lt;N&gt;’ levels after ‘odor1’ only for air-mixed components), and column
+levels <cite>flyroi_cols</cite> (‘date’ parsed to datetime, ‘fly_num’ to int). E.g.:</p>
+<p>date                                           2024-09-03
+fly_num                                                 1
+roi                                                     D    DA1    DA2
+panel                 odor1     odor2   repeat
+glomeruli_diagnostics 3mtp &#64; -5 solvent 0          -0.062 -0.025 -0.189</p>
+<blockquote>
+<div><p>1           0.065 -0.003 -0.072</p>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>drop_old_odor_levels</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, drops ‘is_pair’ / ‘odor2’ levels when they are
+uninformative (via <cite>drop_old_odor_index_levels</cite>)</p></li>
+<li><p><strong>check_vs_pickle</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, and a pickle with the same name (but ‘.p’ suffix)
+exists alongside CSV, checks loaded data matches it</p></li>
+<li><p><strong>warn_</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – passed to <cite>drop_old_odor_index_levels</cite>, if called</p></li>
+<li><p><strong>verbose</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, prints path and modification time of CSV (and result of any
+pickle check)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.read_parquet">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">read_parquet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">squeeze</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#read_parquet"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.read_parquet" title="Link to this definition"></a></dt>
+<dd><p>Reads parquet written by <cite>to_parquet</cite>, undoing its conversions.</p>
+<p>Moves any sequence-valued first column (from a tuple-valued last index level, e.g.
+bouton IDs) back to a final index level of tuples, and converts column MultiIndex
+level values back to numeric / datetime, where possible.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>squeeze</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, returns a Series if data has only one column. Series written
+without a name are returned as (unnamed) Series either way.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.read_pickle">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">read_pickle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#read_pickle"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.read_pickle" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.savefig">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">savefig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fig_or_seaborngrid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fig_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">desc</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">close</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize_fname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_saves_per_run_ok</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_output_change_check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fmt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#savefig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.savefig" title="Link to this definition"></a></dt>
+<dd><p>Saves figure (or seaborn grid) to <cite>&lt;fig_dir&gt;/&lt;desc&gt;.&lt;fmt&gt;</cite>, returning that path.</p>
+<p>Creates <cite>fig_dir</cite> if needed. Only saves if <cite>save_figs</cite>. Exits after saving,
+if path contains <cite>exit_after_saving_fig_containing</cite> (set by <cite>al_analysis.py
+-F</cite> CLI arg).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>desc</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – name for plot. converted to a valid filename (via
+<cite>hong2p.util.to_filename</cite>), unless <cite>normalize_fname=False</cite>.</p></li>
+<li><p><strong>close</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, closes figure after saving</p></li>
+<li><p><strong>debug</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, prints path to saved figure (otherwise only printed if
+<cite>verbose</cite>)</p></li>
+<li><p><strong>multiple_saves_per_run_ok</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if False, raises <cite>MultipleSavesPerRunException</cite> if
+the same path is saved to twice in one run</p></li>
+<li><p><strong>ignore_output_change_check</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, skips checking output would not change
+(only checked if <cite>check_outputs_unchanged</cite>, set by -c/-C CLI args)</p></li>
+<li><p><strong>fmt</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – if None, defaults to <cite>plot_fmt</cite> (typically ‘pdf’)</p></li>
+<li><p><strong>**kwargs</strong> – passed to <cite>savefig</cite> method of <cite>fig_or_seaborngrid</cite></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.should_ignore_existing">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">should_ignore_existing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">explicit_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#should_ignore_existing"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.should_ignore_existing" title="Link to this definition"></a></dt>
+<dd><p>Returns whether existing outputs of step <cite>name</cite> should be ignored (recomputed).</p>
+<p>Based on <cite>ignore_existing</cite> (set by <cite>-i</cite> CLI arg in <cite>al_analysis.py</cite>). Steps
+in <cite>ignore_if_explicitly_requested</cite> are only recomputed if explicitly requested
+(i.e. not when <cite>ignore_existing == True</cite>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – step to check whether it should be recomputed.
+see <cite>ignore_existing_options</cite>.</p></li>
+<li><p><strong>explicit_only</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – currently unused (see <cite>ignore_if_explicitly_requested</cite> instead)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.text_diff">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">text_diff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">f1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">f2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#text_diff"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.text_diff" title="Link to this definition"></a></dt>
+<dd><p>Returns unified diff (w/o context lines) between text of files <cite>f1</cite> and <cite>f2</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.to_csv">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">to_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#to_csv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.to_csv" title="Link to this definition"></a></dt>
+<dd><p>Writes <cite>data</cite> to CSV at <cite>path</cite> (which must end in ‘.csv’), via <cite>data.to_csv</cite>.</p>
+<p>NOTE: <cite>produces_output</cite> wrapper modifies fn to allow <cite>Pathlike</cite> for path arg</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.to_json">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#to_json"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.to_json" title="Link to this definition"></a></dt>
+<dd><p>Write <cite>data</cite> to JSON at <cite>path</cite>, with default round trip check.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.to_parquet">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">to_parquet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">check</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#to_parquet"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.to_parquet" title="Link to this definition"></a></dt>
+<dd><p>Write <cite>data</cite> to parquet at <cite>path</cite>, with default check loaded value matches input.</p>
+<p>Supports some data parquet can’t directly store, converting it in ways that
+<cite>read_parquet</cite> undoes: Series (including those without a name), non-str column
+MultiIndex level values (converted to str), and a tuple-valued last index level
+(moved to first column).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>check</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, reads output back (via <cite>read_parquet</cite>) and checks it matches
+<cite>data</cite></p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.to_pickle">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">to_pickle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#to_pickle"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.to_pickle" title="Link to this definition"></a></dt>
+<dd><p>Writes input to pickle at <cite>path</cite>.</p>
+<p>NOTE: <cite>produces_output</cite> wrapper modifies fn to allow <cite>Pathlike</cite> for path arg</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.io.written_since_proc_start">
+<span class="sig-prename descclassname"><span class="pre">hong2p.io.</span></span><span class="sig-name descname"><span class="pre">written_since_proc_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/io.html#written_since_proc_start"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.io.written_since_proc_start" title="Link to this definition"></a></dt>
+<dd><p>Returns whether path was written since start of current process.</p>
+<p>Also returns False if path does not exist.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="hong2p.err.html" class="btn btn-neutral float-left" title="hong2p.err module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="hong2p.latex.html" class="btn btn-neutral float-right" title="hong2p.latex module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

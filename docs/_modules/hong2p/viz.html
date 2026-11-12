@@ -81,6 +81,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">contextlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">os.path</span><span class="w"> </span><span class="kn">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">exists</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pprint</span><span class="w"> </span><span class="kn">import</span> <span class="n">pformat</span><span class="p">,</span> <span class="n">pprint</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">random</span><span class="w"> </span><span class="kn">import</span> <span class="n">Random</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
@@ -127,7 +128,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.image</span><span class="w"> </span><span class="kn">import</span> <span class="n">AxesImage</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib_scalebar.scalebar</span><span class="w"> </span><span class="kn">import</span> <span class="n">ScaleBar</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">util</span><span class="p">,</span> <span class="n">thor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">util</span><span class="p">,</span> <span class="n">thor</span><span class="p">,</span> <span class="n">olf</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p</span><span class="w"> </span><span class="kn">import</span> <span class="n">roi</span> <span class="k">as</span> <span class="n">hong_roi</span>
 <span class="c1"># TODO replace w/ select_certain_rois (after adapting it to work w/ DataArray input)</span>
 <span class="c1"># TODO possible to fix circular import error this seemed to cause? maybe via changing</span>
@@ -135,6 +136,7 @@
 <span class="c1">#from hong2p.roi import is_ijroi_certain</span>
 <span class="c1">#</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.olf</span><span class="w"> </span><span class="kn">import</span> <span class="n">remove_consecutive_repeats</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">savefig</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">df_map</span><span class="p">,</span> <span class="n">is_str_or_object_dtype</span><span class="p">,</span> <span class="n">index2dict_list</span>
 <span class="c1"># TODO use Color/CMap/Palette</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">DataFrameOrDataArray</span><span class="p">,</span> <span class="n">ParamDict</span><span class="p">,</span> <span class="n">CMap</span><span class="p">,</span> <span class="n">Axis</span><span class="p">,</span> <span class="n">Color</span><span class="p">,</span> <span class="n">CMap</span><span class="p">,</span>
@@ -5924,6 +5926,440 @@
     <span class="n">imgkit</span><span class="o">.</span><span class="n">from_string</span><span class="p">(</span><span class="n">html</span><span class="p">,</span> <span class="s1">'natural_odors_pair_n.png'</span><span class="p">)</span></div>
 
 
+
+<span class="c1"># started w/ 'RdBu_r', but Remy had wanted to change to 'vlag', which she said is</span>
+<span class="c1"># supposed to be similar, but perceptually uniform</span>
+<span class="c1">#</span>
+<span class="c1"># TODO maybe still use 'vlag' for diagnostic ROI vs dF/F image plots (version i</span>
+<span class="c1"># generated was that...)</span>
+<span class="c1">#</span>
+<span class="c1"># actually, not switching to 'vlag', to not give Remy more work regenerating old figs</span>
+<span class="n">diverging_cmap</span><span class="p">:</span> <span class="n">CMap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">get_cmap</span><span class="p">(</span><span class="s1">'RdBu_r'</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+<span class="c1"># since default set_bad seems to be ~white, which was fine for 'plasma' (which doesn't</span>
+<span class="c1"># contain white), but now is not distinct from cmap midpoint (0.)</span>
+<span class="c1">#</span>
+<span class="c1"># lighter gray than 'gray', and according to Sam, B takes less issue with this color</span>
+<span class="c1">#light_gray = (0.8, 0.8, 0.8)</span>
+<span class="n">light_gray</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">)</span>
+<span class="n">diverging_cmap</span><span class="o">.</span><span class="n">set_bad</span><span class="p">(</span><span class="n">light_gray</span><span class="p">)</span>
+
+<span class="c1"># .N is the # of colors in list (256)</span>
+<span class="c1"># making a new colormap that is just the top (red) half of the old one</span>
+<span class="n">_colors</span> <span class="o">=</span> <span class="n">diverging_cmap</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">diverging_cmap</span><span class="o">.</span><span class="n">N</span> <span class="o">//</span> <span class="mi">2</span><span class="p">))</span>
+<span class="n">diverging_cmap_tophalf</span><span class="p">:</span> <span class="n">CMap</span> <span class="o">=</span> <span class="n">LinearSegmentedColormap</span><span class="o">.</span><span class="n">from_list</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s1">'top_half_</span><span class="si">{</span><span class="n">diverging_cmap</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1">'</span><span class="p">,</span> <span class="n">_colors</span>
+<span class="p">)</span>
+<span class="n">midpoint_before</span> <span class="o">=</span> <span class="n">diverging_cmap</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="n">top_before</span> <span class="o">=</span> <span class="n">diverging_cmap</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+<span class="n">bottom_after</span> <span class="o">=</span> <span class="n">diverging_cmap_tophalf</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+<span class="n">top_after</span> <span class="o">=</span> <span class="n">diverging_cmap_tophalf</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">midpoint_before</span> <span class="o">==</span> <span class="n">bottom_after</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">midpoint_before</span><span class="si">=}</span><span class="se">\n</span><span class="si">{</span><span class="n">bottom_after</span><span class="si">=}</span><span class="s1">'</span>
+<span class="k">assert</span> <span class="n">top_before</span> <span class="o">==</span> <span class="n">top_after</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">top_before</span><span class="si">=}</span><span class="se">\n</span><span class="si">{</span><span class="n">top_after</span><span class="si">=}</span><span class="s1">'</span>
+<span class="k">del</span> <span class="n">midpoint_before</span><span class="p">,</span> <span class="n">bottom_after</span><span class="p">,</span> <span class="n">top_before</span><span class="p">,</span> <span class="n">top_after</span><span class="p">,</span> <span class="n">_colors</span>
+
+<span class="n">diverging_cmap_tophalf</span><span class="o">.</span><span class="n">set_bad</span><span class="p">(</span><span class="n">light_gray</span><span class="p">)</span>
+
+
+<span class="c1"># TODO actually set colors for stuff outside diverging_cmap range?</span>
+<span class="c1"># (just need cmap.set_[over|under] and extend='both' (or 'min'|'max', if only want</span>
+<span class="c1"># one of the two))</span>
+
+<span class="c1"># TODO could try TwoSlopeNorm ([-0.5, 0] and [0, 2.0]?), but would probably want to</span>
+<span class="c1"># define bounds per fly (or else compute in another pass / plot these after</span>
+<span class="c1"># aggregating?)</span>
+<span class="c1"># TODO rename to diverging_cmap_kws</span>
+<span class="n">diverging_cmap_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+    <span class="n">cmap</span><span class="o">=</span><span class="n">diverging_cmap</span><span class="p">,</span>
+
+    <span class="c1"># TODO TODO test default clip behavior of this is OK. (and contrast w/ e.g.</span>
+    <span class="c1"># CenteredNorm, which actually has a clip=True/False kwarg, like most)</span>
+    <span class="c1"># TODO TODO test what happens if diverging_cmap_kwargs used w/o vmin/vmax</span>
+    <span class="c1"># specified (as diag_example_kws currently adds below) (want to get from data)</span>
+    <span class="c1"># NOTE: specifying norm classes this way only works because some of my hong2p.viz</span>
+    <span class="c1"># wrappers</span>
+    <span class="n">norm</span><span class="o">=</span><span class="s1">'two-slope'</span><span class="p">,</span>
+
+    <span class="c1"># TODO TODO want clip=True for diag_example_kws?</span>
+    <span class="c1"># TODO TODO with clip=False (the default), is this colormap even clearly</span>
+    <span class="c1"># showing over/under cmap range values distinctly (not sure this was ever that</span>
+    <span class="c1"># related to clip, but pretty sure we need extend='both' set on colorbar creation</span>
+    <span class="c1"># for this)?</span>
+<span class="p">)</span>
+
+
+<span class="c1"># TODO don't require prefix, and save to plot_dir / 'corr.&lt;plot_fmt&gt;' by default?</span>
+<div class="viewcode-block" id="plot_corr">
+<a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.plot_corr">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_corr</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">fname</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">''</span><span class="p">,</span>
+    <span class="n">as_corr_dist</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'pearson'</span><span class="p">,</span>
+    <span class="n">cmap</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">CMap</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">vmax</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">vmin</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">vcenter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">cbar_label</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">cbar_kws</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ParamDict</span><span class="p">]</span> <span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">_save_kws</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Saves odor-odor correlation plot under &lt;plot_dir&gt;/&lt;fname&gt;.&lt;plot_fmt&gt;</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        df: data on which to compute correlations between columns (via `df.corr()`),</span>
+<span class="sd">            or pre-computed correlation [/ correlation distance] matrix (assumes this is</span>
+<span class="sd">            the case if row and column index are equal)</span>
+
+<span class="sd">        plot_dir: where to save a plot of the correlation matrix</span>
+<span class="sd">            (named `&lt;fname&gt;.&lt;plot_fmt&gt;`)</span>
+
+<span class="sd">        fname: name of plot to save (excluding the '.&lt;plot_fmt&gt;' extension)</span>
+
+<span class="sd">        as_corr_dist: if True, plots correlation distance (`1 - corr`) instead (w/</span>
+<span class="sd">            reversed default cmap)</span>
+
+<span class="sd">        method: passed to `df.corr()`. assumed this is also the method for any</span>
+<span class="sd">            precomputed corrs passed in (and cbar label should include it)</span>
+
+<span class="sd">        cmap: defaults to `diverging_cmap`</span>
+
+<span class="sd">        vmin/vmax: if not passed, will default to full range of the correlation</span>
+<span class="sd">            [distance]: [-1, 1] if `as_corr_dist=False`, and `[0, 2]` if True.</span>
+
+<span class="sd">        vcenter: if not passed and `cmap` is diverging, defaults to 0 (or 1 if</span>
+<span class="sd">            `as_corr_dist=True`)</span>
+
+<span class="sd">        cbar_label: defaults to e.g. 'Pearson correlation' (from `method`, w/</span>
+<span class="sd">            ' distance' added if `as_corr_dist=True`)</span>
+
+<span class="sd">        verbose: if True, prints path of saved plot</span>
+
+<span class="sd">        _save_kws: passed to `savefig`</span>
+
+<span class="sd">        **kwargs: passed to `hong2p.viz.matshow`</span>
+
+<span class="sd">    Returns DataFrame containing these odor-odor correlations (with concentrations</span>
+<span class="sd">    removed from odor names, if all odors were at the same concentration).</span>
+<span class="sd">    """</span>
+    <span class="c1"># otherwise, we assume input is already a correlation (/ difference of correlations)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">):</span>
+        <span class="c1"># TODO delete? or check set instead?</span>
+        <span class="c1"># TODO add flag to skip all this checking?</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">):</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">==</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span> <span class="ow">and</span>
+                <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">sort_values</span><span class="p">()</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">sort_values</span><span class="p">())):</span>
+
+                <span class="nb">print</span><span class="p">(</span><span class="s1">'double check input is not already a correlation [diff]!'</span><span class="p">)</span>
+                <span class="nb">breakpoint</span><span class="p">()</span>
+        <span class="c1">#</span>
+
+        <span class="c1"># TODO TODO use new util.mean_of_fly_corrs instead (when appropriate, e.g.</span>
+        <span class="c1"># when input has multiple flies [/ model seeds])?</span>
+        <span class="n">corr</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">corr</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">corr</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="c1"># to check not a corr dist input</span>
+        <span class="c1"># TODO also check that range is consistent w/ corr and not corr-dist?</span>
+        <span class="c1">#</span>
+        <span class="c1"># TODO delete. won't work w/ corr_diff input i'm using in one place.</span>
+        <span class="c1"># TODO TODO fix (prob w/ new mean_of_... input)</span>
+<span class="w">        </span><span class="sd">'''</span>
+<span class="sd">        try:</span>
+<span class="sd">            assert (corr.max() == 1).all()</span>
+<span class="sd">        except AssertionError:</span>
+<span class="sd">            breakpoint()</span>
+<span class="sd">        '''</span>
+
+    <span class="c1"># should not fail if there is no log10_conc, but should be None in that field if not</span>
+    <span class="c1"># (or for inputs that are not formatted as I expect my odor strings to be)</span>
+    <span class="n">odors</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">olf</span><span class="o">.</span><span class="n">parse_odor</span><span class="p">)</span>
+    <span class="n">concs</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="s1">'log10_conc'</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">odors</span><span class="p">]</span>
+    <span class="c1"># TODO allow certain things (like solvent / 'pfo') to have None conc?</span>
+    <span class="c1"># or if most odors are at one conc, say that, and strip for them?</span>
+    <span class="n">shared_conc</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">x</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">concs</span><span class="p">):</span>
+        <span class="n">conc_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">concs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">conc_set</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">shared_conc</span> <span class="o">=</span> <span class="n">conc_set</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+    <span class="n">ylabel</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">shared_conc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">odors</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="s1">'name'</span><span class="p">])</span>
+        <span class="n">corr</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
+        <span class="n">corr</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">index</span>
+        <span class="n">ylabel</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'all odors at </span><span class="si">{</span><span class="n">shared_conc</span><span class="si">:</span><span class="s1">g</span><span class="si">}</span><span class="s1">'</span>
+
+    <span class="c1"># TODO else warn we are using a non-standard cmap?</span>
+    <span class="k">if</span> <span class="n">cmap</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">as_corr_dist</span><span class="p">:</span>
+            <span class="n">cmap</span> <span class="o">=</span> <span class="n">diverging_cmap</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cmap</span> <span class="o">=</span> <span class="n">diverging_cmap</span><span class="o">.</span><span class="n">reversed</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">is_cmap_diverging</span><span class="p">(</span><span class="n">cmap</span><span class="p">)</span>
+
+    <span class="n">cmap_is_diverging</span> <span class="o">=</span> <span class="n">is_cmap_diverging</span><span class="p">(</span><span class="n">cmap</span><span class="p">)</span>
+
+    <span class="c1"># TODO warn if this is set?</span>
+    <span class="c1"># TODO or make method default to None too, and only set it to 'pearson' if this</span>
+    <span class="c1"># is None? (and err if both set?)</span>
+    <span class="k">if</span> <span class="n">cbar_label</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cbar_label</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">method</span><span class="o">.</span><span class="n">title</span><span class="p">()</span><span class="si">}</span><span class="s1"> correlation'</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">as_corr_dist</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">vmin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">vmin</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">vmin</span> <span class="o">&gt;=</span> <span class="o">-</span><span class="mf">1.0</span>
+
+        <span class="k">if</span> <span class="n">vmax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">vmax</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">vmax</span> <span class="o">&lt;=</span> <span class="mf">1.0</span>
+
+        <span class="k">if</span> <span class="n">vcenter</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cmap_is_diverging</span><span class="p">:</span>
+            <span class="n">vcenter</span> <span class="o">=</span> <span class="mf">0.0</span>
+            <span class="k">assert</span> <span class="n">vmin</span> <span class="o">&lt;=</span> <span class="n">vcenter</span> <span class="o">&lt;=</span> <span class="n">vmax</span>
+
+        <span class="n">to_plot</span> <span class="o">=</span> <span class="n">corr</span>
+        <span class="c1"># TODO have cbar ticks be [-1, -0.5, 0, 0.5, 1.0] in this case</span>
+        <span class="c1"># (in both cases i just want multiples of 0.5)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">vmin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">vmin</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">vmin</span> <span class="o">&gt;=</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="n">vmax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">vmax</span> <span class="o">=</span> <span class="mf">2.0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">vmax</span> <span class="o">&lt;=</span> <span class="mf">2.0</span>
+
+        <span class="k">if</span> <span class="n">vcenter</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cmap_is_diverging</span><span class="p">:</span>
+            <span class="n">vcenter</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="k">assert</span> <span class="n">vmin</span> <span class="o">&lt;=</span> <span class="n">vcenter</span> <span class="o">&lt;=</span> <span class="n">vmax</span>
+
+        <span class="n">corr_dist</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">corr</span>
+        <span class="c1"># should be this on the diagonals</span>
+        <span class="k">assert</span> <span class="p">(</span><span class="n">corr_dist</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+        <span class="n">to_plot</span> <span class="o">=</span> <span class="n">corr_dist</span>
+        <span class="n">cbar_label</span> <span class="o">+=</span> <span class="s1">' distance'</span>
+        <span class="c1"># TODO have cbar ticks be [0, 0.5, 1, 1.5, 2] in this case</span>
+        <span class="c1"># (in both cases i just want multiples of 0.5)</span>
+
+    <span class="n">norm</span> <span class="o">=</span> <span class="s1">'two-slope'</span>
+    <span class="k">if</span> <span class="n">vcenter</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">cmap_is_diverging</span><span class="p">:</span>
+            <span class="n">util</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">'using diverging cmap without vcenter. probably a mistake.'</span><span class="p">)</span>
+
+        <span class="n">norm</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># TODO check that results w/ norm/vcenter not passed equiv to new results w/</span>
+    <span class="c1"># norm='two-slope'+vcenter=0</span>
+    <span class="c1">#</span>
+    <span class="c1"># already constrained layout by default (as most everything should be).</span>
+    <span class="c1"># w/ 17x17 odors, figsize is currently width=6.4 height=4.8</span>
+    <span class="n">fig</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">matshow</span><span class="p">(</span><span class="n">to_plot</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=</span><span class="n">vmin</span><span class="p">,</span> <span class="n">vcenter</span><span class="o">=</span><span class="n">vcenter</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="n">vmax</span><span class="p">,</span>
+        <span class="c1"># just using 'two-slope', since 'centered' norm code would require</span>
+        <span class="c1"># modification to get it to work w/ vcenter != 0.</span>
+        <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="n">cbar_label</span><span class="o">=</span><span class="n">cbar_label</span><span class="p">,</span> <span class="n">cbar_kws</span><span class="o">=</span><span class="n">cbar_kws</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="n">ylabel</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span>
+        <span class="n">fontsize</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span> <span class="n">bigtext_fontsize_scaler</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span>
+
+    <span class="c1"># TODO still used? delete? (so far seems ok to pass bbox_inches='tight', if this is</span>
+    <span class="c1"># all it was used for. unless that is why some long text is getting clipped.</span>
+    <span class="c1"># probably want to make text smaller or fig bigger there anyway)</span>
+    <span class="k">if</span> <span class="n">_save_kws</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">_save_kws</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+    <span class="c1"># TODO any downside to hardcoding bbox_inches='tight'? was unspecified before</span>
+    <span class="n">savefig</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s1">'tight'</span><span class="p">,</span> <span class="n">debug</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
+        <span class="n">normalize_fname</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">_save_kws</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">corr</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_plot_responses_helper</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">vmin</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">vmax</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">''</span><span class="p">,</span>
+    <span class="n">title_kws</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ParamDict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">_save_kws</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ParamDict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Plots `df` via `hong2p.viz.matshow`, saving to `&lt;plot_dir&gt;/&lt;prefix&gt;.&lt;plot_fmt&gt;`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        title_kws: passed to `ax.set_title`, if `title` is passed</span>
+
+<span class="sd">        _save_kws: passed to `savefig`</span>
+
+<span class="sd">        **kwargs: passed to `hong2p.viz.matshow`</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO accept subplot_kws for subplots?</span>
+
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
+    <span class="n">matshow</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=</span><span class="n">vmin</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="n">vmax</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">title_kws</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">title_kws</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="o">**</span><span class="n">title_kws</span><span class="p">)</span>
+
+        <span class="c1"># TODO change old code to use a suptitle=kwarg instead? or like set_title</span>
+        <span class="c1"># outputs there too?</span>
+        <span class="c1">#fig.suptitle(title, **title_kws)</span>
+
+    <span class="k">if</span> <span class="n">_save_kws</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">_save_kws</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+    <span class="c1"># TODO any downside to hardcoding bbox_inches='tight'? was unspecified before</span>
+    <span class="n">savefig</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s1">'tight'</span><span class="p">,</span> <span class="o">**</span><span class="n">_save_kws</span><span class="p">)</span>
+
+
+
+<span class="c1"># TODO use/delete (and maybe refactor to include much/all of the kwargs used in</span>
+<span class="c1"># plot_all...? see also mean_df/etc plotting in main, that recreates much of those</span>
+<span class="c1"># kwargs for use w/ viz.matshow)</span>
+<div class="viewcode-block" id="plot_responses">
+<a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.plot_responses">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_responses</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Plots `df` w/ `diverging_cmap_kwargs`, via `_plot_responses_helper`.</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO TODO allow overriding cmap (+ norm? those only two things in</span>
+    <span class="c1"># diverging_cmap_kwargs)</span>
+    <span class="n">_plot_responses_helper</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="o">**</span><span class="n">diverging_cmap_kwargs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="plot_responses_err">
+<a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.plot_responses_err">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_responses_err</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">vmin</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Plots non-negative errors (e.g. SEM) w/ top half of `diverging_cmap`.</span>
+
+<span class="sd">    Any `vmin` passed is replaced with 0. Other `kwargs` passed to</span>
+<span class="sd">    `_plot_responses_helper`.</span>
+<span class="sd">    """</span>
+    <span class="k">assert</span> <span class="p">((</span><span class="n">df</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="n">df</span><span class="o">.</span><span class="n">isna</span><span class="p">())</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">(),</span> <span class="p">(</span>
+        <span class="s1">'expected err to be all non-negative (or NaN)'</span>
+    <span class="p">)</span>
+    <span class="c1"># TODO need to handle NaN?</span>
+
+    <span class="k">if</span> <span class="n">vmin</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">vmin</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">util</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s1">'plot_responses_err: replacing input </span><span class="si">{</span><span class="n">vmin</span><span class="si">=:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> with 0'</span><span class="p">)</span>
+            <span class="n">vmin</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c1"># TODO warn about two-slope norm (/ clear it?), or fix current min tick assertion</span>
+    <span class="c1"># error hong2p.viz.add_colorbar has in that case. anything else broken about that</span>
+    <span class="c1"># norm here?</span>
+
+    <span class="c1"># TODO allow overriding cmap? (prob not... would need to also construct top half,</span>
+    <span class="c1"># if diverging at least)</span>
+    <span class="n">_plot_responses_helper</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">diverging_cmap_tophalf</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=</span><span class="n">vmin</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="c1"># TODO also break out a plot_responses fn from first part (-&gt; use here)?</span>
+<div class="viewcode-block" id="plot_responses_and_corr">
+<a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.plot_responses_and_corr">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_responses_and_corr</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">vmin</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">vmax</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">''</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Plots `df` (via `plot_responses`) and correlations of its columns (`plot_corr`).</span>
+
+<span class="sd">    Correlation plot is saved with a '_corr' suffix added to `prefix`. `vmin` and `vmax`</span>
+<span class="sd">    are only used for the response plot.</span>
+
+<span class="sd">    Returns correlation DataFrame from `plot_corr`.</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO expose bbox_inches (or remove kwarg in plot_[responses|corr], and just accept</span>
+    <span class="c1"># the hardcode to bbox_inches='tight' in both of those, if no downside)? ever need</span>
+    <span class="c1"># diff between the two calls?</span>
+
+    <span class="n">plot_responses</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=</span><span class="n">vmin</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="n">vmax</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="c1"># TODO thread thru bbox_inches kwarg here (for savefig call)?</span>
+    <span class="k">return</span> <span class="n">plot_corr</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">plot_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s1">_corr'</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># TODO why does this decorator not seem required anymore? mpl/sns version thing?</span>
+<span class="c1">#</span>
+<span class="c1"># decorator to fix "There are no gridspecs with layoutgrids" warning that would</span>
+<span class="c1"># otherwise happen in any following savefig calls</span>
+<span class="c1">#@no_constrained_layout</span>
+<span class="c1"># TODO find where sns.ClusterGrid is actually defined and use that as return type?</span>
+<span class="c1"># shouldn't need any more generality (Grid was used above to include FacetGrid)</span>
+<span class="c1"># (default cmap was `al_analysis.al_util.cmap`, chosen to match Remy's plots)</span>
+<div class="viewcode-block" id="cluster_rois">
+<a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.cluster_rois">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">cluster_rois</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">odor_sort</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">cmap</span><span class="p">:</span> <span class="n">CMap</span> <span class="o">=</span> <span class="s1">'magma'</span><span class="p">,</span>
+    <span class="n">return_linkages</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="c1">#return_linkages: bool = False, **kwargs) -&gt; sns.axisgrid.Grid:</span>
+<span class="w">    </span><span class="sd">"""Plots clustermap of ROIs (clustering ROIs, but not odors).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        df: odors X ROIs (transposed before plotting, so ROIs are rows)</span>
+
+<span class="sd">        odor_sort: if True, sorts odors (via `hong2p.olf.sort_odors`). otherwise, keeps</span>
+<span class="sd">            input odor order.</span>
+
+<span class="sd">        return_linkages: passed to `hong2p.viz.clustermap`</span>
+
+<span class="sd">        **kwargs: passed to `hong2p.viz.clustermap` (and through that to</span>
+<span class="sd">            `seaborn.clustermap`). e.g. `row_colors` can be a `Series` with index</span>
+<span class="sd">            matching `df.columns`, where values are colors (e.g. RGB 3-tuples).</span>
+
+<span class="sd">    Returns seaborn `ClusterGrid` (and row and column linkages, if</span>
+<span class="sd">    `return_linkages=True`).</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO why transposing? stop doing that (-&gt; change all inputs). will just cause</span>
+    <span class="c1"># confusion if i use [row/col]_colors...</span>
+    <span class="k">if</span> <span class="n">odor_sort</span><span class="p">:</span>
+        <span class="c1"># TODO why olf.sort_odors and not olf.sort_odors_by_panel?</span>
+        <span class="c1"># After transpose: columns=odors</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">olf</span><span class="o">.</span><span class="n">sort_odors</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># just in case we didn't sort above. we still don't want to modify input...</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># TODO plus, this will screw up [h|v]line_level_fn stuff...</span>
+    <span class="c1"># TODO warn/fail if this is not the case? accidentally didn't hit this when there</span>
+    <span class="c1"># was a bug in above</span>
+    <span class="c1"># TODO use natmix get_odor_var (or is it _get_odor_var?)?</span>
+    <span class="k">if</span> <span class="s1">'odor1'</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
+        <span class="c1"># TODO why? comment explaining? just use an appropriate index-value-dict -&gt;</span>
+        <span class="c1"># formatted str fn? isn't that what i do w/ hong2p.viz.matshow calls?</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">'odor1'</span><span class="p">)</span>
+
+    <span class="c1"># TODO add option to color rows by fly (-&gt; generate row_colors Series in here)</span>
+    <span class="c1"># (values of series should be colors)</span>
+    <span class="c1"># (see natmix_data/analysis.py get_fly_color_series)</span>
+    <span class="c1"># (2025-11-05: planning to add some related code to viz.clustermap, for use in</span>
+    <span class="c1"># natmix_data/analysis.py)</span>
+
+    <span class="c1"># TODO TODO add option to cluster within each fly (would have to hide dendrogram, to</span>
+    <span class="c1"># make it not too much extra work) (refactor to share code with within-cluster</span>
+    <span class="c1"># hierarchichal clustering from natmix_data/analysis.py?)</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">clustermap</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">col_cluster</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">,</span> <span class="n">xlabel</span><span class="o">=</span><span class="s1">'odor'</span><span class="p">,</span>
+        <span class="n">return_linkages</span><span class="o">=</span><span class="n">return_linkages</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">return_linkages</span><span class="p">:</span>
+        <span class="n">cg</span> <span class="o">=</span> <span class="n">ret</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cg</span><span class="p">,</span> <span class="n">row_linkage</span><span class="p">,</span> <span class="n">col_linkage</span> <span class="o">=</span> <span class="n">ret</span>
+
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">cg</span><span class="o">.</span><span class="n">ax_heatmap</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">([])</span>
+    <span class="c1"># TODO also handle via clustermap xlabel?</span>
+    <span class="c1">#ax.set_xlabel('odor', xlabel_kws)</span>
+
+    <span class="k">return</span> <span class="n">ret</span></div>
+
+
+
+<span class="c1"># TODO simpler way?</span>
+<div class="viewcode-block" id="rotate_xticklabels">
+<a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.rotate_xticklabels">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">rotate_xticklabels</span><span class="p">(</span><span class="n">ax</span><span class="p">:</span> <span class="n">Axes</span><span class="p">,</span> <span class="n">rotation</span><span class="p">:</span> <span class="n">MplRotation</span> <span class="o">=</span> <span class="mi">90</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_xticklabels</span><span class="p">():</span>
+        <span class="n">x</span><span class="o">.</span><span class="n">set_rotation</span><span class="p">(</span><span class="n">rotation</span><span class="p">)</span></div>
 
 </pre></div>
 

@@ -93,7 +93,9 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">itertools</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">product</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">factorial</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Collection</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span>
     <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 <span class="p">)</span>
@@ -114,7 +116,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_scalar</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.err</span><span class="w"> </span><span class="kn">import</span> <span class="n">NoStimulusFile</span><span class="p">,</span> <span class="n">TooManyStimulusFiles</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.types</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">Pathlike</span><span class="p">,</span> <span class="n">PathPair</span><span class="p">,</span> <span class="n">Datelike</span><span class="p">,</span> <span class="n">FlyNum</span><span class="p">,</span> <span class="n">DateAndFlyNum</span><span class="p">,</span>
-    <span class="n">DataFrameOrDataArray</span>
+    <span class="n">DataFrameOrDataArray</span><span class="p">,</span> <span class="n">DataFrameOrSeries</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.olf</span><span class="w"> </span><span class="kn">import</span> <span class="n">NO_ODOR</span>
 
@@ -261,6 +263,14 @@
 
 <span class="n">date_fmt_str</span> <span class="o">=</span> <span class="s1">'%Y-%m-</span><span class="si">%d</span><span class="s1">'</span>
 <span class="n">dff_latex</span> <span class="o">=</span> <span class="sa">r</span><span class="s1">'$\frac{\Delta F}</span><span class="si">{F}</span><span class="s1">$'</span>
+
+<span class="c1"># default seed for bootstrapping (shared by al_analysis and its model code)</span>
+<span class="n">bootstrap_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1337</span>
+
+<span class="n">fly_cols</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'date'</span><span class="p">,</span> <span class="s1">'fly_num'</span><span class="p">]</span>
+<span class="c1"># typically, ROI = 'glomerulus' (mb_model.glomerulus_col)</span>
+<span class="c1"># TODO move glomerulus_col here. could prob use in both al_analysis and mb_model</span>
+<span class="n">flyroi_cols</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">fly_cols</span> <span class="o">+</span> <span class="p">[</span><span class="s1">'roi'</span><span class="p">]</span>
 
 
 <span class="c1"># Module level cache.</span>
@@ -5636,6 +5646,588 @@
 
 <span class="c1"># TODO define type w/ scalar (that also works w/ xarray/numpy length-0 shape stuff? or</span>
 <span class="c1"># is that too much to ask?)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_colored</span><span class="p">(</span><span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">color</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns `termcolor.colored(msg, color)`, or `msg` if termcolor not installed.</span>
+<span class="sd">    """</span>
+    <span class="c1"># optional dependency (`hong2p[all]`), only for coloring terminal output</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">termcolor</span><span class="w"> </span><span class="kn">import</span> <span class="n">colored</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">msg</span>
+
+    <span class="k">return</span> <span class="n">colored</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">color</span><span class="p">)</span>
+
+
+<span class="c1"># TODO replace this + use of warnings.warn w/ logging.warning (w/ logger probably</span>
+<span class="c1"># currently just configured to output to stdout/stderr)</span>
+<span class="c1">#</span>
+<span class="c1"># (al_analysis.al_util sets `warnings.formatwarning` to this on import)</span>
+<div class="viewcode-block" id="formatwarning_msg_only">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.formatwarning_msg_only">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">formatwarning_msg_only</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">category</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Format warning without line/lineno (which are often not the relevant line)</span>
+<span class="sd">    """</span>
+    <span class="n">warn_type</span> <span class="o">=</span> <span class="n">category</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">if</span> <span class="n">category</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">!=</span> <span class="s1">'UserWarning'</span> <span class="k">else</span> <span class="s1">'Warning'</span>
+    <span class="k">return</span> <span class="n">_colored</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">warn_type</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">msg</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span><span class="p">,</span> <span class="s1">'yellow'</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="in_pytest">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.in_pytest">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">in_pytest</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns whether code is currently being executed by pytest.</span>
+<span class="sd">    """</span>
+    <span class="c1"># https://docs.pytest.org/en/latest/example/simple.html#pytest-current-test-environment-variable</span>
+    <span class="k">return</span> <span class="s1">'PYTEST_CURRENT_TEST'</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span></div>
+
+
+
+<div class="viewcode-block" id="is_pytest_capturing_stderr">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.is_pytest_capturing_stderr">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_pytest_capturing_stderr</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns whether pytest is capturing stderr (as can be disabled by -s).</span>
+
+<span class="sd">    There are probably other ways to disable capture other than `-s`, which disables all</span>
+<span class="sd">    capturing (stdout as well). This method will probably also work in that context.</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO does pytest directly expose it's capturing method in and env var or</span>
+    <span class="c1"># something? use that instead, if so?</span>
+    <span class="c1"># TODO maybe it also exposes whether it will show capture at end? use that too?</span>
+
+    <span class="c1"># from my testing (w/ pytest 8.3.5 and python 3.8.12), it seems .name on sys.stderr</span>
+    <span class="c1"># can distinguish whether pytest was called with `-s` or not.</span>
+    <span class="c1">#</span>
+    <span class="c1"># with -s (--capture=no), it's: '&lt;stderr&gt;'</span>
+    <span class="c1">#</span>
+    <span class="c1"># without -s, it's like: "&lt;_io.FileIO name=8 mode='rb+' closefd=True&gt;"</span>
+    <span class="n">stderr</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span>
+    <span class="c1"># should work for --capture=fd  (default), =no (-s), and =sys , but get:</span>
+    <span class="c1"># `AttributeError: '_io.BytesIO' object has no attribute 'name'` if using</span>
+    <span class="c1"># --capture=sys-tee</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s1">'name'</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">stderr</span><span class="o">.</span><span class="n">name</span> <span class="o">!=</span> <span class="s1">'&lt;stderr&gt;'</span>
+
+    <span class="c1"># assuming we are in --capture=sys-tee or --capture=sys case here</span>
+    <span class="c1"># (both currently hit this code path on my system)</span>
+    <span class="c1">#</span>
+    <span class="c1"># (not sure --capture=sys-tee works w/ rest of my system here... i.e. that prints</span>
+    <span class="c1"># and warnings are still interleaved as i want [and ideally printed in real time],</span>
+    <span class="c1"># and that debugger interface can still be used normally. sys-tee seems like it</span>
+    <span class="c1"># might interfere w/ debugger being used normally, tho it does also print in real</span>
+    <span class="c1"># time [in addition to capturing])</span>
+    <span class="c1">#</span>
+    <span class="c1"># TODO TODO need a test case w/ some interleaved prints and warnings before a</span>
+    <span class="c1"># breakpoint, then try all the capturing methods and see which are available</span>
+    <span class="k">return</span> <span class="kc">True</span></div>
+
+
+
+<span class="c1"># TODO maybe log all warnings?</span>
+<div class="viewcode-block" id="warn">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.warn">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Warns with `str(msg)` (via `warnings.warn`).</span>
+
+<span class="sd">    Also prints `msg` (in yellow) first, if running under pytest without stderr</span>
+<span class="sd">    capturing (e.g. `-s`), so warnings are shown before any debugger breakpoints.</span>
+<span class="sd">    """</span>
+    <span class="n">color</span> <span class="o">=</span> <span class="s1">'yellow'</span>
+
+    <span class="c1"># since i couldn't otherwise figure out how to get pytest to show warnings before</span>
+    <span class="c1"># debugger breakpoint, especially if pytest is configured to ignore warnings, so now</span>
+    <span class="c1"># we'll just also print it before pytest cleanup.</span>
+    <span class="c1"># TODO check pytest config options again for something to disable warning-exclusive</span>
+    <span class="c1"># capturing / formatting / output control?</span>
+    <span class="c1">#</span>
+    <span class="c1"># if pytest is capturing stderr, we probably aren't debugging, and thus shouldn't</span>
+    <span class="c1"># need these extra prints.</span>
+    <span class="c1"># TODO once per run, warn we are changing warning behavior based on this?</span>
+    <span class="k">if</span> <span class="n">in_pytest</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_pytest_capturing_stderr</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">_colored</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">msg</span><span class="p">),</span> <span class="n">color</span><span class="p">))</span>
+
+    <span class="c1"># TODO replace w/ logging.warning? (have init_logger just hook into warnings.warn?</span>
+    <span class="c1"># some standard mechanism for that?)</span>
+    <span class="c1"># TODO how to get color to work here too? possible?</span>
+    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">msg</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="format_mtime">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.format_mtime">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">format_mtime</span><span class="p">(</span><span class="n">mtime_or_path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Pathlike</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">year</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">seconds</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Formats mtime like default `ls -l` output (e.g. 'Oct 11 18:24').</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mtime_or_path</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
+        <span class="n">mtime</span> <span class="o">=</span> <span class="n">mtime_or_path</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">mtime</span> <span class="o">=</span> <span class="n">getmtime</span><span class="p">(</span><span class="n">mtime_or_path</span><span class="p">)</span>
+
+    <span class="n">fstr</span> <span class="o">=</span> <span class="s1">'%b </span><span class="si">%d</span><span class="s1"> %H:%M'</span>
+    <span class="k">if</span> <span class="n">seconds</span><span class="p">:</span>
+        <span class="n">fstr</span> <span class="o">+=</span> <span class="s1">':%S'</span>
+    <span class="k">if</span> <span class="n">year</span><span class="p">:</span>
+        <span class="n">fstr</span> <span class="o">+=</span> <span class="s1">' %Y'</span>
+
+    <span class="k">return</span> <span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="n">fstr</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">localtime</span><span class="p">(</span><span class="n">mtime</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="n_choose_2">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.n_choose_2">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">n_choose_2</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="c1"># TODO assert n &gt; 0? &gt; 1?</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span> <span class="o">/</span> <span class="mi">2</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">ret</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="n_multichoose_k">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.n_multichoose_k">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">n_multichoose_k</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">k</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns number of size-k unordered "multisets" that can be drawn from n options.</span>
+
+<span class="sd">    Multisets can contain one element multiple times, but are still unordered. This can</span>
+<span class="sd">    answer how many ways a population can be resampled with replacement.</span>
+
+<span class="sd">    https://en.wikipedia.org/wiki/Multiset#Counting_multisets</span>
+<span class="sd">    """</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">factorial</span><span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="o">*</span> <span class="n">factorial</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">ret</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># TODO replace hong2p.pandas.melt_symmetric w/ this (or vice versa)?</span>
+<span class="c1"># TODO TODO test that a given pair will always be returned in a fixed order, so that no</span>
+<span class="c1"># matter the set of odors we pass in here, we can average across outputs from diff calls</span>
+<span class="c1"># to this fn. relevant for now loading old megamat data. not sure current implementation</span>
+<span class="c1"># has this property... (as long as i'm always using ordered_pairs where needed, should</span>
+<span class="c1"># be ok... kind of a hack though)</span>
+<span class="c1"># TODO TODO add option to pass sequence of odors, to generate something like ordered</span>
+<span class="c1"># pairs? (for convenience when averaging over groups w/ diff sets of odors/pairs)</span>
+<div class="viewcode-block" id="corr_triangular">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.corr_triangular">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">corr_triangular</span><span class="p">(</span><span class="n">corr_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">sort</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="c1"># TODO also accept order of odors, if not pairs?</span>
+    <span class="c1"># TODO TODO does this even work? did i break it? didn't seem to be working when i</span>
+    <span class="c1"># tried to use from scripts/corr_minus_orn_vs_vcf_repro/step05b-run-resampling.py</span>
+    <span class="n">ordered_pairs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="c1"># TODO delete check_index_names (and always don't, or only warn?)?</span>
+    <span class="n">check_index_names</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns Series w/ one triangle of symmetric `corr_df` (excluding diagonal).</span>
+
+<span class="sd">    Output is indexed by unique pairs of index values of `corr_df` (e.g. odor pairs).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        corr_df: square DataFrame, with same row and column index (e.g. odor X odor</span>
+<span class="sd">            correlations)</span>
+
+<span class="sd">        sort: if True, sorts index before selecting pairs, so the order within each</span>
+<span class="sd">            pair is consistent across calls (and outputs of different calls can be</span>
+<span class="sd">            merged)</span>
+
+<span class="sd">        ordered_pairs: if passed, pairs whose reverse is in this sequence are reversed</span>
+<span class="sd">            to match it</span>
+
+<span class="sd">        check_index_names: if True, checks output index level names (expecting 'odor'</span>
+<span class="sd">            prefixed names, unless there is also a 'panel' level), and renames them to</span>
+<span class="sd">            ['odor1', 'odor2'] (or ['panel1', 'odor1', 'panel2', 'odor2'])</span>
+<span class="sd">    """</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">corr_df</span><span class="o">.</span><span class="n">index</span>
+    <span class="k">assert</span> <span class="n">index</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">corr_df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">sort</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">sort_values</span><span class="p">()</span>
+
+    <span class="c1"># TODO TODO support panel level being in this index (or at least drop, and make sure</span>
+    <span class="c1"># that handling is correct. may at least need to also assert same odor doesn't show</span>
+    <span class="c1"># up in &gt;1 panel then)</span>
+    <span class="c1"># TODO this causing difficulties later? alternatives?</span>
+    <span class="c1"># (w/ needing to sort again)</span>
+    <span class="c1">#</span>
+    <span class="c1"># sorting index so that diff calls to this will produce mergeable outputs.</span>
+    <span class="c1"># otherwise, though the set of pairs will be the same, some may be represented</span>
+    <span class="c1"># in the other order in this index (and thus merging won't find a matching</span>
+    <span class="c1"># pair).</span>
+    <span class="c1"># TODO .loc still work w/ list(...)?</span>
+    <span class="n">pairs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+    <span class="c1"># need to stack all levels, in case we also have 'panel' in index names</span>
+    <span class="c1"># TODO why dropna=False? matter?</span>
+    <span class="n">corr_ser</span> <span class="o">=</span> <span class="n">hong_pd</span><span class="o">.</span><span class="n">stack_keep_na</span><span class="p">(</span><span class="n">corr_df</span><span class="p">,</span> <span class="n">level</span><span class="o">=</span><span class="n">corr_df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">names</span><span class="p">)</span>
+
+    <span class="c1"># TODO delete this branch? make sure it also supports panel level in index?</span>
+    <span class="k">if</span> <span class="n">ordered_pairs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># does fail in call from end of load_remy_2e...</span>
+        <span class="c1"># (only happened to be true for my first use case. don't think it actually</span>
+        <span class="c1"># matters)</span>
+        <span class="c1">#assert set(ordered_pairs) - set(corr_ser.index) == set()</span>
+
+        <span class="c1"># TODO debug that says which of these we are swapping? option to not swap any,</span>
+        <span class="c1"># and take as-is?</span>
+        <span class="n">pairs</span> <span class="o">=</span> <span class="p">[(</span><span class="n">b</span><span class="p">,</span><span class="n">a</span><span class="p">)</span> <span class="k">if</span> <span class="p">(</span><span class="n">b</span><span class="p">,</span><span class="n">a</span><span class="p">)</span> <span class="ow">in</span> <span class="n">ordered_pairs</span> <span class="k">else</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="n">b</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span><span class="n">b</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">]</span>
+
+    <span class="c1"># itertools.combinations will not give us any combinations of an element with</span>
+    <span class="c1"># itself. in other words, we won't be keeping the identity correlations.</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="n">b</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s1">'panel'</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
+        <span class="n">flat_tuples</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1"># e.g. (('control', '1o3ol @ -3'), ('control', '1o3ol+2h @ 0'))</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">tuple</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">tuple</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">p</span><span class="p">)</span>
+            <span class="c1"># makes one 4-element tuple, which should be able to index corr_ser below</span>
+            <span class="c1"># e.g. ('control', '1o3ol @ -3', 'control', '1o3ol+2h @ 0')</span>
+            <span class="n">flat_tuples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">pairs</span> <span class="o">=</span> <span class="n">flat_tuples</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">type</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">tuple</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">p</span><span class="p">)</span>
+
+    <span class="c1"># itertools.combinations essentially selects one triangular, excluding diagonal</span>
+    <span class="n">corr_ser</span> <span class="o">=</span> <span class="n">corr_ser</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">pairs</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">check_index_names</span><span class="p">:</span>
+        <span class="k">if</span> <span class="s1">'panel'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
+            <span class="c1"># TODO switch to assertion(s) on input index/column names?</span>
+            <span class="c1"># (just to fail sooner / be more clear)</span>
+            <span class="c1">#</span>
+            <span class="c1"># TODO make more general than assuming 'odor' prefix?</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+
+            <span class="c1"># TODO delete?</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'odor'</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">),</span> \
+                <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="si">=}</span><span class="s1">'</span>
+
+            <span class="c1"># TODO do 'a','b' instead? other suffix ('_row','_col')? (to not confused w/</span>
+            <span class="c1"># 'odor1'/'odor2' used in many other MultiIndex levels in here, where</span>
+            <span class="c1"># 'odor2' is a almost-never-used-anymore optional 2nd odor, where 2</span>
+            <span class="c1"># delivered at same time (most recently in kiwi/control 2-component ramp</span>
+            <span class="c1"># experiments).</span>
+            <span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'odor1'</span><span class="p">,</span> <span class="s1">'odor2'</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span>
+            <span class="n">odor_var</span> <span class="o">=</span> <span class="n">olf</span><span class="o">.</span><span class="n">first_odor_level</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">==</span> <span class="p">[</span><span class="s1">'panel'</span><span class="p">,</span> <span class="n">odor_var</span><span class="p">,</span> <span class="s1">'panel'</span><span class="p">,</span> <span class="n">odor_var</span><span class="p">]</span>
+            <span class="c1"># TODO again, would prefer to use _a/_b suffixes</span>
+            <span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'panel1'</span><span class="p">,</span> <span class="s1">'odor1'</span><span class="p">,</span> <span class="s1">'panel2'</span><span class="p">,</span> <span class="s1">'odor2'</span><span class="p">]</span>
+
+    <span class="c1"># TODO sort output so odors appear in same order as in input (within each component</span>
+    <span class="c1"># of pair, at least)?</span>
+
+    <span class="k">return</span> <span class="n">corr_ser</span></div>
+
+
+
+<span class="c1"># TODO unit test</span>
+<span class="c1"># TODO remove "private" '_' prefix of _index kwarg?</span>
+<div class="viewcode-block" id="invert_corr_triangular">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.invert_corr_triangular">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">invert_corr_triangular</span><span class="p">(</span><span class="n">corr_ser</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">diag_value</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">_index</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'odor'</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns square DataFrame from one triangle Series, as from `corr_triangular`.</span>
+
+<span class="sd">    Expects each pair of distinct odors to be in `corr_ser` index exactly once (in</span>
+<span class="sd">    either order), with odors in the order output should have (as from</span>
+<span class="sd">    `itertools.combinations` on that order).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        corr_ser: Series indexed by (odor1, odor2) pairs (or by 4 levels, w/ a</span>
+<span class="sd">            'panel'-prefixed level before each odor level)</span>
+
+<span class="sd">        diag_value: value for diagonal (e.g. 1 for correlations)</span>
+
+<span class="sd">        _index: index to get odor order from, if not `corr_ser.index`</span>
+
+<span class="sd">        name: name for output row and column index (or their odor level, if there are</span>
+<span class="sd">            panel levels)</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">_index</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">for_odor_index</span> <span class="o">=</span> <span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">for_odor_index</span> <span class="o">=</span> <span class="n">_index</span>
+
+    <span class="n">have_panels</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'panel'</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">for_odor_index</span><span class="o">.</span><span class="n">names</span><span class="p">):</span>
+        <span class="n">have_panels</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="c1"># TODO relax these assertions?</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">have_panels</span><span class="p">:</span>
+        <span class="c1"># TODO make more general than assuming 'odor' prefix?</span>
+        <span class="c1"># TODO + factor to share w/ what corr_triangual sets by default (at least), in</span>
+        <span class="c1"># case i change suffix added there</span>
+        <span class="c1">#assert for_odor_index.names == ['odor1', 'odor2']</span>
+        <span class="c1"># TODO rename all "odor" stuff to be more general (now that i'm not requiring</span>
+        <span class="c1"># 'odor1'/'odor2')</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">for_odor_index</span><span class="o">.</span><span class="n">names</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+
+        <span class="c1"># unique values for odor1 and odor2 will not be same (each should have one value</span>
+        <span class="c1"># not in other). could just sort, for purposes of generating one combined order.</span>
+        <span class="c1"># for now, assuming (correctly, it seems) that first value in odor1 and last</span>
+        <span class="c1"># value in odor2 are the only non shared, and that otherwise we want to keep the</span>
+        <span class="c1"># order</span>
+        <span class="c1">#</span>
+        <span class="c1"># pandas &lt;Series&gt;.unique() keeps order of input (assuming all are adjacent, at</span>
+        <span class="c1"># least)</span>
+        <span class="c1"># TODO just delete? stuff below should trip anywhere if there's actually an</span>
+        <span class="c1"># issue...</span>
+        <span class="c1"># TODO update (or fix calling code). currently getting ['c1','c2'] for some</span>
+        <span class="c1"># .names in model_mb_responses invocations</span>
+        <span class="c1"># TODO flag to just skip this assertion, or only ever warn instead (and also</span>
+        <span class="c1"># allow disabling that)?</span>
+        <span class="c1">#assert for_odor_index.names[0].startswith('odor')</span>
+        <span class="c1">#assert for_odor_index.names[1].startswith('odor')</span>
+        <span class="n">odor1</span> <span class="o">=</span> <span class="n">for_odor_index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span>
+        <span class="n">odor2</span> <span class="o">=</span> <span class="n">for_odor_index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span>
+
+        <span class="c1"># TODO try to make work without these assertions (would need to change how</span>
+        <span class="c1"># odor_index is defined below). these seem to work if index is sorted, but not</span>
+        <span class="c1"># for (at least some) indices before sort_index call.</span>
+        <span class="n">index_vals1</span> <span class="o">=</span> <span class="n">odor1</span>
+        <span class="n">index_vals2</span> <span class="o">=</span> <span class="n">odor2</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">for_odor_index</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'panel'</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">for_odor_index</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'odor'</span><span class="p">)</span>
+
+        <span class="n">index_vals1</span> <span class="o">=</span> <span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span>
+            <span class="n">for_odor_index</span><span class="o">.</span><span class="n">to_frame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">drop_duplicates</span><span class="p">(</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">itertuples</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="k">assert</span> <span class="n">for_odor_index</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'panel'</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">for_odor_index</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'odor'</span><span class="p">)</span>
+
+        <span class="n">index_vals2</span> <span class="o">=</span> <span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span>
+            <span class="n">for_odor_index</span><span class="o">.</span><span class="n">to_frame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">iloc</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">:]</span><span class="o">.</span><span class="n">drop_duplicates</span><span class="p">(</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">itertuples</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="p">]</span>
+
+    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">index_vals2</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">index_vals1</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+    <span class="k">assert</span> <span class="n">index_vals1</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">index_vals2</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">index_vals2</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">index_vals1</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">have_panels</span><span class="p">:</span>
+        <span class="c1"># single element list does NOT work here</span>
+        <span class="n">odor_index</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">index_vals1</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">index_vals2</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]],</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'panel'</span><span class="p">,</span> <span class="n">name</span><span class="p">]</span>
+        <span class="n">odor_index</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="o">.</span><span class="n">from_tuples</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">index_vals1</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">index_vals2</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]],</span>
+            <span class="n">names</span><span class="o">=</span><span class="n">names</span>
+        <span class="p">)</span>
+
+    <span class="c1"># TODO maybe columns and index should have diff names? keep odor1/odor2?</span>
+
+    <span class="n">square_corr</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">odor_index</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">odor_index</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="s1">'nan'</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">odor_index</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">odor_index</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">have_panels</span><span class="p">:</span>
+                <span class="n">pair</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+                <span class="n">reverse_pair</span> <span class="o">=</span> <span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">pair</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+                <span class="n">reverse_pair</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">a</span> <span class="o">==</span> <span class="n">b</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">pair</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">corr_ser</span>
+                <span class="n">square_corr</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">]</span> <span class="o">=</span> <span class="n">diag_value</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># TODO clean up</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">corr_ser</span><span class="p">:</span>
+                    <span class="k">assert</span> <span class="n">reverse_pair</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">corr_ser</span>
+                    <span class="n">c</span> <span class="o">=</span> <span class="n">corr_ser</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">pair</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">assert</span> <span class="n">reverse_pair</span> <span class="ow">in</span> <span class="n">corr_ser</span>
+                    <span class="n">c</span> <span class="o">=</span> <span class="n">corr_ser</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">reverse_pair</span><span class="p">]</span>
+            <span class="c1"># TODO delete this try/except if i can't trigger this case in any tests.</span>
+            <span class="c1"># probably indicates a bug anyway</span>
+            <span class="k">except</span> <span class="ne">AssertionError</span><span class="p">:</span>
+                <span class="k">raise</span>
+                <span class="c1">#print(f'{a=}')</span>
+                <span class="c1">#print(f'{b=}')</span>
+                <span class="c1">#import ipdb; ipdb.set_trace()</span>
+                <span class="n">c</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'nan'</span><span class="p">)</span>
+            <span class="c1">#</span>
+            <span class="n">square_corr</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">]</span> <span class="o">=</span> <span class="n">c</span>
+
+    <span class="k">return</span> <span class="n">square_corr</span></div>
+
+
+
+<span class="c1"># TODO TODO use inside plot_corr, for its calc when input has multiple flies (/seeds)</span>
+<span class="c1"># TODO add option to drop nonresponders (whether glomeruli or KCs), before computing?</span>
+<span class="c1"># could only do stuff that is actually 0 (either via filling or in model KC responses)</span>
+<span class="c1"># though, not just close to 0, or would have to decide how to threshold...</span>
+<span class="c1"># TODO refactor part of internals out into a new fn that keeps id_cols metadata, but has</span>
+<span class="c1"># corr_triangular pairs (as the 2 level MultiIndex it returns) on opposite (column) axis</span>
+<span class="c1"># index (-&gt; use that to calc mean -&gt; invert_corr_triangular in here)</span>
+<div class="viewcode-block" id="mean_of_fly_corrs">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.mean_of_fly_corrs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mean_of_fly_corrs</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">id_cols</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="c1"># TODO after testing, try to have keep_panel default to True?</span>
+    <span class="n">square</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">keep_panel</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataFrameOrSeries</span><span class="p">:</span>
+    <span class="c1"># TODO TODO also use this for uniform model w/ id_cols='seed'? how do i currently</span>
+    <span class="c1"># handle that?</span>
+<span class="w">    </span><span class="sd">"""Returns mean (across flies) of odor-odor correlations computed within each fly.</span>
+
+<span class="sd">    Responses are first averaged across trials of each odor. Then correlations are</span>
+<span class="sd">    computed within each fly (across its ROIs), and averaged across flies (ignoring</span>
+<span class="sd">    NaN).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        df: DataFrame with odor level on row index, and levels from id_cols</span>
+<span class="sd">            in column index.</span>
+
+<span class="sd">        id_cols: column index levels, unique combinations of which identify individual</span>
+<span class="sd">            flies (/ experimental units). if None, defaults to ['date', 'fly_num'].</span>
+
+<span class="sd">        square: if True, returns square correlation matrix as a DataFrame (odors in</span>
+<span class="sd">            same order as input). otherwise, returns one triangular (excluding</span>
+<span class="sd">            diagonal) as a Series.</span>
+
+<span class="sd">        keep_panel: if True (and `df` has a 'panel' row index level), averages trials</span>
+<span class="sd">            within each (panel, odor) combination, rather than within each odor</span>
+<span class="sd">    """</span>
+    <span class="c1"># TODO add checks= kwarg to disable all the assertions?</span>
+
+    <span class="c1"># TODO also allow selecting 'fly_id' as default, if there?</span>
+    <span class="k">if</span> <span class="n">id_cols</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">id_cols</span> <span class="o">=</span> <span class="n">fly_cols</span>
+
+    <span class="c1"># TODO TODO also work w/ 'odor' level (have in loaded model responses)</span>
+    <span class="c1"># (or just expose as kwarg?)</span>
+    <span class="c1"># TODO only do if 'repeat' level present? assert it's there?</span>
+    <span class="c1">#</span>
+    <span class="c1"># assumes 'odor2' level, if present, doesn't vary.</span>
+    <span class="c1"># TODO TODO assert assumption about possible 'odor2' level?</span>
+    <span class="c1"># TODO TODO assert no variation in any level other than odor1 and repeat?</span>
+    <span class="c1"># TODO TODO add some option to group by panel too, if available?</span>
+    <span class="n">odor_var</span> <span class="o">=</span> <span class="n">olf</span><span class="o">.</span><span class="n">first_odor_level</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">keep_panel</span> <span class="ow">or</span> <span class="s1">'panel'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
+        <span class="n">by</span> <span class="o">=</span> <span class="n">odor_var</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">by</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'panel'</span><span class="p">,</span> <span class="n">odor_var</span><span class="p">]</span>
+
+    <span class="n">trialmean_df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">by</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="n">n_odors</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trialmean_df</span><span class="p">)</span>
+
+    <span class="n">first_row_index</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># TODO also want to  keep track of and append metadata?</span>
+    <span class="n">fly_corrs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c1"># (groupby axis= kwarg removed in pandas 3.0, hence the transposing)</span>
+    <span class="k">for</span> <span class="n">fly</span><span class="p">,</span> <span class="n">fly_df</span> <span class="ow">in</span> <span class="n">trialmean_df</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">id_cols</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">fly_df</span> <span class="o">=</span> <span class="n">fly_df</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">if</span> <span class="n">first_row_index</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">first_row_index</span> <span class="o">=</span> <span class="n">fly_df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">fly_df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">first_row_index</span><span class="p">)</span>
+
+        <span class="c1"># TODO TODO pass in ordered_pairs? just expose as kwarg to this fn? (or fix</span>
+        <span class="c1"># corr_triangular to always have a pair in a fixed order? even possible?)</span>
+        <span class="n">corr</span> <span class="o">=</span> <span class="n">corr_triangular</span><span class="p">(</span><span class="n">fly_df</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">corr</span><span class="p">())</span>
+        <span class="n">fly_corrs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">corr</span><span class="p">)</span>
+
+    <span class="c1"># TODO delete (just notes re-assuring myself this fn is working properly, when run</span>
+    <span class="c1"># on megamat input)</span>
+    <span class="c1">#</span>
+    <span class="c1"># in case of Hallem subset of ORN data (when called from top-level modelling fn):</span>
+    <span class="c1"># ipdb&gt; trialmean_df.shape</span>
+    <span class="c1"># (17, 140)</span>
+    <span class="c1">#</span>
+    <span class="c1"># ipdb&gt; [num_null(x) for _, x in trialmean_df.groupby(level=id_cols,</span>
+    <span class="c1">#     axis='columns', sort=False)]</span>
+    <span class="c1"># [32, 30, 0, 0, 0, 0, 0, 0, 0]</span>
+    <span class="c1">#</span>
+    <span class="c1"># ipdb&gt; [x.shape for _, x in trialmean_df.groupby(level=id_cols, axis='columns',</span>
+    <span class="c1">#     sort=False)]</span>
+    <span class="c1"># [(17, 16), (17, 15), (17, 16), (17, 15), (17, 15), (17, 16), (17, 16), (17, 16), (17, 15)]</span>
+    <span class="c1">#</span>
+    <span class="c1"># ipdb&gt; [x.columns for _, x in trialmean_df.groupby(level=id_cols, axis='columns',</span>
+    <span class="c1">#     sort=False)][0]</span>
+    <span class="c1"># MultiIndex([('2023-04-22', 2,  'DC1'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'DL1'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'DL5'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'DM2'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'DM3'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'DM4'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'DM5'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'DM6'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'VA5'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'VA6'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'VC3'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'VC4'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'VM2'),</span>
+    <span class="c1">#             ('2023-04-22', 2,  'VM3'),</span>
+    <span class="c1">#             ('2023-04-22', 2, 'VM5d'),</span>
+    <span class="c1">#             ('2023-04-22', 2, 'VM5v')],</span>
+    <span class="c1">#            names=['date', 'fly_num', 'roi'])</span>
+
+    <span class="n">n_flies</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fly_corrs</span><span class="p">)</span>
+
+    <span class="c1"># TODO TODO separate check that there are no duplicates in columns? think i might</span>
+    <span class="c1"># have come across some other cases where verify_integrity=True did not do what i</span>
+    <span class="c1"># expected when concatenating across columns</span>
+    <span class="n">corrs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">fly_corrs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="s1">'columns'</span><span class="p">,</span> <span class="n">verify_integrity</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">corrs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">n_flies</span>
+
+    <span class="n">n_odors_choose_2</span> <span class="o">=</span> <span class="n">n_choose_2</span><span class="p">(</span><span class="n">n_odors</span><span class="p">)</span>
+    <span class="c1"># n choose 2. 136 for all non-identity combinations of 17 odors.</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">corrs</span><span class="p">)</span> <span class="o">==</span> <span class="n">n_odors_choose_2</span>
+
+    <span class="c1"># excludes NaN (e.g. va/aa in first 2 megamat flies)</span>
+    <span class="n">mean_corr_triangular</span> <span class="o">=</span> <span class="n">corrs</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s1">'columns'</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">mean_corr_triangular</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="n">n_odors_choose_2</span><span class="p">,)</span>
+
+    <span class="n">odor_order</span> <span class="o">=</span> <span class="n">trialmean_df</span><span class="o">.</span><span class="n">index</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="n">odor_order</span><span class="o">.</span><span class="n">duplicated</span><span class="p">()</span><span class="o">.</span><span class="n">any</span><span class="p">()</span>
+    <span class="c1"># TODO similar assertion to below, but against mean_corr_triangular?</span>
+    <span class="c1"># (don't think i can...)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">square</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">mean_corr_triangular</span>
+
+    <span class="n">mean_corr</span> <span class="o">=</span> <span class="n">invert_corr_triangular</span><span class="p">(</span><span class="n">mean_corr_triangular</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">mean_corr</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="n">n_odors</span><span class="p">,</span> <span class="n">n_odors</span><span class="p">)</span>
+
+    <span class="k">assert</span> <span class="nb">set</span><span class="p">(</span><span class="n">odor_order</span><span class="p">)</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">mean_corr</span><span class="o">.</span><span class="n">index</span><span class="p">)</span> <span class="o">==</span> <span class="nb">set</span><span class="p">(</span><span class="n">mean_corr</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+
+    <span class="c1"># TODO TODO need to do something different here if panel level is included above?</span>
+    <span class="c1"># re-ordering odors to keep same order as input</span>
+    <span class="n">mean_corr</span> <span class="o">=</span> <span class="n">mean_corr</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">odor_order</span><span class="p">,</span> <span class="n">odor_order</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">mean_corr</span></div>
+
+
+
+<div class="viewcode-block" id="print_curr_mem_usage">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.print_curr_mem_usage">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_curr_mem_usage</span><span class="p">(</span><span class="n">end</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Prints memory usage (MiB) of current process.</span>
+
+<span class="sd">    Prints both resident set size (RSS) and virtual memory size (VMS).</span>
+<span class="sd">    """</span>
+    <span class="c1"># optional dependency (`hong2p[all]`)</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">psutil</span>
+
+    <span class="c1"># https://stackoverflow.com/questions/938733</span>
+    <span class="n">proc</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">()</span>
+    <span class="n">byte2MiB</span> <span class="o">=</span> <span class="mi">1024</span><span class="o">**</span><span class="mi">2</span>
+    <span class="c1"># NOTE: "resident set size" (rss) is probably what I want, but may also</span>
+    <span class="c1"># consider "virtual memory size" (vms), which would also include a few other</span>
+    <span class="c1"># (mostly not actively being used) things.</span>
+    <span class="c1"># see: https://stackoverflow.com/questions/7880784</span>
+    <span class="c1">#</span>
+    <span class="c1"># memory_info().rss should be current memory usage in bytes</span>
+    <span class="n">rss</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">memory_info</span><span class="p">()</span><span class="o">.</span><span class="n">rss</span> <span class="o">/</span> <span class="n">byte2MiB</span>
+    <span class="n">vms</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">memory_info</span><span class="p">()</span><span class="o">.</span><span class="n">vms</span> <span class="o">/</span> <span class="n">byte2MiB</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'memory usage (MiB): rss=</span><span class="si">{</span><span class="n">rss</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> vms=</span><span class="si">{</span><span class="n">vms</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">'</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span></div>
+
 </pre></div>
 
            </div>

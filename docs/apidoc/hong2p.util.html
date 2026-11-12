@@ -50,6 +50,7 @@
 <li class="toctree-l3 current"><a class="reference internal" href="hong2p.html#submodules">Submodules</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="hong2p.chem.html">hong2p.chem module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="hong2p.err.html">hong2p.err module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.io.html">hong2p.io module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="hong2p.latex.html">hong2p.latex module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="hong2p.olf.html">hong2p.olf module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="hong2p.pandas.html">hong2p.pandas module</a></li>
@@ -313,6 +314,32 @@ containing these (start, stop) indices.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.corr_triangular">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">corr_triangular</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_df</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ordered_pairs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">check_index_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#corr_triangular"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.corr_triangular" title="Link to this definition"></a></dt>
+<dd><p>Returns Series w/ one triangle of symmetric <cite>corr_df</cite> (excluding diagonal).</p>
+<p>Output is indexed by unique pairs of index values of <cite>corr_df</cite> (e.g. odor pairs).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>corr_df</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span>) – square DataFrame, with same row and column index (e.g. odor X odor
+correlations)</p></li>
+<li><p><strong>sort</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, sorts index before selecting pairs, so the order within each
+pair is consistent across calls (and outputs of different calls can be
+merged)</p></li>
+<li><p><strong>ordered_pairs</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]] | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – if passed, pairs whose reverse is in this sequence are reversed
+to match it</p></li>
+<li><p><strong>check_index_names</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, checks output index level names (expecting ‘odor’
+prefixed names, unless there is also a ‘panel’ level), and renames them to
+[‘odor1’, ‘odor2’] (or [‘panel1’, ‘odor1’, ‘panel2’, ‘odor2’])</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.util.data_root">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">data_root</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#data_root"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.data_root" title="Link to this definition"></a></dt>
 <dd><p>Returns root directory for data (with ‘raw_data’, ‘analysis_output’, etc).</p>
@@ -565,6 +592,17 @@ a str with the formatted date.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.format_mtime">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">format_mtime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mtime_or_path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">year</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seconds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#format_mtime"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.format_mtime" title="Link to this definition"></a></dt>
+<dd><p>Formats mtime like default <cite>ls -l</cite> output (e.g. ‘Oct 11 18:24’).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.util.format_nbytes">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">format_nbytes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nbytes</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'G'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">float_fmt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'.1f'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#format_nbytes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.format_nbytes" title="Link to this definition"></a></dt>
 <dd><p>Formats # bytes to GB/MB/etc (e.g. nbytes=3354780000 -&gt; ‘3.1GB’)</p>
@@ -612,6 +650,12 @@ a str with the formatted date.</p>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.formatwarning_msg_only">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">formatwarning_msg_only</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">msg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">category</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#formatwarning_msg_only"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.formatwarning_msg_only" title="Link to this definition"></a></dt>
+<dd><p>Format warning without line/lineno (which are often not the relevant line)</p>
 </dd></dl>
 
 <dl class="py function">
@@ -732,6 +776,41 @@ Can also take prep_date, fly_num, thorimage_id.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.in_pytest">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">in_pytest</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#in_pytest"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.in_pytest" title="Link to this definition"></a></dt>
+<dd><p>Returns whether code is currently being executed by pytest.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.invert_corr_triangular">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">invert_corr_triangular</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_ser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diag_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'odor'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#invert_corr_triangular"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.invert_corr_triangular" title="Link to this definition"></a></dt>
+<dd><p>Returns square DataFrame from one triangle Series, as from <cite>corr_triangular</cite>.</p>
+<p>Expects each pair of distinct odors to be in <cite>corr_ser</cite> index exactly once (in
+either order), with odors in the order output should have (as from
+<cite>itertools.combinations</cite> on that order).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>corr_ser</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span>) – Series indexed by (odor1, odor2) pairs (or by 4 levels, w/ a
+‘panel’-prefixed level before each odor level)</p></li>
+<li><p><strong>diag_value</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – value for diagonal (e.g. 1 for correlations)</p></li>
+<li><p><strong>_index</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Index</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – index to get odor order from, if not <cite>corr_ser.index</cite></p></li>
+<li><p><strong>name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – name for output row and column index (or their odor level, if there are
+panel levels)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.util.is_acquisition_host">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">is_acquisition_host</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#is_acquisition_host"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.is_acquisition_host" title="Link to this definition"></a></dt>
 <dd><p>Returns whether this computer is used for acquisition.</p>
@@ -772,6 +851,19 @@ Can also take prep_date, fly_num, thorimage_id.</p>
 <dt class="sig sig-object py" id="hong2p.util.is_path_on_hdd">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">is_path_on_hdd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#is_path_on_hdd"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.is_path_on_hdd" title="Link to this definition"></a></dt>
 <dd><p>Returns whether path exists on a HDD (vs e.g. SSD). Only work on Linux/similar.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.is_pytest_capturing_stderr">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">is_pytest_capturing_stderr</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#is_pytest_capturing_stderr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.is_pytest_capturing_stderr" title="Link to this definition"></a></dt>
+<dd><p>Returns whether pytest is capturing stderr (as can be disabled by -s).</p>
+<p>There are probably other ways to disable capture other than <cite>-s</cite>, which disables all
+capturing (stdout as well). This method will probably also work in that context.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
@@ -875,6 +967,33 @@ output</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.mean_of_fly_corrs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">mean_of_fly_corrs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">id_cols</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">square</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_panel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#mean_of_fly_corrs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.mean_of_fly_corrs" title="Link to this definition"></a></dt>
+<dd><p>Returns mean (across flies) of odor-odor correlations computed within each fly.</p>
+<p>Responses are first averaged across trials of each odor. Then correlations are
+computed within each fly (across its ROIs), and averaged across flies (ignoring
+NaN).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span>) – DataFrame with odor level on row index, and levels from id_cols
+in column index.</p></li>
+<li><p><strong>id_cols</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>] | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – column index levels, unique combinations of which identify individual
+flies (/ experimental units). if None, defaults to [‘date’, ‘fly_num’].</p></li>
+<li><p><strong>square</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True, returns square correlation matrix as a DataFrame (odors in
+same order as input). otherwise, returns one triangular (excluding
+diagonal) as a Series.</p></li>
+<li><p><strong>keep_panel</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – if True (and <cite>df</cite> has a ‘panel’ row index level), averages trials
+within each (panel, odor) combination, rather than within each odor</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.util.metadata_filename">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">metadata_filename</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">thorimage_dir</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#metadata_filename"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.metadata_filename" title="Link to this definition"></a></dt>
 <dd><p>Returns filename of YAML for extra metadata.</p>
@@ -955,9 +1074,33 @@ information (ultimately derived mainly from ThorSync data).</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.n_choose_2">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">n_choose_2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#n_choose_2"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.n_choose_2" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hong2p.util.n_expected_repeats">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">n_expected_repeats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#n_expected_repeats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.n_expected_repeats" title="Link to this definition"></a></dt>
 <dd><p>Returns expected # repeats given DataFrame w/ repeat_num col.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.n_multichoose_k">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">n_multichoose_k</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#n_multichoose_k"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.n_multichoose_k" title="Link to this definition"></a></dt>
+<dd><p>Returns number of size-k unordered “multisets” that can be drawn from n options.</p>
+<p>Multisets can contain one element multiple times, but are still unordered. This can
+answer how many ways a population can be resampled with replacement.</p>
+<p><a class="reference external" href="https://en.wikipedia.org/wiki/Multiset#Counting_multisets">https://en.wikipedia.org/wiki/Multiset#Counting_multisets</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -1076,6 +1219,18 @@ useful options.</p></li>
 <dt class="sig sig-object py" id="hong2p.util.print_color">
 <span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">print_color</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">color_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#print_color"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.print_color" title="Link to this definition"></a></dt>
 <dd><p>Prints <cite>args</cite> in color <cite>color_name</cite> (without trailing newline).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.print_curr_mem_usage">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">print_curr_mem_usage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">end</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'\n'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#print_curr_mem_usage"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.print_curr_mem_usage" title="Link to this definition"></a></dt>
+<dd><p>Prints memory usage (MiB) of current process.</p>
+<p>Prints both resident set size (RSS) and virtual memory size (VMS).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -1545,6 +1700,19 @@ back to getting installed package version (requires module input).</p></li>
 </dl>
 <p>Output has keys ‘name’, ‘used_for’, and either ‘git_remote’, ‘git_hash’,
 ‘git_uncommitted_changes’ (if in a git repo) or ‘version’.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.util.warn">
+<span class="sig-prename descclassname"><span class="pre">hong2p.util.</span></span><span class="sig-name descname"><span class="pre">warn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">msg</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/util.html#warn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.util.warn" title="Link to this definition"></a></dt>
+<dd><p>Warns with <cite>str(msg)</cite> (via <cite>warnings.warn</cite>).</p>
+<p>Also prints <cite>msg</cite> (in yellow) first, if running under pytest without stderr
+capturing (e.g. <cite>-s</cite>), so warnings are shown before any debugger breakpoints.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
