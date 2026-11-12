@@ -21,7 +21,9 @@ import glob
 import re
 import hashlib
 import functools
+import itertools
 from itertools import product
+from math import factorial
 from typing import (TYPE_CHECKING, Any, Collection, Dict, Generator, List, Optional,
     Sequence, Tuple, Union
 )
@@ -42,7 +44,7 @@ from hong2p import pandas as hong_pd
 from hong2p.pandas import is_scalar
 from hong2p.err import NoStimulusFile, TooManyStimulusFiles
 from hong2p.types import (Pathlike, PathPair, Datelike, FlyNum, DateAndFlyNum,
-    DataFrameOrDataArray
+    DataFrameOrDataArray, DataFrameOrSeries
 )
 from hong2p.olf import NO_ODOR
 
@@ -186,6 +188,14 @@ trial_cols = recording_cols + trial_only_cols
 
 date_fmt_str = '%Y-%m-%d'
 dff_latex = r'$\frac{\Delta F}{F}$'
+
+# default seed for bootstrapping (shared by al_analysis and its model code)
+bootstrap_seed: int = 1337
+
+fly_cols: List[str] = ['date', 'fly_num']
+# typically, ROI = 'glomerulus' (mb_model.glomerulus_col)
+# TODO move glomerulus_col here. could prob use in both al_analysis and mb_model
+flyroi_cols: List[str] = fly_cols + ['roi']
 
 
 # Module level cache.
@@ -5234,3 +5244,552 @@ def equals(x: Any, y: Any, *, check_float_with_allclose: bool = False,
 
 # TODO define type w/ scalar (that also works w/ xarray/numpy length-0 shape stuff? or
 # is that too much to ask?)
+
+
+def _colored(msg: str, color: str) -> str:
+    """Returns `termcolor.colored(msg, color)`, or `msg` if termcolor not installed.
+    """
+    # optional dependency (`hong2p[all]`), only for coloring terminal output
+    try:
+        from termcolor import colored
+    except ImportError:
+        return msg
+
+    return colored(msg, color)
+
+
+# TODO replace this + use of warnings.warn w/ logging.warning (w/ logger probably
+# currently just configured to output to stdout/stderr)
+#
+# (al_analysis.al_util sets `warnings.formatwarning` to this on import)
+def formatwarning_msg_only(msg, category, *args, **kwargs):
+    """Format warning without line/lineno (which are often not the relevant line)
+    """
+    warn_type = category.__name__ if category.__name__ != 'UserWarning' else 'Warning'
+    return _colored(f'{warn_type}: {msg}\n', 'yellow')
+
+
+def in_pytest() -> bool:
+    """Returns whether code is currently being executed by pytest.
+    """
+    # https://docs.pytest.org/en/latest/example/simple.html#pytest-current-test-environment-variable
+    return 'PYTEST_CURRENT_TEST' in os.environ
+
+
+def is_pytest_capturing_stderr() -> bool:
+    """Returns whether pytest is capturing stderr (as can be disabled by -s).
+
+    There are probably other ways to disable capture other than `-s`, which disables all
+    capturing (stdout as well). This method will probably also work in that context.
+    """
+    # TODO does pytest directly expose it's capturing method in and env var or
+    # something? use that instead, if so?
+    # TODO maybe it also exposes whether it will show capture at end? use that too?
+
+    # from my testing (w/ pytest 8.3.5 and python 3.8.12), it seems .name on sys.stderr
+    # can distinguish whether pytest was called with `-s` or not.
+    #
+    # with -s (--capture=no), it's: '<stderr>'
+    #
+    # without -s, it's like: "<_io.FileIO name=8 mode='rb+' closefd=True>"
+    stderr = sys.stderr
+    # should work for --capture=fd  (default), =no (-s), and =sys , but get:
+    # `AttributeError: '_io.BytesIO' object has no attribute 'name'` if using
+    # --capture=sys-tee
+    if hasattr(stderr, 'name'):
+        return stderr.name != '<stderr>'
+
+    # assuming we are in --capture=sys-tee or --capture=sys case here
+    # (both currently hit this code path on my system)
+    #
+    # (not sure --capture=sys-tee works w/ rest of my system here... i.e. that prints
+    # and warnings are still interleaved as i want [and ideally printed in real time],
+    # and that debugger interface can still be used normally. sys-tee seems like it
+    # might interfere w/ debugger being used normally, tho it does also print in real
+    # time [in addition to capturing])
+    #
+    # TODO TODO need a test case w/ some interleaved prints and warnings before a
+    # breakpoint, then try all the capturing methods and see which are available
+    return True
+
+
+# TODO maybe log all warnings?
+def warn(msg) -> None:
+    """Warns with `str(msg)` (via `warnings.warn`).
+
+    Also prints `msg` (in yellow) first, if running under pytest without stderr
+    capturing (e.g. `-s`), so warnings are shown before any debugger breakpoints.
+    """
+    color = 'yellow'
+
+    # since i couldn't otherwise figure out how to get pytest to show warnings before
+    # debugger breakpoint, especially if pytest is configured to ignore warnings, so now
+    # we'll just also print it before pytest cleanup.
+    # TODO check pytest config options again for something to disable warning-exclusive
+    # capturing / formatting / output control?
+    #
+    # if pytest is capturing stderr, we probably aren't debugging, and thus shouldn't
+    # need these extra prints.
+    # TODO once per run, warn we are changing warning behavior based on this?
+    if in_pytest() and not is_pytest_capturing_stderr():
+        print(_colored(str(msg), color))
+
+    # TODO replace w/ logging.warning? (have init_logger just hook into warnings.warn?
+    # some standard mechanism for that?)
+    # TODO how to get color to work here too? possible?
+    warnings.warn(str(msg))
+
+
+def format_mtime(mtime_or_path: Union[float, Pathlike], *, year: bool = False,
+    seconds: bool = False) -> str:
+    """Formats mtime like default `ls -l` output (e.g. 'Oct 11 18:24').
+    """
+    if isinstance(mtime_or_path, float):
+        mtime = mtime_or_path
+    else:
+        mtime = getmtime(mtime_or_path)
+
+    fstr = '%b %d %H:%M'
+    if seconds:
+        fstr += ':%S'
+    if year:
+        fstr += ' %Y'
+
+    return time.strftime(fstr, time.localtime(mtime))
+
+
+def n_choose_2(n: int) -> int:
+    # TODO assert n > 0? > 1?
+    ret = (n - 1) * n / 2
+    assert np.isclose(ret, int(ret))
+    return int(ret)
+
+
+def n_multichoose_k(n: int, k: int) -> int:
+    """Returns number of size-k unordered "multisets" that can be drawn from n options.
+
+    Multisets can contain one element multiple times, but are still unordered. This can
+    answer how many ways a population can be resampled with replacement.
+
+    https://en.wikipedia.org/wiki/Multiset#Counting_multisets
+    """
+    ret = factorial(n + k - 1) / (factorial(k) * factorial(n - 1))
+    assert np.isclose(ret, int(ret))
+    return int(ret)
+
+
+# TODO replace hong2p.pandas.melt_symmetric w/ this (or vice versa)?
+# TODO TODO test that a given pair will always be returned in a fixed order, so that no
+# matter the set of odors we pass in here, we can average across outputs from diff calls
+# to this fn. relevant for now loading old megamat data. not sure current implementation
+# has this property... (as long as i'm always using ordered_pairs where needed, should
+# be ok... kind of a hack though)
+# TODO TODO add option to pass sequence of odors, to generate something like ordered
+# pairs? (for convenience when averaging over groups w/ diff sets of odors/pairs)
+def corr_triangular(corr_df: pd.DataFrame, *, sort: bool = True,
+    # TODO also accept order of odors, if not pairs?
+    # TODO TODO does this even work? did i break it? didn't seem to be working when i
+    # tried to use from scripts/corr_minus_orn_vs_vcf_repro/step05b-run-resampling.py
+    ordered_pairs: Optional[Sequence[Tuple[str, str]]] = None,
+    # TODO delete check_index_names (and always don't, or only warn?)?
+    check_index_names: bool = True) -> pd.Series:
+    """Returns Series w/ one triangle of symmetric `corr_df` (excluding diagonal).
+
+    Output is indexed by unique pairs of index values of `corr_df` (e.g. odor pairs).
+
+    Args:
+        corr_df: square DataFrame, with same row and column index (e.g. odor X odor
+            correlations)
+
+        sort: if True, sorts index before selecting pairs, so the order within each
+            pair is consistent across calls (and outputs of different calls can be
+            merged)
+
+        ordered_pairs: if passed, pairs whose reverse is in this sequence are reversed
+            to match it
+
+        check_index_names: if True, checks output index level names (expecting 'odor'
+            prefixed names, unless there is also a 'panel' level), and renames them to
+            ['odor1', 'odor2'] (or ['panel1', 'odor1', 'panel2', 'odor2'])
+    """
+    index = corr_df.index
+    assert index.equals(corr_df.columns)
+
+    if sort:
+        index = index.sort_values()
+
+    # TODO TODO support panel level being in this index (or at least drop, and make sure
+    # that handling is correct. may at least need to also assert same odor doesn't show
+    # up in >1 panel then)
+    # TODO this causing difficulties later? alternatives?
+    # (w/ needing to sort again)
+    #
+    # sorting index so that diff calls to this will produce mergeable outputs.
+    # otherwise, though the set of pairs will be the same, some may be represented
+    # in the other order in this index (and thus merging won't find a matching
+    # pair).
+    # TODO .loc still work w/ list(...)?
+    pairs = list(itertools.combinations(index, 2))
+
+    # need to stack all levels, in case we also have 'panel' in index names
+    # TODO why dropna=False? matter?
+    corr_ser = hong_pd.stack_keep_na(corr_df, level=corr_df.columns.names)
+
+    # TODO delete this branch? make sure it also supports panel level in index?
+    if ordered_pairs is not None:
+        # does fail in call from end of load_remy_2e...
+        # (only happened to be true for my first use case. don't think it actually
+        # matters)
+        #assert set(ordered_pairs) - set(corr_ser.index) == set()
+
+        # TODO debug that says which of these we are swapping? option to not swap any,
+        # and take as-is?
+        pairs = [(b,a) if (b,a) in ordered_pairs else (a,b) for a,b in pairs]
+
+    # itertools.combinations will not give us any combinations of an element with
+    # itself. in other words, we won't be keeping the identity correlations.
+    assert not any(a == b for a, b in pairs)
+
+    if 'panel' in index.names:
+        flat_tuples = []
+        # e.g. (('control', '1o3ol @ -3'), ('control', '1o3ol+2h @ 0'))
+        for p in pairs:
+            assert type(p) is tuple and len(p) == 2
+            assert all(type(x) is tuple and len(x) == 2 for x in p)
+            # makes one 4-element tuple, which should be able to index corr_ser below
+            # e.g. ('control', '1o3ol @ -3', 'control', '1o3ol+2h @ 0')
+            flat_tuples.append(p[0] + p[1])
+        pairs = flat_tuples
+    else:
+        for p in pairs:
+            assert type(p) is tuple and len(p) == 2
+            assert all(type(x) is str for x in p)
+
+    # itertools.combinations essentially selects one triangular, excluding diagonal
+    corr_ser = corr_ser.loc[pairs]
+
+    if check_index_names:
+        if 'panel' not in index.names:
+            # TODO switch to assertion(s) on input index/column names?
+            # (just to fail sooner / be more clear)
+            #
+            # TODO make more general than assuming 'odor' prefix?
+            assert len(corr_ser.index.names) == 2
+
+            # TODO delete?
+            assert all(x.startswith('odor') for x in corr_ser.index.names), \
+                f'{corr_ser.index.names=}'
+
+            # TODO do 'a','b' instead? other suffix ('_row','_col')? (to not confused w/
+            # 'odor1'/'odor2' used in many other MultiIndex levels in here, where
+            # 'odor2' is a almost-never-used-anymore optional 2nd odor, where 2
+            # delivered at same time (most recently in kiwi/control 2-component ramp
+            # experiments).
+            corr_ser.index.names = ['odor1', 'odor2']
+        else:
+            assert len(corr_ser.index.names) == 4
+            odor_var = olf.first_odor_level(index)
+            assert corr_ser.index.names == ['panel', odor_var, 'panel', odor_var]
+            # TODO again, would prefer to use _a/_b suffixes
+            corr_ser.index.names = ['panel1', 'odor1', 'panel2', 'odor2']
+
+    # TODO sort output so odors appear in same order as in input (within each component
+    # of pair, at least)?
+
+    return corr_ser
+
+
+# TODO unit test
+# TODO remove "private" '_' prefix of _index kwarg?
+def invert_corr_triangular(corr_ser: pd.Series, diag_value: float = 1., *,
+    _index: Optional[pd.Index] = None, name: str = 'odor') -> pd.DataFrame:
+    """Returns square DataFrame from one triangle Series, as from `corr_triangular`.
+
+    Expects each pair of distinct odors to be in `corr_ser` index exactly once (in
+    either order), with odors in the order output should have (as from
+    `itertools.combinations` on that order).
+
+    Args:
+        corr_ser: Series indexed by (odor1, odor2) pairs (or by 4 levels, w/ a
+            'panel'-prefixed level before each odor level)
+
+        diag_value: value for diagonal (e.g. 1 for correlations)
+
+        _index: index to get odor order from, if not `corr_ser.index`
+
+        name: name for output row and column index (or their odor level, if there are
+            panel levels)
+    """
+    if _index is None:
+        for_odor_index = corr_ser.index
+    else:
+        for_odor_index = _index
+
+    have_panels = False
+    if any(x.startswith('panel') for x in for_odor_index.names):
+        have_panels = True
+        # TODO relax these assertions?
+
+    if not have_panels:
+        # TODO make more general than assuming 'odor' prefix?
+        # TODO + factor to share w/ what corr_triangual sets by default (at least), in
+        # case i change suffix added there
+        #assert for_odor_index.names == ['odor1', 'odor2']
+        # TODO rename all "odor" stuff to be more general (now that i'm not requiring
+        # 'odor1'/'odor2')
+        assert len(for_odor_index.names) == 2
+
+        # unique values for odor1 and odor2 will not be same (each should have one value
+        # not in other). could just sort, for purposes of generating one combined order.
+        # for now, assuming (correctly, it seems) that first value in odor1 and last
+        # value in odor2 are the only non shared, and that otherwise we want to keep the
+        # order
+        #
+        # pandas <Series>.unique() keeps order of input (assuming all are adjacent, at
+        # least)
+        # TODO just delete? stuff below should trip anywhere if there's actually an
+        # issue...
+        # TODO update (or fix calling code). currently getting ['c1','c2'] for some
+        # .names in model_mb_responses invocations
+        # TODO flag to just skip this assertion, or only ever warn instead (and also
+        # allow disabling that)?
+        #assert for_odor_index.names[0].startswith('odor')
+        #assert for_odor_index.names[1].startswith('odor')
+        odor1 = for_odor_index.get_level_values(0).unique()
+        odor2 = for_odor_index.get_level_values(1).unique()
+
+        # TODO try to make work without these assertions (would need to change how
+        # odor_index is defined below). these seem to work if index is sorted, but not
+        # for (at least some) indices before sort_index call.
+        index_vals1 = odor1
+        index_vals2 = odor2
+    else:
+        assert for_odor_index.names[0].startswith('panel')
+        assert for_odor_index.names[1].startswith('odor')
+
+        index_vals1 = [tuple(x) for x in
+            for_odor_index.to_frame(index=False).iloc[:, 0:2].drop_duplicates(
+            ).itertuples(index=False)
+        ]
+
+        assert for_odor_index.names[2].startswith('panel')
+        assert for_odor_index.names[3].startswith('odor')
+
+        index_vals2 = [tuple(x) for x in
+            for_odor_index.to_frame(index=False).iloc[:, 2:].drop_duplicates(
+            ).itertuples(index=False)
+        ]
+
+    assert np.array_equal(index_vals2[:-1], index_vals1[1:])
+    assert index_vals1[0] not in set(index_vals2)
+    assert index_vals2[-1] not in set(index_vals1)
+
+    if not have_panels:
+        # single element list does NOT work here
+        odor_index = pd.Index(list(index_vals1) + [index_vals2[-1]], name=name)
+    else:
+        names = ['panel', name]
+        odor_index = pd.MultiIndex.from_tuples(list(index_vals1) + [index_vals2[-1]],
+            names=names
+        )
+
+    # TODO maybe columns and index should have diff names? keep odor1/odor2?
+
+    square_corr = pd.DataFrame(index=odor_index, columns=odor_index, data=float('nan'))
+    for a in odor_index:
+        for b in odor_index:
+            if not have_panels:
+                pair = (a, b)
+                reverse_pair = (b, a)
+            else:
+                pair = tuple(a) + tuple(b)
+                reverse_pair = tuple(b) + tuple(a)
+
+            if a == b:
+                assert pair not in corr_ser
+                square_corr.at[a, b] = diag_value
+                continue
+
+            # TODO clean up
+            try:
+                if pair in corr_ser:
+                    assert reverse_pair not in corr_ser
+                    c = corr_ser.at[pair]
+                else:
+                    assert reverse_pair in corr_ser
+                    c = corr_ser.at[reverse_pair]
+            # TODO delete this try/except if i can't trigger this case in any tests.
+            # probably indicates a bug anyway
+            except AssertionError:
+                raise
+                #print(f'{a=}')
+                #print(f'{b=}')
+                #import ipdb; ipdb.set_trace()
+                c = float('nan')
+            #
+            square_corr.at[a, b] = c
+
+    return square_corr
+
+
+# TODO TODO use inside plot_corr, for its calc when input has multiple flies (/seeds)
+# TODO add option to drop nonresponders (whether glomeruli or KCs), before computing?
+# could only do stuff that is actually 0 (either via filling or in model KC responses)
+# though, not just close to 0, or would have to decide how to threshold...
+# TODO refactor part of internals out into a new fn that keeps id_cols metadata, but has
+# corr_triangular pairs (as the 2 level MultiIndex it returns) on opposite (column) axis
+# index (-> use that to calc mean -> invert_corr_triangular in here)
+def mean_of_fly_corrs(df: pd.DataFrame, *, id_cols: Optional[List[str]] = None,
+    # TODO after testing, try to have keep_panel default to True?
+    square: bool = True, keep_panel: bool = False) -> DataFrameOrSeries:
+    # TODO TODO also use this for uniform model w/ id_cols='seed'? how do i currently
+    # handle that?
+    """Returns mean (across flies) of odor-odor correlations computed within each fly.
+
+    Responses are first averaged across trials of each odor. Then correlations are
+    computed within each fly (across its ROIs), and averaged across flies (ignoring
+    NaN).
+
+    Args:
+        df: DataFrame with odor level on row index, and levels from id_cols
+            in column index.
+
+        id_cols: column index levels, unique combinations of which identify individual
+            flies (/ experimental units). if None, defaults to ['date', 'fly_num'].
+
+        square: if True, returns square correlation matrix as a DataFrame (odors in
+            same order as input). otherwise, returns one triangular (excluding
+            diagonal) as a Series.
+
+        keep_panel: if True (and `df` has a 'panel' row index level), averages trials
+            within each (panel, odor) combination, rather than within each odor
+    """
+    # TODO add checks= kwarg to disable all the assertions?
+
+    # TODO also allow selecting 'fly_id' as default, if there?
+    if id_cols is None:
+        id_cols = fly_cols
+
+    # TODO TODO also work w/ 'odor' level (have in loaded model responses)
+    # (or just expose as kwarg?)
+    # TODO only do if 'repeat' level present? assert it's there?
+    #
+    # assumes 'odor2' level, if present, doesn't vary.
+    # TODO TODO assert assumption about possible 'odor2' level?
+    # TODO TODO assert no variation in any level other than odor1 and repeat?
+    # TODO TODO add some option to group by panel too, if available?
+    odor_var = olf.first_odor_level(df.index)
+    if not keep_panel or 'panel' not in df.index.names:
+        by = odor_var
+    else:
+        by = ['panel', odor_var]
+
+    trialmean_df = df.groupby(level=by, sort=False).mean()
+    n_odors = len(trialmean_df)
+
+    first_row_index = None
+    # TODO also want to  keep track of and append metadata?
+    fly_corrs = []
+    # (groupby axis= kwarg removed in pandas 3.0, hence the transposing)
+    for fly, fly_df in trialmean_df.T.groupby(level=id_cols, sort=False):
+        fly_df = fly_df.T
+        if first_row_index is None:
+            first_row_index = fly_df.index.copy()
+        else:
+            assert fly_df.index.equals(first_row_index)
+
+        # TODO TODO pass in ordered_pairs? just expose as kwarg to this fn? (or fix
+        # corr_triangular to always have a pair in a fixed order? even possible?)
+        corr = corr_triangular(fly_df.T.corr())
+        fly_corrs.append(corr)
+
+    # TODO delete (just notes re-assuring myself this fn is working properly, when run
+    # on megamat input)
+    #
+    # in case of Hallem subset of ORN data (when called from top-level modelling fn):
+    # ipdb> trialmean_df.shape
+    # (17, 140)
+    #
+    # ipdb> [num_null(x) for _, x in trialmean_df.groupby(level=id_cols,
+    #     axis='columns', sort=False)]
+    # [32, 30, 0, 0, 0, 0, 0, 0, 0]
+    #
+    # ipdb> [x.shape for _, x in trialmean_df.groupby(level=id_cols, axis='columns',
+    #     sort=False)]
+    # [(17, 16), (17, 15), (17, 16), (17, 15), (17, 15), (17, 16), (17, 16), (17, 16), (17, 15)]
+    #
+    # ipdb> [x.columns for _, x in trialmean_df.groupby(level=id_cols, axis='columns',
+    #     sort=False)][0]
+    # MultiIndex([('2023-04-22', 2,  'DC1'),
+    #             ('2023-04-22', 2,  'DL1'),
+    #             ('2023-04-22', 2,  'DL5'),
+    #             ('2023-04-22', 2,  'DM2'),
+    #             ('2023-04-22', 2,  'DM3'),
+    #             ('2023-04-22', 2,  'DM4'),
+    #             ('2023-04-22', 2,  'DM5'),
+    #             ('2023-04-22', 2,  'DM6'),
+    #             ('2023-04-22', 2,  'VA5'),
+    #             ('2023-04-22', 2,  'VA6'),
+    #             ('2023-04-22', 2,  'VC3'),
+    #             ('2023-04-22', 2,  'VC4'),
+    #             ('2023-04-22', 2,  'VM2'),
+    #             ('2023-04-22', 2,  'VM3'),
+    #             ('2023-04-22', 2, 'VM5d'),
+    #             ('2023-04-22', 2, 'VM5v')],
+    #            names=['date', 'fly_num', 'roi'])
+
+    n_flies = len(fly_corrs)
+
+    # TODO TODO separate check that there are no duplicates in columns? think i might
+    # have come across some other cases where verify_integrity=True did not do what i
+    # expected when concatenating across columns
+    corrs = pd.concat(fly_corrs, axis='columns', verify_integrity=True)
+    assert corrs.shape[1] == n_flies
+
+    n_odors_choose_2 = n_choose_2(n_odors)
+    # n choose 2. 136 for all non-identity combinations of 17 odors.
+    assert len(corrs) == n_odors_choose_2
+
+    # excludes NaN (e.g. va/aa in first 2 megamat flies)
+    mean_corr_triangular = corrs.mean(axis='columns')
+    assert mean_corr_triangular.shape == (n_odors_choose_2,)
+
+    odor_order = trialmean_df.index
+    assert not odor_order.duplicated().any()
+    # TODO similar assertion to below, but against mean_corr_triangular?
+    # (don't think i can...)
+
+    if not square:
+        return mean_corr_triangular
+
+    mean_corr = invert_corr_triangular(mean_corr_triangular)
+    assert mean_corr.shape == (n_odors, n_odors)
+
+    assert set(odor_order) == set(mean_corr.index) == set(mean_corr.columns)
+
+    # TODO TODO need to do something different here if panel level is included above?
+    # re-ordering odors to keep same order as input
+    mean_corr = mean_corr.loc[odor_order, odor_order].copy()
+    return mean_corr
+
+
+def print_curr_mem_usage(end: str = '\n') -> None:
+    """Prints memory usage (MiB) of current process.
+
+    Prints both resident set size (RSS) and virtual memory size (VMS).
+    """
+    # optional dependency (`hong2p[all]`)
+    import psutil
+
+    # https://stackoverflow.com/questions/938733
+    proc = psutil.Process()
+    byte2MiB = 1024**2
+    # NOTE: "resident set size" (rss) is probably what I want, but may also
+    # consider "virtual memory size" (vms), which would also include a few other
+    # (mostly not actively being used) things.
+    # see: https://stackoverflow.com/questions/7880784
+    #
+    # memory_info().rss should be current memory usage in bytes
+    rss = proc.memory_info().rss / byte2MiB
+    vms = proc.memory_info().vms / byte2MiB
+    print(f'memory usage (MiB): rss={rss:.2f} vms={vms:.2f}', end=end)

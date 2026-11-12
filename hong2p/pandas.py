@@ -906,3 +906,36 @@ def suffix_index_names(df: pd.DataFrame, suffix: str = '_b', axis='columns') -> 
     index = get_axis_index(df, axis)
     index.names = [f'{x}{suffix}' for x in index.names]
     # TODO make not inplace?
+
+
+def stack_keep_na(df: pd.DataFrame, **kwargs) -> DataFrameOrSeries:
+    """Returns `df.stack(**kwargs)`, without dropping any NaN.
+
+    Equivalent to `df.stack(dropna=False, **kwargs)` in pandas < 3.0, where that kwarg
+    was removed (and the new stack implementation never drops NaN).
+    """
+    try:
+        return df.stack(dropna=False, **kwargs)
+    # pandas >= 3.0: "ValueError: dropna must be unspecified as the new implementation
+    # does not introduce rows of NA values..."
+    except ValueError:
+        return df.stack(**kwargs)
+
+
+def stack_drop_na(df: pd.DataFrame, *args, **kwargs) -> DataFrameOrSeries:
+    """Returns `df.stack(*args, **kwargs)`, dropping all-NaN rows like pandas < 3.0.
+
+    The default `dropna=True` behavior of `DataFrame.stack` in pandas < 3.0 dropped
+    rows that were all NaN in the output, and the new stack implementation (the only
+    one in pandas >= 3.0) never drops NaN.
+    """
+    try:
+        return df.stack(*args, dropna=True, **kwargs)
+    # pandas >= 3.0: "ValueError: dropna must be unspecified as the new implementation
+    # does not introduce rows of NA values..."
+    except ValueError:
+        stacked = df.stack(*args, **kwargs)
+        if isinstance(stacked, pd.DataFrame):
+            return stacked.dropna(how='all')
+
+        return stacked.dropna()

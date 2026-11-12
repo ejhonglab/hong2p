@@ -20,7 +20,7 @@ import yaml
 from platformdirs import user_data_path
 
 from hong2p.pandas import is_str_or_object_dtype, addlevel
-from hong2p.types import Pathlike, ExperimentOdors, SingleTrialOdors
+from hong2p.types import Axis, Pathlike, ExperimentOdors, SingleTrialOdors
 
 
 solvent_str: str = 'solvent'
@@ -1073,6 +1073,248 @@ def panel_odor_orders(df: pd.DataFrame,
         panel2order[panel] = mix_strs
 
     return panel2order
+
+
+diag_panel_str: str = 'glomeruli_diagnostics'
+
+# Odor name orders for each of the lab's standard panels, and the order of the panels
+# themselves, as used by `sort_odors_by_panel`.
+#
+# 'kiwi' and 'control' (and their order) are the same as `natmix.panel2name_order` /
+# `natmix.panel_order` (natmix depends on hong2p, so it can't be imported here). Keep
+# them in sync (al_analysis tests that they match).
+#
+# TODO clarify how these behave if something is missing (in comment)
+panel2name_order: Dict[str, List[str]] = {
+    'kiwi': ['pfo', 'EtOH', 'IAol', 'IaA', 'ea', 'eb', 'ea+eb', 'ea+eb (air mix)',
+        'eb+ea (air mix)', '~kiwi', 'kmix', 'kmix0', 'kmix-1', 'kmix-2'
+    ],
+    'control': ['pfo', 'ms', 'va', 'fur', '2h', 'oct', '1o3ol', '1o3ol+2h',
+        '2h+oct (air mix)', '2h+1o3ol (air mix)', '1o3ol+2h (air mix)', 'control mix',
+        'cmix', 'cmix0', 'cmix-1', 'cmix-2'
+    ],
+}
+panel_order: List[str] = ['kiwi', 'control']
+
+# TODO any reason for this order (i think it might be same as order in yaml [which more
+# or less goes from odors activating glomeruli in higher planes to lower planes], so
+# maybe could load from there now?)? just use order loaded from config /
+# glomeruli_diagnostics.yaml?
+#
+# TODO actually load from generator config (union of all loaded w/ this panel?)
+# -> use associated glomeruli keys of odors to sort
+#
+# Sorted manually to roughly alphabetically sort by names of glomeruli we are trying to
+# target with these diagnostics.
+panel2name_order[diag_panel_str] = [
+    '3mtp',
+    'va',
+    # DL5
+    't2h',
+    'ms',
+    'a-terp',
+    'geos',
+    # DM5
+    'e3hb',
+    'mhex',
+    # DM4
+    'ma',
+    # DM1
+    'ea',
+    # VM7d
+    '2-but',
+    '2h',
+    'ga',
+    'HCl',
+    'carene',
+    'farn',
+    '4h-ol',
+    '2but',
+    # VA2
+    '2,3-b',
+    'p-cre',
+    'aphe',
+
+    # TODO was this working before? didn't i have my own abbrev as 6ol? or did something
+    # else overwrite that?
+    '1-6ol',
+    'paa',
+    'fench',
+    'CO2',
+
+    # VM2/VA2/?
+    'ecrot',
+
+    # VC4 (+VA2)
+    'elac',
+    # ~VM3
+    'acetoin',
+]
+
+panel_order = [diag_panel_str] + panel_order
+
+# TODO get order from yaml files if not specified? per-panel flag to do this?
+# TODO (as w/ other stuff), load from either generated or generator-input YAMLs
+# (in this case, tom_olfactometer_configs/megamat0.yaml) (should have code for initial
+# part of this now)
+panel2name_order['megamat'] = [
+    '2h', 'IaA', 'pa', '2-but', 'eb', 'ep', 'aa', 'va', 'B-cit', 'Lin', '6al',
+    't2h', '1-8ol', '1-5ol', '1-6ol', 'benz', 'ms'
+]
+# Putting this before my 'control' panel, so that shared odors are plotted in correct
+# order for this data
+panel_order.insert(1, 'megamat')
+
+panel_order.append('validation2')
+# TODO TODO which of these did i actually want? check all odors match up in my data
+# (maybe fix some of my abbrevs to match remy's?)
+panel2name_order['validation2'] = [
+    '+pul',
+    'menth',
+    'long',
+    'sab',
+    '-bCar',
+    '-aPine',
+    'euc',
+    '2-mib',
+    'geos',
+    'guai',
+    'mchav',
+    'PEA',
+
+    # NOTE: diff from remy's 'PAA'
+    'paa',
+    'PAA',
+
+    'bbenz',
+    'B-myr',
+    'ger',
+
+    # NOTE: diff from remy's '1-prop'
+    '1-3ol',
+    '1-prop',
+
+    '1p3one',
+    '1o3one',
+    'EtOct',
+    '2-mba',
+    'Z4-7al',
+]
+
+# TODO also let this take a list of odors? or somehow use output + input to do something
+# that is effectively like an argsort, and use that to index some other type of object
+# (where we convert it to a DataFrame just for sorting)
+# TODO sort_odors allow specifying axis?
+# TODO TODO how to get this to not sort control panel '2h @ -5 + oct @ -3' (air
+# mix, using odor2 level) right after '2h @ -5'? (and same for kiwi)
+# TODO can input/output also be a series?
+def sort_odors_by_panel(df: pd.DataFrame, *, add_panel: Optional[str] = None,
+    **kwargs) -> pd.DataFrame:
+    """Sorts odors by panel, using this module's `panel_order` and `panel2name_order`.
+
+    (`al_analysis.al_util.sort_odors`)
+
+    Args:
+        add_panel: if passed, first adds a 'panel' row index level with this value
+            (only works if odors are in row index)
+
+        **kwargs: passed to `sort_odors`
+    """
+    # TODO TODO check in here whether panel(s) are in panel2name_order (rather than
+    # requiring that check many other places)
+
+    # TODO add to whichever axis has odor info automatically? or too complicated.
+    # currently doesn't work if odors are in columns.
+    if add_panel is not None:
+        assert type(add_panel) is str
+        # TODO assert 'panel' not already in (relevant axis) index level names
+        # (or just ignore if it is, at least if already there)
+        df = addlevel(df, 'panel', add_panel)
+
+    return sort_odors(df, panel_order=panel_order,
+        # TODO what does if_panel_missing=None do? comment explaining (/ change code to
+        # not require an explanation...)
+        panel2name_order=panel2name_order, if_panel_missing=None, **kwargs
+    )
+
+
+# TODO refactor (duped in pn_convergence_vs_hallem_corr.py)
+# (and may want to use elsewhere in here for picking odors to use for constructing dF/F
+# -> spike rate fn)
+# TODO TODO hardcode abbrevs for all hallem odors (or at least all we've ever used?)
+# in olf.odor2abbrev, so they can all be found here (input names could be diff from what
+# we routinely use) (in the meantime, check all odors i have decent data for are NOT in
+# hallem)
+# TODO fn to combine this w/ loading of hallem data (-> only use that wrapper)?
+# TODO can input/output also be Series?
+def abbrev_hallem_odor_index(df: pd.DataFrame, axis: Axis = 'index') -> pd.DataFrame:
+    """Abbreviates Hallem odor names in single-level index (rows, by default).
+
+    First renames some Hallem odor names to the versions in `odor2abbrev`,
+    then abbreviates using that mapping.
+
+    Args:
+        axis: which index to rename ('index' or 'columns')
+    """
+    # TODO assert some got replaced (as a check axis was correct)
+
+    # - a-terp (a-terpineol)
+    # - 3mtp (3-methylthio-1-propanol)
+    # - carene ((1S)-(+)-3-carene)
+    #
+    # - (don't currently have data, but may soon) o-cre (2-methylphenol)
+    df = df.rename({
+            # TODO just move all these into olf.odor2abbrev
+            'b-citronellol': 'B-citronellol',
+            'isopentyl acetate': 'isoamyl acetate',
+            'E2-hexenal': 'trans-2-hexenal',
+            'a-terpineol': 'alpha-terpineol',
+            '3-methylthio-1-propanol': '3-methylthiopropanol',
+            '(1S)-(+)-3-carene': '(1S)-(+)-carene',
+            '2-methylphenol': 'o-cresol',
+
+            # these should be the only 7 odors in validation2 panel that are in Hallem,
+            # courtesy of what Remy sent me on slack 2024-02-12.
+            # already abbreviated (concentration in validation2 panel in parens):
+            # 1-propanol (-3), ethyl octanoate (-2), geraniol (-2),
+            # phenylacetaldehyde (-4)
+            #
+            # (-2)
+            'b-myrcene': 'beta-myrcene',
+            # (-1.5)
+            'a-pinene': '(-)-alpha-pinene',
+            # (-3)
+            '(-)-trans-caryophyllene': '(-)-beta-caryophyllene',
+
+            # TODO restore -> re-run hallem modelling -> check nothing broke
+            # (-> maybe remove some/all other hacks to odor abbrev handling in creation
+            # of my versions of 2E plot)
+            #
+            ## abbreviations Remy uses in some of 2E data she sent me.
+            ## (for the 24 - 17 odors she is had some data for, beyond megamat17).
+            ## all should be in hallem.
+            ## I already had an abbreviation for the 7th ('1-penten-3-ol' -> '1p3ol').
+            #'eugenol': 'eug',
+            #'ethyl cinnamate': 'ECin',
+            #'propyl acetate': 'PropAc',
+            ## these two had full names w/ 'gamma'/'delta' prefix in some of Remy's
+            ## things, but these LHS values are what I need to convert from in my Hallem
+            ## representation.
+            #'g-hexalactone': 'g-6lac',
+            #'d-decalactone': 'd-dlac',
+            ## TODO TODO might need 'moct' -> 'MethOct' (assuming my abbrev has
+            ## already been applied [it prob wasn't, considering it's called below...].
+            ## how have i been handling any other existing abbrev conflicts? are there
+            ## any others?)
+            ## TODO TODO how do i want to handle this? leaning towards just renaming
+            ## to 'moct' when loading remy's 2e data...
+            ##'methyl octanoate': 'MethOct',
+        },
+        axis=axis
+    )
+    df = df.rename(odor2abbrev, axis=axis)
+    return df
+
 
 
 # TODO type hint return type (just List[int], or List[List[int]]?)

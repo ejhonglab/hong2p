@@ -22,7 +22,7 @@ name = "hong2p"
 requires-python = ">= 3.8"
 # Core dependencies, enough to import hong2p.{err,types,pandas,olf,thor,util,matlab,chem,
 # cli_entry_points} (see test/test_core_imports.py, and the tox `core` env below). Other
-# modules (viz, roi, suite2p, xarray, latex), the CLIs using them, and some functions in
+# modules (viz, io, roi, suite2p, xarray, latex), the CLIs using them, and some functions in
 # the core modules (which import what they need inside the function) require the `all`
 # extra below.
 dependencies = [
@@ -81,6 +81,11 @@ all = [
 
     "matplotlib",
     "seaborn",
+    # hong2p.io: coloring printed paths / warnings (termcolor), process start time
+    # (psutil), parquet (pyarrow)
+    "termcolor",
+    "psutil",
+    "pyarrow",
     # https://github.com/ppinard/matplotlib-scalebar
     "matplotlib-scalebar",
     "colorcet",

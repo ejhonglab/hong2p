@@ -48,6 +48,9 @@ OPTIONAL_DEPS = [
     'requests',
     'mol2chemfigPy3',
     'ijroi',
+    'termcolor',
+    'psutil',
+    # (not pyarrow, also in `all`, which pandas >= 3 imports itself, if installed)
 ]
 
 

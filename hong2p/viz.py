@@ -9,6 +9,7 @@ from colorsys import rgb_to_hsv
 import contextlib
 import functools
 from os.path import join, exists
+from pathlib import Path
 from pprint import pformat, pprint
 from random import Random
 import sys
@@ -55,7 +56,7 @@ from matplotlib.figure import Figure
 from matplotlib.image import AxesImage
 from matplotlib_scalebar.scalebar import ScaleBar
 
-from hong2p import util, thor
+from hong2p import util, thor, olf
 from hong2p import roi as hong_roi
 # TODO replace w/ select_certain_rois (after adapting it to work w/ DataArray input)
 # TODO possible to fix circular import error this seemed to cause? maybe via changing
@@ -63,6 +64,7 @@ from hong2p import roi as hong_roi
 #from hong2p.roi import is_ijroi_certain
 #
 from hong2p.olf import remove_consecutive_repeats
+from hong2p.io import savefig
 from hong2p.pandas import df_map, is_str_or_object_dtype, index2dict_list
 # TODO use Color/CMap/Palette
 from hong2p.types import (DataFrameOrDataArray, ParamDict, CMap, Axis, Color, CMap,
@@ -5721,3 +5723,419 @@ def plot_pair_n(df, *args):
     imgkit.from_string(html, 'natural_odors_pair_n.png')
 
 
+# started w/ 'RdBu_r', but Remy had wanted to change to 'vlag', which she said is
+# supposed to be similar, but perceptually uniform
+#
+# TODO maybe still use 'vlag' for diagnostic ROI vs dF/F image plots (version i
+# generated was that...)
+#
+# actually, not switching to 'vlag', to not give Remy more work regenerating old figs
+diverging_cmap: CMap = plt.get_cmap('RdBu_r').copy()
+
+# since default set_bad seems to be ~white, which was fine for 'plasma' (which doesn't
+# contain white), but now is not distinct from cmap midpoint (0.)
+#
+# lighter gray than 'gray', and according to Sam, B takes less issue with this color
+#light_gray = (0.8, 0.8, 0.8)
+light_gray = (0.9, 0.9, 0.9)
+diverging_cmap.set_bad(light_gray)
+
+# .N is the # of colors in list (256)
+# making a new colormap that is just the top (red) half of the old one
+_colors = diverging_cmap(np.linspace(0.5, 1.0, diverging_cmap.N // 2))
+diverging_cmap_tophalf: CMap = LinearSegmentedColormap.from_list(
+    f'top_half_{diverging_cmap.name}', _colors
+)
+midpoint_before = diverging_cmap(0.5)
+top_before = diverging_cmap(1.0)
+bottom_after = diverging_cmap_tophalf(0.0)
+top_after = diverging_cmap_tophalf(1.0)
+assert midpoint_before == bottom_after, f'{midpoint_before=}\n{bottom_after=}'
+assert top_before == top_after, f'{top_before=}\n{top_after=}'
+del midpoint_before, bottom_after, top_before, top_after, _colors
+
+diverging_cmap_tophalf.set_bad(light_gray)
+
+
+# TODO actually set colors for stuff outside diverging_cmap range?
+# (just need cmap.set_[over|under] and extend='both' (or 'min'|'max', if only want
+# one of the two))
+
+# TODO could try TwoSlopeNorm ([-0.5, 0] and [0, 2.0]?), but would probably want to
+# define bounds per fly (or else compute in another pass / plot these after
+# aggregating?)
+# TODO rename to diverging_cmap_kws
+diverging_cmap_kwargs = dict(
+    cmap=diverging_cmap,
+
+    # TODO TODO test default clip behavior of this is OK. (and contrast w/ e.g.
+    # CenteredNorm, which actually has a clip=True/False kwarg, like most)
+    # TODO TODO test what happens if diverging_cmap_kwargs used w/o vmin/vmax
+    # specified (as diag_example_kws currently adds below) (want to get from data)
+    # NOTE: specifying norm classes this way only works because some of my hong2p.viz
+    # wrappers
+    norm='two-slope',
+
+    # TODO TODO want clip=True for diag_example_kws?
+    # TODO TODO with clip=False (the default), is this colormap even clearly
+    # showing over/under cmap range values distinctly (not sure this was ever that
+    # related to clip, but pretty sure we need extend='both' set on colorbar creation
+    # for this)?
+)
+
+
+# TODO don't require prefix, and save to plot_dir / 'corr.<plot_fmt>' by default?
+def plot_corr(df: pd.DataFrame, plot_dir: Path, fname: str, *, title: str = '',
+    as_corr_dist: bool = False, verbose: bool = False, method: str = 'pearson',
+    cmap: Optional[CMap] = None, vmax: Optional[float] = None,
+    vmin: Optional[float] = None, vcenter: Optional[float] = None,
+    cbar_label: Optional[str] = None, cbar_kws: Optional[ParamDict] =None,
+    _save_kws=None, **kwargs) -> pd.DataFrame:
+    """Saves odor-odor correlation plot under <plot_dir>/<fname>.<plot_fmt>
+
+    Args:
+        df: data on which to compute correlations between columns (via `df.corr()`),
+            or pre-computed correlation [/ correlation distance] matrix (assumes this is
+            the case if row and column index are equal)
+
+        plot_dir: where to save a plot of the correlation matrix
+            (named `<fname>.<plot_fmt>`)
+
+        fname: name of plot to save (excluding the '.<plot_fmt>' extension)
+
+        as_corr_dist: if True, plots correlation distance (`1 - corr`) instead (w/
+            reversed default cmap)
+
+        method: passed to `df.corr()`. assumed this is also the method for any
+            precomputed corrs passed in (and cbar label should include it)
+
+        cmap: defaults to `diverging_cmap`
+
+        vmin/vmax: if not passed, will default to full range of the correlation
+            [distance]: [-1, 1] if `as_corr_dist=False`, and `[0, 2]` if True.
+
+        vcenter: if not passed and `cmap` is diverging, defaults to 0 (or 1 if
+            `as_corr_dist=True`)
+
+        cbar_label: defaults to e.g. 'Pearson correlation' (from `method`, w/
+            ' distance' added if `as_corr_dist=True`)
+
+        verbose: if True, prints path of saved plot
+
+        _save_kws: passed to `savefig`
+
+        **kwargs: passed to `hong2p.viz.matshow`
+
+    Returns DataFrame containing these odor-odor correlations (with concentrations
+    removed from odor names, if all odors were at the same concentration).
+    """
+    # otherwise, we assume input is already a correlation (/ difference of correlations)
+    if not df.columns.equals(df.index):
+        # TODO delete? or check set instead?
+        # TODO add flag to skip all this checking?
+        if len(df.columns) == len(df.index):
+            if (df.index.names == df.columns.names and
+                df.index.sort_values().equals(df.columns.sort_values())):
+
+                print('double check input is not already a correlation [diff]!')
+                breakpoint()
+        #
+
+        # TODO TODO use new util.mean_of_fly_corrs instead (when appropriate, e.g.
+        # when input has multiple flies [/ model seeds])?
+        corr = df.corr(method=method)
+    else:
+        corr = df.copy()
+        # to check not a corr dist input
+        # TODO also check that range is consistent w/ corr and not corr-dist?
+        #
+        # TODO delete. won't work w/ corr_diff input i'm using in one place.
+        # TODO TODO fix (prob w/ new mean_of_... input)
+        '''
+        try:
+            assert (corr.max() == 1).all()
+        except AssertionError:
+            breakpoint()
+        '''
+
+    # should not fail if there is no log10_conc, but should be None in that field if not
+    # (or for inputs that are not formatted as I expect my odor strings to be)
+    odors = corr.index.map(olf.parse_odor)
+    concs = [x['log10_conc'] for x in odors]
+    # TODO allow certain things (like solvent / 'pfo') to have None conc?
+    # or if most odors are at one conc, say that, and strip for them?
+    shared_conc = None
+    if not any(x is None for x in concs):
+        conc_set = set(concs)
+        if len(conc_set) == 1:
+            shared_conc = conc_set.pop()
+
+    ylabel = None
+    if shared_conc is not None:
+        index = odors.map(lambda x: x['name'])
+        corr.index = index
+        corr.columns = index
+        ylabel = f'all odors at {shared_conc:g}'
+
+    # TODO else warn we are using a non-standard cmap?
+    if cmap is None:
+        if not as_corr_dist:
+            cmap = diverging_cmap
+        else:
+            cmap = diverging_cmap.reversed()
+        assert is_cmap_diverging(cmap)
+
+    cmap_is_diverging = is_cmap_diverging(cmap)
+
+    # TODO warn if this is set?
+    # TODO or make method default to None too, and only set it to 'pearson' if this
+    # is None? (and err if both set?)
+    if cbar_label is None:
+        cbar_label = f'{method.title()} correlation'
+
+    if not as_corr_dist:
+        if vmin is None:
+            vmin = -1.0
+        else:
+            assert vmin >= -1.0
+
+        if vmax is None:
+            vmax = 1.0
+        else:
+            assert vmax <= 1.0
+
+        if vcenter is None and cmap_is_diverging:
+            vcenter = 0.0
+            assert vmin <= vcenter <= vmax
+
+        to_plot = corr
+        # TODO have cbar ticks be [-1, -0.5, 0, 0.5, 1.0] in this case
+        # (in both cases i just want multiples of 0.5)
+    else:
+        if vmin is None:
+            vmin = 0.0
+        else:
+            assert vmin >= 0
+
+        if vmax is None:
+            vmax = 2.0
+        else:
+            assert vmax <= 2.0
+
+        if vcenter is None and cmap_is_diverging:
+            vcenter = 1.0
+            assert vmin <= vcenter <= vmax
+
+        corr_dist = 1 - corr
+        # should be this on the diagonals
+        assert (corr_dist.min() == 0).all()
+        to_plot = corr_dist
+        cbar_label += ' distance'
+        # TODO have cbar ticks be [0, 0.5, 1, 1.5, 2] in this case
+        # (in both cases i just want multiples of 0.5)
+
+    norm = 'two-slope'
+    if vcenter is None:
+        if cmap_is_diverging:
+            util.warn('using diverging cmap without vcenter. probably a mistake.')
+
+        norm = None
+
+    # TODO check that results w/ norm/vcenter not passed equiv to new results w/
+    # norm='two-slope'+vcenter=0
+    #
+    # already constrained layout by default (as most everything should be).
+    # w/ 17x17 odors, figsize is currently width=6.4 height=4.8
+    fig, _ = matshow(to_plot, cmap=cmap, vmin=vmin, vcenter=vcenter, vmax=vmax,
+        # just using 'two-slope', since 'centered' norm code would require
+        # modification to get it to work w/ vcenter != 0.
+        norm=norm, cbar_label=cbar_label, cbar_kws=cbar_kws, ylabel=ylabel, title=title,
+        fontsize=9, bigtext_fontsize_scaler=1.2, **kwargs
+    )
+
+    # TODO still used? delete? (so far seems ok to pass bbox_inches='tight', if this is
+    # all it was used for. unless that is why some long text is getting clipped.
+    # probably want to make text smaller or fig bigger there anyway)
+    if _save_kws is None:
+        _save_kws = dict()
+
+    # TODO any downside to hardcoding bbox_inches='tight'? was unspecified before
+    savefig(fig, plot_dir, fname, bbox_inches='tight', debug=verbose,
+        normalize_fname=False, **_save_kws
+    )
+
+    return corr
+
+
+def _plot_responses_helper(df: pd.DataFrame, plot_dir: Path, prefix: str, *,
+    vmin: Optional[float] = None, vmax: Optional[float] = None, title: str = '',
+    title_kws: Optional[ParamDict] = None, _save_kws: Optional[ParamDict] = None,
+    **kwargs) -> None:
+    """Plots `df` via `hong2p.viz.matshow`, saving to `<plot_dir>/<prefix>.<plot_fmt>`.
+
+    Args:
+        title_kws: passed to `ax.set_title`, if `title` is passed
+
+        _save_kws: passed to `savefig`
+
+        **kwargs: passed to `hong2p.viz.matshow`
+    """
+    # TODO accept subplot_kws for subplots?
+
+    fig, ax = plt.subplots()
+    matshow(df, ax=ax, vmin=vmin, vmax=vmax, **kwargs)
+
+    if len(title) > 0:
+        if title_kws is None:
+            title_kws = dict()
+
+        ax.set_title(title, **title_kws)
+
+        # TODO change old code to use a suptitle=kwarg instead? or like set_title
+        # outputs there too?
+        #fig.suptitle(title, **title_kws)
+
+    if _save_kws is None:
+        _save_kws = dict()
+
+    # TODO any downside to hardcoding bbox_inches='tight'? was unspecified before
+    savefig(fig, plot_dir, prefix, bbox_inches='tight', **_save_kws)
+
+
+
+# TODO use/delete (and maybe refactor to include much/all of the kwargs used in
+# plot_all...? see also mean_df/etc plotting in main, that recreates much of those
+# kwargs for use w/ viz.matshow)
+def plot_responses(df: pd.DataFrame, plot_dir: Path, prefix: str, **kwargs) -> None:
+    """Plots `df` w/ `diverging_cmap_kwargs`, via `_plot_responses_helper`.
+    """
+    # TODO TODO allow overriding cmap (+ norm? those only two things in
+    # diverging_cmap_kwargs)
+    _plot_responses_helper(df, plot_dir, prefix, **diverging_cmap_kwargs, **kwargs)
+
+
+def plot_responses_err(df: pd.DataFrame, plot_dir: Path, prefix: str, *,
+    vmin: Optional[float] = None, **kwargs) -> None:
+    """Plots non-negative errors (e.g. SEM) w/ top half of `diverging_cmap`.
+
+    Any `vmin` passed is replaced with 0. Other `kwargs` passed to
+    `_plot_responses_helper`.
+    """
+    assert ((df >= 0) | df.isna()).all().all(), (
+        'expected err to be all non-negative (or NaN)'
+    )
+    # TODO need to handle NaN?
+
+    if vmin is not None:
+        if vmin != 0:
+            util.warn(f'plot_responses_err: replacing input {vmin=:.2f} with 0')
+            vmin = 0
+
+    # TODO warn about two-slope norm (/ clear it?), or fix current min tick assertion
+    # error hong2p.viz.add_colorbar has in that case. anything else broken about that
+    # norm here?
+
+    # TODO allow overriding cmap? (prob not... would need to also construct top half,
+    # if diverging at least)
+    _plot_responses_helper(df, plot_dir, prefix, cmap=diverging_cmap_tophalf, vmin=vmin,
+        **kwargs
+    )
+
+
+# TODO also break out a plot_responses fn from first part (-> use here)?
+def plot_responses_and_corr(df: pd.DataFrame, plot_dir: Path, prefix: str, *,
+    vmin: Optional[float] = None, vmax: Optional[float] = None, title: str = '',
+    **kwargs) -> pd.DataFrame:
+    """Plots `df` (via `plot_responses`) and correlations of its columns (`plot_corr`).
+
+    Correlation plot is saved with a '_corr' suffix added to `prefix`. `vmin` and `vmax`
+    are only used for the response plot.
+
+    Returns correlation DataFrame from `plot_corr`.
+    """
+    # TODO expose bbox_inches (or remove kwarg in plot_[responses|corr], and just accept
+    # the hardcode to bbox_inches='tight' in both of those, if no downside)? ever need
+    # diff between the two calls?
+
+    plot_responses(df, plot_dir, prefix, vmin=vmin, vmax=vmax, title=title, **kwargs)
+
+    # TODO thread thru bbox_inches kwarg here (for savefig call)?
+    return plot_corr(df, plot_dir, f'{prefix}_corr', title=title, **kwargs)
+
+
+# TODO why does this decorator not seem required anymore? mpl/sns version thing?
+#
+# decorator to fix "There are no gridspecs with layoutgrids" warning that would
+# otherwise happen in any following savefig calls
+#@no_constrained_layout
+# TODO find where sns.ClusterGrid is actually defined and use that as return type?
+# shouldn't need any more generality (Grid was used above to include FacetGrid)
+# (default cmap was `al_analysis.al_util.cmap`, chosen to match Remy's plots)
+def cluster_rois(df: pd.DataFrame, *, odor_sort: bool = True, cmap: CMap = 'magma',
+    return_linkages: bool = False, **kwargs):
+    #return_linkages: bool = False, **kwargs) -> sns.axisgrid.Grid:
+    """Plots clustermap of ROIs (clustering ROIs, but not odors).
+
+    Args:
+        df: odors X ROIs (transposed before plotting, so ROIs are rows)
+
+        odor_sort: if True, sorts odors (via `hong2p.olf.sort_odors`). otherwise, keeps
+            input odor order.
+
+        return_linkages: passed to `hong2p.viz.clustermap`
+
+        **kwargs: passed to `hong2p.viz.clustermap` (and through that to
+            `seaborn.clustermap`). e.g. `row_colors` can be a `Series` with index
+            matching `df.columns`, where values are colors (e.g. RGB 3-tuples).
+
+    Returns seaborn `ClusterGrid` (and row and column linkages, if
+    `return_linkages=True`).
+    """
+    # TODO why transposing? stop doing that (-> change all inputs). will just cause
+    # confusion if i use [row/col]_colors...
+    if odor_sort:
+        # TODO why olf.sort_odors and not olf.sort_odors_by_panel?
+        # After transpose: columns=odors
+        df = olf.sort_odors(df.T)
+    else:
+        # just in case we didn't sort above. we still don't want to modify input...
+        df = df.T.copy()
+
+    # TODO plus, this will screw up [h|v]line_level_fn stuff...
+    # TODO warn/fail if this is not the case? accidentally didn't hit this when there
+    # was a bug in above
+    # TODO use natmix get_odor_var (or is it _get_odor_var?)?
+    if 'odor1' in df.columns.names:
+        # TODO why? comment explaining? just use an appropriate index-value-dict ->
+        # formatted str fn? isn't that what i do w/ hong2p.viz.matshow calls?
+        df.columns = df.columns.get_level_values('odor1')
+
+    # TODO add option to color rows by fly (-> generate row_colors Series in here)
+    # (values of series should be colors)
+    # (see natmix_data/analysis.py get_fly_color_series)
+    # (2025-11-05: planning to add some related code to viz.clustermap, for use in
+    # natmix_data/analysis.py)
+
+    # TODO TODO add option to cluster within each fly (would have to hide dendrogram, to
+    # make it not too much extra work) (refactor to share code with within-cluster
+    # hierarchichal clustering from natmix_data/analysis.py?)
+    ret = clustermap(df, col_cluster=False, cmap=cmap, xlabel='odor',
+        return_linkages=return_linkages, **kwargs
+    )
+    if not return_linkages:
+        cg = ret
+    else:
+        cg, row_linkage, col_linkage = ret
+
+    ax = cg.ax_heatmap
+    ax.set_yticks([])
+    # TODO also handle via clustermap xlabel?
+    #ax.set_xlabel('odor', xlabel_kws)
+
+    return ret
+
+
+# TODO simpler way?
+def rotate_xticklabels(ax: Axes, rotation: MplRotation = 90):
+    for x in ax.get_xticklabels():
+        x.set_rotation(rotation)
