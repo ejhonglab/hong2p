@@ -1110,6 +1110,60 @@
 <span class="sd">    breakpoint()</span>
 <span class="sd">'''</span>
 
+<div class="viewcode-block" id="oklab_diverging_cmap">
+<a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.oklab_diverging_cmap">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">oklab_diverging_cmap</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span> <span class="n">l_end</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.36</span><span class="p">,</span> <span class="n">c_end</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.15</span><span class="p">,</span>
+    <span class="n">hue_neg</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">262.0</span><span class="p">,</span> <span class="n">hue_pos</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">27.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ListedColormap</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns olfdb's (hong-data's) default blue-white-red colormap.</span>
+
+<span class="sd">    Built in Oklab so that lightness is linear in |value|: white at the center, darkening</span>
+<span class="sd">    at the same rate towards a blue (negative) and a red (positive) pole of equal</span>
+<span class="sd">    lightness (a port of `oklabDiverging` in olfdb's app/static/colormaps.js, same</span>
+<span class="sd">    constants; chroma shrunk into the sRGB gamut the same way). Use with a symmetric norm</span>
+<span class="sd">    (white at 0), e.g. for correlation matrices.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        n: number of colors.</span>
+<span class="sd">        l_end: Oklab lightness at both ends.</span>
+<span class="sd">        c_end: Oklab chroma at both ends (before gamut reduction).</span>
+<span class="sd">        hue_neg, hue_pos: hues (degrees) of the negative and positive ends.</span>
+
+<span class="sd">    Moved from the KC-remapping experiment queue (model_experiment_queue), 2026-11-12.</span>
+<span class="sd">    """</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">oklab_to_linear_srgb</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="n">l_</span> <span class="o">=</span> <span class="n">L</span> <span class="o">+</span> <span class="mf">0.3963377774</span> <span class="o">*</span> <span class="n">a</span> <span class="o">+</span> <span class="mf">0.2158037573</span> <span class="o">*</span> <span class="n">b</span>
+        <span class="n">m_</span> <span class="o">=</span> <span class="n">L</span> <span class="o">-</span> <span class="mf">0.1055613458</span> <span class="o">*</span> <span class="n">a</span> <span class="o">-</span> <span class="mf">0.0638541728</span> <span class="o">*</span> <span class="n">b</span>
+        <span class="n">s_</span> <span class="o">=</span> <span class="n">L</span> <span class="o">-</span> <span class="mf">0.0894841775</span> <span class="o">*</span> <span class="n">a</span> <span class="o">-</span> <span class="mf">1.2914855480</span> <span class="o">*</span> <span class="n">b</span>
+        <span class="n">l</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">s_cubed</span> <span class="o">=</span> <span class="n">l_</span> <span class="o">**</span> <span class="mi">3</span><span class="p">,</span> <span class="n">m_</span> <span class="o">**</span> <span class="mi">3</span><span class="p">,</span> <span class="n">s_</span> <span class="o">**</span> <span class="mi">3</span>
+        <span class="k">return</span> <span class="p">(</span><span class="mf">4.0767416621</span> <span class="o">*</span> <span class="n">l</span> <span class="o">-</span> <span class="mf">3.3077115913</span> <span class="o">*</span> <span class="n">m</span> <span class="o">+</span> <span class="mf">0.2309699292</span> <span class="o">*</span> <span class="n">s_cubed</span><span class="p">,</span>
+            <span class="o">-</span><span class="mf">1.2684380046</span> <span class="o">*</span> <span class="n">l</span> <span class="o">+</span> <span class="mf">2.6097574011</span> <span class="o">*</span> <span class="n">m</span> <span class="o">-</span> <span class="mf">0.3413193965</span> <span class="o">*</span> <span class="n">s_cubed</span><span class="p">,</span>
+            <span class="o">-</span><span class="mf">0.0041960863</span> <span class="o">*</span> <span class="n">l</span> <span class="o">-</span> <span class="mf">0.7034186147</span> <span class="o">*</span> <span class="n">m</span> <span class="o">+</span> <span class="mf">1.7076147010</span> <span class="o">*</span> <span class="n">s_cubed</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_srgb8</span><span class="p">(</span><span class="n">c</span><span class="p">):</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">c</span><span class="p">))</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="mf">12.92</span> <span class="o">*</span> <span class="n">c</span> <span class="k">if</span> <span class="n">c</span> <span class="o">&lt;=</span> <span class="mf">0.0031308</span> <span class="k">else</span> <span class="mf">1.055</span> <span class="o">*</span> <span class="n">c</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mf">2.4</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.055</span>
+        <span class="k">return</span> <span class="nb">round</span><span class="p">(</span><span class="n">v</span> <span class="o">*</span> <span class="mi">255</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">oklch_to_rgb8</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">hue</span><span class="p">):</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">deg2rad</span><span class="p">(</span><span class="n">hue</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">24</span><span class="p">):</span>
+            <span class="n">rgb</span> <span class="o">=</span> <span class="n">oklab_to_linear_srgb</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">C</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">h</span><span class="p">),</span> <span class="n">C</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">h</span><span class="p">))</span>
+            <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="o">-</span><span class="mf">1e-4</span> <span class="o">&lt;=</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="mf">1.0001</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">rgb</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span><span class="n">to_srgb8</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">rgb</span><span class="p">]</span>
+            <span class="n">C</span> <span class="o">*=</span> <span class="mf">0.92</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">to_srgb8</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">oklab_to_linear_srgb</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)]</span>
+
+    <span class="n">half</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+    <span class="n">colors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">-</span> <span class="n">half</span><span class="p">)</span> <span class="o">/</span> <span class="n">half</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">rgb</span> <span class="o">=</span> <span class="n">oklch_to_rgb8</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">t</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">l_end</span><span class="p">),</span> <span class="n">c_end</span> <span class="o">*</span> <span class="n">t</span><span class="p">,</span> <span class="n">hue_neg</span> <span class="k">if</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">hue_pos</span><span class="p">)</span>
+        <span class="n">colors</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">v</span> <span class="o">/</span> <span class="mi">255</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rgb</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">ListedColormap</span><span class="p">(</span><span class="n">colors</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">'oklab_div'</span><span class="p">)</span></div>
+
+
+
 <div class="viewcode-block" id="get_cmap_name">
 <a class="viewcode-back" href="../../apidoc/hong2p.viz.html#hong2p.viz.get_cmap_name">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_cmap_name</span><span class="p">(</span><span class="n">cmap</span><span class="p">:</span> <span class="n">CMap</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>

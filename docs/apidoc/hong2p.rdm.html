@@ -1,0 +1,415 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.rdm module &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="hong2p.roi module" href="hong2p.roi.html" />
+    <link rel="prev" title="hong2p.pandas module" href="hong2p.pandas.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">hong2p</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="hong2p.html">hong2p package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="hong2p.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="hong2p.chem.html">hong2p.chem module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.err.html">hong2p.err module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.imaging.html">hong2p.imaging module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.io.html">hong2p.io module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.latex.html">hong2p.latex module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.olf.html">hong2p.olf module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.pandas.html">hong2p.pandas module</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">hong2p.rdm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.roi.html">hong2p.roi module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.stats.html">hong2p.stats module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.suite2p.html">hong2p.suite2p module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.thor.html">hong2p.thor module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.types.html">hong2p.types module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.util.html">hong2p.util module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.viz.html">hong2p.viz module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.xarray.html">hong2p.xarray module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="hong2p.html#module-hong2p">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">hong2p</a></li>
+          <li class="breadcrumb-item"><a href="hong2p.html">hong2p package</a></li>
+      <li class="breadcrumb-item active">hong2p.rdm module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/apidoc/hong2p.rdm.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-hong2p.rdm">
+<span id="hong2p-rdm-module"></span><h1>hong2p.rdm module<a class="headerlink" href="#module-hong2p.rdm" title="Link to this heading"></a></h1>
+<p>Odor-pair matrices: one value per unordered pair of odors, as a “pair Series”.</p>
+<p>A pair Series holds a value (a distance between two odors’ responses, a correlation, the
+change in either under some manipulation, …) for each unordered pair of odors (or of any
+other items), indexed by (odor_a, odor_b) with <cite>odor_a</cite> before <cite>odor_b</cite> in a canonical
+order: the odors in <cite>order</cite> first, in that order, then any others sorted (<cite>order_items</cite>;
+with no <cite>order</cite>, all sorted). <cite>pair_list</cite> gives the pairs of a set of odors in that order,
+and the functions here return pair Series indexed that way (levels named <cite>PAIR_NAMES</cite>), so
+outputs computed from different matrices line up pair for pair.</p>
+<p>Distances between odors are computed across units (cells, glomeruli, model KCs) from a
+(units x odors) matrix (<cite>pair_distances</cite>): 1 - cosine similarity, or 1 - Pearson
+correlation.</p>
+<p>Relation to the other pair helpers in hong2p: <cite>pairs_from_square</cite> takes the triangle with
+<cite>hong2p.util.corr_triangular</cite> (in a given order, with this module’s index names), and
+<cite>hong2p.util.invert_corr_triangular</cite> builds its square with <cite>square_from_pairs</cite>; those two
+keep al_analysis’ conventions (pairs in sorted or given order named odor1 / odor2, panel
+levels, a diagonal value). <cite>hong2p.pandas.melt_symmetric</cite> is the tidy form of a symmetric
+matrix (diagonal included, any MultiIndex), for long-format tables rather than pair
+statistics.</p>
+<p>Moved from the KC-remapping experiment queue (model_experiment_queue’s kcq.harness),
+2026-11-12, with the 16-odor APL panel’s order made the <cite>order</cite> argument.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.align_pairs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">align_pairs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#align_pairs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.align_pairs" title="Link to this definition"></a></dt>
+<dd><p>Returns two (canonical) pair Series subset to the pairs they share, in <cite>a</cite>’s order,
+without the pairs either has NaN for.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.block_label">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">block_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">groups</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#block_label"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.block_label" title="Link to this definition"></a></dt>
+<dd><p>Returns the block of a pair given a group for each odor: ‘within’ when both odors
+are in the same group, else the two groups’ names sorted and joined by ‘-’ (odors with
+no group are their own group).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.block_means">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">block_means</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">groups</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#block_means"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.block_means" title="Link to this definition"></a></dt>
+<dd><p>Returns the mean of a pair Series within each block of pairs (<cite>block_label</cite>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.canonical_pairs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">canonical_pairs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('odor_a',</span> <span class="pre">'odor_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#canonical_pairs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.canonical_pairs" title="Link to this definition"></a></dt>
+<dd><p>Returns a pair Series (keys (a, b) in any order within a pair) reindexed to canonical
+pair order (<cite>pair_list</cite>).</p>
+<p>Raises KeyError if a pair of the odors present is missing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.density_null_similarity">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">density_null_similarity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('odor_a',</span> <span class="pre">'odor_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#density_null_similarity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.density_null_similarity" title="Link to this definition"></a></dt>
+<dd><p>Returns the expected cosine similarity between the odor columns of a (units x odors)
+matrix if unit identities were shuffled independently within each odor.</p>
+<p>The shuffle keeps each odor’s response distribution (and so its number of
+responders). Exact permutation expectation: E[a . b] = N mean(a) mean(b), so
+E[cos] = N mean(a) mean(b) / (<a href="#id1"><span class="problematic" id="id2">|a|</span></a> <a href="#id3"><span class="problematic" id="id4">|b|</span></a>); for binary columns this is sqrt(p_a p_b).
+Returned as a canonical pair Series of similarities (not distances).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.odor_shares">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">odor_shares</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">values</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#odor_shares"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.odor_shares" title="Link to this definition"></a></dt>
+<dd><p>Returns each odor’s share of a per-pair quantity, and the variance it explains.</p>
+<p>The shares are the least-squares fit of the additive model <cite>value(a, b) = s_a + s_b</cite>
+over the pairs (<cite>pair_design</cite>); the second output is the fraction of the quantity’s
+variance over pairs that the additive model explains (NaN for a constant quantity).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.order_items">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">order_items</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">items</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#order_items"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.order_items" title="Link to this definition"></a></dt>
+<dd><p>Returns <cite>items</cite> in canonical order: those in <cite>order</cite> first (in that order), then the
+others sorted.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">order_items</span><span class="p">([</span><span class="s1">'zz'</span><span class="p">,</span> <span class="s1">'b'</span><span class="p">,</span> <span class="s1">'a'</span><span class="p">,</span> <span class="s1">'c'</span><span class="p">],</span> <span class="n">order</span><span class="o">=</span><span class="p">[</span><span class="s1">'c'</span><span class="p">,</span> <span class="s1">'a'</span><span class="p">])</span>
+<span class="go">['c', 'a', 'b', 'zz']</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.pair_design">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">pair_design</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">odors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#pair_design"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.pair_design" title="Link to this definition"></a></dt>
+<dd><p>Returns the additive design over odors of a set of odor pairs, and the odor order.</p>
+<p>One row per pair, one column per odor, 1 for the pair’s two odors (so a pair’s value
+is modelled as the sum of its odors’ shares). <cite>odors</cite> defaults to the odors in <cite>pairs</cite>,
+in order of appearance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.pair_distances">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">pair_distances</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">measure</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cosine'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">drop_silent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('odor_a',</span> <span class="pre">'odor_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#pair_distances"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.pair_distances" title="Link to this definition"></a></dt>
+<dd><p>Returns the odor x odor distances of a (units x odors) matrix, across units.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mat</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span>) – rows units (cells, glomeruli, model KCs, …), columns odors.</p></li>
+<li><p><strong>measure</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – ‘cosine’ (1 - cosine similarity) or ‘pearson’ (1 - Pearson r).</p></li>
+<li><p><strong>drop_silent</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – drop units that are 0 for every odor first (irrelevant for cosine;
+matters for Pearson).</p></li>
+<li><p><strong>order</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – canonical order (<cite>order_items</cite>) of the odors.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+<p>Returns a canonical pair Series (NaN for pairs with an odor no unit responds to).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.pair_index">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">pair_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('odor_a',</span> <span class="pre">'odor_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#pair_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.pair_index" title="Link to this definition"></a></dt>
+<dd><p>Returns the (odor_a, odor_b) MultiIndex of a list of pairs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">MultiIndex</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.pair_list">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">pair_list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">items</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#pair_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.pair_list" title="Link to this definition"></a></dt>
+<dd><p>Returns the unordered pairs of <cite>items</cite>, each (a, b) with a before b in canonical
+order (<cite>order_items</cite>), in that order (all pairs starting with the first item, then
+with the second, …).</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pair_list</span><span class="p">([</span><span class="s1">'b'</span><span class="p">,</span> <span class="s1">'a'</span><span class="p">,</span> <span class="s1">'c'</span><span class="p">])</span>
+<span class="go">[('a', 'b'), ('a', 'c'), ('b', 'c')]</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.pairs_from_square">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">pairs_from_square</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sq</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('odor_a',</span> <span class="pre">'odor_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#pairs_from_square"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.pairs_from_square" title="Link to this definition"></a></dt>
+<dd><p>Returns the upper triangle of a symmetric (odor x odor) DataFrame, as a pair Series.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sq</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span>) – square DataFrame with the same (string) labels on rows and columns, e.g. a
+distance or correlation matrix.</p></li>
+<li><p><strong>order</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – canonical order (<cite>order_items</cite>) of the pairs’ odors.</p></li>
+<li><p><strong>names</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – index level names of the output.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+<p>The values are taken with <cite>hong2p.util.corr_triangular</cite>, in canonical pair order.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.per_odor_means">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">per_odor_means</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#per_odor_means"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.per_odor_means" title="Link to this definition"></a></dt>
+<dd><p>Returns, per odor (canonical order), the mean over the pairs that contain it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.shuffled_pair_distances">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">shuffled_pair_distances</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">measure</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cosine'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">transform_kws</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#shuffled_pair_distances"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.shuffled_pair_distances" title="Link to this definition"></a></dt>
+<dd><p>Returns the pair distances after permuting unit identities independently within each
+odor column (one draw of the null <cite>density_null_similarity</cite> is the mean of).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rng</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Generator</span></code></span>) – the permutations’ generator (one permutation per column, in column order).</p></li>
+<li><p><strong>**transform_kws</strong> – passed to <cite>transform_matrix</cite> (applied before the shuffle).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.square_from_pairs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">square_from_pairs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">diag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#square_from_pairs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.square_from_pairs" title="Link to this definition"></a></dt>
+<dd><p>Returns the symmetric (odor x odor) DataFrame of a pair Series.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pairs</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span>) – Series indexed by (odor_a, odor_b) pairs, in either order within a pair.</p></li>
+<li><p><strong>order</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – canonical order (<cite>order_items</cite>) of the output’s rows and columns.</p></li>
+<li><p><strong>diag</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – value on the diagonal.</p></li>
+<li><p><strong>missing</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – value of the pairs <cite>pairs</cite> does not have.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.subset_pairs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">subset_pairs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#subset_pairs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.subset_pairs" title="Link to this definition"></a></dt>
+<dd><p>Returns the pairs with both odors in <cite>items</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.rdm.transform_matrix">
+<span class="sig-prename descclassname"><span class="pre">hong2p.rdm.</span></span><span class="sig-name descname"><span class="pre">transform_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mat</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'graded'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cells</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'all'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">thresh</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/rdm.html#transform_matrix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.rdm.transform_matrix" title="Link to this definition"></a></dt>
+<dd><p>Returns a (units x odors) response matrix thresholded / restricted before distances.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>values</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – ‘graded’ (as is), ‘binary’ (response &gt; <cite>thresh</cite> -&gt; 1.0, else 0.0) or
+‘thresholded’ (values &gt; <cite>thresh</cite> kept, others 0).</p></li>
+<li><p><strong>cells</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – ‘all’ units, or ‘responsive’ (units with a response &gt; <cite>thresh</cite> to at least
+one odor column of <cite>mat</cite>).</p></li>
+<li><p><strong>thresh</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – response threshold (e.g. 1 for z-scored responses); needed by every
+option but ‘graded’ with ‘all’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="hong2p.pandas.html" class="btn btn-neutral float-left" title="hong2p.pandas module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="hong2p.roi.html" class="btn btn-neutral float-right" title="hong2p.roi module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

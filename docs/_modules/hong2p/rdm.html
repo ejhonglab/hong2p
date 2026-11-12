@@ -1,0 +1,461 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.rdm &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">hong2p.rdm</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for hong2p.rdm</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Odor-pair matrices: one value per unordered pair of odors, as a "pair Series".</span>
+
+<span class="sd">A pair Series holds a value (a distance between two odors' responses, a correlation, the</span>
+<span class="sd">change in either under some manipulation, ...) for each unordered pair of odors (or of any</span>
+<span class="sd">other items), indexed by (odor_a, odor_b) with `odor_a` before `odor_b` in a canonical</span>
+<span class="sd">order: the odors in `order` first, in that order, then any others sorted (`order_items`;</span>
+<span class="sd">with no `order`, all sorted). `pair_list` gives the pairs of a set of odors in that order,</span>
+<span class="sd">and the functions here return pair Series indexed that way (levels named `PAIR_NAMES`), so</span>
+<span class="sd">outputs computed from different matrices line up pair for pair.</span>
+
+<span class="sd">Distances between odors are computed across units (cells, glomeruli, model KCs) from a</span>
+<span class="sd">(units x odors) matrix (`pair_distances`): 1 - cosine similarity, or 1 - Pearson</span>
+<span class="sd">correlation.</span>
+
+<span class="sd">Relation to the other pair helpers in hong2p: `pairs_from_square` takes the triangle with</span>
+<span class="sd">`hong2p.util.corr_triangular` (in a given order, with this module's index names), and</span>
+<span class="sd">`hong2p.util.invert_corr_triangular` builds its square with `square_from_pairs`; those two</span>
+<span class="sd">keep al_analysis' conventions (pairs in sorted or given order named odor1 / odor2, panel</span>
+<span class="sd">levels, a diagonal value). `hong2p.pandas.melt_symmetric` is the tidy form of a symmetric</span>
+<span class="sd">matrix (diagonal included, any MultiIndex), for long-format tables rather than pair</span>
+<span class="sd">statistics.</span>
+
+<span class="sd">Moved from the KC-remapping experiment queue (model_experiment_queue's kcq.harness),</span>
+<span class="sd">2026-11-12, with the 16-odor APL panel's order made the `order` argument.</span>
+<span class="sd">"""</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Hashable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+
+<span class="n">PAIR_NAMES</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'odor_a'</span><span class="p">,</span> <span class="s1">'odor_b'</span><span class="p">)</span>
+<span class="n">MEASURES</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'cosine'</span><span class="p">,</span> <span class="s1">'pearson'</span><span class="p">)</span>
+<span class="n">TRANSFORM_VALUES</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'graded'</span><span class="p">,</span> <span class="s1">'binary'</span><span class="p">,</span> <span class="s1">'thresholded'</span><span class="p">)</span>
+<span class="n">TRANSFORM_CELLS</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'all'</span><span class="p">,</span> <span class="s1">'responsive'</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="order_items">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.order_items">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">order_items</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns `items` in canonical order: those in `order` first (in that order), then the</span>
+<span class="sd">    others sorted.</span>
+
+<span class="sd">    &gt;&gt;&gt; order_items(['zz', 'b', 'a', 'c'], order=['c', 'a'])</span>
+<span class="sd">    ['c', 'a', 'b', 'zz']</span>
+<span class="sd">    """</span>
+    <span class="n">rank</span> <span class="o">=</span> <span class="p">{</span><span class="n">o</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">o</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(()</span> <span class="k">if</span> <span class="n">order</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">order</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">o</span><span class="p">:</span> <span class="p">(</span><span class="n">rank</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">o</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">rank</span><span class="p">)),</span> <span class="n">o</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="pair_list">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.pair_list">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pair_list</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns the unordered pairs of `items`, each (a, b) with a before b in canonical</span>
+<span class="sd">    order (`order_items`), in that order (all pairs starting with the first item, then</span>
+<span class="sd">    with the second, ...).</span>
+
+<span class="sd">    &gt;&gt;&gt; pair_list(['b', 'a', 'c'])</span>
+<span class="sd">    [('a', 'b'), ('a', 'c'), ('b', 'c')]</span>
+<span class="sd">    """</span>
+    <span class="n">items</span> <span class="o">=</span> <span class="n">order_items</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">items</span><span class="p">)</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">items</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:]]</span></div>
+
+
+
+<div class="viewcode-block" id="pair_index">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.pair_index">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pair_index</span><span class="p">(</span><span class="n">pairs</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tuple</span><span class="p">],</span> <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">PAIR_NAMES</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the (odor_a, odor_b) MultiIndex of a list of pairs."""</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="o">.</span><span class="n">from_tuples</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="n">names</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">names</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="pairs_from_square">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.pairs_from_square">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pairs_from_square</span><span class="p">(</span><span class="n">sq</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">PAIR_NAMES</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the upper triangle of a symmetric (odor x odor) DataFrame, as a pair Series.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        sq: square DataFrame with the same (string) labels on rows and columns, e.g. a</span>
+<span class="sd">            distance or correlation matrix.</span>
+<span class="sd">        order: canonical order (`order_items`) of the pairs' odors.</span>
+<span class="sd">        names: index level names of the output.</span>
+
+<span class="sd">    The values are taken with `hong2p.util.corr_triangular`, in canonical pair order.</span>
+<span class="sd">    """</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">corr_triangular</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">sq</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">sq</span><span class="o">.</span><span class="n">columns</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'sq must have the same labels on rows and columns'</span><span class="p">)</span>
+
+    <span class="n">items</span> <span class="o">=</span> <span class="n">order_items</span><span class="p">(</span><span class="n">sq</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">pairs</span> <span class="o">=</span> <span class="n">pair_list</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">ser</span> <span class="o">=</span> <span class="n">corr_triangular</span><span class="p">(</span><span class="n">sq</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">items</span><span class="p">,</span> <span class="n">items</span><span class="p">],</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">check_index_names</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">ser</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(),</span> <span class="n">index</span><span class="o">=</span><span class="n">pair_index</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="n">names</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="square_from_pairs">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.square_from_pairs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">square_from_pairs</span><span class="p">(</span><span class="n">pairs</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">diag</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">missing</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the symmetric (odor x odor) DataFrame of a pair Series.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        pairs: Series indexed by (odor_a, odor_b) pairs, in either order within a pair.</span>
+<span class="sd">        order: canonical order (`order_items`) of the output's rows and columns.</span>
+<span class="sd">        diag: value on the diagonal.</span>
+<span class="sd">        missing: value of the pairs `pairs` does not have.</span>
+<span class="sd">    """</span>
+    <span class="n">odors</span> <span class="o">=</span> <span class="n">order_items</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">pairs</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span> <span class="o">|</span>
+        <span class="nb">set</span><span class="p">(</span><span class="n">pairs</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="n">order</span>
+    <span class="p">)</span>
+    <span class="n">sq</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">missing</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">odors</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">odors</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">diag</span> <span class="o">!=</span> <span class="n">missing</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">odors</span><span class="p">:</span>
+            <span class="n">sq</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">o</span><span class="p">,</span> <span class="n">o</span><span class="p">]</span> <span class="o">=</span> <span class="n">diag</span>
+
+    <span class="k">for</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">),</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">pairs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">sq</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">]</span> <span class="o">=</span> <span class="n">sq</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+
+    <span class="k">return</span> <span class="n">sq</span></div>
+
+
+
+<div class="viewcode-block" id="canonical_pairs">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.canonical_pairs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">canonical_pairs</span><span class="p">(</span><span class="n">pairs</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">PAIR_NAMES</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns a pair Series (keys (a, b) in any order within a pair) reindexed to canonical</span>
+<span class="sd">    pair order (`pair_list`).</span>
+
+<span class="sd">    Raises KeyError if a pair of the odors present is missing.</span>
+<span class="sd">    """</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">),</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">pairs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="k">if</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">pair_list</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">],</span> <span class="n">order</span><span class="p">))</span> <span class="k">else</span> <span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+        <span class="n">d</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+
+    <span class="n">odors</span> <span class="o">=</span> <span class="n">order_items</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">k</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">d</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">p</span><span class="p">),</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">pl</span> <span class="o">=</span> <span class="n">pair_list</span><span class="p">(</span><span class="n">odors</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="n">d</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pl</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="n">pair_index</span><span class="p">(</span><span class="n">pl</span><span class="p">,</span> <span class="n">names</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="align_pairs">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.align_pairs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">align_pairs</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns two (canonical) pair Series subset to the pairs they share, in `a`'s order,</span>
+<span class="sd">    without the pairs either has NaN for."""</span>
+    <span class="n">common</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+    <span class="n">a2</span><span class="p">,</span> <span class="n">b2</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">common</span><span class="p">],</span> <span class="n">b</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">common</span><span class="p">]</span>
+    <span class="n">ok</span> <span class="o">=</span> <span class="n">a2</span><span class="o">.</span><span class="n">notna</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">b2</span><span class="o">.</span><span class="n">notna</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">a2</span><span class="p">[</span><span class="n">ok</span><span class="p">],</span> <span class="n">b2</span><span class="p">[</span><span class="n">ok</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="subset_pairs">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.subset_pairs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">subset_pairs</span><span class="p">(</span><span class="n">pairs</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">items</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the pairs with both odors in `items`."""</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pairs</span><span class="o">.</span><span class="n">index</span> <span class="k">if</span> <span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="n">items</span> <span class="ow">and</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="n">items</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">pairs</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="pair_distances">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.pair_distances">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pair_distances</span><span class="p">(</span><span class="n">mat</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">measure</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'cosine'</span><span class="p">,</span> <span class="n">drop_silent</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">PAIR_NAMES</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the odor x odor distances of a (units x odors) matrix, across units.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mat: rows units (cells, glomeruli, model KCs, ...), columns odors.</span>
+<span class="sd">        measure: 'cosine' (1 - cosine similarity) or 'pearson' (1 - Pearson r).</span>
+<span class="sd">        drop_silent: drop units that are 0 for every odor first (irrelevant for cosine;</span>
+<span class="sd">            matters for Pearson).</span>
+<span class="sd">        order: canonical order (`order_items`) of the odors.</span>
+
+<span class="sd">    Returns a canonical pair Series (NaN for pairs with an odor no unit responds to).</span>
+<span class="sd">    """</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">mat</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">drop_silent</span><span class="p">:</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">loc</span><span class="p">[(</span><span class="n">m</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s1">'columns'</span><span class="p">)]</span>
+
+    <span class="n">odors</span> <span class="o">=</span> <span class="n">order_items</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">m</span><span class="p">[</span><span class="n">odors</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span><span class="o">.</span><span class="n">T</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">invalid</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">,</span> <span class="n">divide</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">measure</span> <span class="o">==</span> <span class="s1">'cosine'</span><span class="p">:</span>
+            <span class="n">norms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">S</span> <span class="o">=</span> <span class="p">(</span><span class="n">X</span> <span class="o">@</span> <span class="n">X</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">norms</span><span class="p">,</span> <span class="n">norms</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">measure</span> <span class="o">==</span> <span class="s1">'pearson'</span><span class="p">:</span>
+            <span class="n">S</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">corrcoef</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'measure must be one of </span><span class="si">{</span><span class="n">MEASURES</span><span class="si">}</span><span class="s1">, not </span><span class="si">{</span><span class="n">measure</span><span class="si">!r}</span><span class="s1">'</span><span class="p">)</span>
+
+    <span class="n">pl</span> <span class="o">=</span> <span class="n">pair_list</span><span class="p">(</span><span class="n">odors</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="p">{</span><span class="n">o</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">o</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">odors</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span> <span class="o">-</span> <span class="n">S</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">idx</span><span class="p">[</span><span class="n">b</span><span class="p">]]</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">pl</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="n">pair_index</span><span class="p">(</span><span class="n">pl</span><span class="p">,</span> <span class="n">names</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="transform_matrix">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.transform_matrix">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">transform_matrix</span><span class="p">(</span><span class="n">mat</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'graded'</span><span class="p">,</span> <span class="n">cells</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'all'</span><span class="p">,</span>
+    <span class="n">thresh</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns a (units x odors) response matrix thresholded / restricted before distances.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        values: 'graded' (as is), 'binary' (response &gt; `thresh` -&gt; 1.0, else 0.0) or</span>
+<span class="sd">            'thresholded' (values &gt; `thresh` kept, others 0).</span>
+<span class="sd">        cells: 'all' units, or 'responsive' (units with a response &gt; `thresh` to at least</span>
+<span class="sd">            one odor column of `mat`).</span>
+<span class="sd">        thresh: response threshold (e.g. 1 for z-scored responses); needed by every</span>
+<span class="sd">            option but 'graded' with 'all'.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">cells</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">TRANSFORM_CELLS</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">cells</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">values</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">TRANSFORM_VALUES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">thresh</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">values</span> <span class="o">!=</span> <span class="s1">'graded'</span> <span class="ow">or</span> <span class="n">cells</span> <span class="o">!=</span> <span class="s1">'all'</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'values=</span><span class="si">{</span><span class="n">values</span><span class="si">!r}</span><span class="s1">, cells=</span><span class="si">{</span><span class="n">cells</span><span class="si">!r}</span><span class="s1"> need a threshold'</span><span class="p">)</span>
+
+    <span class="n">m</span> <span class="o">=</span> <span class="n">mat</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cells</span> <span class="o">==</span> <span class="s1">'responsive'</span><span class="p">:</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">loc</span><span class="p">[(</span><span class="n">m</span> <span class="o">&gt;</span> <span class="n">thresh</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s1">'columns'</span><span class="p">)]</span>
+
+    <span class="k">if</span> <span class="n">values</span> <span class="o">==</span> <span class="s1">'binary'</span><span class="p">:</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="p">(</span><span class="n">m</span> <span class="o">&gt;</span> <span class="n">thresh</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">values</span> <span class="o">==</span> <span class="s1">'thresholded'</span><span class="p">:</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">m</span> <span class="o">&gt;</span> <span class="n">thresh</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">m</span></div>
+
+
+
+<div class="viewcode-block" id="block_label">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.block_label">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">block_label</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">groups</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the block of a pair given a group for each odor: 'within' when both odors</span>
+<span class="sd">    are in the same group, else the two groups' names sorted and joined by '-' (odors with</span>
+<span class="sd">    no group are their own group)."""</span>
+    <span class="n">g1</span><span class="p">,</span> <span class="n">g2</span> <span class="o">=</span> <span class="n">groups</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span> <span class="n">groups</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s1">'within'</span> <span class="k">if</span> <span class="n">g1</span> <span class="o">==</span> <span class="n">g2</span> <span class="k">else</span> <span class="s1">'-'</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">([</span><span class="n">g1</span><span class="p">,</span> <span class="n">g2</span><span class="p">]))</span></div>
+
+
+
+<div class="viewcode-block" id="block_means">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.block_means">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">block_means</span><span class="p">(</span><span class="n">pairs</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">groups</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the mean of a pair Series within each block of pairs (`block_label`)."""</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="n">block_label</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">groups</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">pairs</span><span class="o">.</span><span class="n">index</span><span class="p">],</span>
+        <span class="n">index</span><span class="o">=</span><span class="n">pairs</span><span class="o">.</span><span class="n">index</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">pairs</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="per_odor_means">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.per_odor_means">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">per_odor_means</span><span class="p">(</span><span class="n">pairs</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns, per odor (canonical order), the mean over the pairs that contain it."""</span>
+    <span class="n">odors</span> <span class="o">=</span> <span class="n">order_items</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">pairs</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span> <span class="o">|</span>
+        <span class="nb">set</span><span class="p">(</span><span class="n">pairs</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="n">order</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">({</span><span class="n">o</span><span class="p">:</span> <span class="n">pairs</span><span class="p">[[</span><span class="n">o</span> <span class="ow">in</span> <span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pairs</span><span class="o">.</span><span class="n">index</span><span class="p">]]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">odors</span><span class="p">})</span></div>
+
+
+
+<div class="viewcode-block" id="pair_design">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.pair_design">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pair_design</span><span class="p">(</span><span class="n">pairs</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">,</span> <span class="n">odors</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">List</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns the additive design over odors of a set of odor pairs, and the odor order.</span>
+
+<span class="sd">    One row per pair, one column per odor, 1 for the pair's two odors (so a pair's value</span>
+<span class="sd">    is modelled as the sum of its odors' shares). `odors` defaults to the odors in `pairs`,</span>
+<span class="sd">    in order of appearance.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">odors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">odors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">([</span><span class="n">o</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pairs</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">p</span><span class="p">]))</span>
+    <span class="n">col</span> <span class="o">=</span> <span class="p">{</span><span class="n">o</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">o</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">odors</span><span class="p">)}</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">pairs</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">odors</span><span class="p">)))</span>
+    <span class="k">for</span> <span class="n">r</span><span class="p">,</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">pairs</span><span class="p">):</span>
+        <span class="n">X</span><span class="p">[</span><span class="n">r</span><span class="p">,</span> <span class="n">col</span><span class="p">[</span><span class="n">a</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">X</span><span class="p">[</span><span class="n">r</span><span class="p">,</span> <span class="n">col</span><span class="p">[</span><span class="n">b</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="k">return</span> <span class="n">X</span><span class="p">,</span> <span class="n">odors</span></div>
+
+
+
+<div class="viewcode-block" id="odor_shares">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.odor_shares">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">odor_shares</span><span class="p">(</span><span class="n">values</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns each odor's share of a per-pair quantity, and the variance it explains.</span>
+
+<span class="sd">    The shares are the least-squares fit of the additive model `value(a, b) = s_a + s_b`</span>
+<span class="sd">    over the pairs (`pair_design`); the second output is the fraction of the quantity's</span>
+<span class="sd">    variance over pairs that the additive model explains (NaN for a constant quantity).</span>
+<span class="sd">    """</span>
+    <span class="n">X</span><span class="p">,</span> <span class="n">odors</span> <span class="o">=</span> <span class="n">pair_design</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">s</span><span class="p">,</span> <span class="o">*</span><span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+    <span class="n">fit</span> <span class="o">=</span> <span class="n">X</span> <span class="o">@</span> <span class="n">s</span>
+    <span class="n">var</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">y</span><span class="p">))</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">odors</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">'odor'</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="s1">'share'</span><span class="p">),</span>
+        <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">y</span> <span class="o">-</span> <span class="n">fit</span><span class="p">)</span> <span class="o">/</span> <span class="n">var</span><span class="p">)</span> <span class="k">if</span> <span class="n">var</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="density_null_similarity">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.density_null_similarity">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">density_null_similarity</span><span class="p">(</span><span class="n">mat</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">PAIR_NAMES</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the expected cosine similarity between the odor columns of a (units x odors)</span>
+<span class="sd">    matrix if unit identities were shuffled independently within each odor.</span>
+
+<span class="sd">    The shuffle keeps each odor's response distribution (and so its number of</span>
+<span class="sd">    responders). Exact permutation expectation: E[a . b] = N mean(a) mean(b), so</span>
+<span class="sd">    E[cos] = N mean(a) mean(b) / (|a| |b|); for binary columns this is sqrt(p_a p_b).</span>
+<span class="sd">    Returned as a canonical pair Series of similarities (not distances).</span>
+<span class="sd">    """</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">mat</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">odors</span> <span class="o">=</span> <span class="n">order_items</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">m</span><span class="p">[</span><span class="n">odors</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">means</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">norms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">invalid</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">,</span> <span class="n">divide</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">):</span>
+        <span class="n">S</span> <span class="o">=</span> <span class="n">n</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">means</span><span class="p">,</span> <span class="n">means</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">norms</span><span class="p">,</span> <span class="n">norms</span><span class="p">)</span>
+    <span class="n">pl</span> <span class="o">=</span> <span class="n">pair_list</span><span class="p">(</span><span class="n">odors</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="p">{</span><span class="n">o</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">o</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">odors</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="n">S</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">idx</span><span class="p">[</span><span class="n">b</span><span class="p">]]</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">pl</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="n">pair_index</span><span class="p">(</span><span class="n">pl</span><span class="p">,</span> <span class="n">names</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="shuffled_pair_distances">
+<a class="viewcode-back" href="../../apidoc/hong2p.rdm.html#hong2p.rdm.shuffled_pair_distances">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">shuffled_pair_distances</span><span class="p">(</span><span class="n">mat</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">rng</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">Generator</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">measure</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'cosine'</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">transform_kws</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the pair distances after permuting unit identities independently within each</span>
+<span class="sd">    odor column (one draw of the null `density_null_similarity` is the mean of).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        rng: the permutations' generator (one permutation per column, in column order).</span>
+<span class="sd">        **transform_kws: passed to `transform_matrix` (applied before the shuffle).</span>
+<span class="sd">    """</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">transform_matrix</span><span class="p">(</span><span class="n">mat</span><span class="p">,</span> <span class="o">**</span><span class="n">transform_kws</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+        <span class="n">X</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">rng</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">j</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">pair_distances</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">m</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">m</span><span class="o">.</span><span class="n">columns</span><span class="p">),</span>
+        <span class="n">measure</span><span class="o">=</span><span class="n">measure</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span>
+    <span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

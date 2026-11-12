@@ -1,0 +1,258 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.stats module &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="hong2p.suite2p module" href="hong2p.suite2p.html" />
+    <link rel="prev" title="hong2p.roi module" href="hong2p.roi.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">hong2p</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="hong2p.html">hong2p package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="hong2p.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="hong2p.chem.html">hong2p.chem module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.err.html">hong2p.err module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.imaging.html">hong2p.imaging module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.io.html">hong2p.io module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.latex.html">hong2p.latex module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.olf.html">hong2p.olf module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.pandas.html">hong2p.pandas module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.rdm.html">hong2p.rdm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.roi.html">hong2p.roi module</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">hong2p.stats module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.suite2p.html">hong2p.suite2p module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.thor.html">hong2p.thor module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.types.html">hong2p.types module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.util.html">hong2p.util module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.viz.html">hong2p.viz module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.xarray.html">hong2p.xarray module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="hong2p.html#module-hong2p">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">hong2p</a></li>
+          <li class="breadcrumb-item"><a href="hong2p.html">hong2p package</a></li>
+      <li class="breadcrumb-item active">hong2p.stats module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/apidoc/hong2p.stats.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-hong2p.stats">
+<span id="hong2p-stats-module"></span><h1>hong2p.stats module<a class="headerlink" href="#module-hong2p.stats" title="Link to this heading"></a></h1>
+<p>Statistics of paired values and of grouped matrices: residuals around linear and
+monotone fits, rank and linear correlations of aligned Series, and resampling of the rows
+(e.g. recordings, or flies) of grouped matrices (bootstrap, split halves).</p>
+<p>Works on any Series sharing an index, e.g. the pair Series of <cite>hong2p.rdm</cite>, and on
+DataFrames whose rows are the units resampled (one row per recording, columns e.g. odor
+pairs).</p>
+<p>Moved from the KC-remapping experiment queue (model_experiment_queue’s kcq.harness),
+2026-11-12, with the resampling generalized from Yang’s recordings / flies to any rows or
+clusters of rows.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.stats.bootstrap_groups">
+<span class="sig-prename descclassname"><span class="pre">hong2p.stats.</span></span><span class="sig-name descname"><span class="pre">bootstrap_groups</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">groups</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ci</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(5,</span> <span class="pre">95)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/stats.html#bootstrap_groups"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.stats.bootstrap_groups" title="Link to this definition"></a></dt>
+<dd><p>Returns the bootstrap distribution of statistics of groups’ mean rows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fn</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code>]], <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span>) – maps {name: mean row} -&gt; {statistic: value}.</p></li>
+<li><p><strong>groups</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code>]</span>) – {name: DataFrame} (<cite>resample_group_means</cite>).</p></li>
+<li><p><strong>n_boot</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – number of resamples.</p></li>
+<li><p><strong>seed</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – seeds the resamples’ generator.</p></li>
+<li><p><strong>ci</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</span>) – percentiles of the interval.</p></li>
+<li><p><strong>cluster</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>] | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – see <cite>resample_group_means</cite>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></span></p>
+</dd>
+</dl>
+<p>Returns DataFrame indexed by statistic: ‘observed’ (<cite>fn</cite> of the groups’ means),
+‘boot_mean’, ‘boot_sd’, ‘lo’, ‘hi’ (NaN draws ignored).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.stats.isotonic_resid">
+<span class="sig-prename descclassname"><span class="pre">hong2p.stats.</span></span><span class="sig-name descname"><span class="pre">isotonic_resid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/stats.html#isotonic_resid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.stats.isotonic_resid" title="Link to this definition"></a></dt>
+<dd><p>Returns the residual of <cite>y</cite> around its best increasing (isotonic) fit on <cite>x</cite>, and
+the fit’s ‘r2’ and ‘resid_sd’ (aligned first, as <cite>linear_resid</cite>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.stats.linear_resid">
+<span class="sig-prename descclassname"><span class="pre">hong2p.stats.</span></span><span class="sig-name descname"><span class="pre">linear_resid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/stats.html#linear_resid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.stats.linear_resid" title="Link to this definition"></a></dt>
+<dd><p>Returns the residual of <cite>y</cite> around its least-squares line on <cite>x</cite>, and the fit.</p>
+<p>The two are aligned first (<cite>hong2p.rdm.align_pairs</cite>: shared index, no NaN). The fit is
+a dict with ‘slope’, ‘intercept’, ‘r2’ and ‘resid_sd’.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.stats.pearson">
+<span class="sig-prename descclassname"><span class="pre">hong2p.stats.</span></span><span class="sig-name descname"><span class="pre">pearson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/stats.html#pearson"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.stats.pearson" title="Link to this definition"></a></dt>
+<dd><p>Returns the Pearson correlation of two aligned Series (as <cite>spearman</cite>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.stats.resample_group_means">
+<span class="sig-prename descclassname"><span class="pre">hong2p.stats.</span></span><span class="sig-name descname"><span class="pre">resample_group_means</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">groups</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/stats.html#resample_group_means"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.stats.resample_group_means" title="Link to this definition"></a></dt>
+<dd><p>Returns one bootstrap replicate of each group’s mean row.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>groups</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code>]</span>) – {name: DataFrame}, rows the units resampled (e.g. recordings), columns
+the statistics averaged (e.g. odor pairs).</p></li>
+<li><p><strong>rng</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Generator</span></code></span>) – draws the resamples, group by group in <cite>groups</cite>’ order.</p></li>
+<li><p><strong>cluster</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>] | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – index levels whose unique combinations are resampled instead of rows,
+each drawn cluster keeping all its rows (e.g. (‘date’, ‘fly_num’) to draw
+flies, keeping both hemispheres of each, which are not independent). None
+draws rows.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code>]</span></p>
+</dd>
+</dl>
+<p>Each group’s draws are with replacement, as many as it has rows (or clusters); the
+drawn rows are then averaged with equal weight.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.stats.spearman">
+<span class="sig-prename descclassname"><span class="pre">hong2p.stats.</span></span><span class="sig-name descname"><span class="pre">spearman</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">b</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/stats.html#spearman"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.stats.spearman" title="Link to this definition"></a></dt>
+<dd><p>Returns the Spearman correlation of two aligned Series (NaN if fewer than 3 shared,
+non-NaN entries).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.stats.split_half_reliability">
+<span class="sig-prename descclassname"><span class="pre">hong2p.stats.</span></span><span class="sig-name descname"><span class="pre">split_half_reliability</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_splits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'spearman'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/stats.html#split_half_reliability"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.stats.split_half_reliability" title="Link to this definition"></a></dt>
+<dd><p>Returns the reliability of the mean row of a DataFrame, from random split halves of
+its rows (e.g. of the mean odor-pair distance matrix over recordings).</p>
+<p>Keys: ‘n_recordings’ (rows), ‘split_half’ (the correlation between the two halves’
+means, mean over splits; <cite>method</cite> ‘spearman’ or ‘pearson’), ‘split_half_lo’ / ‘_hi’
+(its 5th / 95th percentiles), ‘spearman_brown_full’ (2r / (1 + r), for the full set
+of rows) and ‘ceiling’ (its square root: the expected correlation with the observed
+mean of a noise-free model that matched the true mean perfectly).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="hong2p.roi.html" class="btn btn-neutral float-left" title="hong2p.roi module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="hong2p.suite2p.html" class="btn btn-neutral float-right" title="hong2p.suite2p module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

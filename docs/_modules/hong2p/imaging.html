@@ -1,0 +1,557 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.imaging &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../apidoc/modules.html">hong2p</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">hong2p.imaging</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for hong2p.imaging</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Imaging time courses and trial-to-trial noise: per-trial excerpts of traces around odor</span>
+<span class="sd">onsets and the responses in windows after them, the calcium indicator's kernel (fitted to</span>
+<span class="sd">mean traces under a drive), and odor-odor distances corrected for the noise between</span>
+<span class="sd">trials.</span>
+
+<span class="sd">Traces are (units, volumes) arrays; trials of one recording are (n_trials, units, odors)</span>
+<span class="sd">arrays (trial i of every odor is the i-th presentation, or repeat, of that odor).</span>
+<span class="sd">Distances are 1 - cosine similarity across units, returned as pair Series</span>
+<span class="sd">(`hong2p.rdm`).</span>
+
+<span class="sd">Moved from the KC-remapping experiment queue (model_experiment_queue's kcq.harness),</span>
+<span class="sd">2026-11-12; the volume rate, the windows and the odors are arguments.</span>
+<span class="sd">"""</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.rdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">PAIR_NAMES</span><span class="p">,</span> <span class="n">pair_index</span><span class="p">,</span> <span class="n">pair_list</span>
+
+
+<div class="viewcode-block" id="window_volumes">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.window_volumes">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">window_volumes</span><span class="p">(</span><span class="n">window</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="n">volume_rate</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns a window (start, end) in seconds from the odor's onset as volumes after the</span>
+<span class="sd">    onset volume: (round(start * volume_rate), round(end * volume_rate)), end exclusive.</span>
+
+<span class="sd">    E.g. at 2.964 volumes / s (2, 8) and (2.0, 8.1) are both volumes 6 to 23.</span>
+<span class="sd">    """</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">window</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="n">volume_rate</span><span class="p">))</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">window</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="n">volume_rate</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">b</span> <span class="o">&gt;</span> <span class="n">a</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'window </span><span class="si">{</span><span class="n">window</span><span class="si">}</span><span class="s1"> has no volume at </span><span class="si">{</span><span class="n">volume_rate</span><span class="si">}</span><span class="s1"> volumes / s'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span></div>
+
+
+
+<div class="viewcode-block" id="trace_excerpts">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.trace_excerpts">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trace_excerpts</span><span class="p">(</span><span class="n">traces</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">onsets</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">n_before</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">n_after</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns per-onset excerpts of traces, each with its pre-onset mean subtracted.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        traces: (units, volumes).</span>
+<span class="sd">        onsets: the onset volume of each trial.</span>
+<span class="sd">        n_before: volumes before the onset (the baseline, whose mean is subtracted).</span>
+<span class="sd">        n_after: volumes from the onset volume on (the onset volume is the first).</span>
+
+<span class="sd">    Returns (trials, units, n_before + n_after) float64; sample j is volume</span>
+<span class="sd">    onset - n_before + j.</span>
+<span class="sd">    """</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">traces</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">on</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">onsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="n">n_before</span><span class="p">,</span> <span class="n">n_after</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_before</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_after</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_before</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">n_after</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'n_before and n_after must be at least 1'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">on</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">on</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">-</span> <span class="n">n_before</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">on</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">n_after</span> <span class="o">&gt;</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'excerpts of </span><span class="si">{</span><span class="n">n_before</span><span class="si">}</span><span class="s1"> + </span><span class="si">{</span><span class="n">n_after</span><span class="si">}</span><span class="s1"> volumes run off a trace of '</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s1"> volumes'</span>
+        <span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">on</span><span class="p">),</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">n_before</span> <span class="o">+</span> <span class="n">n_after</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">on</span><span class="p">):</span>
+        <span class="n">seg</span> <span class="o">=</span> <span class="n">X</span><span class="p">[:,</span> <span class="n">n</span> <span class="o">-</span> <span class="n">n_before</span><span class="p">:</span><span class="n">n</span> <span class="o">+</span> <span class="n">n_after</span><span class="p">]</span>
+        <span class="n">out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">seg</span> <span class="o">-</span> <span class="n">seg</span><span class="p">[:,</span> <span class="p">:</span><span class="n">n_before</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<div class="viewcode-block" id="windowed_responses">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.windowed_responses">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">windowed_responses</span><span class="p">(</span><span class="n">excerpts</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">windows</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">first_volume</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">volume_rate</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the mean of baseline-subtracted excerpts (`trace_excerpts`) in each window.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        excerpts: (..., samples), sample j being volume `first_volume` + j relative to</span>
+<span class="sd">            the onset volume.</span>
+<span class="sd">        windows: (start, end) pairs, in volumes after the onset volume (end exclusive),</span>
+<span class="sd">            or in seconds when `volume_rate` is given (`window_volumes`).</span>
+<span class="sd">        first_volume: the volume of sample 0 relative to the onset volume (-n_before).</span>
+
+<span class="sd">    Returns (..., len(windows)). With the window (round(2 v), round(8 v)) on excerpts of a</span>
+<span class="sd">    z-scored trace, this is the mean z 2 to 8 s after onset minus the pre-onset mean.</span>
+<span class="sd">    """</span>
+    <span class="n">E</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">excerpts</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">E</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">windows</span><span class="p">:</span>
+        <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="p">(</span><span class="n">window_volumes</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">volume_rate</span><span class="p">)</span> <span class="k">if</span> <span class="n">volume_rate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="k">else</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="p">)</span>
+        <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">a</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">first_volume</span><span class="p">),</span> <span class="n">b</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">first_volume</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">j</span> <span class="o">&gt;</span> <span class="n">n</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">j</span> <span class="o">&gt;</span> <span class="n">i</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'window </span><span class="si">{</span><span class="n">w</span><span class="si">}</span><span class="s1"> (volumes </span><span class="si">{</span><span class="n">a</span><span class="si">}</span><span class="s1"> to </span><span class="si">{</span><span class="n">b</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s1">) is outside the excerpts '</span>
+                <span class="sa">f</span><span class="s1">'(volumes </span><span class="si">{</span><span class="n">first_volume</span><span class="si">}</span><span class="s1"> to </span><span class="si">{</span><span class="n">first_volume</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s1">)'</span>
+            <span class="p">)</span>
+        <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">E</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">i</span><span class="p">:</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="indicator_kernel">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.indicator_kernel">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">indicator_kernel</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">rise</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">decay</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the indicator kernel (1 - exp(-u / rise)) exp(-u / decay) at times `u` since</span>
+<span class="sd">    a spike (0 for u &lt;= 0; rise 0 is an instant rise, decay np.inf no decay)."""</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">pos</span> <span class="o">=</span> <span class="n">u</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="n">up</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">up</span><span class="p">)</span> <span class="k">if</span> <span class="n">rise</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">expm1</span><span class="p">(</span><span class="o">-</span><span class="n">up</span> <span class="o">/</span> <span class="n">rise</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="n">decay</span><span class="p">):</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">k</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">up</span> <span class="o">/</span> <span class="n">decay</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="indicator_kernel_integral">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.indicator_kernel_integral">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">indicator_kernel_integral</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">rise</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">decay</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the integral of `indicator_kernel` from 0 to `u` (0 for u &lt;= 0)."""</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">)</span>
+    <span class="n">first</span> <span class="o">=</span> <span class="n">u</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="n">decay</span><span class="p">)</span> <span class="k">else</span> <span class="o">-</span><span class="n">decay</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">expm1</span><span class="p">(</span><span class="o">-</span><span class="n">u</span> <span class="o">/</span> <span class="n">decay</span><span class="p">)</span>
+    <span class="n">tau</span> <span class="o">=</span> <span class="n">rise</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="n">decay</span><span class="p">)</span> <span class="k">else</span> <span class="p">(</span><span class="n">rise</span> <span class="o">*</span> <span class="n">decay</span> <span class="o">/</span> <span class="p">(</span><span class="n">rise</span> <span class="o">+</span> <span class="n">decay</span><span class="p">)</span> <span class="k">if</span> <span class="n">rise</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">first</span> <span class="k">if</span> <span class="n">tau</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">first</span> <span class="o">+</span> <span class="n">tau</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">expm1</span><span class="p">(</span><span class="o">-</span><span class="n">u</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span></div>
+
+
+
+<span class="n">DRIVES</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'onset'</span><span class="p">,</span> <span class="s1">'steady'</span><span class="p">,</span> <span class="s1">'histogram'</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_drive_bins</span><span class="p">(</span><span class="n">drive</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pulse</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">edges</span><span class="p">,</span> <span class="n">weights</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""(edges, weights summing to 1) of a drive, None for the onset impulse."""</span>
+    <span class="k">if</span> <span class="n">drive</span> <span class="o">==</span> <span class="s1">'onset'</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">drive</span> <span class="o">==</span> <span class="s1">'steady'</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">pulse</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'pulse must be &gt; 0, not </span><span class="si">{</span><span class="n">pulse</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">pulse</span><span class="p">)]),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">drive</span> <span class="o">==</span> <span class="s1">'histogram'</span><span class="p">:</span>
+        <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">edges</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'a histogram drive needs increasing edges, one more than its '</span>
+                <span class="s1">'weights'</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">w</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">w</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'a histogram drive needs non-negative weights with a positive '</span>
+                <span class="s1">'sum'</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">e</span><span class="p">,</span> <span class="n">w</span> <span class="o">/</span> <span class="n">w</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'drive must be one of </span><span class="si">{</span><span class="n">DRIVES</span><span class="si">}</span><span class="s1">, not </span><span class="si">{</span><span class="n">drive</span><span class="si">!r}</span><span class="s1">'</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="kernel_signal">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.kernel_signal">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">kernel_signal</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">rise</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">decay</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">drive</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'onset'</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">pulse</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">,</span> <span class="n">edges</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">weights</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the kernel convolved with a drive of total weight 1, at times `t` (s from</span>
+<span class="sd">    the odor's onset).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        drive: 'onset' (all firing at the onset, an impulse at 0), 'steady' (uniform</span>
+<span class="sd">            firing from 0 to `pulse`) or 'histogram' (firing uniform within each bin</span>
+<span class="sd">            [edges[i], edges[i + 1]) with total weight weights[i]; the weights are divided</span>
+<span class="sd">            by their sum).</span>
+
+<span class="sd">    Returns float array shaped like `t`.</span>
+<span class="sd">    """</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">bins</span> <span class="o">=</span> <span class="n">_drive_bins</span><span class="p">(</span><span class="n">drive</span><span class="p">,</span> <span class="n">pulse</span><span class="p">,</span> <span class="n">edges</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">bins</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">indicator_kernel</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">rise</span><span class="p">,</span> <span class="n">decay</span><span class="p">)</span>
+    <span class="n">e</span><span class="p">,</span> <span class="n">w</span> <span class="o">=</span> <span class="n">bins</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="n">w</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">,</span> <span class="n">w</span> <span class="o">=</span> <span class="n">e</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="n">keep</span><span class="p">],</span> <span class="n">e</span><span class="p">[</span><span class="mi">1</span><span class="p">:][</span><span class="n">keep</span><span class="p">],</span> <span class="n">w</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
+    <span class="n">tt</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">K</span> <span class="o">=</span> <span class="p">(</span><span class="n">indicator_kernel_integral</span><span class="p">(</span><span class="n">tt</span> <span class="o">-</span> <span class="n">lo</span><span class="p">,</span> <span class="n">rise</span><span class="p">,</span> <span class="n">decay</span><span class="p">)</span> <span class="o">-</span>
+        <span class="n">indicator_kernel_integral</span><span class="p">(</span><span class="n">tt</span> <span class="o">-</span> <span class="n">hi</span><span class="p">,</span> <span class="n">rise</span><span class="p">,</span> <span class="n">decay</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="n">hi</span> <span class="o">-</span> <span class="n">lo</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">K</span> <span class="o">@</span> <span class="n">w</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="fit_indicator_kernel">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.fit_indicator_kernel">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fit_indicator_kernel</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">drive</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'onset'</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">pulse</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">,</span> <span class="n">edges</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">weights</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rise_bounds</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">),</span>
+    <span class="n">decay_bounds</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">200.0</span><span class="p">),</span>
+    <span class="n">fixed</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns the least-squares fit of amplitude * `kernel_signal(t, rise, decay, drive)`</span>
+<span class="sd">    to a mean trace `y`.</span>
+
+<span class="sd">    The amplitude is solved linearly for each (rise, decay) (and kept &gt;= 0); rise and</span>
+<span class="sd">    decay are fitted on a log scale within their bounds from several starts. With</span>
+<span class="sd">    `fixed` = (rise, decay) only the amplitude is fitted (e.g. a kernel fitted on one</span>
+<span class="sd">    trace tested on another).</span>
+
+<span class="sd">    Returns dict: 'rise', 'decay', 'amplitude', 'rms' (root mean squared residual, in y's</span>
+<span class="sd">    units), 'n', 'rise_at_bound', 'decay_at_bound' (within 1 % of a bound), 'drive'.</span>
+<span class="sd">    """</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">least_squares</span>
+
+    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">ok</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="n">t</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">t</span><span class="p">[</span><span class="n">ok</span><span class="p">],</span> <span class="n">y</span><span class="p">[</span><span class="n">ok</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'need at least 4 finite points'</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">amp_res</span><span class="p">(</span><span class="n">rise</span><span class="p">,</span> <span class="n">decay</span><span class="p">):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">kernel_signal</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">rise</span><span class="p">,</span> <span class="n">decay</span><span class="p">,</span> <span class="n">drive</span><span class="p">,</span> <span class="n">pulse</span><span class="o">=</span><span class="n">pulse</span><span class="p">,</span> <span class="n">edges</span><span class="o">=</span><span class="n">edges</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">)</span>
+        <span class="n">ss</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span> <span class="o">@</span> <span class="n">s</span><span class="p">)</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">s</span> <span class="o">@</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="n">ss</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="k">if</span> <span class="n">ss</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+        <span class="k">return</span> <span class="n">a</span><span class="p">,</span> <span class="n">y</span> <span class="o">-</span> <span class="n">a</span> <span class="o">*</span> <span class="n">s</span>
+
+    <span class="k">if</span> <span class="n">fixed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">r</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">fixed</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">fixed</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">a</span><span class="p">,</span> <span class="n">res</span> <span class="o">=</span> <span class="n">amp_res</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">rise</span><span class="o">=</span><span class="n">r</span><span class="p">,</span> <span class="n">decay</span><span class="o">=</span><span class="n">d</span><span class="p">,</span> <span class="n">amplitude</span><span class="o">=</span><span class="n">a</span><span class="p">,</span> <span class="n">rms</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">res</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))),</span>
+            <span class="n">n</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)),</span> <span class="n">rise_at_bound</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">decay_at_bound</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">drive</span><span class="o">=</span><span class="n">drive</span>
+        <span class="p">)</span>
+
+    <span class="n">lb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">([</span><span class="n">rise_bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">decay_bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+    <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">([</span><span class="n">rise_bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">decay_bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]])</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">fun</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">amp_res</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">]))[</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="n">best</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">r0</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">d0</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">):</span>
+            <span class="n">x0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">([</span><span class="n">r0</span><span class="p">,</span> <span class="n">d0</span><span class="p">]),</span> <span class="n">lb</span> <span class="o">+</span> <span class="mf">1e-9</span><span class="p">,</span> <span class="n">ub</span> <span class="o">-</span> <span class="mf">1e-9</span><span class="p">)</span>
+            <span class="n">sol</span> <span class="o">=</span> <span class="n">least_squares</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="p">(</span><span class="n">lb</span><span class="p">,</span> <span class="n">ub</span><span class="p">),</span> <span class="n">x_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">xtol</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">,</span>
+                <span class="n">ftol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">,</span> <span class="n">gtol</span><span class="o">=</span><span class="mf">1e-12</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">best</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">sol</span><span class="o">.</span><span class="n">cost</span> <span class="o">&lt;</span> <span class="n">best</span><span class="o">.</span><span class="n">cost</span><span class="p">:</span>
+                <span class="n">best</span> <span class="o">=</span> <span class="n">sol</span>
+
+    <span class="n">r</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">best</span><span class="o">.</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">])),</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">best</span><span class="o">.</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="n">a</span><span class="p">,</span> <span class="n">res</span> <span class="o">=</span> <span class="n">amp_res</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">at</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">v</span> <span class="o">&lt;=</span> <span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">1.01</span> <span class="ow">or</span> <span class="n">v</span> <span class="o">&gt;=</span> <span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1.01</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">rise</span><span class="o">=</span><span class="n">r</span><span class="p">,</span> <span class="n">decay</span><span class="o">=</span><span class="n">d</span><span class="p">,</span> <span class="n">amplitude</span><span class="o">=</span><span class="n">a</span><span class="p">,</span> <span class="n">rms</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">res</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))),</span>
+        <span class="n">n</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)),</span> <span class="n">rise_at_bound</span><span class="o">=</span><span class="n">at</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">rise_bounds</span><span class="p">),</span> <span class="n">decay_at_bound</span><span class="o">=</span><span class="n">at</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">decay_bounds</span><span class="p">),</span>
+        <span class="n">drive</span><span class="o">=</span><span class="n">drive</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="n">TRIAL_VALUES</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'graded'</span><span class="p">,</span> <span class="s1">'thresholded'</span><span class="p">,</span> <span class="s1">'binary'</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="trial_values">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.trial_values">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trial_values</span><span class="p">(</span><span class="n">trials</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'graded'</span><span class="p">,</span>
+    <span class="n">thresh</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns single trials read as `values`: 'graded' (unchanged), 'thresholded' (values</span>
+<span class="sd">    at or below `thresh` set to 0, trial by trial) or 'binary' (1 above `thresh`, else 0).</span>
+<span class="sd">    Works on any array shape; `thresh` is needed for the last two."""</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">values</span> <span class="o">==</span> <span class="s1">'graded'</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">X</span>
+    <span class="k">if</span> <span class="n">values</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">TRIAL_VALUES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'values must be one of </span><span class="si">{</span><span class="n">TRIAL_VALUES</span><span class="si">}</span><span class="s1">, not </span><span class="si">{</span><span class="n">values</span><span class="si">!r}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">thresh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'values=</span><span class="si">{</span><span class="n">values</span><span class="si">!r}</span><span class="s1"> needs a threshold'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">values</span> <span class="o">==</span> <span class="s1">'thresholded'</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">X</span> <span class="o">&gt;</span> <span class="n">thresh</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">X</span> <span class="o">&gt;</span> <span class="n">thresh</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="trial_cosines">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.trial_cosines">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trial_cosines</span><span class="p">(</span><span class="n">trials</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the cosine similarities between every pair of single-trial response vectors</span>
+<span class="sd">    of one recording.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        trials: (n_trials, units, odors).</span>
+
+<span class="sd">    Returns (n_trials, odors, n_trials, odors): [i, a, j, b] is the cosine between the</span>
+<span class="sd">    units' responses to odor a in trial i and to odor b in trial j; NaN where either</span>
+<span class="sd">    vector is all zero.</span>
+<span class="sd">    """</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">R</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">O</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">Y</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">R</span> <span class="o">*</span> <span class="n">O</span><span class="p">,</span> <span class="n">U</span><span class="p">)</span>
+    <span class="n">G</span> <span class="o">=</span> <span class="n">Y</span> <span class="o">@</span> <span class="n">Y</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">G</span><span class="p">))</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">invalid</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">,</span> <span class="n">divide</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">):</span>
+        <span class="n">C</span> <span class="o">=</span> <span class="n">G</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">C</span><span class="p">[(</span><span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="p">(</span><span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="k">return</span> <span class="n">C</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">O</span><span class="p">,</span> <span class="n">R</span><span class="p">,</span> <span class="n">O</span><span class="p">)</span></div>
+
+
+
+<span class="n">REPEAT_PAIRS</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s1">'same_repeat'</span><span class="p">,</span> <span class="s1">'different_repeat'</span><span class="p">,</span> <span class="s1">'adjacent'</span><span class="p">,</span>
+    <span class="s1">'first_third'</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="repeat_pair_masks">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.repeat_pair_masks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">repeat_pair_masks</span><span class="p">(</span><span class="n">n_rep</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns {kind: (n_rep, n_rep) bool} of the ordered trial pairs (i, j) of each kind</span>
+<span class="sd">    (`REPEAT_PAIRS`): the same trial, different trials, trials one apart, two apart."""</span>
+    <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_rep</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_rep</span><span class="p">),</span> <span class="n">indexing</span><span class="o">=</span><span class="s1">'ij'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s1">'same_repeat'</span><span class="p">:</span> <span class="n">i</span> <span class="o">==</span> <span class="n">j</span><span class="p">,</span> <span class="s1">'different_repeat'</span><span class="p">:</span> <span class="n">i</span> <span class="o">!=</span> <span class="n">j</span><span class="p">,</span>
+        <span class="s1">'adjacent'</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">i</span> <span class="o">-</span> <span class="n">j</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">'first_third'</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">i</span> <span class="o">-</span> <span class="n">j</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="mean_over_trial_pairs">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.mean_over_trial_pairs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mean_over_trial_pairs</span><span class="p">(</span><span class="n">C</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">mask</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the (odors, odors) mean of `trial_cosines` output C[i, a, j, b] over the</span>
+<span class="sd">    trial pairs in `mask` (NaN skipped; NaN if none)."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">:</span><span class="mi">2</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+    <span class="n">sel</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)[</span><span class="n">mask</span><span class="p">]</span>
+    <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s1">'ignore'</span><span class="p">,</span> <span class="ne">RuntimeWarning</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">sel</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="noise_free_matrix">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.noise_free_matrix">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">noise_free_matrix</span><span class="p">(</span><span class="n">C</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">mask</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the (odors, odors) noise-free distances 1 - C_ab / sqrt(C_aa C_bb) from the</span>
+<span class="sd">    single-trial cosines `C` (`trial_cosines`) over the trial pairs in `mask` (which must</span>
+<span class="sd">    exclude i == j)."""</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">mean_over_trial_pairs</span><span class="p">(</span><span class="n">C</span><span class="p">,</span> <span class="n">mask</span><span class="p">)</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">M</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">d</span><span class="p">[</span><span class="o">~</span><span class="p">(</span><span class="n">d</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">invalid</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">,</span> <span class="n">divide</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">M</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_pair_series</span><span class="p">(</span><span class="n">D</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">odors</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">],</span>
+    <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+    <span class="n">odors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">odors</span><span class="p">)</span>
+    <span class="n">pl</span> <span class="o">=</span> <span class="n">pair_list</span><span class="p">(</span><span class="n">odors</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="p">{</span><span class="n">o</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">o</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">odors</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="n">D</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">idx</span><span class="p">[</span><span class="n">b</span><span class="p">]]</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">pl</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="n">pair_index</span><span class="p">(</span><span class="n">pl</span><span class="p">,</span> <span class="n">names</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="noise_corrected_pair_distances">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.noise_corrected_pair_distances">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">noise_corrected_pair_distances</span><span class="p">(</span><span class="n">trials</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">odors</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">,</span>
+    <span class="n">min_reliability</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">PAIR_NAMES</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the noise-corrected cosine distances of one recording from its trials.</span>
+
+<span class="sd">    Each odor's signal power is the squared length of its trial mean minus the</span>
+<span class="sd">    trial-to-trial variance summed over units divided by the number of trials (floored at</span>
+<span class="sd">    1e-12): independent noise adds that much to the squared length of a mean and nothing,</span>
+<span class="sd">    in expectation, to the dot product of two odors' means. The corrected distance is</span>
+<span class="sd">    1 - (dot product of the trial means) / sqrt(signal power a x signal power b).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        trials: (n_trials, units, odors).</span>
+<span class="sd">        odors: the odors of the last axis.</span>
+<span class="sd">        min_reliability: pairs with an odor whose signal power is less than this share of</span>
+<span class="sd">            its trial mean's squared length are NaN (the correction divides by a near-zero</span>
+<span class="sd">            signal there).</span>
+<span class="sd">        order: canonical order of the odors (`hong2p.rdm.order_items`).</span>
+
+<span class="sd">    Returns a canonical pair Series.</span>
+<span class="sd">    """</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">xbar</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">norm2</span> <span class="o">=</span> <span class="p">(</span><span class="n">xbar</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">sig</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">norm2</span> <span class="o">-</span> <span class="n">s2</span> <span class="o">/</span> <span class="n">n</span><span class="p">,</span> <span class="mf">1e-12</span><span class="p">)</span>
+    <span class="n">dots</span> <span class="o">=</span> <span class="n">xbar</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">xbar</span>
+    <span class="n">D</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">dots</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">sig</span><span class="p">,</span> <span class="n">sig</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">min_reliability</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">invalid</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">,</span> <span class="n">divide</span><span class="o">=</span><span class="s1">'ignore'</span><span class="p">):</span>
+            <span class="n">bad</span> <span class="o">=</span> <span class="o">~</span><span class="p">(</span><span class="n">sig</span> <span class="o">/</span> <span class="n">norm2</span> <span class="o">&gt;=</span> <span class="n">min_reliability</span><span class="p">)</span>
+        <span class="n">D</span><span class="p">[</span><span class="n">bad</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+        <span class="n">D</span><span class="p">[:,</span> <span class="n">bad</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="k">return</span> <span class="n">_pair_series</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">odors</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">names</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="noise_free_pair_distances">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.noise_free_pair_distances">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">noise_free_pair_distances</span><span class="p">(</span><span class="n">trials</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">odors</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+    <span class="n">repeats</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'different'</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'graded'</span><span class="p">,</span> <span class="n">thresh</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">order</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">PAIR_NAMES</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the noise-free cosine distances of one recording, from products of single</span>
+<span class="sd">    trials of different repeats.</span>
+
+<span class="sd">    For each pair (a, b): 1 - C_ab / sqrt(C_aa C_bb), C_ab the mean single-trial cosine</span>
+<span class="sd">    between odor a in trial i and odor b in trial j over the trial pairs i != j selected</span>
+<span class="sd">    by `repeats`, C_aa the same for odor a with itself. Noise independent between trials</span>
+<span class="sd">    adds nothing, in expectation, to such a product, whether or not it is shared by the</span>
+<span class="sd">    odors of a trial; a drift common to an odor's trials acts on C_ab and C_aa alike and</span>
+<span class="sd">    cancels in the ratio. Not clipped: a near-identical pair can come out slightly below</span>
+<span class="sd">    0. (Cosines rather than dot products, so a gain of a whole presentation, which a</span>
+<span class="sd">    cosine does not see, does not weigh a trial in.)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        trials: (n_trials, units, odors).</span>
+<span class="sd">        odors: the odors of the last axis.</span>
+<span class="sd">        repeats: 'different' (every i != j), 'adjacent' (|i - j| == 1) or 'first_third'</span>
+<span class="sd">            (|i - j| == 2).</span>
+<span class="sd">        values, thresh: how the single trials are read (`trial_values`).</span>
+<span class="sd">        order: canonical order of the odors (`hong2p.rdm.order_items`).</span>
+
+<span class="sd">    Returns a canonical pair Series.</span>
+<span class="sd">    """</span>
+    <span class="n">kind</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'different'</span><span class="p">:</span> <span class="s1">'different_repeat'</span><span class="p">,</span> <span class="s1">'adjacent'</span><span class="p">:</span> <span class="s1">'adjacent'</span><span class="p">,</span>
+        <span class="s1">'first_third'</span><span class="p">:</span> <span class="s1">'first_third'</span>
+    <span class="p">}</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">repeats</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">kind</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"repeats must be 'different', 'adjacent' or 'first_third', not "</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">repeats</span><span class="si">!r}</span><span class="s1">'</span>
+        <span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">trial_values</span><span class="p">(</span><span class="n">trials</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">thresh</span><span class="p">)</span>
+    <span class="n">D</span> <span class="o">=</span> <span class="n">noise_free_matrix</span><span class="p">(</span><span class="n">trial_cosines</span><span class="p">(</span><span class="n">X</span><span class="p">),</span> <span class="n">repeat_pair_masks</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])[</span><span class="n">kind</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">_pair_series</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">odors</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">names</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="nonresponder_trial_sd">
+<a class="viewcode-back" href="../../apidoc/hong2p.imaging.html#hong2p.imaging.nonresponder_trial_sd">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">nonresponder_trial_sd</span><span class="p">(</span><span class="n">recordings</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">thresh</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Returns the trial-to-trial SD of the non-responding entries, pooled over recordings:</span>
+<span class="sd">    a measure of the measurement noise.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        recordings: (n_trials, units, odors) arrays, one per recording.</span>
+<span class="sd">        thresh: an entry (unit, odor) is non-responding when its trial mean is at or below</span>
+<span class="sd">            this.</span>
+
+<span class="sd">    The root of the mean, over the non-responding entries of all recordings, of their</span>
+<span class="sd">    variance across trials (ddof 1).</span>
+<span class="sd">    """</span>
+    <span class="n">var</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">X</span> <span class="ow">in</span> <span class="n">recordings</span><span class="p">:</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">var</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="n">X</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">thresh</span><span class="p">])</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">var</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()))</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

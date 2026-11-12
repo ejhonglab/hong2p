@@ -1,0 +1,411 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hong2p.imaging module &mdash; hong2p 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/sphinx_autodoc_typehints.css?v=057ac668" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7026087e"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="hong2p.io module" href="hong2p.io.html" />
+    <link rel="prev" title="hong2p.err module" href="hong2p.err.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            hong2p
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">hong2p</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="hong2p.html">hong2p package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="hong2p.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="hong2p.chem.html">hong2p.chem module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.err.html">hong2p.err module</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">hong2p.imaging module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.io.html">hong2p.io module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.latex.html">hong2p.latex module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.olf.html">hong2p.olf module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.pandas.html">hong2p.pandas module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.rdm.html">hong2p.rdm module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.roi.html">hong2p.roi module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.stats.html">hong2p.stats module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.suite2p.html">hong2p.suite2p module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.thor.html">hong2p.thor module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.types.html">hong2p.types module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.util.html">hong2p.util module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.viz.html">hong2p.viz module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hong2p.xarray.html">hong2p.xarray module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="hong2p.html#module-hong2p">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">hong2p</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">hong2p</a></li>
+          <li class="breadcrumb-item"><a href="hong2p.html">hong2p package</a></li>
+      <li class="breadcrumb-item active">hong2p.imaging module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/apidoc/hong2p.imaging.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-hong2p.imaging">
+<span id="hong2p-imaging-module"></span><h1>hong2p.imaging module<a class="headerlink" href="#module-hong2p.imaging" title="Link to this heading"></a></h1>
+<p>Imaging time courses and trial-to-trial noise: per-trial excerpts of traces around odor
+onsets and the responses in windows after them, the calcium indicator’s kernel (fitted to
+mean traces under a drive), and odor-odor distances corrected for the noise between
+trials.</p>
+<p>Traces are (units, volumes) arrays; trials of one recording are (n_trials, units, odors)
+arrays (trial i of every odor is the i-th presentation, or repeat, of that odor).
+Distances are 1 - cosine similarity across units, returned as pair Series
+(<cite>hong2p.rdm</cite>).</p>
+<p>Moved from the KC-remapping experiment queue (model_experiment_queue’s kcq.harness),
+2026-11-12; the volume rate, the windows and the odors are arguments.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.fit_indicator_kernel">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">fit_indicator_kernel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">drive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'onset'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">pulse</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edges</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rise_bounds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(0.05,</span> <span class="pre">10.0)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decay_bounds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(0.5,</span> <span class="pre">200.0)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#fit_indicator_kernel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.fit_indicator_kernel" title="Link to this definition"></a></dt>
+<dd><p>Returns the least-squares fit of amplitude * <cite>kernel_signal(t, rise, decay, drive)</cite>
+to a mean trace <cite>y</cite>.</p>
+<p>The amplitude is solved linearly for each (rise, decay) (and kept &gt;= 0); rise and
+decay are fitted on a log scale within their bounds from several starts. With
+<cite>fixed</cite> = (rise, decay) only the amplitude is fitted (e.g. a kernel fitted on one
+trace tested on another).</p>
+<p>Returns dict: ‘rise’, ‘decay’, ‘amplitude’, ‘rms’ (root mean squared residual, in y’s
+units), ‘n’, ‘rise_at_bound’, ‘decay_at_bound’ (within 1 % of a bound), ‘drive’.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.indicator_kernel">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">indicator_kernel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">u</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rise</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decay</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#indicator_kernel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.indicator_kernel" title="Link to this definition"></a></dt>
+<dd><p>Returns the indicator kernel (1 - exp(-u / rise)) exp(-u / decay) at times <cite>u</cite> since
+a spike (0 for u &lt;= 0; rise 0 is an instant rise, decay np.inf no decay).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.indicator_kernel_integral">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">indicator_kernel_integral</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">u</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rise</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decay</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#indicator_kernel_integral"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.indicator_kernel_integral" title="Link to this definition"></a></dt>
+<dd><p>Returns the integral of <cite>indicator_kernel</cite> from 0 to <cite>u</cite> (0 for u &lt;= 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.kernel_signal">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">kernel_signal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rise</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decay</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">drive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'onset'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">pulse</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edges</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#kernel_signal"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.kernel_signal" title="Link to this definition"></a></dt>
+<dd><p>Returns the kernel convolved with a drive of total weight 1, at times <cite>t</cite> (s from
+the odor’s onset).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>drive</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – ‘onset’ (all firing at the onset, an impulse at 0), ‘steady’ (uniform
+firing from 0 to <cite>pulse</cite>) or ‘histogram’ (firing uniform within each bin
+[edges[i], edges[i + 1]) with total weight weights[i]; the weights are divided
+by their sum).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+<p>Returns float array shaped like <cite>t</cite>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.mean_over_trial_pairs">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">mean_over_trial_pairs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">C</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#mean_over_trial_pairs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.mean_over_trial_pairs" title="Link to this definition"></a></dt>
+<dd><p>Returns the (odors, odors) mean of <cite>trial_cosines</cite> output C[i, a, j, b] over the
+trial pairs in <cite>mask</cite> (NaN skipped; NaN if none).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.noise_corrected_pair_distances">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">noise_corrected_pair_distances</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trials</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">odors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_reliability</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('odor_a',</span> <span class="pre">'odor_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#noise_corrected_pair_distances"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.noise_corrected_pair_distances" title="Link to this definition"></a></dt>
+<dd><p>Returns the noise-corrected cosine distances of one recording from its trials.</p>
+<p>Each odor’s signal power is the squared length of its trial mean minus the
+trial-to-trial variance summed over units divided by the number of trials (floored at
+1e-12): independent noise adds that much to the squared length of a mean and nothing,
+in expectation, to the dot product of two odors’ means. The corrected distance is
+1 - (dot product of the trial means) / sqrt(signal power a x signal power b).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trials</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span>) – (n_trials, units, odors).</p></li>
+<li><p><strong>odors</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code></span>) – the odors of the last axis.</p></li>
+<li><p><strong>min_reliability</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – pairs with an odor whose signal power is less than this share of
+its trial mean’s squared length are NaN (the correction divides by a near-zero
+signal there).</p></li>
+<li><p><strong>order</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – canonical order of the odors (<cite>hong2p.rdm.order_items</cite>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+<p>Returns a canonical pair Series.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.noise_free_matrix">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">noise_free_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">C</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#noise_free_matrix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.noise_free_matrix" title="Link to this definition"></a></dt>
+<dd><p>Returns the (odors, odors) noise-free distances 1 - C_ab / sqrt(C_aa C_bb) from the
+single-trial cosines <cite>C</cite> (<cite>trial_cosines</cite>) over the trial pairs in <cite>mask</cite> (which must
+exclude i == j).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.noise_free_pair_distances">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">noise_free_pair_distances</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trials</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">odors</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">repeats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'different'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'graded'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">thresh</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('odor_a',</span> <span class="pre">'odor_b')</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#noise_free_pair_distances"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.noise_free_pair_distances" title="Link to this definition"></a></dt>
+<dd><p>Returns the noise-free cosine distances of one recording, from products of single
+trials of different repeats.</p>
+<p>For each pair (a, b): 1 - C_ab / sqrt(C_aa C_bb), C_ab the mean single-trial cosine
+between odor a in trial i and odor b in trial j over the trial pairs i != j selected
+by <cite>repeats</cite>, C_aa the same for odor a with itself. Noise independent between trials
+adds nothing, in expectation, to such a product, whether or not it is shared by the
+odors of a trial; a drift common to an odor’s trials acts on C_ab and C_aa alike and
+cancels in the ratio. Not clipped: a near-identical pair can come out slightly below
+0. (Cosines rather than dot products, so a gain of a whole presentation, which a
+cosine does not see, does not weigh a trial in.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trials</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span>) – (n_trials, units, odors).</p></li>
+<li><p><strong>odors</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code></span>) – the odors of the last axis.</p></li>
+<li><p><strong>repeats</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – ‘different’ (every i != j), ‘adjacent’ (<a href="#id1"><span class="problematic" id="id2">|i - j|</span></a> == 1) or ‘first_third’
+(<a href="#id3"><span class="problematic" id="id4">|i - j|</span></a> == 2).</p></li>
+<li><p><strong>values</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – how the single trials are read (<cite>trial_values</cite>).</p></li>
+<li><p><strong>thresh</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – how the single trials are read (<cite>trial_values</cite>).</p></li>
+<li><p><strong>order</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code> | <span class="highlight sphinx_autodoc_typehints-value"><code class="xref py py-obj docutils literal notranslate"><span class="kc"><span class="pre">None</span></span></code></span></span>) – canonical order of the odors (<cite>hong2p.rdm.order_items</cite>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></span></p>
+</dd>
+</dl>
+<p>Returns a canonical pair Series.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.nonresponder_trial_sd">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">nonresponder_trial_sd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">recordings</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">thresh</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#nonresponder_trial_sd"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.nonresponder_trial_sd" title="Link to this definition"></a></dt>
+<dd><p>Returns the trial-to-trial SD of the non-responding entries, pooled over recordings:
+a measure of the measurement noise.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>recordings</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterable</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>]</span>) – (n_trials, units, odors) arrays, one per recording.</p></li>
+<li><p><strong>thresh</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – an entry (unit, odor) is non-responding when its trial mean is at or below
+this.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span></p>
+</dd>
+</dl>
+<p>The root of the mean, over the non-responding entries of all recordings, of their
+variance across trials (ddof 1).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.repeat_pair_masks">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">repeat_pair_masks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_rep</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#repeat_pair_masks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.repeat_pair_masks" title="Link to this definition"></a></dt>
+<dd><p>Returns {kind: (n_rep, n_rep) bool} of the ordered trial pairs (i, j) of each kind
+(<cite>REPEAT_PAIRS</cite>): the same trial, different trials, trials one apart, two apart.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.trace_excerpts">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">trace_excerpts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">traces</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onsets</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_before</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_after</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#trace_excerpts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.trace_excerpts" title="Link to this definition"></a></dt>
+<dd><p>Returns per-onset excerpts of traces, each with its pre-onset mean subtracted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>traces</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span>) – (units, volumes).</p></li>
+<li><p><strong>onsets</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – the onset volume of each trial.</p></li>
+<li><p><strong>n_before</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – volumes before the onset (the baseline, whose mean is subtracted).</p></li>
+<li><p><strong>n_after</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – volumes from the onset volume on (the onset volume is the first).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+<p>Returns (trials, units, n_before + n_after) float64; sample j is volume
+onset - n_before + j.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.trial_cosines">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">trial_cosines</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trials</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#trial_cosines"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.trial_cosines" title="Link to this definition"></a></dt>
+<dd><p>Returns the cosine similarities between every pair of single-trial response vectors
+of one recording.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>trials</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span>) – (n_trials, units, odors).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+<p>Returns (n_trials, odors, n_trials, odors): [i, a, j, b] is the cosine between the
+units’ responses to odor a in trial i and to odor b in trial j; NaN where either
+vector is all zero.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.trial_values">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">trial_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trials</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'graded'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">thresh</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#trial_values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.trial_values" title="Link to this definition"></a></dt>
+<dd><p>Returns single trials read as <cite>values</cite>: ‘graded’ (unchanged), ‘thresholded’ (values
+at or below <cite>thresh</cite> set to 0, trial by trial) or ‘binary’ (1 above <cite>thresh</cite>, else 0).
+Works on any array shape; <cite>thresh</cite> is needed for the last two.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.window_volumes">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">window_volumes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">window</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume_rate</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#window_volumes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.window_volumes" title="Link to this definition"></a></dt>
+<dd><p>Returns a window (start, end) in seconds from the odor’s onset as volumes after the
+onset volume: (round(start * volume_rate), round(end * volume_rate)), end exclusive.</p>
+<p>E.g. at 2.964 volumes / s (2, 8) and (2.0, 8.1) are both volumes 6 to 23.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hong2p.imaging.windowed_responses">
+<span class="sig-prename descclassname"><span class="pre">hong2p.imaging.</span></span><span class="sig-name descname"><span class="pre">windowed_responses</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">excerpts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">windows</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">first_volume</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume_rate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/hong2p/imaging.html#windowed_responses"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hong2p.imaging.windowed_responses" title="Link to this definition"></a></dt>
+<dd><p>Returns the mean of baseline-subtracted excerpts (<cite>trace_excerpts</cite>) in each window.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>excerpts</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span>) – (…, samples), sample j being volume <cite>first_volume</cite> + j relative to
+the onset volume.</p></li>
+<li><p><strong>windows</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Sequence</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span>) – (start, end) pairs, in volumes after the onset volume (end exclusive),
+or in seconds when <cite>volume_rate</cite> is given (<cite>window_volumes</cite>).</p></li>
+<li><p><strong>first_volume</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – the volume of sample 0 relative to the onset volume (-n_before).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span></p>
+</dd>
+</dl>
+<p>Returns (…, len(windows)). With the window (round(2 v), round(8 v)) on excerpts of a
+z-scored trace, this is the mean z 2 to 8 s after onset minus the pre-onset mean.</p>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="hong2p.err.html" class="btn btn-neutral float-left" title="hong2p.err module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="hong2p.io.html" class="btn btn-neutral float-right" title="hong2p.io module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Tom O&#39;Connell.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

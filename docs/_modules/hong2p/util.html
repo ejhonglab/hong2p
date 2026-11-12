@@ -3205,6 +3205,101 @@
 
 
 
+<div class="viewcode-block" id="run_git">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.run_git">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_git</span><span class="p">(</span><span class="n">args</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">cwd</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns stdout of `git &lt;args&gt;` run in `cwd`, or None if git fails or is missing.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s1">'git'</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">],</span> <span class="n">cwd</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">cwd</span><span class="p">),</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">stdout</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<span class="c1"># default cap on the diff `repo_info` records (characters)</span>
+<span class="n">MAX_REPO_INFO_DIFF_CHARS</span> <span class="o">=</span> <span class="mi">60_000</span>
+
+
+<div class="viewcode-block" id="repo_info">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.repo_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">repo_info</span><span class="p">(</span><span class="n">path_or_module</span><span class="p">,</span> <span class="n">max_diff_chars</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">MAX_REPO_INFO_DIFF_CHARS</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns git hash, dirty flag and diff digest of the repository containing a path or</span>
+<span class="sd">    module, for provenance (the git command line only, unlike `version_info`).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path_or_module: a path (file or directory), a module or a (possibly namespace)</span>
+<span class="sd">            package.</span>
+<span class="sd">        max_diff_chars: the recorded diff of a dirty checkout is truncated to this.</span>
+
+<span class="sd">    Keys: 'path' (repository root, or the input path if not a git checkout), 'git_hash',</span>
+<span class="sd">    'dirty' (tracked files modified), 'diff_sha256' and 'diff' (of a dirty checkout,</span>
+<span class="sd">    truncated; None when clean), 'untracked' (count), 'remote' (of origin). Values other</span>
+<span class="sd">    than 'path' are None outside a git checkout.</span>
+
+<span class="sd">    Moved from pyolfsysm.mb_model (al_analysis' mb_model before), 2026-11-12.</span>
+<span class="sd">    """</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">path_or_module</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">path_or_module</span><span class="p">,</span> <span class="s1">'__file__'</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">path_or_module</span><span class="p">,</span> <span class="s1">'__path__'</span><span class="p">):</span>
+        <span class="c1"># a module, or a (possibly namespace) package, whose __file__ can be None</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">path_or_module</span><span class="p">,</span> <span class="s1">'__file__'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span>
+            <span class="nb">list</span><span class="p">(</span><span class="n">path_or_module</span><span class="o">.</span><span class="n">__path__</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="p">)</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">parent</span>
+    <span class="n">out</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="n">git_hash</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dirty</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">diff_sha256</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">diff</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">untracked</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remote</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">)</span>
+    <span class="n">top</span> <span class="o">=</span> <span class="n">run_git</span><span class="p">([</span><span class="s1">'rev-parse'</span><span class="p">,</span> <span class="s1">'--show-toplevel'</span><span class="p">],</span> <span class="n">path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">top</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">out</span>
+    <span class="n">top</span> <span class="o">=</span> <span class="n">top</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="p">(</span><span class="n">run_git</span><span class="p">([</span><span class="s1">'status'</span><span class="p">,</span> <span class="s1">'--porcelain'</span><span class="p">,</span> <span class="s1">'--untracked-files=no'</span><span class="p">],</span> <span class="n">top</span><span class="p">)</span> <span class="ow">or</span> <span class="s1">''</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">run_git</span><span class="p">([</span><span class="s1">'diff'</span><span class="p">,</span> <span class="s1">'HEAD'</span><span class="p">,</span> <span class="s1">'--'</span><span class="p">],</span> <span class="n">top</span><span class="p">)</span> <span class="ow">or</span> <span class="s1">''</span>
+    <span class="n">untracked</span> <span class="o">=</span> <span class="n">run_git</span><span class="p">([</span><span class="s1">'ls-files'</span><span class="p">,</span> <span class="s1">'--others'</span><span class="p">,</span> <span class="s1">'--exclude-standard'</span><span class="p">],</span> <span class="n">top</span><span class="p">)</span> <span class="ow">or</span> <span class="s1">''</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">top</span><span class="p">,</span> <span class="n">git_hash</span><span class="o">=</span><span class="p">(</span><span class="n">run_git</span><span class="p">([</span><span class="s1">'rev-parse'</span><span class="p">,</span> <span class="s1">'HEAD'</span><span class="p">],</span> <span class="n">top</span><span class="p">)</span> <span class="ow">or</span> <span class="s1">''</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="n">dirty</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">status</span><span class="p">),</span> <span class="n">remote</span><span class="o">=</span><span class="p">(</span><span class="n">run_git</span><span class="p">([</span><span class="s1">'remote'</span><span class="p">,</span> <span class="s1">'get-url'</span><span class="p">,</span> <span class="s1">'origin'</span><span class="p">],</span> <span class="n">top</span><span class="p">)</span> <span class="ow">or</span>
+            <span class="s1">''</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">untracked</span><span class="o">=</span><span class="nb">len</span><span class="p">([</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">untracked</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span> <span class="k">if</span> <span class="n">l</span><span class="o">.</span><span class="n">strip</span><span class="p">()]),</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">status</span><span class="p">:</span>
+        <span class="n">out</span><span class="p">[</span><span class="s1">'diff_sha256'</span><span class="p">]</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">diff</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_diff_chars</span><span class="p">:</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="p">(</span><span class="n">diff</span><span class="p">[:</span><span class="n">max_diff_chars</span><span class="p">]</span> <span class="o">+</span>
+                <span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="s1">... [diff truncated at </span><span class="si">{</span><span class="n">max_diff_chars</span><span class="si">}</span><span class="s1"> characters]</span><span class="se">\n</span><span class="s1">'</span>
+            <span class="p">)</span>
+        <span class="n">out</span><span class="p">[</span><span class="s1">'diff'</span><span class="p">]</span> <span class="o">=</span> <span class="n">diff</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<div class="viewcode-block" id="git_commits">
+<a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.git_commits">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">git_commits</span><span class="p">(</span><span class="n">paths</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Returns the commit and dirty state of several checkouts, flat, for provenance.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        paths: {key: a path in the checkout}.</span>
+
+<span class="sd">    Returns {'&lt;key&gt;_commit': HEAD's hash, '&lt;key&gt;_dirty': whether tracked files have</span>
+<span class="sd">    uncommitted changes}, for each key in order; both None where git fails (not a</span>
+<span class="sd">    checkout).</span>
+<span class="sd">    """</span>
+    <span class="n">out</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">paths</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="n">run_git</span><span class="p">([</span><span class="s1">'status'</span><span class="p">,</span> <span class="s1">'--porcelain'</span><span class="p">,</span> <span class="s1">'--untracked-files=no'</span><span class="p">],</span> <span class="n">path</span><span class="p">)</span>
+        <span class="n">commit</span> <span class="o">=</span> <span class="n">run_git</span><span class="p">([</span><span class="s1">'rev-parse'</span><span class="p">,</span> <span class="s1">'HEAD'</span><span class="p">],</span> <span class="n">path</span><span class="p">)</span>
+        <span class="n">out</span><span class="p">[</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">_commit'</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">commit</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">commit</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">out</span><span class="p">[</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">_dirty'</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">status</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">bool</span><span class="p">(</span><span class="n">status</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
 <div class="viewcode-block" id="motion_corrected_tiff_filename">
 <a class="viewcode-back" href="../../apidoc/hong2p.util.html#hong2p.util.motion_corrected_tiff_filename">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">motion_corrected_tiff_filename</span><span class="p">(</span><span class="n">date</span><span class="p">,</span> <span class="n">fly_num</span><span class="p">,</span> <span class="n">thorimage_id</span><span class="p">):</span>
@@ -6022,6 +6117,23 @@
         <span class="p">)</span>
 
     <span class="c1"># TODO maybe columns and index should have diff names? keep odor1/odor2?</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">have_panels</span><span class="p">:</span>
+        <span class="c1"># each pair of distinct odors exactly once, in either order (as the loop below checks</span>
+        <span class="c1"># with panels), then the square built by hong2p.rdm (same values, `odor_index` labels)</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">hong2p.rdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">square_from_pairs</span>
+
+        <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">odor_index</span><span class="p">,</span> <span class="mi">2</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="p">((</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="ow">in</span> <span class="n">corr_ser</span><span class="p">)</span> <span class="o">!=</span> <span class="p">((</span><span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span> <span class="ow">in</span> <span class="n">corr_ser</span><span class="p">),</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">((</span><span class="n">o</span><span class="p">,</span> <span class="n">o</span><span class="p">)</span> <span class="ow">in</span> <span class="n">corr_ser</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">odor_index</span><span class="p">)</span>
+        <span class="n">in_index</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">odor_index</span><span class="p">)</span>
+        <span class="n">pairs</span> <span class="o">=</span> <span class="n">corr_ser</span><span class="p">[[</span><span class="n">a</span> <span class="ow">in</span> <span class="n">in_index</span> <span class="ow">and</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">in_index</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">corr_ser</span><span class="o">.</span><span class="n">index</span><span class="p">]]</span>
+        <span class="n">square_corr</span> <span class="o">=</span> <span class="n">square_from_pairs</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">odor_index</span><span class="p">),</span> <span class="n">diag</span><span class="o">=</span><span class="n">diag_value</span><span class="p">,</span>
+            <span class="n">missing</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="s1">'nan'</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">square_corr</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">odor_index</span>
+        <span class="n">square_corr</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">odor_index</span>
+        <span class="k">return</span> <span class="n">square_corr</span>
 
     <span class="n">square_corr</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">odor_index</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">odor_index</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="s1">'nan'</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">odor_index</span><span class="p">:</span>
