@@ -18,6 +18,11 @@ lightweight dependencies are installed. That is enough for `hong2p.thor` (ThorIm
 ThorSync outputs), `hong2p.olf`, `hong2p.pandas`, and `hong2p.util`, but not for
 `hong2p.viz`, `hong2p.io`, `hong2p.roi`, `hong2p.suite2p`, `hong2p.xarray`, or
 `hong2p.latex` (importing these will raise an error saying to install `hong2p[all]`).
+`hong2p.rdm` (odor-pair matrices: pair Series, distances between odors' responses),
+`hong2p.stats` (residuals, correlations and resampling of grouped matrices) and
+`hong2p.imaging` (response windows of traces, the indicator kernel, noise-corrected
+distances) also import with the core dependencies, but their statistics and fits use
+scipy / scikit-learn (`[all]`).
 
 Projects depending on hong2p should include `[all]` in their requirement, unless they
 only use the modules above, e.g. `hong2p[all] @ git+https://github.com/ejhonglab/hong2p`.

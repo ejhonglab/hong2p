@@ -21,7 +21,8 @@ name = "hong2p"
 # (want to expand support to newer versions tho)
 requires-python = ">= 3.8"
 # Core dependencies, enough to import hong2p.{err,types,pandas,olf,thor,util,matlab,chem,
-# cli_entry_points} (see test/test_core_imports.py, and the tox `core` env below). Other
+# cli_entry_points,rdm,stats,imaging} (see test/test_core_imports.py, and the tox `core` env
+# below). Other
 # modules (viz, io, roi, suite2p, xarray, latex), the CLIs using them, and some functions in
 # the core modules (which import what they need inside the function) require the `all`
 # extra below.
@@ -248,6 +249,7 @@ commands = [["pytest", { replace = "posargs", extend = true, default = [
     "hong2p/matlab.py",
     "hong2p/chem.py",
     "hong2p/cli_entry_points.py",
+    "hong2p/rdm.py",
 ] }]]
 
 # The existing ./venv, as-is (tox does not install anything into it)

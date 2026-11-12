@@ -2965,6 +2965,92 @@ def version_info(*args, used_for='', force_git=False):
         return {'name': name, 'used_for': used_for, 'version': version}
 
 
+def run_git(args: Sequence[str], cwd) -> Optional[str]:
+    """Returns stdout of `git <args>` run in `cwd`, or None if git fails or is missing.
+    """
+    try:
+        return subprocess.run(['git', *args], cwd=str(cwd), capture_output=True,
+            text=True, check=True
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+# default cap on the diff `repo_info` records (characters)
+MAX_REPO_INFO_DIFF_CHARS = 60_000
+
+
+def repo_info(path_or_module, max_diff_chars: int = MAX_REPO_INFO_DIFF_CHARS
+    ) -> Dict[str, Any]:
+    """Returns git hash, dirty flag and diff digest of the repository containing a path or
+    module, for provenance (the git command line only, unlike `version_info`).
+
+    Args:
+        path_or_module: a path (file or directory), a module or a (possibly namespace)
+            package.
+        max_diff_chars: the recorded diff of a dirty checkout is truncated to this.
+
+    Keys: 'path' (repository root, or the input path if not a git checkout), 'git_hash',
+    'dirty' (tracked files modified), 'diff_sha256' and 'diff' (of a dirty checkout,
+    truncated; None when clean), 'untracked' (count), 'remote' (of origin). Values other
+    than 'path' are None outside a git checkout.
+
+    Moved from pyolfsysm.mb_model (al_analysis' mb_model before), 2026-11-12.
+    """
+    path = path_or_module
+    if hasattr(path_or_module, '__file__') or hasattr(path_or_module, '__path__'):
+        # a module, or a (possibly namespace) package, whose __file__ can be None
+        path = (getattr(path_or_module, '__file__', None) or
+            list(path_or_module.__path__)[0]
+        )
+    path = Path(path).resolve()
+    if path.is_file():
+        path = path.parent
+    out: Dict[str, Any] = dict(path=str(path), git_hash=None, dirty=None,
+        diff_sha256=None, diff=None, untracked=None, remote=None
+    )
+    top = run_git(['rev-parse', '--show-toplevel'], path)
+    if top is None:
+        return out
+    top = top.strip()
+    status = (run_git(['status', '--porcelain', '--untracked-files=no'], top) or ''
+        ).strip()
+    diff = run_git(['diff', 'HEAD', '--'], top) or ''
+    untracked = run_git(['ls-files', '--others', '--exclude-standard'], top) or ''
+    out.update(path=top, git_hash=(run_git(['rev-parse', 'HEAD'], top) or '').strip(),
+        dirty=bool(status), remote=(run_git(['remote', 'get-url', 'origin'], top) or
+            '').strip() or None,
+        untracked=len([l for l in untracked.splitlines() if l.strip()]),
+    )
+    if status:
+        out['diff_sha256'] = hashlib.sha256(diff.encode()).hexdigest()
+        if len(diff) > max_diff_chars:
+            diff = (diff[:max_diff_chars] +
+                f'\n... [diff truncated at {max_diff_chars} characters]\n'
+            )
+        out['diff'] = diff
+    return out
+
+
+def git_commits(paths: Dict[str, Any]) -> Dict[str, Any]:
+    """Returns the commit and dirty state of several checkouts, flat, for provenance.
+
+    Args:
+        paths: {key: a path in the checkout}.
+
+    Returns {'<key>_commit': HEAD's hash, '<key>_dirty': whether tracked files have
+    uncommitted changes}, for each key in order; both None where git fails (not a
+    checkout).
+    """
+    out: Dict[str, Any] = {}
+    for key, path in paths.items():
+        status = run_git(['status', '--porcelain', '--untracked-files=no'], path)
+        commit = run_git(['rev-parse', 'HEAD'], path)
+        out[f'{key}_commit'] = None if commit is None else commit.strip()
+        out[f'{key}_dirty'] = None if status is None else bool(status.strip())
+    return out
+
+
 def motion_corrected_tiff_filename(date, fly_num, thorimage_id):
     """Takes vars identifying recording to the name of a motion corrected TIFF
     for it. Non-rigid preferred over rigid. Relies on naming convention.
@@ -5594,6 +5680,23 @@ def invert_corr_triangular(corr_ser: pd.Series, diag_value: float = 1., *,
         )
 
     # TODO maybe columns and index should have diff names? keep odor1/odor2?
+
+    if not have_panels:
+        # each pair of distinct odors exactly once, in either order (as the loop below checks
+        # with panels), then the square built by hong2p.rdm (same values, `odor_index` labels)
+        from hong2p.rdm import square_from_pairs
+
+        for a, b in itertools.combinations(odor_index, 2):
+            assert ((a, b) in corr_ser) != ((b, a) in corr_ser), (a, b)
+        assert not any((o, o) in corr_ser for o in odor_index)
+        in_index = set(odor_index)
+        pairs = corr_ser[[a in in_index and b in in_index for a, b in corr_ser.index]]
+        square_corr = square_from_pairs(pairs, list(odor_index), diag=diag_value,
+            missing=float('nan')
+        )
+        square_corr.index = odor_index
+        square_corr.columns = odor_index
+        return square_corr
 
     square_corr = pd.DataFrame(index=odor_index, columns=odor_index, data=float('nan'))
     for a in odor_index:

@@ -26,6 +26,9 @@ CORE_MODULES = [
     'hong2p.matlab',
     'hong2p.chem',
     'hong2p.cli_entry_points',
+    'hong2p.rdm',
+    'hong2p.stats',
+    'hong2p.imaging',
 ]
 
 # Names these are imported by (not distribution names), for everything in `all` extra in
